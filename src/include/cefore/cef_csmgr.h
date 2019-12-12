@@ -1,0 +1,433 @@
+/*
+ * Copyright (c) 2016, National Institute of Information and Communications
+ * Technology (NICT). All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the NICT nor the names of its contributors may be
+ *    used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE NICT AND CONTRIBUTORS "AS IS" AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE NICT OR CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+/*
+ * cef_csmgr.h
+ */
+
+#ifndef __CEF_CSMGR_HEADER__
+#define __CEF_CSMGR_HEADER__
+
+/****************************************************************************************
+ Include Files
+ ****************************************************************************************/
+#include <stdint.h>
+#include <sys/stat.h>
+
+#include <cefore/cef_plugin.h>
+#include <cefore/cef_rngque.h>
+#include <cefore/cef_hash.h>
+#include <cefore/cef_pit.h>
+
+/****************************************************************************************
+ Macros
+ ****************************************************************************************/
+
+/*------------------------------------------------------------------*/
+/* Cefore cache mode												*/
+/*------------------------------------------------------------------*/
+#define CefC_Cache_Type_None			0			/* Mode None						*/
+#define CefC_Cache_Type_Excache			1			/* Mode Excache						*/
+
+/*------------------------------------------------------------------*/
+/* Default cache status												*/
+/*------------------------------------------------------------------*/
+#define CefC_Default_Cache_Type			0			/* Default None						*/
+#define CefC_Default_Cache_Capacity		30000		/* Default 30000 entries			*/
+#define CefC_Default_Int_Check_Cache	10000		/* Default 10 secs					*/
+#define CefC_Default_Def_Rct			600000		/* Default 10 minits				*/
+#define CefC_Default_Tcp_Prot			9799		/* port num between cefnetd and 	*/
+													/* csmgrd 							*/
+#define CefC_Default_Node_Path			"127.0.0.1"
+
+/*------------------------------------------------------------------*/
+/* Macros for csmgr													*/
+/*------------------------------------------------------------------*/
+#define CefC_Csmgr_File_Path_Length		1024		/* Max length of file path			*/
+#define CefC_Csmgr_Conf_Name			"csmgrd.conf"
+													/* csmrd Config file name			*/
+#define CefC_Csmgr_Max_Table_Num		65535		/* Max size of table				*/
+#define CefC_Csmgr_Max_Table_Margin		10000		/* Margin size of table				*/
+#define CefC_Csmgr_Max_Send_Num			16
+#define CefC_Csmgr_Max_Wait_Response	1000		/* Wait time(msec)					*/
+#define CefC_Default_Cache_Send_Rate	512			/* default send rate for mem cache	*/
+
+#define CefC_Csmgr_Cmd_MaxLen			1024
+#define CefC_Csmgr_Cmd_ConnOK			"CMD://CsmgrdConnOK"
+
+/*------------------------------------------------------------------*/
+/* type of queue entry												*/
+/*------------------------------------------------------------------*/
+#define CefC_Cs_Tx_Elem_Type_Invalid	0x00		/* Type Invalid						*/
+#define CefC_Cs_Tx_Elem_Type_Cob 		0x01		/* Type Content Object				*/
+
+/*------------------------------------------------------------------*/
+/* type of csmgr message											*/
+/*------------------------------------------------------------------*/
+#define CefC_Csmgr_Msg_Type_Invalid		0x00		/* Type Invalid						*/
+#define CefC_Csmgr_Msg_Type_Interest	0x01		/* Type Interest					*/
+#define CefC_Csmgr_Msg_Type_Cob			0x02		/* Type Content Object				*/
+#define CefC_Csmgr_Msg_Type_UpReq		0x03		/* Type Upload Request				*/
+#define CefC_Csmgr_Msg_Type_Increment	0x04		/* Type Increment Access Count		*/
+#define CefC_Csmgr_Msg_Type_Echo		0x05		/* Type Echo						*/
+#define CefC_Csmgr_Msg_Type_Status		0x06		/* Type Get Status					*/
+#define CefC_Csmgr_Msg_Type_Contrace	0x08		/* Type Contrace message			*/
+#define CefC_Csmgr_Msg_Type_Conping		0x09		/* Type Conping						*/
+#define CefC_Csmgr_Msg_Type_Bulk_Cob	0x0a		/* Type Content Object (Bulk)		*/
+#define CefC_Csmgr_Msg_Type_Kill		0x0b		/* Type Kill command				*/
+#define CefC_Csmgr_Msg_Type_Num			0x0c
+
+#define CefC_Csmgr_Cob_Exist			0x00		/* Type Content is exist			*/
+#define CefC_Csmgr_Cob_NotExist			0x01		/* Type Content is not exist		*/
+
+#define CefC_Csmgr_Stat_Msg_Type_Invalid	0x00	/* Type Invalid						*/
+#define CefC_Csmgr_Stat_Msg_Type_Status		0x01	/* Type Status						*/
+#define CefC_Csmgr_Stat_Msg_Type_Cache		0x02	/* Type Cache Information			*/
+
+#define CefC_Csmgr_Msg_HeaderLen		4
+#define CefC_Csmgr_User_Len				256
+
+/*------------------------------------------------------------------*/
+/* type of CefC_Csmgr_Msg_Type_Interest								*/
+/*------------------------------------------------------------------*/
+#define CefC_Csmgr_Interest_Type_Invalid	0x00	/* Type Invalid						*/
+#define CefC_Csmgr_Interest_Type_Normal		0x01	/* Type Interest					*/
+#define CefC_Csmgr_Interest_Type_Bulk		0x02	/* Type Bulk Interest				*/
+#define CefC_Csmgr_Interest_Type_Num		0x03
+
+#define CefC_Csmgr_Interest_ChunkNum_NotExist	0	/* Chunk Num Flag off				*/
+#define CefC_Csmgr_Interest_ChunkNum_Exist		1	/* Chunk Num Flag on				*/
+
+/*------------------------------------------------------------------*/
+/* Macros for get csmgrd status										*/
+/*------------------------------------------------------------------*/
+#define CefC_Csmgr_Stat_MaxUri			128
+#define CefC_Csmgr_Stat_Mtu				65535
+
+/*------------------------------------------------------------------*/
+/* status type														*/
+/*------------------------------------------------------------------*/
+typedef enum {
+	CefC_Csmgr_Stat_Type_Invalid 		= 0x00,		/* Invalid 							*/
+	CefC_Csmgr_Stat_Type_Cache 			= 0x01,		/* Cache							*/
+	CefC_Csmgr_Stat_Type_Unavailable 	= 0xFF		/* Unavailable 						*/
+} CefC_Csmgr_Stat_Type;
+
+
+
+/****************************************************************************************
+ Structure Declarations
+ ****************************************************************************************/
+
+typedef struct {
+
+	/********** Content Store Information	***********/
+	uint8_t			cache_type;					/* Cache Type							*/
+												/* 0 : None								*/
+												/* 1 : Excache							*/
+	uint32_t		def_rct;					/* default RCT 							*/
+	
+	/********** Memory Cache Information	***********/
+	uint32_t		cache_cap;					/* Cache Capacity						*/
+	
+	/********** Content Object Table		***********/
+	CefT_Hash_Handle	cob_table;				/* Content Object Table					*/
+
+	/********** Tx Message Queue		***********/
+	CefT_Mp_Handle		tx_cob_mp;				/* for CefT_Cs_Tx_Elem_Cob 				*/
+	CefT_Mp_Handle 		tx_que_mp;				/* for CefT_Cs_Tx_Elem 					*/
+	CefT_Rngque* 		tx_que;					/* TX ring buffer 						*/
+
+	/********** CS memory pool 		***********/
+	CefT_Mp_Handle	cs_cob_entry_mp;		/* for cob entry							*/
+	
+	/********** TCP connection 		***********/
+	uint16_t 		tcp_port_num;
+	char 			peer_id_str[NI_MAXHOST];
+	int 			tcp_sock;
+	unsigned char	rcv_buff[CefC_Max_Length];
+	uint16_t 		rcv_len;
+	
+} CefT_Cs_Stat;
+
+typedef struct {
+
+	/********** Content Object Information			***********/
+	unsigned char	msg[CefC_Max_Msg_Size];		/* Receive message						*/
+	uint16_t		msg_len;					/* Length of message 					*/
+	uint32_t		chunk_num;					/* Chunk Num							*/
+	uint64_t		expiry;
+	
+} CefT_Cob_Entry;
+
+/***** Insert to data of CefT_Cs_Tx_Elem_Cob	*****/
+typedef struct {
+
+	CefT_Cob_Entry		cob;					/* Content Object						*/
+	int					faceid;					/* Interewt arrived face id				*/
+
+} CefT_Cs_Tx_Elem_Cob;
+
+/***** Content information	*****/
+typedef struct {
+	unsigned char	msg[CefC_Max_Msg_Size];
+	uint16_t		msg_len;
+	unsigned char	name[CefC_Max_Msg_Size];
+	uint16_t		name_len;
+	uint16_t		pay_len;
+	uint32_t		chnk_num;
+	uint64_t		cache_time;
+	uint64_t		expiry;
+} CefT_Csmgrd_Content_Info;
+
+struct CefT_Cs_Mgrd_Stat {
+	uint32_t		excache_id;					/* Excache ID							*/
+	int				all_init_number;			/* All init num							*/
+	int				all_content_number;			/* All content num						*/
+	int				ccs_number;					/* Common cs num						*/
+	uint8_t			excache_node_type;			/* excache node type					*/
+	int				nodeid;						/* Node ID								*/
+} __attribute__((__packed__));
+
+/*------------------------------------------------------------------*/
+/* for cache information field										*/
+/*------------------------------------------------------------------*/
+typedef struct {
+	uint64_t size;									/* total size of a content			*/
+	int freshness_sec;							/* length of time until content is	*/
+													/* expired							*/
+	unsigned int access_cnt;						/* access-count of ContentObject	*/
+	unsigned int elapsed_time;						/* elapsed time after content was	*/
+													/* stored							*/
+} CefT_Csmgrd_Stat_Cache;
+
+/***** Tx Queue Element 	*****/
+typedef struct {
+
+	int 					type;					/* Type of the element 				*/
+	void* 					data;					/* Information 						*/
+
+} CefT_Cs_Tx_Elem;
+
+
+
+/****************************************************************************************
+ Function Declarations
+ ****************************************************************************************/
+
+/*--------------------------------------------------------------------------------------
+	Create Content Store Manager Status
+----------------------------------------------------------------------------------------*/
+CefT_Cs_Stat*						/* The return value is null if an error occurs		*/
+cef_csmgr_stat_create (
+	void
+);
+/*--------------------------------------------------------------------------------------
+	Destroy Content Store Manager Status
+----------------------------------------------------------------------------------------*/
+void
+cef_csmgr_stat_destroy (
+	CefT_Cs_Stat** cs_stat					/* Content Store Status						*/
+);
+/*--------------------------------------------------------------------------------------
+	Reads the config file
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_config_read (
+	CefT_Cs_Stat* cs_stat					/* Content Store Status						*/
+);
+/*--------------------------------------------------------------------------------------
+	Search and replies the Cob from the temporary cache
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_cache_lookup (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	int faceid,								/* Face-ID to reply to the origin of 		*/
+											/* transmission of the message(s)			*/
+	CefT_Parsed_Message* pm,				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh,				/* Parsed Option Header						*/
+	CefT_Pit_Entry* pe						/* PIT entry								*/
+);
+/*--------------------------------------------------------------------------------------
+	Check reply flag. Don't forward interest if reply flag is on.
+----------------------------------------------------------------------------------------*/
+int									/* The return value is 0 if an error occurs			*/
+cef_csmgr_rep_f_check (
+	CefT_Pit_Entry* pe, 					/* PIT entry								*/
+	int faceid								/* Face-ID to reply to the origin of 		*/
+											/* transmission of the message(s)			*/
+);
+/*--------------------------------------------------------------------------------------
+	Insert the Cob into the temporary cache
+----------------------------------------------------------------------------------------*/
+void 
+cef_csmgr_cache_insert (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	unsigned char* msg, 					/* received message to handle				*/
+	uint16_t msg_len,						/* length of received message				*/
+	CefT_Parsed_Message* pm,				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+);
+/*--------------------------------------------------------------------------------------
+	Connect csmgrd external socket
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_csmgrd_connect_ext (
+	const char* destination, 				/* String of the destination address 		*/
+	const char* port_str					/* String of the destination port			*/
+);
+/*--------------------------------------------------------------------------------------
+	Send message from csmgrd to cefnetd
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_send_msg (
+	int fd,									/* socket fd								*/
+	unsigned char* msg,						/* send message								*/
+	uint16_t msg_len						/* message length							*/
+);
+/*--------------------------------------------------------------------------------------
+	Send message from cefnetd to csmgrd
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_send_msg_to_csmgrd (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	unsigned char* msg,						/* send message								*/
+	uint16_t msg_len						/* message length							*/
+);
+/*--------------------------------------------------------------------------------------
+	Put Content Object to excache
+----------------------------------------------------------------------------------------*/
+void
+cef_csmgr_excache_item_put (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	unsigned char* msg, 					/* received message to handle				*/
+	uint16_t msg_len,						/* length of received message				*/
+	int faceid,								/* Arrived face id							*/
+	CefT_Parsed_Message* pm,				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option header						*/
+);
+void
+cef_csmgr_excache_item_push (
+	CefT_Cs_Stat* cs_stat					/* Content Store status						*/
+);
+/*--------------------------------------------------------------------------------------
+	Search and queue entry
+----------------------------------------------------------------------------------------*/
+void 
+cef_csmgr_excache_lookup (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	int faceid,								/* Face-ID to reply to the origin of 		*/
+											/* transmission of the message(s)			*/
+	CefT_Parsed_Message* pm,				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh,				/* Parsed Option Header						*/
+	CefT_Pit_Entry* pe						/* PIT entry								*/
+);
+/*--------------------------------------------------------------------------------------
+	Get frame from received message
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+csmgr_frame_get (
+	unsigned char* buff,					/* receive message							*/
+	int buff_len,							/* message length							*/
+	unsigned char* msg,						/* frame of csmgr message					*/
+	int* frame_size,						/* frame length								*/
+	uint8_t* type							/* message type								*/
+);
+/*--------------------------------------------------------------------------------------
+	Forwarding content object
+----------------------------------------------------------------------------------------*/
+int
+csmgr_cob_forward (
+	int faceid,									/* Face-ID to reply to the origin of 	*/
+	unsigned char* msg,							/* Receive message						*/
+	uint16_t msg_len,							/* Length of message					*/
+	uint32_t chnk_num							/* Chunk Number of content				*/
+);
+/*--------------------------------------------------------------------------------------
+	parse cob name
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_cob_name_parse (
+	unsigned char* buff,						/* receive message						*/
+	int buff_len,								/* receive message length				*/
+	uint16_t* index,							/* index of message						*/
+	unsigned char* name,						/* cob name								*/
+	uint16_t* name_len							/* cob name length						*/
+);
+/*--------------------------------------------------------------------------------------
+	print hex dump
+----------------------------------------------------------------------------------------*/
+void
+cef_csmgr_hex_print (
+	unsigned char* text,					/* Text										*/
+	int text_len							/* Text length								*/
+);
+/*--------------------------------------------------------------------------------------
+	close socket
+----------------------------------------------------------------------------------------*/
+void
+csmgr_sock_close (
+	CefT_Cs_Stat* cs_stat					/* Content Store status						*/
+);
+/*--------------------------------------------------------------------------------------
+	Change str to value
+----------------------------------------------------------------------------------------*/
+int64_t								/* The return value is negative if an error occurs	*/
+cef_csmgr_config_get_value (
+	char* option,							/* csmgr option								*/
+	char* value								/* String									*/
+);
+/*--------------------------------------------------------------------------------------
+	Incoming conping message
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_excache_item_check (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	unsigned char* name,					/* Content URI								*/
+	uint16_t name_len						/* Length of Content URI					*/
+);
+/*--------------------------------------------------------------------------------------
+	Incoming Contrace message
+----------------------------------------------------------------------------------------*/
+int											/* length of Cache Information				*/
+cef_csmgr_excache_info_get (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	unsigned char* name,					/* Content URI								*/
+	uint16_t name_len,						/* Length of Content URI					*/
+	unsigned char* info,					/* cache information from csmgr 			*/
+	uint16_t trace_flag						/* Trace Flag 								*/
+);
+/*--------------------------------------------------------------------------------------
+	Connect csmgrd with TCP socket
+----------------------------------------------------------------------------------------*/
+int											/* created socket							*/
+cef_csmgr_connect_tcp_to_csmgrd (
+	const char* dest, 
+	const char* port
+);
+#endif // __CEF_CSMGR_HEADER__

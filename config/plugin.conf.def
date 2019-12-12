@@ -1,0 +1,27 @@
+#
+# Plugin Configurations
+#
+
+#
+# General Configurations
+#
+# log: Outputs log
+[COMMON]
+log=no
+#
+# Transport Plugin Configurations
+#
+[TRANSPORT]
+samptp=no
+#
+# Mobility Configurations
+#
+[MOBILITY]
+defmb=no
+#
+# NDN Plugin Configurations
+#
+[NDN]
+support=no
+stat=no
+port=6363

@@ -1,0 +1,69 @@
+#
+# cefnetd.conf
+#
+
+#
+# Port number used by cefnetd.
+# This value must be higther than 1024 and lower than 65536.
+#
+#PORT_NUM=9896
+
+#
+# Socket ID used by cefnetd.
+# This value is the string type, not the integer type.
+#
+#LOCAL_SOCK_ID=0
+
+#
+# Maximum number of PIT entries.
+# This value must be higther than 0 and lower than 65536.
+#
+#PIT_SIZE=2048
+
+#
+# Maximum number of FIB entries.
+# This value must be higther than 0 and lower than 65536.
+#
+#FIB_SIZE=1024
+
+#
+# Cache used by cefnetd
+#  0 : No cache
+#  1 : Use external cache (i.e., use csmgrd)
+#
+#USE_CACHE=0
+
+#
+# Buffer size to keep the number of Cobs.
+# This value must be higher than or equal to 0 and lower than 65536.
+#
+#BUFFER_CAPACITY=30000
+
+#
+# csmgrd's IP address
+#
+#CSMGR_NODE=127.0.0.1
+
+#
+# csmgrd's TCP port number.
+# This value must be higher than 1024 and lower than 65536.
+#
+#CSMGR_PORT_NUM=9799
+
+#
+# Logging level
+#
+#LOG_LEVEL=0
+
+#
+# Public key name
+# The default is cefnetd dose not use the public key.
+#
+#PUBLIC_KEY=
+
+#
+# Neighbour Discovery
+#
+#NBR_SIZE=1
+#NBR_INTERVAL=10000
+#NBR_THRESH=3
