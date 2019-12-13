@@ -49,10 +49,10 @@ libcsmgrd_lfu_la_LIBADD =
 noinst_LTLIBRARIES += libcef_lfu.la
 libcef_lfu_la_CFLAGS  = $(AM_CFLAGS) -Wall -O2 -fPIC
 
-# check cefinfo
-if CEFINFO_ENABLE
-libcef_lfu_la_CFLAGS += -DCefC_Cefinfo
-endif # CEFINFO_ENABLE
+# check ccninfo
+if CCNINFO_ENABLE
+libcef_lfu_la_CFLAGS += -DCefC_Ccninfo
+endif # CCNINFO_ENABLE
 
 # check cefping
 if CEFPING_ENABLE

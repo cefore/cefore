@@ -261,6 +261,21 @@ fsc_cache_item_puts (
 	unsigned char* msg, 
 	int msg_len
 );
+/*--------------------------------------------------------------------------------------
+	get lifetime for ccninfo
+----------------------------------------------------------------------------------------*/
+static int										/* This value MAY be -1 if the router does not know or cannot report. */
+fsc_cache_lifetime_get (
+	unsigned char* name,						/* content name							*/
+	uint16_t name_len,							/* content name Length					*/
+	uint32_t* cache_time,						/* The elapsed time (seconds) after the oldest	*/
+												/* content object of the content is cached.		*/
+	uint32_t* lifetime,							/* The lifetime (seconds) of a content object, 	*/
+												/* which is removed first among the cached content objects.*/
+	uint8_t partial_f							/* when flag is 0, exact match			*/
+												/* when flag is 1, partial match		*/
+);
+
 
 /****************************************************************************************
  ****************************************************************************************/
@@ -271,7 +286,7 @@ csmgrd_filesystem_plugin_load (
 ) {
 	CSMGRD_SET_CALLBACKS(
 		fsc_cs_create, fsc_cs_destroy, fsc_cs_expire_check, fsc_cache_item_get,
-		fsc_cache_item_puts, fsc_cs_ac_cnt_inc);
+		fsc_cache_item_puts, fsc_cs_ac_cnt_inc, fsc_cache_lifetime_get);
 	
 #ifdef CefC_Ccore
 	cs_in->cache_cap_set 		= fsc_cache_change_cap;
@@ -1279,10 +1294,8 @@ fsc_cache_item_get (
 	csmgrd_dbg_write (CefC_Dbg_Finest, 
 		"send seqno = %u (%d bytes)\n", seqno, file_get_area[pos_index].msg_len);
 #endif // CefC_Debug
-	if (seqno == 0) {
-		csmgrd_stat_access_count_update (
+	csmgrd_stat_access_count_update (
 			csmgr_stat_hdl, key, key_size);
-	}
 	
 	/* Send Cob to cefnetd */
 	csmgrd_plugin_cob_msg_send (
@@ -1434,20 +1447,15 @@ fsc_cs_ac_cnt_inc (
 	uint32_t seq_num							/* sequence number						*/
 ) {
 	struct tlv_hdr* tlv_hdp;
-	struct value32_tlv* tlv32_hdp;
 	int index = 0;
 	int find_chunk_f = 0;
 	uint16_t type;
 	uint16_t length;
-	uint32_t chunk_num;
 	
 	if (hdl->algo_apis.hit) {
 		(*(hdl->algo_apis.hit))(key, key_size);
 	}
 	
-	if (seq_num) {
-		return;
-	}
 	
 	while (index < key_size) {
 		tlv_hdp = (struct tlv_hdr*) &key[index];
@@ -1465,13 +1473,8 @@ fsc_cs_ac_cnt_inc (
 	}
 	
 	if (find_chunk_f) {
-		tlv32_hdp = (struct value32_tlv*) &key[index];
-		chunk_num = ntohl (tlv32_hdp->value);
-		
-		if (chunk_num == 0) {
-			csmgrd_stat_access_count_update (
+		csmgrd_stat_access_count_update (
 				csmgr_stat_hdl, &key[0], index);
-		}
 	}
 	
 	return;
@@ -1580,4 +1583,55 @@ fsc_cache_del (
 	return (0);
 }
 #endif // CefC_Ccore
-
+/*--------------------------------------------------------------------------------------
+	get lifetime for ccninfo
+----------------------------------------------------------------------------------------*/
+static int										/* This value MAY be -1 if the router does not know or cannot report. */
+fsc_cache_lifetime_get (
+	unsigned char* name,						/* content name							*/
+	uint16_t name_len,							/* content name Length					*/
+	uint32_t* cache_time,						/* The elapsed time (seconds) after the oldest	*/
+												/* content object of the content is cached.		*/
+	uint32_t* lifetime,							/* The lifetime (seconds) of a content object, 	*/
+												/* which is removed first among the cached content objects.*/
+	uint8_t partial_f							/* when flag is 0, exact match			*/
+												/* when flag is 1, partial match		*/
+) {
+	*lifetime = 0;
+	*cache_time = 0;
+	
+	return (1);
+#if 0
+	CsmgrT_Stat* rcd = NULL;
+	uint64_t nowt;
+	struct timeval tv;
+	uint16_t name_len_wo_chunk;
+	
+	gettimeofday (&tv, NULL);
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
+	
+	if (partial_f != 0){
+		pthread_mutex_lock (&fsc_cs_mutex);
+		rcd = csmgr_stat_content_info_get (csmgr_stat_hdl, name, name_len);
+	} else {
+		uint32_t seqno = 0;
+		name_len_wo_chunk = cef_frame_get_name_without_chunkno (name, name_len, &seqno);
+		if (name_len_wo_chunk == 0){
+			return (-1);
+		}
+		pthread_mutex_lock (&fsc_cs_mutex);
+		rcd = csmgr_stat_content_info_access (csmgr_stat_hdl, name, name_len_wo_chunk);
+	}
+	if (!rcd || rcd->expire_f) {
+		pthread_mutex_unlock (&fsc_cs_mutex);
+		return (-1);
+	}
+	
+	*cache_time = (uint32_t)((nowt - rcd->cached_time) / 1000000);
+	if (rcd->expiry < nowt)
+		*lifetime = 0;
+	else
+		*lifetime = (uint32_t)((rcd->expiry - nowt) / 1000000);
+	pthread_mutex_unlock (&fsc_cs_mutex);
+#endif
+}

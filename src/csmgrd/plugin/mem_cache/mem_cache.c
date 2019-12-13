@@ -102,6 +102,7 @@ typedef struct {
 	uint64_t		expiry;						/* Expiry								*/
 	struct in_addr	node;						/* Node address							*/
 
+	uint64_t		ins_time;					/* Insert time							*/
 } CsmgrdT_Content_Mem_Entry;
 
 typedef struct CefT_Mem_Hash_Cell {
@@ -304,6 +305,21 @@ csmgrd_key_create_by_Mem_Entry (
 	CsmgrdT_Content_Mem_Entry* entry,
 	unsigned char* key
 );
+/*--------------------------------------------------------------------------------------
+	get lifetime for ccninfo
+----------------------------------------------------------------------------------------*/
+static int										/* This value MAY be -1 if the router does not know or cannot report. */
+mem_cache_lifetime_get (
+	unsigned char* name,						/* content name							*/
+	uint16_t name_len,							/* content name Length					*/
+	uint32_t* cache_time,						/* The elapsed time (seconds) after the oldest	*/
+												/* content object of the content is cached.		*/
+	uint32_t* lifetime,							/* The lifetime (seconds) of a content object, 	*/
+												/* which is removed first among the cached content objects.*/
+	uint8_t partial_f							/* when flag is 0, exact match			*/
+												/* when flag is 1, partial match		*/
+);
+
 
 /****************************************************************************************
  ****************************************************************************************/
@@ -318,7 +334,7 @@ csmgrd_memory_plugin_load (
 ) {
 	CSMGRD_SET_CALLBACKS(
 		mem_cs_create, mem_cs_destroy, mem_cs_expire_check, mem_cache_item_get,
-		mem_cache_item_puts, mem_cs_ac_cnt_inc);
+		mem_cache_item_puts, mem_cs_ac_cnt_inc, mem_cache_lifetime_get);
 	
 #ifdef CefC_Ccore
 	cs_in->cache_cap_set 		= mem_change_cap;
@@ -539,6 +555,7 @@ mem_cs_store (
 	entry->cache_time	 = new_entry->cache_time;
 	entry->expiry		 = new_entry->expiry;
 	entry->node			 = new_entry->node;
+	entry->ins_time		 = new_entry->ins_time;
 	
 	if (cef_mem_hash_tbl_item_set (
 		key, key_len, entry, old_entry) < 0) {
@@ -755,10 +772,8 @@ mem_cache_item_get (
 				(*(hdl->algo_apis.hit))(trg_key, trg_key_len);
 			}
 			
-			if (entry->chnk_num == 0) {
-				csmgrd_stat_access_count_update (
+			csmgrd_stat_access_count_update (
 					csmgr_stat_hdl, entry->name, entry->name_len);
-			}
 			
 			/* Send Cob to cefnetd */
 			csmgrd_plugin_cob_msg_send (sock, entry->msg, entry->msg_len);
@@ -950,6 +965,7 @@ mem_cache_cob_write (
 			entry->cache_time	 = cobs[index].cache_time;
 			entry->expiry		 = cobs[index].expiry;
 			entry->node			 = cobs[index].node;
+			entry->ins_time		 = cobs[index].ins_time;
 			
 			if (cef_mem_hash_tbl_item_set (
 				trg_key, trg_key_len, entry, old_entry) < 0) {
@@ -997,10 +1013,8 @@ mem_cs_ac_cnt_inc (
 		(*(hdl->algo_apis.hit))(key, key_size);
 	}
 	
-	if ((seq_num == 0) && (entry->chnk_num == 0)) {
-		csmgrd_stat_access_count_update (
+	csmgrd_stat_access_count_update (
 			csmgr_stat_hdl, entry->name, entry->name_len);
-	}
 	
 	return;
 }
@@ -1707,4 +1721,70 @@ csmgrd_key_create_by_Mem_Entry (
 	memcpy (&key[entry->name_len + 4], &chnk_num, sizeof (uint32_t));
 
 	return (entry->name_len + 4 + sizeof (uint32_t));
+}
+/*--------------------------------------------------------------------------------------
+	get lifetime for ccninfo
+----------------------------------------------------------------------------------------*/
+static int										/* This value MAY be -1 if the router does not know or cannot report. */
+mem_cache_lifetime_get (
+	unsigned char* name,						/* content name							*/
+	uint16_t name_len,							/* content name Length					*/
+	uint32_t* cache_time,						/* The elapsed time (seconds) after the oldest	*/
+												/* content object of the content is cached.		*/
+	uint32_t* lifetime,							/* The lifetime (seconds) of a content object, 	*/
+												/* which is removed first among the cached content objects.*/
+	uint8_t partial_f							/* when flag is 0, exact match			*/
+												/* when flag is 1, partial match		*/
+){
+	CsmgrT_Stat* rcd = NULL;
+	CsmgrdT_Content_Mem_Entry* entry;
+	uint64_t nowt;
+	struct timeval tv;
+	
+	gettimeofday (&tv, NULL);
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
+	
+	if (partial_f != 0){
+		uint32_t idx;
+		unsigned char trg_key[65535];
+		int trg_key_len;
+		uint64_t oldest_ins_time;
+		uint64_t first_expire;
+		
+		rcd = csmgr_stat_content_info_get (csmgr_stat_hdl, name, name_len);
+		if (!rcd || rcd->expire_f) {
+			return (-1);
+		}
+		
+		oldest_ins_time = nowt;
+		first_expire = UINT64_MAX;
+		
+		for (idx = rcd->min_seq; idx <= rcd->max_seq; idx++) {
+			trg_key_len = csmgrd_name_chunknum_concatenate (name, name_len, idx, trg_key);
+			entry = cef_mem_hash_tbl_item_get (trg_key, trg_key_len);
+			if (!entry) {
+				continue;
+			}
+			if (oldest_ins_time > entry->ins_time)
+				oldest_ins_time = entry->ins_time;
+			if (first_expire > entry->expiry)
+				first_expire = entry->expiry;
+		}
+		*cache_time = (uint32_t)((nowt - oldest_ins_time) / 1000000);
+		if (first_expire < nowt)
+			*lifetime = 0;
+		else
+			*lifetime = (uint32_t)((first_expire - nowt) / 1000000);
+		return (1);
+	} else {
+		entry = cef_mem_hash_tbl_item_get (name, name_len);
+		if ((!entry) ||
+			(nowt > entry->expiry)) {
+			return (-1);
+		}
+		*cache_time = (uint32_t)((nowt - entry->ins_time) / 1000000);
+		*lifetime   = (uint32_t)((entry->expiry - nowt) / 1000000);
+		return (1);
+	}
+	return (-1);
 }

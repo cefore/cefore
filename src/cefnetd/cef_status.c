@@ -530,7 +530,7 @@ cef_status_pit_output (
 		}
 		/* output uri	*/
 		if (chunknum_f) {
-			snprintf (work_str, CefC_Display_Max, "%s  %s%%%04X\n", tmp_str, uri, chunk_num);
+			snprintf (work_str, CefC_Display_Max, "%s  %s%%%04x\n", tmp_str, uri, chunk_num);
 			memcpy (tmp_str, work_str, strlen(work_str));
 		} else {
 			snprintf (work_str, CefC_Display_Max, "%s  %s\n", tmp_str, uri);
@@ -735,7 +735,7 @@ cef_status_stats_output_pit (
 			}
 			/* output uri	*/
 			if (chunknum_f) {
-				fprintf (fp, "  %s%%%04X\n", uri, chunk_num);
+				fprintf (fp, "  %s%%%04x\n", uri, chunk_num);
 			} else {
 				fprintf (fp, "  %s\n", uri);
 			}

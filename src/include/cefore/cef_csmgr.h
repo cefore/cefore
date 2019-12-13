@@ -102,7 +102,7 @@
 #define CefC_Csmgr_Msg_Type_Increment	0x04		/* Type Increment Access Count		*/
 #define CefC_Csmgr_Msg_Type_Echo		0x05		/* Type Echo						*/
 #define CefC_Csmgr_Msg_Type_Status		0x06		/* Type Get Status					*/
-#define CefC_Csmgr_Msg_Type_Cefinfo		0x08		/* Type Cefinfo message			*/
+#define CefC_Csmgr_Msg_Type_Ccninfo		0x08		/* Type Ccninfo message			*/
 #define CefC_Csmgr_Msg_Type_Cefping		0x09		/* Type Cefping						*/
 #define CefC_Csmgr_Msg_Type_Bulk_Cob	0x0a		/* Type Content Object (Bulk)		*/
 #define CefC_Csmgr_Msg_Type_Kill		0x0b		/* Type Kill command				*/
@@ -114,7 +114,8 @@
 #define CefC_Csmgr_Msg_Type_CnpbRload	0x11		/* Type Reload Conpub Contents		*/
 #define CefC_Csmgr_Msg_Type_RCCH		0x12		/* Type Retrieve cache chunk		*/
 #define CefC_Csmgr_Msg_Type_SCDL		0x13		/* Type Delete cache				*/
-#define CefC_Csmgr_Msg_Type_Num			0x14
+#define CefC_Csmgr_Msg_Type_PreCcninfo	0x14		/* Type Prepare Ccninfo message		*/
+#define CefC_Csmgr_Msg_Type_Num			0x15
 
 #define CefC_Csmgr_Cob_Exist			0x00		/* Type Content is exist			*/
 #define CefC_Csmgr_Cob_NotExist			0x01		/* Type Content is not exist		*/
@@ -210,9 +211,9 @@ typedef struct {
 	/********** local Cache Information ***********/
 	uint32_t		local_cache_capacity;			/* Cache Capacity						*/
 	uint32_t		local_cache_interval;			/* Expired check cycle (sec)			*/
-	int 			pipe_fd[2];					/* socket of cefnetd->Local cache		*/
-												/*  0: for cefnetd						*/
-												/*  1: for Local cache				*/
+	int 			pipe_fd[2];						/* socket of cefnetd->Local cache		*/
+													/*  0: for cefnetd						*/
+													/*  1: for Local cache				*/
 	
 } CefT_Cs_Stat;
 
@@ -451,7 +452,16 @@ cef_csmgr_excache_item_check (
 	uint16_t name_len						/* Length of Content URI					*/
 );
 /*--------------------------------------------------------------------------------------
-	Incoming Cefinfo message
+	Incoming pre-Ccninfo message
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_excache_item_check_for_ccninfo (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	unsigned char* name,					/* Content URI								*/
+	uint16_t name_len						/* Length of Content URI					*/
+);
+/*--------------------------------------------------------------------------------------
+	Incoming Ccninfo message
 ----------------------------------------------------------------------------------------*/
 int											/* length of Cache Information				*/
 cef_csmgr_excache_info_get (
@@ -459,7 +469,18 @@ cef_csmgr_excache_info_get (
 	unsigned char* name,					/* Content URI								*/
 	uint16_t name_len,						/* Length of Content URI					*/
 	unsigned char* info,					/* cache information from csmgr 			*/
-	uint16_t trace_flag						/* Trace Flag 								*/
+	uint16_t ccninfo_flag					/* Ccninfo Trace Flag						*/
+);
+/*--------------------------------------------------------------------------------------
+	Incoming Ccninfo message for cefnetd local cache
+----------------------------------------------------------------------------------------*/
+int											/* length of Cache Information				*/
+cef_csmgr_locache_info_get (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	unsigned char* name,					/* Content URI								*/
+	uint16_t name_len,						/* Length of Content URI					*/
+	unsigned char* info,					/* cache information from csmgr 			*/
+	uint16_t ccninfo_flag					/* Ccninfo Trace Flag 						*/
 );
 /*--------------------------------------------------------------------------------------
 	Connect csmgr with TCP socket

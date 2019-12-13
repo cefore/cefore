@@ -72,6 +72,49 @@
 #BUFFER_CAPACITY=30000
 
 #
+# FIB entry selection strategy.
+#   0: Forward using any 1 Longest prefix match FIB entry
+#   1: Forward using all Longest prefix match FIB entries
+#
+#FORWARDING_INFO_STRATEGY=0
+
+#
+# CCNinfo access policy
+#   0: No limit
+#   1: Permit transfer only
+#   2: Do not allow access
+#
+#CCNINFO_ACCESS_POLICY=0
+
+#
+# "Full discovery request" permission setting
+#   0: Allow
+#   1: Not Allow
+#   2: Authentication and Authorization
+#
+#CCNINFO_FULL_DISCOVERY=0
+
+#
+# Specify the Validation Algorithm to be added to Content Object.
+# Validation is not added when NONE is specified.
+# Either sha256 or crc32 can be specified.
+#
+#CCNINFO_VALID_ALG=NONE
+
+#
+# Private key, public key prefix
+#   Private key name: Specified string + "-private-key"
+#   Public key name: Specified string + "-public-key"
+#
+#CCNINFO_SHA256_KEY_PRFX=ccninfo_rt
+
+#
+# PIT lifetime(seconds) at "full discovery request"
+# This value must be higher than or equal to 2 and lower than or equal to 5.
+#
+#CCNINFO_REPLY_TIMEOUT=4
+
+#
 # cefnetd controller
 # The default is cefnetd dose not use the controller.
 #

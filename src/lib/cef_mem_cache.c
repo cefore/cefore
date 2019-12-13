@@ -62,6 +62,7 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+#define Cef_Mstat_HashTbl_Size				1009
 
 /****************************************************************************************
  Structures Declaration
@@ -96,6 +97,14 @@ typedef struct CefT_Mem_Hash {
 	
 } CefT_Mem_Hash;
 
+typedef struct CefT_Mem_Hash_Stat {
+	unsigned char* 				contents_name;		/* Name of Contents					*/
+	uint32_t 					cname_len;			/* Length of Name					*/
+	uint32_t					contents_size;		/* Total size of ContentObject		*/
+	uint32_t					cob_num;			/* Number of ContentObject			*/
+	uint32_t					ac_cnt;				/* Access Count of Contents			*/
+	struct CefT_Mem_Hash_Stat*	next;
+} CefT_Mem_Hash_Stat;
 
 /****************************************************************************************
  State Variables
@@ -123,6 +132,7 @@ static pthread_mutex_t 			cef_mem_cs_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int	cache_cs_expire_check_stat = 0;
 
+static CefT_Mem_Hash_Stat*		mstat_tbl[Cef_Mstat_HashTbl_Size];
 
 /****************************************************************************************
  Static Function Declaration
@@ -238,6 +248,42 @@ cef_mem_cache_name_chunknum_concatenate (
 	uint32_t chunknum,
 	unsigned char* key
 );
+
+/*--------------------------------------------------------------------------------------
+	Stat Functions
+----------------------------------------------------------------------------------------*/
+static void
+cef_mem_cache_mstat_init (
+	void
+);
+static void
+cef_mem_cache_mstat_destroy (
+	void
+);
+static void
+cef_mem_cache_mstat_insert (
+	unsigned char* key,
+	uint32_t klen,
+	uint16_t msg_len
+);
+static void
+cef_mem_cache_mstat_remove (
+	unsigned char* key,
+	uint32_t klen,
+	uint16_t msg_len
+);
+static void
+cef_mem_cache_mstat_ac_cnt_inc (
+	unsigned char* key,
+	uint32_t klen
+);
+#if 0
+static void
+cef_mem_cache_mstat_print (
+	char* msg
+);
+#endif
+
 /****************************************************************************************
 	Functions
  ****************************************************************************************/
@@ -254,6 +300,7 @@ cef_mem_cache_init(
 	int rtc;
 	
 	rtc = cef_mem_cache_cs_create (capacity);
+	cef_mem_cache_mstat_init ();
 	
 	return rtc;
 }
@@ -423,6 +470,7 @@ cef_mem_cache_item_get (
 		if (((entry->expiry == 0) || (nowt < entry->expiry)) &&
 			(nowt < entry->cache_time)) {
 			pthread_mutex_unlock (&cef_mem_cs_mutex);
+			cef_mem_cache_mstat_ac_cnt_inc (trg_key, trg_key_len);
 			return (entry);
  		}
 		else {
@@ -453,6 +501,8 @@ pthread_mutex_lock (&cef_mem_cs_mutex);
 	cef_mem_cache_cs_destroy ();
 pthread_mutex_unlock (&cef_mem_cs_mutex);
 	pthread_mutex_destroy (&cef_mem_cs_mutex);
+	
+	cef_mem_cache_mstat_destroy ();
 }
 
 /****************************************************************************************
@@ -734,6 +784,7 @@ cef_mem_cache_cs_remove (
 	entry = cef_mem_cache_hash_tbl_item_remove (key, key_len);
 	
 	if (entry) {
+		cef_mem_cache_mstat_remove (key, key_len, entry->pay_len);
 		free (entry->msg);
 		free (entry->name);
 		free (entry);
@@ -807,6 +858,7 @@ cef_mem_cache_cs_expire_check (
 					trg_key_len = cef_mem_cache_key_create_by_Mem_Entry (entry, trg_key);
 					entry1 = cef_mem_cache_hash_tbl_item_remove (trg_key, trg_key_len);
 					cef_mem_cache_fifo_erase(trg_key, trg_key_len);
+					cef_mem_cache_mstat_remove (trg_key, trg_key_len, entry->pay_len);
 					free (entry1->msg);
 					free (entry1->name);
 					free (entry1);
@@ -841,6 +893,7 @@ cef_mem_cache_cob_write (
 	entry = cef_mem_cache_hash_tbl_item_get (trg_key, trg_key_len);
 	if (entry == NULL) {
 		cef_mem_cache_fifo_insert(cob);
+		cef_mem_cache_mstat_insert (trg_key, trg_key_len, cob->pay_len);
 	}
 	
 	return (0);
@@ -1094,7 +1147,7 @@ cef_mem_cache_key_create_by_Mem_Entry (
 /*--------------------------------------------------------------------------------------
 	Concatenates name and chunk number
 ----------------------------------------------------------------------------------------*/
-static int												/* length of the created key 			*/
+static int										/* length of the created key 			*/
 cef_mem_cache_name_chunknum_concatenate (
 	const unsigned char* name,
 	uint16_t name_len,
@@ -1133,3 +1186,248 @@ cef_mem_cache_key_create (
 
 	return (entry->name_len + 4 + sizeof (uint32_t));
 }
+/*--------------------------------------------------------------------------------------
+	Initialize stat
+----------------------------------------------------------------------------------------*/
+static void
+cef_mem_cache_mstat_init (
+	void
+) {
+	memset (mstat_tbl, 0, sizeof (CefT_Mem_Hash_Stat*) * Cef_Mstat_HashTbl_Size);
+	
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Destroy stat
+----------------------------------------------------------------------------------------*/
+static void
+cef_mem_cache_mstat_destroy (
+	void
+) {
+	CefT_Mem_Hash_Stat*		mstat_p;
+	CefT_Mem_Hash_Stat*		wk_mstat_p;
+	int i;
+	
+	for (i = 0; i < Cef_Mstat_HashTbl_Size; i++) {
+		mstat_p = mstat_tbl[i];
+		while (mstat_p != NULL) {
+			if (mstat_p->contents_name != NULL)
+				free (mstat_p->contents_name);
+			wk_mstat_p = mstat_p;
+			mstat_p = mstat_p->next;
+			free (wk_mstat_p);
+		}
+	}
+	
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Insert stat
+----------------------------------------------------------------------------------------*/
+static void
+cef_mem_cache_mstat_insert (
+	unsigned char* key,
+	uint32_t klen,
+	uint16_t pay_len							/* Length of ContentObject Message		*/
+) {
+	CefT_Mem_Hash_Stat* mstat_p;
+	uint16_t tmp_klen;
+	uint32_t seqno;		/* work variable */
+	uint32_t hash = 0;
+	uint32_t y;
+	
+	tmp_klen = cef_frame_get_name_without_chunkno (key, klen, &seqno);
+	if (tmp_klen == 0) {
+		/* This name does not include the chunk number */
+		return;
+	}
+	
+	hash = cef_mem_hash_number_create (key, tmp_klen);
+	y = hash % Cef_Mstat_HashTbl_Size;
+	
+	if(mstat_tbl[y] == NULL){
+		mstat_tbl[y] = (CefT_Mem_Hash_Stat*)malloc (sizeof (CefT_Mem_Hash_Stat));
+		mstat_p = mstat_tbl[y];
+	} else {
+		/* exist check & update */
+		for (mstat_p = mstat_tbl[y]; mstat_p != NULL; mstat_p = mstat_p->next) {
+			if (mstat_p->cname_len == tmp_klen &&
+				memcmp (mstat_p->contents_name, key, tmp_klen) == 0) {
+				mstat_p->contents_size += pay_len;
+				mstat_p->cob_num++;
+				return;
+			}
+			if (mstat_p->next == NULL)
+				break;
+		}
+		/* insert */
+		mstat_p->next = (CefT_Mem_Hash_Stat*)malloc (sizeof (CefT_Mem_Hash_Stat));
+		mstat_p = mstat_p->next;
+	}
+	mstat_p->cname_len     = tmp_klen;
+	mstat_p->contents_name = (unsigned char*)malloc(tmp_klen);
+	memcpy (mstat_p->contents_name, key, tmp_klen);
+	mstat_p->contents_size = pay_len;
+	mstat_p->cob_num       = 1;
+	mstat_p->ac_cnt        = 0;
+	mstat_p->next          = NULL;
+	
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Remove stat
+----------------------------------------------------------------------------------------*/
+static void
+cef_mem_cache_mstat_remove (
+	unsigned char* key,
+	uint32_t klen,
+	uint16_t pay_len							/* Length of ContentObject Payload		*/
+) {
+	CefT_Mem_Hash_Stat* mstat_p;
+	uint16_t tmp_klen;
+	uint32_t seqno;		/* work variable */
+	uint32_t hash = 0;
+	uint32_t y;
+	
+	tmp_klen = cef_frame_get_name_without_chunkno (key, klen, &seqno);
+	if (tmp_klen == 0) {
+		/* This name does not include the chunk number */
+		return;
+	}
+	
+	hash = cef_mem_hash_number_create (key, tmp_klen);
+	y = hash % Cef_Mstat_HashTbl_Size;
+	
+	mstat_p = mstat_tbl[y];
+	while (mstat_p != NULL) {
+		if (mstat_p->cname_len == tmp_klen &&
+			memcmp (mstat_p->contents_name, key, tmp_klen) == 0) {
+			mstat_p->contents_size -= pay_len;
+			mstat_p->cob_num--;
+			
+			if (mstat_p->cob_num == 0) {
+				CefT_Mem_Hash_Stat*		wk_mstat_p;
+				
+				if (mstat_p->contents_name != NULL)
+					free (mstat_p->contents_name);
+				if (mstat_p != mstat_tbl[y]) {
+					wk_mstat_p = mstat_p;
+					mstat_p = mstat_p->next;
+					free (wk_mstat_p);
+				} else {
+					free (mstat_p);
+					mstat_tbl[y] = NULL;
+				}
+			}
+			return;
+		}
+		mstat_p = mstat_p->next;
+	}
+	
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Get stat
+----------------------------------------------------------------------------------------*/
+int
+cef_mem_cache_mstat_get (
+	unsigned char* key,
+	uint32_t klen,
+	CefMemCacheT_Ccninfo* info_p
+) {
+	CefT_Mem_Hash_Stat* mstat_p;
+	uint16_t tmp_klen;
+	uint32_t seqno;		/* work variable */
+	uint32_t hash = 0;
+	uint32_t y;
+	
+	tmp_klen = cef_frame_get_name_without_chunkno (key, klen, &seqno);
+	if (tmp_klen == 0) {
+		/* This name does not include the chunk number */
+		tmp_klen = klen;
+	}
+	
+	hash = cef_mem_hash_number_create (key, tmp_klen);
+	y = hash % Cef_Mstat_HashTbl_Size;
+	
+	mstat_p = mstat_tbl[y];
+	while (mstat_p != NULL) {
+		if (mstat_p->cname_len == tmp_klen &&
+			memcmp (mstat_p->contents_name, key, tmp_klen) == 0) {
+			info_p->con_size = mstat_p->contents_size;
+			info_p->con_num  = mstat_p->cob_num;
+			info_p->ac_cnt   = mstat_p->ac_cnt;
+			
+			return (1);
+		}
+		mstat_p = mstat_p->next;
+	}
+	
+	return (-1);
+}
+/*--------------------------------------------------------------------------------------
+	Increment access count
+----------------------------------------------------------------------------------------*/
+static void
+cef_mem_cache_mstat_ac_cnt_inc (
+	unsigned char* key,
+	uint32_t klen
+) {
+	CefT_Mem_Hash_Stat* mstat_p;
+	uint16_t tmp_klen;
+	uint32_t seqno;		/* work variable */
+	uint32_t hash = 0;
+	uint32_t y;
+	
+	tmp_klen = cef_frame_get_name_without_chunkno (key, klen, &seqno);
+	
+	hash = cef_mem_hash_number_create (key, tmp_klen);
+	y = hash % Cef_Mstat_HashTbl_Size;
+	
+	mstat_p = mstat_tbl[y];
+	while (mstat_p != NULL) {
+		if (mstat_p->cname_len == tmp_klen &&
+			memcmp (mstat_p->contents_name, key, tmp_klen) == 0) {
+			mstat_p->ac_cnt++;
+			return;
+		}
+		mstat_p = mstat_p->next;
+	}
+	
+	return;
+}
+#if 0
+/*--------------------------------------------------------------------------------------
+	Print stat (for debug)
+----------------------------------------------------------------------------------------*/
+static void
+cef_mem_cache_mstat_print (
+	char* msg
+) {
+	CefT_Mem_Hash_Stat* mstat_p;
+	int i = 0;
+	int j, k;
+	
+	if (msg != NULL)
+		fprintf(stderr, "%s\n", msg);
+	
+	for (k = 0; k < Cef_Mstat_HashTbl_Size; k++) {
+		mstat_p = mstat_tbl[k];
+		while (mstat_p != NULL) {
+			fprintf (stderr, "    [%d](Hash=%d)\n", i, k);
+			fprintf (stderr, "        Name : ");
+			for (j = 0; j < mstat_p->cname_len;j++)
+				fprintf (stderr, "%02x ", mstat_p->contents_name[j]);
+			fprintf (stderr, "(%d)\n", mstat_p->cname_len);
+			fprintf (stderr, "        Size : %d\n", mstat_p->contents_size);
+			fprintf (stderr, "        Count: %d\n", mstat_p->cob_num);
+			fprintf (stderr, "        AcCnt: %d\n", mstat_p->ac_cnt);
+			
+			i++;
+			mstat_p = mstat_p->next;
+		}
+	}
+	fprintf (stderr, "-------------------------------\n");
+	return;
+}
+#endif

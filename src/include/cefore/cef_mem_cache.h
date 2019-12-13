@@ -75,9 +75,9 @@
 #include <ccore/ccore_valid.h>
 #endif // CefC_Ccore
 
-#ifdef CefC_Cefinfo
-#include <cefore/cef_cefinfo.h>
-#endif // CefC_Cefinfo
+#ifdef CefC_Ccninfo
+#include <cefore/cef_ccninfo.h>
+#endif // CefC_Ccninfo
 #ifdef CefC_Ser_Log
 #include <cefore/cef_ser_log.h>
 #endif // CefC_Ser_Log
@@ -122,7 +122,11 @@ typedef struct {
 
 } CefMemCacheT_Content_Mem_Entry;
 
-
+typedef struct {
+	uint32_t		con_size;
+	uint32_t		con_num;
+	uint32_t		ac_cnt;
+} CefMemCacheT_Ccninfo;
 
 /****************************************************************************************
  Global Variables
@@ -184,6 +188,15 @@ cef_mem_cache_cs_ac_cnt_inc (
 	unsigned char* key,							/* content name							*/
 	uint16_t key_size,							/* content name Length					*/
 	uint32_t seq_num							/* sequence number						*/
+);
+/*--------------------------------------------------------------------------------------
+	Get stat
+----------------------------------------------------------------------------------------*/
+int
+cef_mem_cache_mstat_get (
+	unsigned char* key,
+	uint32_t klen,
+	CefMemCacheT_Ccninfo* info_p
 );
 
 #endif // __CEF_MEM_CACHE_HEADER__

@@ -112,12 +112,19 @@
 #define CefC_ParamName_Babel			"USE_CEFBABEL"
 #define CefC_ParamName_Babel_Route		"CEFBABEL_ROUTE"
 #define CefC_ParamName_Cs_Mode			"CS_MODE"
+#define CefC_ParamName_ForwardingInfoStrategy	"FORWARDING_INFO_STRATEGY"
 #ifdef CefC_Ser_Log
 #define CefC_ParamName_Log_Size			"SER_LOG_SIZE"
 #define CefC_ParamName_Log_Enable		"SER_LOG_ENABLE"
 #define CefC_ParamName_Log_Dir			"SER_LOG_DIR"
 #endif // CefC_Ser_Log
-
+#ifdef CefC_Ccninfo
+#define CefC_ParamName_CcninfoAccessPolicy	"CCNINFO_ACCESS_POLICY"
+#define CefC_ParamName_CcninfoFullDiscovery	"CCNINFO_FULL_DISCOVERY"
+#define CefC_ParamName_CcninfoValidAlg		"CCNINFO_VALID_ALG"
+#define CefC_ParamName_CcninfoSha256KeyPrfx	"CCNINFO_SHA256_KEY_PRFX"
+#define CefC_ParamName_CcninfoReplyTimeout	"CCNINFO_REPLY_TIMEOUT"
+#endif // CefC_Ccninfo
 /*************** Default Values ***************/
 #define CefC_Default_PortNum			9896
 #ifndef CefC_Nwproc
@@ -132,6 +139,14 @@
 #define CefC_Default_NbrThread			3
 #define CefC_Default_LifetimeSec		4
 #define CefC_Default_LifetimeUs			4000000
+#define CefC_Default_ForwardingInfoStrategy	0
+#ifdef CefC_Ccninfo
+#define CefC_Default_CcninfoAccessPolicy	0
+#define CefC_Default_CcninfoFullDiscovery	0
+#define CefC_Default_CcninfoValidAlg		"NONE"
+#define CefC_Default_CcninfoSha256KeyPrfx	"cefore"
+#define CefC_Default_CcninfoReplyTimeout	4
+#endif // CefC_Ccninfo
 
 /*************** Applications   ***************/
 #define CefC_App_Version				0xCEF00101

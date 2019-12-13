@@ -36,9 +36,9 @@ SUBDIRS+=cefping
 endif # CEFPING_ENABLE
 
 # check ccninfo
-if CEFINFO_ENABLE
+if CCNINFO_ENABLE
 SUBDIRS+=ccninfo
-endif # CEFINFO_ENABLE
+endif # CCNINFO_ENABLE
 
 # check csmgr
 if CSMGR_ENABLE

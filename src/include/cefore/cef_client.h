@@ -256,12 +256,12 @@ cef_client_cefping_input (
 	CefT_Ping_TLVs* tlvs						/* parameters to create the cefping		*/
 );
 /*--------------------------------------------------------------------------------------
-	Inputs the cefinfo request to the cefnetd
+	Inputs the ccninfo request to the cefnetd
 ----------------------------------------------------------------------------------------*/
-int												/* length of the created cefinfo 		*/
-cef_client_cefinfo_input (
+int												/* length of the created ccninfo 		*/
+cef_client_ccninfo_input (
 	CefT_Client_Handle fhdl,					/* client handle 						*/
-	CefT_Trace_TLVs* tlvs						/* parameters to create the cefinfo	*/
+	CefT_Ccninfo_TLVs* tlvs						/* parameters to create the ccninfo		*/
 );
 /*--------------------------------------------------------------------------------------
 	Register/Deregister the specified Name of the Application

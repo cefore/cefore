@@ -46,9 +46,9 @@
 #include <cefore/cef_csmgr.h>
 #include <cefore/cef_csmgr_stat.h>
 
-#ifdef CefC_Cefinfo
-#include <cefore/cef_cefinfo.h>
-#endif // CefC_Cefinfo
+#ifdef CefC_Ccninfo
+#include <cefore/cef_ccninfo.h>
+#endif // CefC_Ccninfo
 #include <cefore/cef_log.h>
 
 
@@ -80,6 +80,8 @@ typedef struct {
 	uint64_t		cache_time;					/* Cache time							*/
 	uint64_t		expiry;						/* Expiry								*/
 	struct in_addr	node;						/* Node address							*/
+	
+	uint64_t		ins_time;					/* Insert time(use mem cache only)		*/
 
 } CsmgrdT_Content_Entry;
 
@@ -114,6 +116,8 @@ typedef struct CsmgrdT_Plugin_Interface {
 	int (*content_cache_del) (unsigned char*, uint16_t, uint32_t);
 #endif // CefC_Ccore
 	
+	int (*content_lifetime_get) (unsigned char*, uint16_t, uint32_t*, uint32_t*, uint8_t);
+
 } CsmgrdT_Plugin_Interface;
 
 typedef struct CsmgrdT_Lib_Interface {
@@ -176,7 +180,7 @@ typedef struct CsmgrdT_Lib_Interface {
 /****************************************************************************************
  Function Declarations
  ****************************************************************************************/
-#define CSMGRD_SET_CALLBACKS( fc_init, fc_destroy, fc_expire_check, fc_cache_item_get, fc_cache_item_puts, fc_ac_cnt_inc ) \
+#define CSMGRD_SET_CALLBACKS( fc_init, fc_destroy, fc_expire_check, fc_cache_item_get, fc_cache_item_puts, fc_ac_cnt_inc, fc_lifetime_get ) \
 	do { \
 		cs_in->init = (fc_init); \
 		cs_in->destroy = (fc_destroy); \
@@ -184,6 +188,7 @@ typedef struct CsmgrdT_Lib_Interface {
 		cs_in->cache_item_get = (fc_cache_item_get); \
 		cs_in->cache_item_puts = (fc_cache_item_puts); \
 		cs_in->ac_cnt_inc = (fc_ac_cnt_inc); \
+		cs_in->content_lifetime_get = (fc_lifetime_get); \
 	} while(0)
 
 /*--------------------------------------------------------------------------------------

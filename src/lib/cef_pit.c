@@ -69,7 +69,7 @@ static char 	pit_dbg_msg[2048];
 #ifdef CefC_Dtc
 CefT_Dtc_Pit_List* dtc_pit = NULL;
 #endif // CefC_Dtc
-
+static uint32_t ccninfo_reply_timeout = CefC_Default_CcninfoReplyTimeout;
 
 /****************************************************************************************
  Static Function Declaration
@@ -113,6 +113,15 @@ cefrt_pit_cleanup (
 	CefT_Pit_Entry* entry 					/* PIT entry 								*/
 );
 #endif
+/*--------------------------------------------------------------------------------------
+	Concatenates a the specified Name and NodeIdentifier, RequestID for ccninfo
+----------------------------------------------------------------------------------------*/
+static uint16_t
+cef_pit_concatenate_name_and_id (
+	unsigned char** con_name,				/* New name									*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+);
 
 /****************************************************************************************
  ****************************************************************************************/
@@ -122,8 +131,9 @@ cefrt_pit_cleanup (
 ----------------------------------------------------------------------------------------*/
 void
 cef_pit_init (
-	void
+	uint32_t reply_timeout			/* PIT lifetime(seconds) at "full discovery request" */
 ){
+	ccninfo_reply_timeout = reply_timeout;
 	return;
 }
 /*--------------------------------------------------------------------------------------
@@ -136,7 +146,8 @@ cef_pit_entry_lookup (
 	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
 ) {
 	CefT_Pit_Entry* entry;
-	uint16_t name_len = pm->name_len;
+	unsigned char* tmp_name = NULL;
+	uint16_t tmp_name_len = 0;
 
 	if(cef_hash_tbl_item_num_get(pit) == cef_hash_tbl_def_max_get(pit)) {
 		cef_log_write (CefC_Log_Warn, 
@@ -144,16 +155,23 @@ cef_pit_entry_lookup (
 		return (NULL);
 	}
 	
+	if (pm->top_level_type == CefC_T_DISCOVERY) {  /* for CCNINFO */
+		/* KEY: Name + NodeIdentifier + RequestID */
+		tmp_name_len = cef_pit_concatenate_name_and_id (&tmp_name, pm, poh);
+	} else {
+		tmp_name = pm->name;
+		tmp_name_len = pm->name_len;
+	}
 	/* Searches a PIT entry 	*/
-	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, pm->name, name_len);
+	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, tmp_name, tmp_name_len);
 
 	/* Creates a new PIT entry, if it dose not match 	*/
 	if (entry == NULL) {
 		entry = (CefT_Pit_Entry*) malloc (sizeof (CefT_Pit_Entry));
 		memset (entry, 0, sizeof (CefT_Pit_Entry));
-		entry->key = (unsigned char*) malloc (sizeof (char) * name_len);
-		entry->klen = name_len;
-		memcpy (entry->key, pm->name, name_len);
+		entry->key = (unsigned char*) malloc (sizeof (char) * tmp_name_len);
+		entry->klen = tmp_name_len;
+		memcpy (entry->key, tmp_name, tmp_name_len);
 		entry->hashv = cef_hash_tbl_hashv_get (pit, entry->key, entry->klen);
 		entry->clean_us = cef_client_present_timeus_get () + 1000000;
 		cef_hash_tbl_item_set (pit, entry->key, entry->klen, entry);
@@ -174,7 +192,65 @@ cef_pit_entry_lookup (
 	}
 #endif // CefC_Debug
 	
+	if (pm->top_level_type == CefC_T_DISCOVERY) {  /* for CCNINFO */
+		free (tmp_name);
+	}
 	return (entry);
+}
+/*--------------------------------------------------------------------------------------
+	Concatenates a the specified Name and NodeIdentifier, RequestID for ccninfo
+----------------------------------------------------------------------------------------*/
+static uint16_t
+cef_pit_concatenate_name_and_id (
+	unsigned char** con_name,				/* New name									*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+) {
+	unsigned char* wp;
+	uint16_t ftvh_nameseg = CefC_T_NAMESEGMENT;
+	uint16_t ftvn_nameseg;
+	uint16_t value;
+	ftvn_nameseg = htons (ftvh_nameseg);
+	uint16_t con_name_len = 0;
+	uint16_t tmp_nmlen = 0;
+	
+	con_name_len = pm->name_len + CefC_S_TLF + poh->id_len + CefC_S_TLF + sizeof (uint16_t);
+	*con_name = (unsigned char*) malloc (sizeof (char) * con_name_len);
+	wp = *con_name;
+	if (pm->chnk_num_f) {
+		uint32_t seqno;
+		tmp_nmlen = cef_frame_get_name_without_chunkno (pm->name, pm->name_len, &seqno);
+		memcpy (wp, pm->name, tmp_nmlen);
+		wp += tmp_nmlen;
+	} else {
+		memcpy (wp, pm->name, pm->name_len);
+		wp += pm->name_len;
+	}
+	
+	/* Concatenates NodeIdentifier					*/
+	memcpy (wp, &ftvn_nameseg, CefC_S_Type);
+	wp += CefC_S_Type;
+	value = htons (poh->id_len);
+	memcpy (wp, &value, CefC_S_Length);
+	wp += CefC_S_Length;
+	memcpy (wp, poh->node_id, poh->id_len);
+	wp += poh->id_len;
+	
+	/* Concatenates RequestID						*/
+	memcpy (wp, &ftvn_nameseg, CefC_S_Type);
+	wp += CefC_S_Type;
+	value = htons (sizeof (uint16_t));
+	memcpy (wp, &value, CefC_S_Length);
+	wp += CefC_S_Length;
+	memcpy (wp, &poh->req_id, sizeof (uint16_t));
+	wp += sizeof (uint16_t);
+	
+	/* Concatenates ChunkNumber */
+	if (tmp_nmlen > 0) {
+		memcpy (wp, &pm->name[tmp_nmlen], (pm->name_len - tmp_nmlen));
+	}
+	
+	return (con_name_len);
 }
 /*--------------------------------------------------------------------------------------
 	Searches a PIT entry matching the specified Name
@@ -187,29 +263,44 @@ cef_pit_entry_search (
 ) {
 	CefT_Pit_Entry* entry;
 	uint16_t name_len = pm->name_len;
+	unsigned char* tmp_name = NULL;
+	uint16_t tmp_name_len;
+	uint64_t now;
 	
 	if (poh->symbolic_code_f) {
 		memcpy (&pm->name[name_len], &poh->symbolic_code, sizeof (struct value32x2_tlv));
 		name_len += sizeof (struct value32x2_tlv);
+	}
+	if (pm->top_level_type == CefC_T_DISCOVERY) { /* for CCNINFO */
+		/* KEY: Name + NodeIdentifier + RequestID */
+		tmp_name_len = cef_pit_concatenate_name_and_id (&tmp_name, pm, poh);
+	} else {
+		tmp_name = pm->name;
+		tmp_name_len = pm->name_len;
 	}
 #ifdef CefC_Debug
 	{
 		int dbg_x;
 		
 		sprintf (pit_dbg_msg, "[pit] Search the entry [");
-		for (dbg_x = 0 ; dbg_x < name_len ; dbg_x++) {
-			sprintf (pit_dbg_msg, "%s %02X", pit_dbg_msg, pm->name[dbg_x]);
+		for (dbg_x = 0 ; dbg_x < tmp_name_len ; dbg_x++) {
+			sprintf (pit_dbg_msg, "%s %02X", pit_dbg_msg, tmp_name[dbg_x]);
 		}
 		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
 	}
 #endif // CefC_Debug
 	
 	/* Searches a PIT entry 	*/
-	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, pm->name, name_len);
+	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, tmp_name, tmp_name_len);
+	now = cef_client_present_timeus_get ();
 	
 	if (entry != NULL) {
 		if (!entry->symbolic_f) {
 			entry->stole_f = 1;
+		}
+		/* for ccninfo "full discovery" */
+		if (poh->ccninfo_flag & CefC_CtOp_FullDisCover) {
+			entry->stole_f = 0;
 		}
 #ifdef CefC_Debug
 		{
@@ -222,13 +313,19 @@ cef_pit_entry_search (
 			cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
 		}
 #endif // CefC_Debug
+		if (pm->top_level_type == CefC_T_DISCOVERY) {  /* for CCNINFO */
+			free (tmp_name);
+		}
+		if (now > entry->adv_lifetime_us) {
+			return (NULL);
+		}
 		return (entry);
 	}
 	
 	if (pm->chnk_num_f) {
 		uint16_t name_len_wo_chunk;
-		name_len_wo_chunk = name_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
-		entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, pm->name, name_len_wo_chunk);
+		name_len_wo_chunk = tmp_name_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
+		entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, tmp_name, name_len_wo_chunk);
 
 		if (entry != NULL) {
 			if (entry->symbolic_f) {
@@ -249,6 +346,12 @@ cef_pit_entry_search (
 					}
 				}
 #endif // CefC_Debug
+				if (pm->top_level_type == CefC_T_DISCOVERY) {  /* for CCNINFO */
+					free (tmp_name);
+				}
+				if (now > entry->adv_lifetime_us) {
+					return (NULL);
+				}
 				return (entry);
 			}
 		}
@@ -257,6 +360,9 @@ cef_pit_entry_search (
 	cef_dbg_write (CefC_Dbg_Finest, "[pit] Mismatched\n");
 #endif // CefC_Debug
 	
+	if (pm->top_level_type == CefC_T_DISCOVERY) {  /* for CCNINFO */
+		free (tmp_name);
+	}
 	return (NULL);
 }
 /*--------------------------------------------------------------------------------------
@@ -527,15 +633,21 @@ cef_pit_entry_down_face_update (
 	}
 	
 	if (pm->org.longlife_f) {
-		face->symbolic_f = CefC_Pit_True;
 		if (new_downface_f) {
 			entry->symbolic_f++;
 		}
 	}
-	if (poh->timeout > 0) {
-		face->symbolic_f = CefC_Pit_True;
-		poh->lifetime = poh->timeout * 1000;
+#ifdef CefC_Ccninfo
+	/* for ccninfo */
+	if (pm->top_level_type == CefC_T_DISCOVERY) {
+		if (poh->ccninfo_flag & CefC_CtOp_FullDisCover)
+			poh->lifetime = ccninfo_reply_timeout * 1000;
+		else
+			poh->lifetime = CefC_Default_CcninfoReplyTimeout * 1000;
+		
+		poh->lifetime_f = 1;
 	}
+#endif //CefC_Ccninfo
 	
 	/* Checks whether the life time is smaller than the limit 	*/
 #ifndef CefC_Nwproc
@@ -581,7 +693,11 @@ cef_pit_entry_down_face_update (
 #endif // CefC_Nwproc
 		entry->adv_lifetime_us = face->lifetime_us;
 	} else {
-		
+#ifdef CefC_Ccninfo
+		if (pm->top_level_type == CefC_T_DISCOVERY) {
+			return (forward_interest_f);
+		}
+#endif //CefC_Ccninfo
 		if (face->lifetime_us < prev_lifetime_us) {
 			face = &(entry->dnfaces);
 			max_lifetime_us = face->lifetime_us;

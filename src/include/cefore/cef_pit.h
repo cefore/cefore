@@ -92,7 +92,6 @@ typedef struct CefT_Down_Faces {
 	----------------------------------------------*/
 	uint16_t		faceid;					/* Face-ID 									*/
 	uint64_t	 	lifetime_us;			/* Lifetime 								*/
-	uint8_t			symbolic_f;				/* set to not 0 if it shows Symbolic 	 	*/
 	uint64_t		nonce;					/* Nonce 									*/
 	struct CefT_Down_Faces* next;			/* pointer to next Down Stream Face entry 	*/
 
@@ -161,7 +160,7 @@ typedef struct {
 	Initialize the PIT module
 ----------------------------------------------------------------------------------------*/
 void cef_pit_init (
-	void
+	uint32_t reply_timeout			/* PIT lifetime(seconds) at "full discovery request" */
 );
 /*--------------------------------------------------------------------------------------
 	Looks up and creates a PIT entry matching the specified Name

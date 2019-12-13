@@ -48,10 +48,15 @@ if CEFPING_ENABLE
 AM_CFLAGS+=-DCefC_Cefping
 endif # CEFPING_ENABLE
 
-# check cefinfo
-if CEFINFO_ENABLE
-AM_CFLAGS+=-DCefC_Cefinfo
-endif # CEFINFO_ENABLE
+# check NDN Plugin
+if NDNPLUGIN_ENABLE
+AM_CFLAGS+=-DCefC_NdnPlugin
+endif # NDNPLUGIN_ENABLE
+
+# check ccninfo
+if CCNINFO_ENABLE
+AM_CFLAGS+=-DCefC_Ccninfo
+endif # CCNINFO_ENABLE
 
 # check cache
 if CACHE_ENABLE

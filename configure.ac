@@ -5,7 +5,7 @@ dnl
 dnl  project setting
 dnl
 AC_PREREQ([2.69])
-AC_INIT([cefore], [0.8.0], [])
+AC_INIT([cefore], [0.8.1], [])
 AC_CONFIG_AUX_DIR(autotools)
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
@@ -94,9 +94,9 @@ AC_ARG_ENABLE(
 AM_CONDITIONAL(CSMGR_ENABLE, test x"${enable_csmgr}" = xyes)
 
 dnl
-dnl  enable cefinfo
+dnl  enable ccninfo
 dnl
-AM_CONDITIONAL(CEFINFO_ENABLE, true)
+AM_CONDITIONAL(CCNINFO_ENABLE, true)
 
 dnl
 dnl  check cefping
@@ -191,10 +191,10 @@ AM_COND_IF(
 ])
 
 dnl
-dnl  check cefinfo
+dnl  check ccninfo
 dnl
 AM_COND_IF(
-  [CEFINFO_ENABLE],
+  [CCNINFO_ENABLE],
   [AC_CONFIG_FILES([
     tools/ccninfo/Makefile
   ])

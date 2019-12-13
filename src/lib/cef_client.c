@@ -684,9 +684,6 @@ cef_client_object_input (
 	len = cef_frame_object_create (buff, tlvs);
 	
 	if (len > 0) {
-		conn->seqnum++;
-		cef_frame_seqence_update (buff, conn->seqnum);
-		
 		if (conn->ai) {
 			sendto (conn->sock, buff, len
 				, 0, conn->ai->ai_addr, conn->ai->ai_addrlen);
@@ -725,20 +722,23 @@ cef_client_cefping_input (
 }
 #endif // CefC_Cefping
 
-#ifdef CefC_Cefinfo
+#ifdef CefC_Ccninfo
 /*--------------------------------------------------------------------------------------
-	Inputs the cefinfo request to the cefnetd
+	Inputs the ccninfo request to the cefnetd
 ----------------------------------------------------------------------------------------*/
-int												/* length of the created cefinfo 		*/
-cef_client_cefinfo_input (
+int												/* length of the created ccninfo 		*/
+cef_client_ccninfo_input (
 	CefT_Client_Handle fhdl,					/* client handle 						*/
-	CefT_Trace_TLVs* tlvs						/* parameters to create the cefinfo	*/
+	CefT_Ccninfo_TLVs* tlvs						/* parameters to create the ccninfo		*/
 ) {
 	CefT_Connect* conn = (CefT_Connect*) fhdl;
 	unsigned char buff[CefC_Max_Length];
 	int len;
 	
-	len = cef_frame_cefinfo_req_create (buff, tlvs);
+	len = cef_frame_ccninfo_req_create (buff, tlvs);
+	if (len < 0) {
+		return (-1);
+	}
 	if (len > 0) {
 		if (conn->ai) {
 			sendto (conn->sock, buff, len
@@ -750,7 +750,7 @@ cef_client_cefinfo_input (
 	
 	return (1);
 }
-#endif // CefC_Cefinfo
+#endif // CefC_Ccninfo
 
 /*--------------------------------------------------------------------------------------
 	Reads the message from the specified connection (socket)

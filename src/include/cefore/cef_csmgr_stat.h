@@ -50,7 +50,7 @@
 #include <sys/ioctl.h>
 
 #include <cefore/cef_define.h>
-#include <cefore/cef_cefinfo.h>
+#include <cefore/cef_ccninfo.h>
 #include <cefore/cef_log.h>
 
 

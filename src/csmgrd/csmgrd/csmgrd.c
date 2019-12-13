@@ -235,18 +235,36 @@ csmgrd_incoming_status_msg (
 	unsigned char* buff,						/* receive message						*/
 	int buff_len								/* receive message length				*/
 );
-#ifdef CefC_Cefinfo
+#ifdef CefC_Ccninfo
 /*--------------------------------------------------------------------------------------
-	Incoming Cefinfo Message
+	Incoming Ccninfo Message
 ----------------------------------------------------------------------------------------*/
 static void
-csmgrd_incoming_cefinfo_msg (
+csmgrd_incoming_ccninfo_msg (
 	CefT_Csmgrd_Handle* hdl,					/* csmgr daemon handle					*/
 	int sock,									/* recv socket							*/
 	unsigned char* buff,						/* receive message						*/
 	int buff_len								/* receive message length				*/
 );
-#endif // CefC_Cefinfo
+/*--------------------------------------------------------------------------------------
+	Incoming pre-Ccninfo message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_incoming_pre_ccninfo_msg (
+	CefT_Csmgrd_Handle* hdl,					/* csmgr daemon handle					*/
+	int sock,									/* recv socket							*/
+	unsigned char* buff,						/* receive message						*/
+	int buff_len								/* receive message length				*/
+);
+/*--------------------------------------------------------------------------------------
+	Send pre-Ccninfo response message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_pre_ccninfo_response_send (
+	int sock,									/* recv socket							*/
+	uint8_t result								/* result								*/
+);
+#endif // CefC_Ccninfo
 /*--------------------------------------------------------------------------------------
 	Receive Increment Access Count message
 ----------------------------------------------------------------------------------------*/
@@ -298,7 +316,7 @@ csmgrd_white_list_reg_check (
 	CefT_Csmgrd_Handle* hdl,					/* csmgr daemon handle					*/
 	struct sockaddr_storage* ss					/* socket addr							*/
 );
-#if defined (CefC_Cefping) || defined (CefC_Cefinfo)
+#if defined (CefC_Cefping) || defined (CefC_Ccninfo)
 /*--------------------------------------------------------------------------------------
 	Incoming cefping message
 ----------------------------------------------------------------------------------------*/
@@ -317,7 +335,7 @@ csmgrd_cefping_response_send (
 	int sock,									/* recv socket							*/
 	uint8_t result								/* result								*/
 );
-#endif // (CefC_Cefping || CefC_Cefinfo)
+#endif // (CefC_Cefping || CefC_Ccninfo)
 #ifdef CefC_Ccore
 /*--------------------------------------------------------------------------------------
 	Incoming retrieve cache capacity message
@@ -1912,15 +1930,22 @@ csmgrd_input_message_process (
 			csmgrd_incoming_interest (hdl, sock, msg, msg_len, type);
 			break;
 		}
-#ifdef CefC_Cefinfo
-		case CefC_Csmgr_Msg_Type_Cefinfo: {
+#ifdef CefC_Ccninfo
+		case CefC_Csmgr_Msg_Type_Ccninfo: {
 #ifdef CefC_Debug
-			cef_dbg_write (CefC_Dbg_Finest, "Receive the Cefinfo Message\n");
+			cef_dbg_write (CefC_Dbg_Finest, "Receive the Ccninfo Message\n");
 #endif // CefC_Debug
-			csmgrd_incoming_cefinfo_msg (hdl, sock, msg, msg_len);
+			csmgrd_incoming_ccninfo_msg (hdl, sock, msg, msg_len);
 			break;
 		}
-#endif // CefC_Cefinfo
+		case CefC_Csmgr_Msg_Type_PreCcninfo: {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "Receive the pre-Ccninfo Message\n");
+#endif // CefC_Debug
+			csmgrd_incoming_pre_ccninfo_msg (hdl, sock, msg, msg_len);
+			break;
+		}
+#endif // CefC_Ccninfo
 		case CefC_Csmgr_Msg_Type_Status: {
 #ifdef CefC_Debug
 			cef_dbg_write (CefC_Dbg_Finest, "Receive the Get Status Message\n");
@@ -1943,7 +1968,7 @@ csmgrd_input_message_process (
 			csmgrd_incoming_echo_msg (hdl, sock, msg, msg_len);
 			break;
 		}
-#if defined (CefC_Cefping) || defined (CefC_Cefinfo)
+#if defined (CefC_Cefping) || defined (CefC_Ccninfo)
 		case CefC_Csmgr_Msg_Type_Cefping: {
 #ifdef CefC_Debug
 			cef_dbg_write (CefC_Dbg_Finest, "Receive the Cefping Message\n");
@@ -1951,7 +1976,7 @@ csmgrd_input_message_process (
 			csmgrd_incoming_cefping_msg (hdl, sock, msg, msg_len);
 			break;
 		}
-#endif // (CefC_Cefping || CefC_Cefinfo)
+#endif // (CefC_Cefping || CefC_Ccninfo)
 		case CefC_Csmgr_Msg_Type_Kill: {
 #ifdef CefC_Debug
 			cef_dbg_write (CefC_Dbg_Finest, "Receive the Kill Command\n");
@@ -2225,12 +2250,12 @@ csmgrd_incoming_status_msg (
 	
 	return;
 }
-#ifdef CefC_Cefinfo
+#ifdef CefC_Ccninfo
 /*--------------------------------------------------------------------------------------
-	Incoming Cefinfo Message
+	Incoming Ccninfo Message
 ----------------------------------------------------------------------------------------*/
 static void
-csmgrd_incoming_cefinfo_msg (
+csmgrd_incoming_ccninfo_msg (
 	CefT_Csmgrd_Handle* hdl,					/* csmgr daemon handle					*/
 	int sock,									/* recv socket							*/
 	unsigned char* buff,						/* receive message						*/
@@ -2239,22 +2264,17 @@ csmgrd_incoming_cefinfo_msg (
 	
 	CsmgrT_Stat* stat[CefstatC_MaxUri];
 	int res, i;
-	uint64_t nowt;
-	struct timeval tv;
 	unsigned char msg[CefC_Max_Length] = {0};
 	unsigned char* key;
 	uint16_t index = 0;
 	uint16_t rec_index;
 	uint8_t  partial_match_f;
 	uint16_t klen;
-	struct trace_rep_block rep_blk;
+	struct ccninfo_rep_block rep_blk;
 	struct tlv_hdr rply_tlv_hdr;
 	struct tlv_hdr name_tlv_hdr;
-	uint64_t value64;
 	
 	name_tlv_hdr.type = htons (CefC_T_NAME);
-	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	/* Obtain parameters from request message 		*/
 	partial_match_f = buff[0];
@@ -2262,51 +2282,144 @@ csmgrd_incoming_cefinfo_msg (
 	key = &buff[1];
 	
 	/* Obtain cached content information 			*/
-	res = csmgrd_stat_content_info_gets (
-			stat_hdl, key, klen, (int) partial_match_f, stat);
-	
-	for (i = 0 ; i < res ; i++) {
+	if (!partial_match_f) {
+		/* The name contains a chunk number */
+		uint16_t tmp_klen;
+		uint32_t seqno;
 		
-		rec_index = index;
-		index += CefC_S_TLF;
+		tmp_klen = cef_frame_get_name_without_chunkno (key, klen, &seqno);
+		/* Queries without a chunk number(ExactMatch) */
+		stat[0] = csmgr_stat_content_info_get (stat_hdl, key, tmp_klen);
+		if (stat[0]) {
+			uint64_t mask = 1;
+			uint16_t x;
+			x = seqno / 64;
+			mask <<= (seqno % 64);
+			/* There is a corresponding chunk number */
+			if (stat[0]->cob_map[x] & mask) {
+				rec_index = index;
+				index += CefC_S_TLF;
+				{
+					uint32_t con_size;
+					if (stat[0]->con_size > UINT32_MAX) {
+						con_size = UINT32_MAX;
+					} else {
+						con_size = (uint32_t)(stat[0]->con_size / stat[0]->cob_num);
+					}
+					rep_blk.cont_size 	= htonl (con_size);
+				}
+				rep_blk.cont_cnt 	= htonl ((uint32_t) 1);
+				rep_blk.rcv_int 	= htonl ((uint32_t) 0);
+				/* first seq and last seq = self seq */
+				rep_blk.first_seq 	= htonl (seqno);
+				rep_blk.last_seq 	= htonl (seqno);
+				if ((hdl->cs_mod_int != NULL) &&
+					(hdl->cs_mod_int->content_lifetime_get != NULL)) {
+					uint32_t c_time = 0;
+					uint32_t r_time = 0;
+					int p_res = 0;
+					p_res = hdl->cs_mod_int->content_lifetime_get 
+											(key, klen, &c_time, &r_time, 0);
+					if (p_res < 0) {
+						rep_blk.cache_time  = 0;
+						rep_blk.remain_time = 0;
+					} else {
+						rep_blk.cache_time  = htonl (c_time);
+						rep_blk.remain_time = htonl (r_time);
+					}
+				} else {
+					rep_blk.cache_time  = 0;
+					rep_blk.remain_time = 0;
+				}
+				
+				memcpy (&msg[index], &rep_blk, sizeof (struct ccninfo_rep_block));
+				index += sizeof (struct ccninfo_rep_block);
+				/* Name 				*/
+				name_tlv_hdr.length = htons (klen);
+				memcpy (&msg[index], &name_tlv_hdr, sizeof (struct tlv_hdr));
+				memcpy (&msg[index + CefC_S_TLF], key, klen);
+				index += CefC_S_TLF + klen;
+				
+				/* Sets the header of Reply Block 		*/
+				rply_tlv_hdr.type = htons (CefC_T_DISC_CONTENT);
+				rply_tlv_hdr.length = htons (index - (rec_index + CefC_S_TLF));
+				memcpy (&msg[rec_index], &rply_tlv_hdr, sizeof (struct tlv_hdr));
+			}
+		}
+	} else {
+		/* The name doesn't contain a chunk number */
+		res = csmgrd_stat_content_info_gets (
+				stat_hdl, key, klen, (int) partial_match_f, stat);
 		
-		rep_blk.cont_size 	= htonl ((uint32_t) (stat[i]->con_size / 1000));
-		rep_blk.cont_cnt 	= htonl ((uint32_t) stat[i]->cob_num);
-		rep_blk.rcv_int 	= htonl ((uint32_t) stat[i]->access);
-		rep_blk.first_seq 	= htonl (stat[i]->min_seq);
-		rep_blk.last_seq 	= htonl (stat[i]->max_seq);
-		
-		value64 = (nowt - stat[i]->cached_time) / 1000000;
-		rep_blk.cache_time 	= cef_client_htonb (value64);
-		
-		value64 = (stat[i]->expiry - nowt) / 1000000;
-		rep_blk.remain_time	= cef_client_htonb (value64);
-		
-		memcpy (&msg[index], &rep_blk, sizeof (struct trace_rep_block));
-		index += sizeof (struct trace_rep_block);
-		
-		/* Name 				*/
-		name_tlv_hdr.length = htons (stat[i]->name_len);
-		memcpy (&msg[index], &name_tlv_hdr, sizeof (struct tlv_hdr));
-		memcpy (&msg[index + CefC_S_TLF], stat[i]->name, stat[i]->name_len);
-		index += CefC_S_TLF + stat[i]->name_len;
-		
-		/* Sets the header of Reply Block 		*/
-		rply_tlv_hdr.type = htons (CefC_T_TRACE_CONTENT);
-		rply_tlv_hdr.length = htons (index - (rec_index + CefC_S_TLF));
-		memcpy (&msg[rec_index], &rply_tlv_hdr, sizeof (struct tlv_hdr));
+		for (i = 0 ; i < res ; i++) {
+			
+			if (stat[i]->name_len != klen) {
+				continue;
+			} else {
+				if (memcmp (stat[i]->name, key, klen) != 0){
+					continue;
+				}
+			}
+			rec_index = index;
+			index += CefC_S_TLF;
+			{
+				uint32_t con_size;
+				if (stat[i]->con_size > UINT32_MAX) {
+					con_size = UINT32_MAX;
+				} else {
+					con_size = (uint32_t)(stat[i]->con_size);
+				}
+				rep_blk.cont_size 	= htonl (con_size);
+			}
+			rep_blk.cont_cnt 	= htonl ((uint32_t) stat[i]->cob_num);
+			rep_blk.rcv_int 	= htonl ((uint32_t) stat[i]->access);
+			rep_blk.first_seq 	= htonl (stat[i]->min_seq);
+			rep_blk.last_seq 	= htonl (stat[i]->max_seq);
+			
+			if ((hdl->cs_mod_int != NULL) &&
+				(hdl->cs_mod_int->content_lifetime_get != NULL)) {
+				uint32_t c_time = 0;
+				uint32_t r_time = 0;
+				int p_res = 0;
+				p_res = hdl->cs_mod_int->content_lifetime_get 
+										(stat[i]->name, stat[i]->name_len, &c_time, &r_time, partial_match_f);
+				if (p_res < 0) {
+					rep_blk.cache_time  = 0;
+					rep_blk.remain_time = 0;
+				} else {
+					rep_blk.cache_time  = htonl (c_time);
+					rep_blk.remain_time = htonl (r_time);
+				}
+			} else {
+				rep_blk.cache_time  = 0;
+				rep_blk.remain_time = 0;
+			}
+			
+			memcpy (&msg[index], &rep_blk, sizeof (struct ccninfo_rep_block));
+			index += sizeof (struct ccninfo_rep_block);
+			/* Name 				*/
+			name_tlv_hdr.length = htons (klen);
+			memcpy (&msg[index], &name_tlv_hdr, sizeof (struct tlv_hdr));
+			memcpy (&msg[index + CefC_S_TLF], key, klen);
+			index += CefC_S_TLF + klen;
+			
+			/* Sets the header of Reply Block 		*/
+			rply_tlv_hdr.type = htons (CefC_T_DISC_CONTENT);
+			rply_tlv_hdr.length = htons (index - (rec_index + CefC_S_TLF));
+			memcpy (&msg[rec_index], &rply_tlv_hdr, sizeof (struct tlv_hdr));
+		}
 	}
 	
 	if (index > 0) {
 #ifdef CefC_Debug
-		cef_dbg_write (CefC_Dbg_Fine, "Send the cefinfo response (len = %u).\n", index);
+		cef_dbg_write (CefC_Dbg_Fine, "Send the ccninfo response (len = %u).\n", index);
 		cef_dbg_buff_write (CefC_Dbg_Finest, msg, index);
 #endif // CefC_Debug
 		res = cef_csmgr_send_msg (sock, msg, index);
 		if (res < 0) {
 			/* send error */
 #ifdef CefC_Debug
-			cef_dbg_write (CefC_Dbg_Fine, "Failed to send the cefinfo response\n");
+			cef_dbg_write (CefC_Dbg_Fine, "Failed to send the ccninfo response\n");
 #endif // CefC_Debug
 		}
 	} else {
@@ -2315,7 +2428,81 @@ csmgrd_incoming_cefinfo_msg (
 	
 	return;
 }
-#endif // CefC_Cefinfo
+/*--------------------------------------------------------------------------------------
+	Incoming pre-Ccninfo message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_incoming_pre_ccninfo_msg (
+	CefT_Csmgrd_Handle* hdl,					/* csmgr daemon handle					*/
+	int sock,									/* recv socket							*/
+	unsigned char* buff,						/* receive message						*/
+	int buff_len								/* receive message length				*/
+) {
+	CsmgrT_Stat* stat[CefstatC_MaxUri];
+	int res;
+	
+	/* Obtain cached content information 			*/
+	res = csmgrd_stat_content_info_gets (stat_hdl, buff, buff_len, 0, stat);
+	
+	if (res > 0) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest, "Cob is exist.\n");
+#endif // CefC_Debug
+		/* Content is exist */
+		csmgrd_pre_ccninfo_response_send (sock, CefC_Csmgr_Cob_Exist);
+	} else {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest, "Cob is not exist.\n");
+#endif // CefC_Debug
+		/* Content is not exist */
+		csmgrd_pre_ccninfo_response_send (sock, CefC_Csmgr_Cob_NotExist);
+	}
+	
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Send pre-Ccninfo response message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_pre_ccninfo_response_send (
+	int sock,									/* recv socket							*/
+	uint8_t result								/* result								*/
+) {
+	unsigned char buff[CefC_Max_Length] = {0};
+	int res;
+	uint16_t index = 0;
+	uint16_t value16;
+
+	/* Create Upload Request message */
+	/* Set header */
+	buff[CefC_O_Fix_Ver]  = CefC_Version;
+	buff[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_PreCcninfo;
+	index += CefC_Csmgr_Msg_HeaderLen;
+
+	/* Set result */
+	memcpy (buff + index, &result, sizeof (uint8_t));
+	index += sizeof (uint8_t);
+
+	/* Set Length */
+	value16 = htons (index);
+	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
+
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Fine, "Send the pre-Ccninfo response(len = %u).\n", index);
+	cef_dbg_buff_write (CefC_Dbg_Finest, buff, index);
+#endif // CefC_Debug
+	/* Send a response to source node */
+	res = cef_csmgr_send_msg (sock, buff, index);
+
+	if (res < 0) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Failed to send the pre-Ccninfo response\n");
+#endif // CefC_Debug
+	}
+
+	return;
+}
+#endif // CefC_Ccninfo
 /*--------------------------------------------------------------------------------------
 	Receive Increment Access Count message
 ----------------------------------------------------------------------------------------*/
@@ -2717,7 +2904,7 @@ csmgrd_white_list_reg_check (
 	}
 	return (-1);
 }
-#if defined (CefC_Cefping) || defined (CefC_Cefinfo)
+#if defined (CefC_Cefping) || defined (CefC_Ccninfo)
 /*--------------------------------------------------------------------------------------
 	Incoming cefping message
 ----------------------------------------------------------------------------------------*/
@@ -2792,7 +2979,7 @@ csmgrd_cefping_response_send (
 
 	return;
 }
-#endif // (CefC_Cefping) || (CefC_Cefinfo)
+#endif // (CefC_Cefping) || (CefC_Ccninfo)
 #ifdef CefC_Ccore
 /*--------------------------------------------------------------------------------------
 	Incoming retrieve cache capacity message

@@ -28,7 +28,7 @@
 # 
 
 # set distcheck configure flag
-DISTCHECK_CONFIGURE_FLAGS=--enable-debug --enable-csmgr --enable-cache --enable-cefping --enable-cefinfo --enable-samptp --enable-ndn
+DISTCHECK_CONFIGURE_FLAGS=--enable-debug --enable-csmgr --enable-cache --enable-cefping --enable-ccninfo --enable-samptp --enable-ndn
 
 EXTRA_DIST=apps LICENSE README.md
 

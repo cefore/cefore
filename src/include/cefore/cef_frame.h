@@ -49,16 +49,16 @@
 #define CefC_NICT_PEN				0x00C96C	/* Private Enterprise Number			*/
 
 /***** Whether to use OPT_SEQNUM *****/
-#define CefC_OptSeqnum_NotUse			0x00
-#define CefC_OptSeqnum_Use				0x01
-
+#define CefC_OptSeqnum_NotUse			0
+#define CefC_OptSeqnum_UnUse			-1		/* When using							*/
+#define CefC_OptSeqnum_Use				1		/* When finished using					*/
 
 /*------------------------------------------------------------------*/
 /* Maximum Sizes													*/
 /*------------------------------------------------------------------*/
 #define CefC_Max_Msg_Size			8192		/* Maximum Message Size (8 Kbytes) 		*/
 #define CefC_Max_Header_Size 		255			/* Maximum Header Size 					*/
-#define CefC_Max_Node_Id 			16
+#define CefC_Max_Node_Id 			64
 #define CefC_Max_Stamp_Num 			20
 
 /*------------------------------------------------------------------*/
@@ -92,7 +92,7 @@
 #define CefC_O_Fix_Type				1
 #define CefC_O_Fix_PacketLength		2
 #define CefC_O_Fix_HopLimit			4
-#define CefC_O_Fix_Trace_RetCode	5
+#define CefC_O_Fix_Ccninfo_RetCode	5
 #define CefC_O_Fix_Ping_RetCode		6
 #define CefC_O_Fix_HeaderLength		7
 
@@ -111,8 +111,8 @@
 #define CefC_PT_INTEREST			0x00		/* Interest								*/
 #define CefC_PT_OBJECT				0x01		/* Content Object						*/
 #define CefC_PT_INTRETURN			0x02		/* Interest Return						*/
-#define CefC_PT_TRACE_REQ			0x03		/* Cefinfo Request						*/
-#define CefC_PT_TRACE_REP			0x04		/* Cefinfo Replay						*/
+#define CefC_PT_REQUEST				0x03		/* Ccninfo Request						*/
+#define CefC_PT_REPLY				0x04		/* Ccninfo Replay						*/
 #define CefC_PT_PING_REQ			0x05		/* Cefping Request						*/
 #define CefC_PT_PING_REP			0x06		/* Cefping Replay						*/
 
@@ -128,7 +128,7 @@
 #define CefC_T_OBJECT				0x0002		/* Content Object						*/
 #define CefC_T_VALIDATION_ALG		0x0003		/* Validation Algorithm					*/
 #define CefC_T_VALIDATION_PAYLOAD	0x0004		/* Validation Payload 					*/
-#define CefC_T_TRACE				0x0005		/* Cefinfo 							*/
+#define CefC_T_DISCOVERY			0x0005		/* Ccninfo 								*/
 #define CefC_T_PING					0x0006		/* Cefping 								*/
 #define CefC_T_TOP_TLV_NUM			0x0007
 
@@ -142,17 +142,14 @@
 #define CefC_T_OBJHASHRESTR			0x0003		/* ContentObjectHashRestriction			*/
 #define CefC_T_PAYLDTYPE			0x0005		/* PayloadType							*/
 #define CefC_T_EXPIRY				0x0006		/* ExpiryTime 							*/
-#define CefC_T_TRACE_REPLY			0x0008		/* Reply (content) Block				*/
+#define CefC_T_DISC_REPLY			0x0007		/* CCNinfo Reply Block					*/
 #define CefC_T_ENDCHUNK				0x000C		/* EndChunkNumber						*/
 #define CefC_T_MSG_TLV_NUM			0x000D
 #define CefC_T_ORG					0x0FFF		/* Vendor Specific Information			*/
 
-/*----- Sub TLVs of T_TRACE_REPLY	-----*/
-#define CefC_T_TRACE_CONTENT		0x0001		/* Reply (content) Block				*/
-#define CefC_T_TRACE_CONTENT_OWNER	0x0002		/* Reply (content) Block				*/
-#define CefC_T_TRACE_DEVICE			0x0003		/* Reply (device) Block					*/
-#define CefC_T_TRACE_FUNCTION		0x0004		/* Reply (function) Block				*/
-#define CefC_T_TRACE_ON_CSMGRD		0x8000		/* Content is on csmgrd					*/
+/*----- Reply sub-block TLVs of T_DISC_REPLY	-----*/
+#define CefC_T_DISC_CONTENT			0x0000		/* Type for cache						*/
+#define CefC_T_DISC_CONTENT_OWNER	0x0001		/* Type for FHR							*/
 
 /*----- Organization-Specific TLVs -----*/
 #define CefC_T_SYMBOLIC				0x0001		/* Symbolic Interest					*/
@@ -226,8 +223,8 @@
 #define CefC_T_OPT_INTLIFE			0x0001		/* Interest Lifetime 					*/
 #define CefC_T_OPT_CACHETIME		0x0002		/* Recommended Cache Time (RCT) 		*/
 #define CefC_T_OPT_MSGHASH			0x0003		/* Message Hash							*/
-#define CefC_T_OPT_TRACE_REQ		0x0008		/* Cefinfo Request Block				*/
-#define CefC_T_OPT_TRACE_RPT		0x0009		/* Cefinfo Report Block				*/
+#define CefC_T_OPT_DISC_REQ			0x0008		/* Ccninfo Request Block				*/
+#define CefC_T_OPT_DISC_REPORT		0x0009		/* Ccninfo Report Block					*/
 #define CefC_T_OPT_PING_REQ			0x000A		/* Cefping Request Block				*/
 #define CefC_T_OPT_TLV_NUM			0x000B
 
@@ -236,8 +233,8 @@
 #define CefC_T_OPT_TRANSPORT		0x1002		/* Transport Plugin Variant				*/
 #define CefC_T_OPT_EFI				0x1003		/* External Function Invocation			*/
 #define CefC_T_OPT_IUR				0x1004		/* Interest User Request				*/
-#define CefC_T_OPT_SEQNUM			0x1005		/* Sequence Number						*/
-#define CefC_T_OPT_USR_TLV_NUM		0x1006
+#define CefC_T_OPT_USR_TLV_NUM		0x1005
+#define CefC_T_OPT_SEQNUM			0x8008		/* Sequence Number						*/
 
 /*----- TLVs for use in the CefC_T_OPT_SYMBOLIC TLV -----*/
 #define CefC_T_OPT_REGULAR			0x0000		/* Regular Interest (just for form) 	*/
@@ -280,14 +277,14 @@
 #define CefC_CpRc_AdProhibit 		0x03
 
 /*------------------------------------------------------------------*/
-/* Option for Cefinfo Request 										*/
+/* Option for Ccninfo Request 										*/
 /*------------------------------------------------------------------*/
 
 /* Sets to Flag of Request Block 			*/
 #define CefC_CtOp_None 				0x00
-#define CefC_CtOp_ReqPartial 		0x01
-#define CefC_CtOp_NoCache 			0x02
-#define CefC_CtOp_Publisher			0x04
+#define CefC_CtOp_FullDisCover 		0x04
+#define CefC_CtOp_Cache 			0x01
+#define CefC_CtOp_Publisher			0x02
 
 /* Sets to Scheme Name of Request Block 	*/
 #define CefC_CtSn_Ccnx 				0x00
@@ -295,18 +292,18 @@
 #define CefC_CtSn_Cefore			0x02
 
 /*------------------------------------------------------------------*/
-/* Return Code for Cefinfo Replay 									*/
+/* Return Code for Ccninfo Replay 									*/
 /*------------------------------------------------------------------*/
-#define CefC_CtRc_NoError 			0x00
-#define CefC_CtRc_WrongIf 			0x01
-#define CefC_CtRc_NoRoute 			0x02
-#define CefC_CtRc_NoInfo 			0x03
-#define CefC_CtRc_NoSpace 			0x04
-#define CefC_CtRc_InfoHidden		0x05
-#define CefC_CtRc_ReachGw			0x06
-#define CefC_CtRc_NoMoreHop			0x07			// TBD
-#define CefC_CtRc_AdProhibit		0x0E
-#define CefC_CtRc_UnknownReq		0x0F
+#define CefC_CtRc_NO_ERROR 			0x00
+#define CefC_CtRc_WRONG_IF 			0x01
+#define CefC_CtRc_INVALID_REQUEST	0x02
+#define CefC_CtRc_NO_ROUTE 			0x03
+#define CefC_CtRc_NO_INFO 			0x04
+#define CefC_CtRc_NO_SPACE			0x05
+#define CefC_CtRc_INFO_HIDDEN		0x06
+#define CefC_CtRc_ADMIN_PROHIB		0x0E
+#define CefC_CtRc_UNKNOWN_REQUEST	0x0F
+#define CefC_CtRc_FATAL_ERROR		0x80
 
 
 /****************************************************************************************
@@ -402,23 +399,21 @@ struct value64_tlv {
 	uint64_t 	value;
 } __attribute__((__packed__));
 
-struct trace_req_block {
-	uint8_t 	scheme_name;
-	uint8_t 	skiphop;
-	uint8_t 	timeout;
-	uint8_t 	mbz;
+struct ccninfo_req_block {
 	uint16_t 	req_id;
-	uint16_t 	flag;
+	uint8_t 	skiphop;
+	uint8_t 	flag;
+	uint32_t	req_arrival_time;
 } __attribute__((__packed__));
 
-struct trace_rep_block {
+struct ccninfo_rep_block {
 	uint32_t 	cont_size;
 	uint32_t 	cont_cnt;
 	uint32_t 	rcv_int;
 	uint32_t 	first_seq;
 	uint32_t 	last_seq;
-	uint64_t 	cache_time;
-	uint64_t 	remain_time;
+	uint32_t 	cache_time;
+	uint32_t 	remain_time;
 } __attribute__((__packed__));
 
 /*--------------------------------------------------------------*/
@@ -446,12 +441,12 @@ typedef struct {
 	unsigned char   	responder_id[CefC_Max_Node_Id];
 												/* Responder Identifier 					*/
 	
-	/***** Cefinfo						*****/
+	/***** Ccninfo						*****/
 	uint16_t 			req_id;					/* Request ID of Request Block			*/
 	uint8_t 			skip_hop;				/* SkipHopCount of Request Block		*/
-	uint16_t 			trace_flag;				/* Flags of Request Block				*/
-	uint8_t				timeout;				/* Timeout of Request Block				*/
-	uint8_t 			scheme_name;			/* SchemeName of Request Block			*/
+	uint16_t 			ccninfo_flag;			/* Flags of Request Block				*/
+	uint16_t 			node_id_len;
+	unsigned char   	node_identifer[CefC_Max_Node_Id];
 	
 	/***** Long Life Interest			*****/
 	uint16_t 			symbolic_f;				/* value of CefC_T_OPT_SYMBOLIC Sub TLV */
@@ -586,7 +581,7 @@ typedef struct {
 } CefT_Ping_TLVs;
 
 /*--------------------------------------------------------------*/
-/* Parameters to set Cefinfo 									*/
+/* Parameters to set Ccninfo 									*/
 /*--------------------------------------------------------------*/
 typedef struct {
 
@@ -596,11 +591,16 @@ typedef struct {
 	/***** NAME TLV			*****/
 	unsigned char 			name[CefC_Max_Length];	/* Name 							*/
 	uint16_t				name_len;				/* Length of Name 					*/
+	uint32_t				chunk_num;				/* Chunk#							*/
+	int						chunk_num_f;			/* Chunk# exist flag				*/
 	
 	/***** Option Header	*****/
 	CefT_Option_TLVs 		opt;					/* Parameters to set Option Header 	*/
 
-} CefT_Trace_TLVs;
+	/***** Validation Algorithm TLV 	*****/
+	CefT_Valid_Alg_TLVs 	alg;
+
+} CefT_Ccninfo_TLVs;
 
 /*--------------------------------------------------------------*/
 /* Parameters to Organization-Specific Parameters 				*/
@@ -648,15 +648,16 @@ typedef struct {
 	unsigned char   	responder_id[CefC_Max_Node_Id];
 												/* Responder Identifier 				*/
 	
-	/***** Cefinfo Request Block		*****/
+	/***** Ccninfo Request Block		*****/
 	uint16_t 			req_id;					/* Request ID of Request Block			*/
 	uint8_t 			skip_hop;				/* SkipHopCount of Request Block		*/
 	uint16_t 			skip_hop_offset;		/* Offset from the top of message 		*/
-	uint16_t 			trace_flag;				/* Flags of Request Block				*/
-	uint8_t				timeout;				/* Timeout of Request Block				*/
-	uint8_t 			scheme_name;			/* SchemeName of Request Block			*/
+	uint16_t 			ccninfo_flag;			/* Flags of Request Block				*/
+	uint32_t			req_arrival_time;		/* Request Arrival Time of Request Block*/
+	uint16_t 			id_len;
+	unsigned char   	node_id[CefC_Max_Node_Id];			/* Node Identifier(e.g. IPv4 address)	*/
 	
-	/***** Cefinfo Report Block		*****/
+	/***** Ccninfo Report Block		*****/
 	uint16_t 			rpt_block_offset;
 	
 	/***** Symbolic Interest			*****/
@@ -701,7 +702,7 @@ typedef struct {
 	uint8_t			ping_retcode;				/* Cefping ReturnCode 					*/
 	
 	/***** Cefore Message 	*****/
-	uint16_t 		pkt_type;					/* Top-Level Type 						*/
+	uint16_t 		top_level_type;				/* Top-Level Type 						*/
 	
 	/***** NAME TLV			*****/
 	uint16_t		name_f;						/* Offset of Name 						*/
@@ -740,6 +741,11 @@ typedef struct {
 	unsigned char 	payload[CefC_Max_Length]; 	/* Payload 								*/
 	uint16_t		payload_len;				/* Length of Payload 					*/
 
+	/***** DISC_REPLY TLV		*****/
+	uint16_t		discreply_f;				/* Offset of Disc Reply					*/
+	unsigned char 	discreply[CefC_Max_Length]; /* Disc Reply 							*/
+	uint16_t		discreply_len;				/* Length of Disc Reply 				*/
+	
 	/***** Metadata TLV		*****/
 	uint64_t		expiry;						/* The time at which the Payload		*/
 												/* expires [unit: ms]					*/
@@ -752,6 +758,62 @@ typedef struct {
 	
 } CefT_Parsed_Message;
 
+/*--------------------------------------------------------------*/
+/* Parsed Ccninfo message										*/
+/*--------------------------------------------------------------*/
+typedef struct ccninfo_rpt {
+	uint32_t			req_arrival_time;		/* Request Arrival Time of Request Block		*/
+	uint16_t 			id_len;
+	unsigned char*   	node_id;				/* Node Identifier(e.g. IPv4 address)			*/
+	
+	struct ccninfo_rpt*	next;
+} CefT_Ccninfo_Rpt;
+
+typedef struct ccninfo_rep {
+	uint16_t			rep_type;				/* Type											*/
+	uint16_t			length;					/* Length										*/
+	uint32_t			obj_size;				/* Object Size									*/
+	uint32_t			obj_cnt;				/* Object Count									*/
+	uint32_t			rcv_interest_cnt;		/* # Received Interest							*/
+	uint32_t			first_seq;				/* First Seqnum									*/
+	uint32_t			last_seq;				/* Last Seqnum									*/
+	uint32_t			cache_time;				/* Elapsed Cache Time							*/
+	uint32_t			lifetime;				/* Remain Cache Lifetime						*/
+	
+	unsigned char*		rep_name;				/* Name 										*/
+	uint16_t			rep_name_len;			/* Length of Name 								*/
+	
+	struct ccninfo_rep*	next;
+} CefT_Ccninfo_Rep;
+
+typedef struct {
+	uint16_t			pkt_type;				/* PacketType									*/
+	uint16_t			ret_code;				/* ReturnCode									*/
+	uint8_t				hoplimit;				/* Hop Limit									*/
+	
+	/***** Request Block *****/
+	uint16_t 			req_id;					/* Request ID of Request Block					*/
+	uint8_t 			skip_hop;				/* SkipHopCount of Request Block				*/
+	uint16_t 			skip_hop_offset;		/* Offset from the top of message 				*/
+	uint16_t 			ccninfo_flag;			/* Flags of Request Block						*/
+	uint32_t			req_arrival_time;		/* Request Arrival Time of Request Block		*/
+	uint16_t 			id_len;
+	unsigned char   	node_id[CefC_Max_Node_Id];	/* Node Identifier(e.g. IPv4 address)		*/
+	
+	/***** Report Block *****/
+	uint8_t				rpt_blk_num;
+	CefT_Ccninfo_Rpt*	rpt_blk;				/* Report block TLV								*/
+	CefT_Ccninfo_Rpt*	rpt_blk_tail;
+	
+	/***** Discovery *****/
+	unsigned char*		disc_name;				/* Name 										*/
+	uint16_t			disc_name_len;			/* Length of Name 								*/
+	
+	/***** Reply Block *****/
+	uint8_t				rep_blk_num;
+	CefT_Ccninfo_Rep*	rep_blk;				/* Report block TLV								*/
+	CefT_Ccninfo_Rep*	rep_blk_tail;
+} CefT_Parsed_Ccninfo;
 
 /****************************************************************************************
  Global Variables
@@ -816,23 +878,31 @@ cef_frame_cefping_req_create (
 	CefT_Ping_TLVs* tlvs					/* Parameters to set Cefping Request 		*/
 );
 /*--------------------------------------------------------------------------------------
-	Creates the Cefinfo Request from the specified Parameters
+	Creates the Ccninfo Request from the specified Parameters
 ----------------------------------------------------------------------------------------*/
-int 										/* Length of Cefinfo message 				*/
-cef_frame_cefinfo_req_create (
-	unsigned char* buff, 					/* buffer to set Cefinfo Request			*/
-	CefT_Trace_TLVs* tlvs					/* Parameters to set Cefinfo Request 		*/
+int 										/* Length of Ccninfo message 				*/
+cef_frame_ccninfo_req_create (
+	unsigned char* buff, 					/* buffer to set Ccninfo Request			*/
+	CefT_Ccninfo_TLVs* tlvs					/* Parameters to set Ccninfo Request 		*/
 );
 /*--------------------------------------------------------------------------------------
-	Adds a time stamp on Cefinfo Request
+	Adds a time stamp on Ccninfo Request
 ----------------------------------------------------------------------------------------*/
-int 										/* Length of Cefinfo message 				*/
-cef_frame_cefinfo_req_add_stamp (
-	unsigned char* buff, 					/* Cefinfo Request							*/
+int 										/* Length of Ccninfo message 				*/
+cef_frame_ccninfo_req_add_stamp (
+	unsigned char* buff, 					/* Ccninfo Request							*/
 	uint16_t msg_len, 
 	unsigned char* node_id, 				/* Node ID 									*/
 	uint16_t id_len, 						/* length of Node ID 						*/
 	struct timeval t 						/* current time in UNIX-time(us) 			*/
+);
+/*--------------------------------------------------------------------------------------
+	Creates the Validation TLVs for Ccninfo Reply message
+----------------------------------------------------------------------------------------*/
+int 										/* Length of Ccninfo message 				*/
+cef_frame_ccninfo_vald_create_for_reply (
+	unsigned char* buff, 					/* Ccninfo Reply message					*/
+	CefT_Ccninfo_TLVs* tlvs					/* Parameters to set Ccninfo Reply 			*/
 );
 /*--------------------------------------------------------------------------------------
 	Creates the Cefping Replay from the specified Parameters
@@ -849,7 +919,7 @@ cef_frame_cefping_rep_create (
 /*--------------------------------------------------------------------------------------
 	Updates the sequence number 
 ----------------------------------------------------------------------------------------*/
-void 
+size_t										/* length of buff/new_buff					*/
 cef_frame_seqence_update (
 	unsigned char* buff, 					/* packet									*/
 	uint32_t seqnum
@@ -1001,19 +1071,52 @@ cef_frame_payload_parse (
 
 
 /*--------------------------------------------------------------------------------------
-	Sets use OPT_SEQNUM flag
+	Set flag whether to use OPT_SEQNUM
 ----------------------------------------------------------------------------------------*/
 void
-cef_frame_opt_seqnum_flag_set (
-	uint16_t use_f		 							/* 0: NotUse, other: Use			*/
+cef_frame_set_opt_seqnum_f (
+	int				use_f				/* When not using     : CefC_OptSeqnum_NotUse	*/
+										/* When using         : CefC_OptSeqnum_Use		*/
+										/* When finished using: CefC_OptSeqnum_UnUse	*/
 );
 /*--------------------------------------------------------------------------------------
-	Gets use OPT_SEQNUM flag
+	Get flag whether to use OPT_SEQNUM
 ----------------------------------------------------------------------------------------*/
 uint16_t
-cef_frame_opt_seqnum_flag_get (
+cef_frame_get_opt_seqnum_f (
 	void
 );
-
-
+/*--------------------------------------------------------------------------------------
+	get Name without chunkno
+----------------------------------------------------------------------------------------*/
+uint16_t										/* index of T_CHUNK						*/
+cef_frame_get_name_without_chunkno (
+	unsigned char* name,						/* content name							*/
+	uint16_t name_len,							/* content name Length					*/
+	uint32_t* ret_seq							/* chunk number							*/
+);
+/*--------------------------------------------------------------------------------------
+	Parses a Ccninfo message
+----------------------------------------------------------------------------------------*/
+int
+cef_frame_ccninfo_parse (
+	unsigned char* msg, 					/* the message to parse						*/
+	CefT_Parsed_Ccninfo* pci 				/* Structure to set parsed Ccninfo message	*/
+);
+/*--------------------------------------------------------------------------------------
+	Frees a Parsed Ccninfo message
+----------------------------------------------------------------------------------------*/
+void
+cef_frame_ccninfo_parsed_free (
+	CefT_Parsed_Ccninfo* pci 				/* Structure to set parsed Ccninfo message	*/
+);
+/*--------------------------------------------------------------------------------------
+	debug print
+----------------------------------------------------------------------------------------*/
+void
+cef_frame_debug_print_buff (
+	unsigned char* buff,				/* The buffer that want to output stderr		*/
+	uint16_t buff_len,					/* Length of buff								*/
+	uint8_t n_per_line					/* Number of 1 line (0 is nothing to do)		*/
+);
 #endif // __CEF_FRAME_HEADER__

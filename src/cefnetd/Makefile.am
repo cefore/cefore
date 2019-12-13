@@ -42,10 +42,10 @@ if CSMGR_ENABLE
 CEF_NETD_CFLAGS+=-DCefC_ContentStore
 endif # CSMGR_ENABLE
 
-# check cefinfo
-if CEFINFO_ENABLE
-CEF_NETD_CFLAGS+=-DCefC_Cefinfo
-endif # CEFINFO_ENABLE
+# check ccninfo
+if CCNINFO_ENABLE
+CEF_NETD_CFLAGS+=-DCefC_Ccninfo
+endif # CCNINFO_ENABLE
 
 # check cache
 if CACHE_ENABLE

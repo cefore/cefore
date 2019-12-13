@@ -124,8 +124,8 @@ host_triplet = @host@
 # check csmgr
 @CSMGR_ENABLE_TRUE@am__append_2 = -DCefC_ContentStore
 
-# check cefinfo
-@CEFINFO_ENABLE_TRUE@am__append_3 = -DCefC_Cefinfo
+# check ccninfo
+@CCNINFO_ENABLE_TRUE@am__append_3 = -DCefC_Ccninfo
 
 # check cache
 @CACHE_ENABLE_TRUE@am__append_4 = -DCefC_CefnetdCache

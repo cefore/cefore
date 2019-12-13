@@ -33,7 +33,7 @@ AM_CFLAGS=-I$(top_srcdir)/src/include -Wall
 bin_PROGRAMS=ccninfo
 ccninfo_LDFLAGS=-L$(top_srcdir)/src/lib/
 ccninfo_LDADD=-lcefore -lssl -lcrypto
-ccninfo_CFLAGS=$(AM_CFLAGS) -DCefC_Cefinfo
+ccninfo_CFLAGS=$(AM_CFLAGS) -DCefC_Ccninfo
 ccninfo_SOURCES=ccninfo.c
 
 # check debug build

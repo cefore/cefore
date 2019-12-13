@@ -519,7 +519,9 @@ csmgr_stat_access_count_update (
 	if (!rcd) {
 		return;
 	}
-	rcd->access++;
+	if(rcd->access < UINT32_MAX){
+		rcd->access++;
+	}
 	
 	return;
 }

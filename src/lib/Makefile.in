@@ -128,13 +128,16 @@ host_triplet = @host@
 # check cefping
 @CEFPING_ENABLE_TRUE@am__append_4 = -DCefC_Cefping
 
-# check cefinfo
-@CEFINFO_ENABLE_TRUE@am__append_5 = -DCefC_Cefinfo
+# check NDN Plugin
+@NDNPLUGIN_ENABLE_TRUE@am__append_5 = -DCefC_NdnPlugin
+
+# check ccninfo
+@CCNINFO_ENABLE_TRUE@am__append_6 = -DCefC_Ccninfo
 
 # check cache
-@CACHE_ENABLE_TRUE@am__append_6 = -DCefC_CefnetdCache
-@CACHE_ENABLE_TRUE@am__append_7 = cef_mem_cache.c cef_csmgr.c cef_csmgr_stat.c
-@SAMPTP_ENABLE_TRUE@am__append_8 = -DCefC_Plugin_Samptp
+@CACHE_ENABLE_TRUE@am__append_7 = -DCefC_CefnetdCache
+@CACHE_ENABLE_TRUE@am__append_8 = cef_mem_cache.c cef_csmgr.c cef_csmgr_stat.c
+@SAMPTP_ENABLE_TRUE@am__append_9 = -DCefC_Plugin_Samptp
 subdir = src/lib
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -390,11 +393,12 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AM_CFLAGS = -I$(top_srcdir)/src/include -Wall -O2 -fPIC \
 	$(am__append_1) $(am__append_2) $(am__append_4) \
-	$(am__append_5) $(am__append_6) $(am__append_8)
+	$(am__append_5) $(am__append_6) $(am__append_7) \
+	$(am__append_9)
 AM_LDFLAGS = -lssl -lcrypto
 AM_CSOURCES = cef_hash.c cef_client.c cef_fib.c cef_pit.c cef_face.c \
 	cef_frame.c cef_log.c cef_print.c cef_mpool.c cef_rngque.c \
-	cef_valid.c $(am__append_3) $(am__append_7)
+	cef_valid.c $(am__append_3) $(am__append_8)
 lib_LIBRARIES = libcefore.a
 libcefore_a_CFLAGS = $(AM_CFLAGS)
 libcefore_a_SOURCES = $(AM_CSOURCES)

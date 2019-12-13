@@ -240,6 +240,7 @@ cef_csmgr_con_entry_create (
 	uint16_t value16;
 	uint32_t value32;
 	uint64_t value64;
+	struct timeval tv;
 	
 	/* check message size */
 	if (buff_len <= CefC_Csmgr_Msg_HeaderLen) {
@@ -313,6 +314,10 @@ cef_csmgr_con_entry_create (
 	/* get address */
 	memcpy (&entry->node, &buff[index], sizeof (struct in_addr));
 	index += sizeof (struct in_addr);
+	
+	/* get insert time */
+	gettimeofday (&tv, NULL);
+	entry->ins_time = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	return ((int) index);
 }

@@ -27,11 +27,11 @@
  * SUCH DAMAGE.
  */
 /*
- * cef_cefinfo.h
+ * cef_ccninfo.h
  */
 
-#ifndef __CEFINFO_HEADER__
-#define __CEFINFO_HEADER__
+#ifndef __CCNINFO_HEADER__
+#define __CCNINFO_HEADER__
 
 /****************************************************************************************
  Include Files
@@ -81,4 +81,4 @@ typedef struct {
  ****************************************************************************************/
 
 
-#endif // __CEFINFO_HEADER__
+#endif // __CCNINFO_HEADER__

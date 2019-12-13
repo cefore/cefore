@@ -267,9 +267,11 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-EXTRA_DIST = cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def cefnetd.key.def default-private-key.pem default-public-key.pem 
-CEF_CONF = cefnetd.conf cefnetd.fib csmgrd.conf plugin.conf cefnetd.key default-private-key default-public-key
+EXTRA_DIST = cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def cefnetd.key.def default-private-key.pem default-public-key.pem ccninfo_rt-private-key.pem ccninfo_rt-public-key.pem ccninfo_user-private-key.pem ccninfo_user-public-key.pem
+CEF_CONF = cefnetd.conf cefnetd.fib csmgrd.conf plugin.conf cefnetd.key default-private-key default-public-key ccninfo_rt-private-key ccninfo_rt-public-key ccninfo_user-private-key ccninfo_user-public-key
 INSTALLDIR = $(CEFORE_DIR_PATH)/cefore
+CCNINFORTDIR = $(CEFORE_DIR_PATH)/cefore/.ccninfo
+CCNINFOUSERDIR = $(HOME)/.ccninfo
 all: all-am
 
 .SUFFIXES:
@@ -516,9 +518,49 @@ default-public-key: default-public-key.pem
 		echo "***" You may need to rerun ./configure in the src directory. >&2; \
 	fi
 
+ccninfo_rt-private-key: ccninfo_rt-private-key.pem
+	@if [ -f $(@:=.pem) ]; then \
+		cat $(@:=.pem) >> $@; \
+		chmod 644 $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+
+ccninfo_rt-public-key: ccninfo_rt-public-key.pem
+	@if [ -f $(@:=.pem) ]; then \
+		cat $(@:=.pem) >> $@; \
+		chmod 644 $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+
+ccninfo_user-private-key: ccninfo_user-private-key.pem
+	@if [ -f $(@:=.pem) ]; then \
+		cat $(@:=.pem) >> $@; \
+		chmod 644 $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+
+ccninfo_user-public-key: ccninfo_user-public-key.pem
+	@if [ -f $(@:=.pem) ]; then \
+		cat $(@:=.pem) >> $@; \
+		chmod 644 $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+
 install:
 	@if [ ! -d $(INSTALLDIR) ]; then \
 		mkdir $(INSTALLDIR); \
+	fi
+
+	@if [ ! -d $(CCNINFORTDIR) ]; then \
+		mkdir $(CCNINFORTDIR); \
+	fi
+
+	@if [ ! -d $(CCNINFOUSERDIR) ]; then \
+		mkdir $(CCNINFOUSERDIR); \
 	fi
 
 	@if [ ! -f $(INSTALLDIR)/cefnetd.conf ]; then \
@@ -542,8 +584,22 @@ install:
 	@if [ ! -f $(INSTALLDIR)/default-private-key ]; then \
 		cp -p default-private-key $(INSTALLDIR)/default-private-key; \
 	fi
+	@if [ ! -f $(CCNINFORTDIR)/ccninfo_rt-private-key ]; then \
+		cp -p ccninfo_rt-private-key $(CCNINFORTDIR)/ccninfo_rt-private-key; \
+	fi
+	@if [ ! -f $(CCNINFORTDIR)/ccninfo_rt-public-key ]; then \
+		cp -p ccninfo_rt-public-key $(CCNINFORTDIR)/ccninfo_rt-public-key; \
+	fi
+	@if [ ! -f $(CCNINFOUSERDIR)/$ccninfo_user-private-key ]; then \
+		cp -p ccninfo_user-private-key $(CCNINFOUSERDIR)/ccninfo_user-private-key; \
+	fi
+	@if [ ! -f $(CCNINFOUSERDIR)/ccninfo_user-public-key ]; then \
+		cp -p ccninfo_user-public-key $(CCNINFOUSERDIR)/ccninfo_user-public-key; \
+	fi
 
 uninstall:
+	for i in $(CEF_CONF) ""; do test -z "$$i" || rm -f $(CCNINFOUSERDIR)/$$i; done
+	for i in $(CEF_CONF) ""; do test -z "$$i" || rm -f $(CCNINFORTDIR)/$$i; done
 	for i in $(CEF_CONF) ""; do test -z "$$i" || rm -f $(INSTALLDIR)/$$i; done
 
 clean:

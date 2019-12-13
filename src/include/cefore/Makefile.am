@@ -28,7 +28,7 @@
 # 
 
 # specify the include file
-CEF_HEADER=cef_client.h cef_csmgr.h cef_csmgr_stat.h cef_cefinfo.h \
+CEF_HEADER=cef_client.h cef_csmgr.h cef_csmgr_stat.h cef_ccninfo.h \
 	cef_define.h cef_face.h cef_fib.h cef_frame.h cef_hash.h cef_mpool.h \
 	cef_pit.h cef_log.h cef_print.h cef_rngque.h cef_plugin.h cef_plugin_com.h cef_valid.h \
 	cef_mem_cache.h

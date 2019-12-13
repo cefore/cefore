@@ -43,10 +43,10 @@ if CEFDBG_ENABLE
 CSMGRD_CFLAGS+=-DCefC_Debug -g
 endif # CEFDBG_ENABLE
 
-# check cefinfo
-if CEFINFO_ENABLE
-CSMGRD_CFLAGS += -DCefC_Cefinfo
-endif # CEFINFO_ENABLE
+# check ccninfo
+if CCNINFO_ENABLE
+CSMGRD_CFLAGS += -DCefC_Ccninfo
+endif # CCNINFO_ENABLE
 
 # check cefping
 if CEFPING_ENABLE

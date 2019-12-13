@@ -130,6 +130,8 @@ cef_tp_plugin_init (
 					(*work[CefC_T_OPT_TP_SAMPTP].init) (
 							&work[CefC_T_OPT_TP_SAMPTP], arg_ptr);
 				}
+				/* Use OPT_SEQNUM */
+				cef_frame_set_opt_seqnum_f (CefC_OptSeqnum_Use);
 			}
 		}
 	}

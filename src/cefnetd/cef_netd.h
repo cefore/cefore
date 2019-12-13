@@ -74,9 +74,9 @@
 #include <ccore/ccore_valid.h>
 #endif // CefC_Ccore
 
-#ifdef CefC_Cefinfo
-#include <cefore/cef_cefinfo.h>
-#endif // CefC_Cefinfo
+#ifdef CefC_Ccninfo
+#include <cefore/cef_ccninfo.h>
+#endif // CefC_Ccninfo
 #ifdef CefC_Ser_Log
 #include <cefore/cef_ser_log.h>
 #endif // CefC_Ser_Log
@@ -177,6 +177,10 @@ typedef struct {
 	unsigned char** 	nodeid16;
 	int 				nodeid4_num;
 	int 				nodeid16_num;
+	unsigned int** 		nodeid4_mtu;	/* For ccninfo reply size check */
+	unsigned int** 		nodeid16_mtu;	/* For ccninfo reply size check */
+	unsigned int		lo_mtu;			/* For ccninfo reply size check */
+	unsigned int		top_nodeid_mtu;	/* For ccninfo reply size check */
 	
 	/********** Listen Port 		***********/
 	struct pollfd 		inudpfds[CefC_Listen_Face_Max];
@@ -201,7 +205,42 @@ typedef struct {
 	uint16_t 			nbr_mng_thread;
 	uint16_t 			fwd_rate;
 	uint8_t 			cs_mode;
-	
+	uint32_t 			forwarding_info_strategy;
+												/* FIB entry selection strategy.		*/
+												/*   0: Forward using 					*/
+												/*      any 1 match FIB entry			*/
+												/*   1: Forward using 					*/
+												/*      all match FIB entries			*/
+#ifdef CefC_Ccninfo
+	uint32_t 			ccninfo_access_policy;	/* CCNinfo access policy				*/
+												/*   0: No limit						*/
+												/*   1: Permit transfer only			*/
+												/*   2: Do not allow access				*/
+	uint32_t 			ccninfo_full_discovery;	/* "Full discovery request" 			*/
+												/* permission setting					*/
+												/*   0: Allow							*/
+												/*   1: Not Allow						*/
+												/*   2: Authentication and Authorization*/
+	char				ccninfo_valid_alg[256];	/* Specify the Validation Algorithm 	*/
+												/* to be added to Cefnifo Reply.		*/
+												/* Validation is not added when NONE is */
+												/* specified.							*/
+												/* Either sha256 or crc32 can be 		*/
+												/* specified.							*/
+	uint16_t			ccninfo_valid_type;		/* Specify the Validation Algorithm 	*/
+												/* to be added to Cefnifo Reply.		*/
+	char				ccninfo_sha256_key_prfx[256];
+												/* Private key, public key prefix		*/
+												/*   Private key name: 					*/
+												/*     Specified string + "-private-key"*/
+												/*   Public key name: 					*/
+												/*     Specified string + "-public-key" */
+	uint32_t 			ccninfo_reply_timeout;	/* PIT lifetime(seconds) at 			*/
+												/* "full discovery request"				*/
+												/*  This value must be 					*/
+												/*  higher than or equal to 2 			*/
+												/*  and lower than or equal to 5.		*/
+#endif // CefC_Ccninfo
 	/********** Tables				***********/
 	CefT_Hash_Handle	fib;					/* FIB 									*/
 	CefT_Hash_Handle	pit;					/* PIT 									*/
@@ -269,6 +308,14 @@ typedef struct {
 	uint64_t			dtc_resnd_t;
 #endif // CefC_Dtc
 	
+#ifdef CefC_Ccninfo
+	/********** Ccninfo				***********/
+	uint16_t 			ccninfousr_id_len;
+	unsigned char   	ccninfousr_node_id[CefC_Max_Node_Id];
+	int 				ccninfo_rcvdpub_key_bi_len;
+	unsigned char* 		ccninfo_rcvdpub_key_bi;
+#endif //CefC_Ccninfo
+	
 } CefT_Netd_Handle;
 
 /****************************************************************************************
@@ -310,6 +357,42 @@ cefnetd_event_dispatch (
 ----------------------------------------------------------------------------------------*/
 int											/* Returns a negative value if it fails 	*/
 cefnetd_interest_forward (
+	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
+	uint16_t faceids[], 					/* Face-IDs to forward						*/
+	uint16_t faceid_num, 					/* Number of Face-IDs to forward			*/
+	int peer_faceid, 						/* Face-ID to reply to the origin of 		*/
+											/* transmission of the message(s)			*/
+	unsigned char* msg, 					/* received message to handle				*/
+	uint16_t payload_len, 					/* Payload Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	CefT_Parsed_Message* pm, 				/* Parsed message 							*/
+	CefT_Parsed_Opheader* poh, 				/* Parsed Option Header						*/
+	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
+	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
+);
+/*--------------------------------------------------------------------------------------
+	Forwards the specified ccninfo request
+----------------------------------------------------------------------------------------*/
+int											/* Returns a negative value if it fails 	*/
+cefnetd_ccninforeq_forward (
+	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
+	uint16_t faceids[], 					/* Face-IDs to forward						*/
+	uint16_t faceid_num, 					/* Number of Face-IDs to forward			*/
+	int peer_faceid, 						/* Face-ID to reply to the origin of 		*/
+											/* transmission of the message(s)			*/
+	unsigned char* msg, 					/* received message to handle				*/
+	uint16_t payload_len, 					/* Payload Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	CefT_Parsed_Message* pm, 				/* Parsed message 							*/
+	CefT_Parsed_Opheader* poh, 				/* Parsed Option Header						*/
+	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
+	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
+);
+/*--------------------------------------------------------------------------------------
+	Forwards the specified cefping request
+----------------------------------------------------------------------------------------*/
+int											/* Returns a negative value if it fails 	*/
+cefnetd_cefpingreq_forward (
 	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
 	uint16_t faceids[], 					/* Face-IDs to forward						*/
 	uint16_t faceid_num, 					/* Number of Face-IDs to forward			*/
@@ -373,5 +456,26 @@ cefnetd_nbr_destroy (
 	CefT_Netd_Handle* hdl					/* cefnetd handle							*/
 );
 
+/*--------------------------------------------------------------------------------------
+	Ccninfo Full discobery authentication & authorization
+----------------------------------------------------------------------------------------*/
+int											/* Returns 0 if authentication 				*/
+											/* and authorization are OK 				*/
+cefnetd_ccninfo_fulldiscovery_authNZ(
+	uint16_t 		usr_id_len,
+	unsigned char*  usr_node_id,
+	int 			rcvdpub_key_bi_len,
+	unsigned char* 	rcvdpub_key_bi
+);
+/*--------------------------------------------------------------------------------------
+	Check Ccninfo Relpy size
+	  NOTE: When oversize, create a reply message of NO_SPECE
+----------------------------------------------------------------------------------------*/
+uint16_t
+cefnetd_ccninfo_check_relpy_size(
+	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
+	unsigned char* msg, 					/* Reply message							*/
+	uint16_t msg_len 						/* Length of this message			*/
+);
 
 #endif // __CEF_NETD_HEADER__

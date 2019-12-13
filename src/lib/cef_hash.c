@@ -493,10 +493,6 @@ cef_hash_tbl_item_get_for_app (
 	uint32_t i;
 	uint32_t entry_klen = 0;
 
-	/*--------------------------*/
-	/* Temporary Implimentation */
-	/*--------------------------*/
-
 	if ((klen > CefC_Max_KLen) || (ht == NULL)) {
 		return ((void*) NULL);
 	}

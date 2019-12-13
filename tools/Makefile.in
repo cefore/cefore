@@ -121,7 +121,7 @@ host_triplet = @host@
 @CEFPING_ENABLE_TRUE@am__append_1 = cefping
 
 # check ccninfo
-@CEFINFO_ENABLE_TRUE@am__append_2 = ccninfo
+@CCNINFO_ENABLE_TRUE@am__append_2 = ccninfo
 
 # check csmgr
 @CSMGR_ENABLE_TRUE@am__append_3 = csmgr

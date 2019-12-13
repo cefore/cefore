@@ -120,8 +120,8 @@ host_triplet = @host@
 
 # check debug build
 @CEFDBG_ENABLE_TRUE@am__append_1 = -DCefC_Debug -g
-# check cefinfo
-@CEFINFO_ENABLE_TRUE@am__append_2 = -DCefC_Cefinfo
+# check ccninfo
+@CCNINFO_ENABLE_TRUE@am__append_2 = -DCefC_Ccninfo
 # check cefping
 @CEFPING_ENABLE_TRUE@am__append_3 = -DCefC_Cefping
 subdir = src/csmgrd/plugin
