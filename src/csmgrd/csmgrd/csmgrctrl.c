@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -120,7 +120,7 @@ main (
 	uint16_t value16;
 	
 	/* Inits logging 		*/
-	cef_log_init ("csmgrctrl");
+	cef_log_init ("csmgrctrl", 1);
 	
 	/* Obtains options 		*/
 	for (i = 1 ; i < argc ; i++) {
@@ -158,6 +158,7 @@ main (
 			return (-1);
 		}
 	}
+	cef_log_init2 (file_path, 0/* for CSMGRD */);
 	
 	/* Records the user which launched cefnetd 		*/
 	work_arg = getenv ("USER");
@@ -176,7 +177,7 @@ main (
 		return (0);
 	}
 	sprintf (port_str, "%d", port_num);
-	tcp_sock = cef_csmgr_connect_tcp_to_csmgrd ("127.0.0.1", port_str);
+	tcp_sock = cef_csmgr_connect_tcp_to_csmgr ("127.0.0.1", port_str);
 	if (tcp_sock < 1) {
 		fprintf (stderr, "ERROR : connect to csmgrd\n");
 		return (0);

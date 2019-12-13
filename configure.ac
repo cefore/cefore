@@ -5,7 +5,7 @@ dnl
 dnl  project setting
 dnl
 AC_PREREQ([2.69])
-AC_INIT([cefore], [0.7.3], [])
+AC_INIT([cefore], [0.8.0], [])
 AC_CONFIG_AUX_DIR(autotools)
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
@@ -76,7 +76,7 @@ dnl  check debug build
 dnl
 AC_ARG_ENABLE(
   debug,
-  AS_HELP_STRING([--enable-debug], [debug build (default off)]),
+  AS_HELP_STRING([--enable-debug], [debug build (default no)]),
   [enable_debug=yes],
   [enable_debug=no]
 )
@@ -87,52 +87,33 @@ dnl  check csmgr
 dnl
 AC_ARG_ENABLE(
   csmgr,
-  AS_HELP_STRING([--enable-csmgr], [content store manager (default off)]),
+  AS_HELP_STRING([--enable-csmgr], [content store manager (default no)]),
   [enable_csmgr=yes],
   [enable_csmgr=no]
 )
 AM_CONDITIONAL(CSMGR_ENABLE, test x"${enable_csmgr}" = xyes)
 
 dnl
-dnl  check FileSystem cache
+dnl  enable cefinfo
 dnl
-AC_ARG_ENABLE(
-  fscache,
-  AS_HELP_STRING(
-    [--disable-fscache],
-    [Filesystem cache is one of the csmgr's plug-ins. (default on)]
-  ),
-  [disable_filesystem=yes],
-  [disable_filesystem=no]
-)
-AM_CONDITIONAL(FILESYSTEM_CACHE_DISABLE, test x"${disable_filesystem}" = xyes)
+AM_CONDITIONAL(CEFINFO_ENABLE, true)
 
 dnl
 dnl  check cefping
 dnl
 AC_ARG_ENABLE(cefping,
-  AS_HELP_STRING([--enable-cefping], [content ping tool (default off)]),
+  AS_HELP_STRING([--enable-cefping], [content ping tool (default no)]),
   [enable_cefping=yes],
   [enable_cefping=no]
 )
 AM_CONDITIONAL(CEFPING_ENABLE, test x"${enable_cefping}" = xyes)
 
 dnl
-dnl  check cefinfo
-dnl
-AC_ARG_ENABLE(cefinfo,
-  AS_HELP_STRING([--enable-cefinfo], [content trace tool (default off)]),
-  [enable_cefinfo=yes],
-  [enable_cefinfo=no]
-)
-AM_CONDITIONAL(CEFINFO_ENABLE, test x"${enable_cefinfo}" = xyes)
-
-dnl
 dnl  check samptp
 dnl
 AC_ARG_ENABLE(
   samptp,
-  AS_HELP_STRING([--enable-samptp], [sample transport (default off)]),
+  AS_HELP_STRING([--enable-samptp], [sample transport (default no)]),
   [enable_samptp=yes],
   [enable_samptp=no]
 )
@@ -143,11 +124,22 @@ dnl  check NDN Plugin
 dnl
 AC_ARG_ENABLE(
   ndn,
-  AS_HELP_STRING([--enable-ndn], [NDN Plugin (default off)]),
+  AS_HELP_STRING([--enable-ndn], [NDN Plugin (default no)]),
   [enable_ndn=yes],
   [enable_ndn=no]
 )
 AM_CONDITIONAL(NDNPLUGIN_ENABLE, test x"${enable_ndn}" = xyes)
+
+dnl
+dnl  check cache
+dnl
+AC_ARG_ENABLE(
+  cache,
+  AS_HELP_STRING([--enable-cache], [local cache on cefnetd (default no)]),
+  [enable_cache=yes],
+  [enable_cache=no]
+)
+AM_CONDITIONAL(CACHE_ENABLE, test x"${enable_cache}" = xyes)
 
 
 AC_CONFIG_FILES([
@@ -208,5 +200,13 @@ AM_COND_IF(
   ])
 ])
 
+dnl
+dnl  check cache
+dnl
+AM_COND_IF(
+  [CACHE_ENABLE], 
+  [AC_CONFIG_FILES([
+  ])
+])
 
 AC_OUTPUT

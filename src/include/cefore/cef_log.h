@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -71,7 +71,14 @@
 
 void
 cef_log_init (
-	const char* proc_name
+	const char*	proc_name,
+	int			level
+);
+
+void
+cef_log_init2 (
+	const char* config_file_dir, 
+	int cefnetd_f
 );
 
 void

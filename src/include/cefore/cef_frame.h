@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,6 +46,12 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+#define CefC_NICT_PEN				0x00C96C	/* Private Enterprise Number			*/
+
+/***** Whether to use OPT_SEQNUM *****/
+#define CefC_OptSeqnum_NotUse			0x00
+#define CefC_OptSeqnum_Use				0x01
+
 
 /*------------------------------------------------------------------*/
 /* Maximum Sizes													*/
@@ -64,6 +70,7 @@
 #define CefC_S_TLF					4			/* Type and Length field is 4 bytes		*/
 #define CefC_S_Fix_Header			8			/* Fixed Header is 8 bytes				*/
 #define CefC_S_ChunkNum				4			/* ChunkNum V is 4 bytes				*/
+#define CefC_S_EndChunkNum			4			/* EndChunkNum V is 4 bytes				*/
 #define CefC_S_Nonce				8			/* Nonce V is 8 bytes					*/
 #define CefC_S_Symbolic_Code		8			/* Symbolic Code V is 8 bytes			*/
 #define CefC_S_Innovate				32			/* Innovate Interest 					*/
@@ -136,7 +143,9 @@
 #define CefC_T_PAYLDTYPE			0x0005		/* PayloadType							*/
 #define CefC_T_EXPIRY				0x0006		/* ExpiryTime 							*/
 #define CefC_T_TRACE_REPLY			0x0008		/* Reply (content) Block				*/
-#define CefC_T_MSG_TLV_NUM			0x000A
+#define CefC_T_ENDCHUNK				0x000C		/* EndChunkNumber						*/
+#define CefC_T_MSG_TLV_NUM			0x000D
+#define CefC_T_ORG					0x0FFF		/* Vendor Specific Information			*/
 
 /*----- Sub TLVs of T_TRACE_REPLY	-----*/
 #define CefC_T_TRACE_CONTENT		0x0001		/* Reply (content) Block				*/
@@ -146,7 +155,9 @@
 #define CefC_T_TRACE_ON_CSMGRD		0x8000		/* Content is on csmgrd					*/
 
 /*----- Organization-Specific TLVs -----*/
-#define CefC_T_SER_LOG				0x1001		/* Serial Logging						*/
+#define CefC_T_SYMBOLIC				0x0001		/* Symbolic Interest					*/
+#define CefC_T_LONGLIFE				0x0002		/* Long Life Interest					*/
+#define CefC_T_SER_LOG				0x8009		/* Serial Logging						*/
 
 /*------------------------------------------------------------------*/
 /* Name Segment Type												*/
@@ -170,7 +181,6 @@
 #define CefC_T_APP_DTC				0x1403		/* Android DTC Application			 	*/
 
 /*----- Chunk Metadata Name Component 	-----*/
-#define CefC_T_ENDChunk				0x0019		/* EndChunkNumber						*/
 #define CefC_T_META_TLV_NUM			0x0020
 
 /*------------------------------------------------------------------*/
@@ -231,15 +241,17 @@
 
 /*----- TLVs for use in the CefC_T_OPT_SYMBOLIC TLV -----*/
 #define CefC_T_OPT_REGULAR			0x0000		/* Regular Interest (just for form) 	*/
-#define CefC_T_OPT_LONGLIFE			0x0001		/* Long Life Interest					*/
 #define CefC_T_OPT_INNOVATIVE		0x0002		/* Innovative Interest					*/
 #define CefC_T_OPT_PIGGYBACK		0x0003		/* Piggyback Interest 					*/
 #define CefC_T_OPT_NUMBER			0x0004		/* Number of requested Cobs 			*/
 #define CefC_T_OPT_SCODE			0x0005		/* Symbolic Code						*/
+#define CefC_T_OPT_NWPROC			0x0006		/* NWProc Interest						*/
 
 #define CefC_T_OPT_APP_REG			0x1001
 #define CefC_T_OPT_APP_DEREG		0x1002
 #define CefC_T_OPT_APP_REG_P		0x1003		/* Accept prefix match of Name			*/
+#define CefC_T_OPT_APP_PIT_REG		0x1004		/* Register Name in PIT					*/
+#define CefC_T_OPT_APP_PIT_DEREG	0x1005		/* DeRegister Name in PIT				*/
 
 /*----- TLVs for use in the CefC_T_OPT_MSGHASH TLV -----*/
 #define CefC_T_OPT_MH_INVALID		0x0000		/* Invalid								*/
@@ -313,10 +325,21 @@ struct cef_app_frame {
 	unsigned char*  name;
 	uint16_t        name_len;
 	uint32_t        chunk_num;
+	int64_t			end_chunk_num;
 	unsigned char*  payload;
 	uint16_t        payload_len;
 	unsigned char   data_entity[CefC_Max_Length];	/* Variable length data(name,payload)	*/
-													/* and trailer are stored.				*/
+} __attribute__((__packed__));
+
+struct cef_app_request {
+	uint32_t        version;
+	uint32_t        type;
+	uint16_t        symbolic_f;						/* Symbolic Identifier					*/
+	unsigned char*  name;
+	uint16_t        name_len;
+	uint16_t        total_segs_len;					/* total length of T_NAMESEGMENT part	*/
+	uint32_t        chunk_num;
+	unsigned char   data_entity[CefC_Max_Length];	/* Variable length data(name)			*/
 } __attribute__((__packed__));
 
 struct cef_app_hdr {
@@ -522,6 +545,8 @@ typedef struct {
 
 	uint8_t					chnk_num_f;				/* Flag to set Chunk Number 		*/
 	uint32_t				chnk_num;				/* Chunk Number 					*/
+	uint8_t					end_chunk_num_f;		/* Flag to set End Chunk Number		*/
+	uint32_t				end_chunk_num;			/* End Chunk Number					*/
 	
 	unsigned char 			meta[CefC_Max_Length];	/* Meta 							*/
 	uint16_t 				meta_len;
@@ -577,21 +602,26 @@ typedef struct {
 
 } CefT_Trace_TLVs;
 
-#ifdef CefC_Ser_Log
 /*--------------------------------------------------------------*/
 /* Parameters to Organization-Specific Parameters 				*/
 /*--------------------------------------------------------------*/
 typedef struct CefT_Org_Params {
 
 	/***** IANA Private Enterprise Numbers	*****/
-	uint8_t 				pen[3];
+	uint32_t				nict_pen[3];
 
-	/***** NAME TLV							*****/
+	/***** ORG TLV							*****/
 	unsigned char*			offset;					/* Vendor Specific Value offset		*/
-	uint16_t				length;					/* Length of value					*/
+	uint16_t				length;					/* Length of T_ORG value(exclude PEN)*/
 
-} CefT_Org_Params;
+	uint8_t 				symbolic_f;				/* Symbolic Interest 				*/
+	uint8_t 				longlife_f;				/* Long Life Interest 				*/
+
+#ifdef CefC_Ser_Log
+	unsigned char*			sl_offset;				/* Serial Log offset				*/
+	uint16_t				sl_length;				/* Length of SerLog					*/
 #endif // CefC_Ser_Log
+} CefT_Org_Params;
 
 /*--------------------------------------------------------------*/
 /* Parsed Option Header 										*/
@@ -630,13 +660,15 @@ typedef struct {
 	uint16_t 			rpt_block_offset;
 	
 	/***** Symbolic Interest			*****/
-	uint8_t 			longlife_f;				/* Long Life Interest 					*/
 	uint8_t				piggyback_f; 			/* Piggyback Interest 					*/
 	uint8_t 			app_reg_f;				/* App Register 						*/
 	uint16_t 			bitmap_f;
 	uint32_t 			bitmap[CefC_S_Bitmap];
 	uint16_t 			number_f;
 	uint32_t 			number;
+#ifdef CefC_Nwproc
+	uint8_t 			nwproc_f;				/* NWProc Interest 						*/
+#endif // CefC_Nwproc
 	
 	/***** Transport Plugin Variant		*****/
 	uint16_t 			tp_variant;				/* Transport Variant 					*/
@@ -675,9 +707,20 @@ typedef struct {
 	uint16_t		name_f;						/* Offset of Name 						*/
 	unsigned char 	name[CefC_Max_Length];		/* Name 								*/
 	uint16_t		name_len;					/* Length of Name 						*/
+#ifdef CefC_Nwproc
+	unsigned char 	name_wo_attr[CefC_Max_Length];	/* Name without Attr				*/
+	uint16_t		name_wo_attr_len;			/* Length of Name without Attr			*/
+	unsigned char 	name_wo_cid[CefC_Max_Length];	/* Name without CID					*/
+	uint16_t		name_wo_cid_len;			/* Length of Name without CID			*/
+	unsigned char 	cid[CefC_Max_Length];		/* CID 									*/
+	uint16_t		cid_len;					/* Length of CID 						*/
+#endif // CefC_Nwproc
 	uint16_t		chnk_num_f;					/* Offset of Chunk Number 				*/
 	uint32_t		chnk_num;					/* Chunk Number 						*/
 	uint16_t		chunk_len;					/* Length of Chunk Number 				*/
+	uint16_t		end_chunk_num_f;			/* Offset of End Chunk Number			*/
+	uint32_t		end_chunk_num;				/* End Chunk Number						*/
+	uint16_t		end_chunk_len;				/* Length of End Chunk Number 			*/
 	uint64_t		nonce;						/* Nonce 								*/
 	
 	uint16_t 		symbolic_code_f;			/* Symbolic Code 						*/
@@ -704,10 +747,8 @@ typedef struct {
 	/***** Sequence Number 				*****/
 	uint32_t 		seqnum;
 
-#ifdef CefC_Ser_Log
 	/***** Organization-Specific Parameters	*****/
 	CefT_Org_Params org;
-#endif // CefC_Ser_Log
 	
 } CefT_Parsed_Message;
 
@@ -834,6 +875,14 @@ cef_frame_innovative_update (
 	uint16_t number_offset
 );
 /*--------------------------------------------------------------------------------------
+	Update cache time
+----------------------------------------------------------------------------------------*/
+void 										/* Returns a negative value if it fails 	*/
+cef_frame_opheader_cachetime_update (
+	unsigned char* 	cob, 					/* the cob message to parse					*/
+	uint64_t		cachetime
+);
+/*--------------------------------------------------------------------------------------
 	Parses a message
 ----------------------------------------------------------------------------------------*/
 int 										/* Returns a negative value if it fails 	*/
@@ -877,6 +926,49 @@ cef_frame_conversion_name_to_uri (
 	char* uri
 );
 /*--------------------------------------------------------------------------------------
+	Convert name to uri without ChunkNum
+----------------------------------------------------------------------------------------*/
+int
+cef_frame_conversion_name_to_uri_without_chunknum (
+	unsigned char* name,
+	unsigned int name_len,
+	char* uri
+);
+/*--------------------------------------------------------------------------------------
+	Separate name and CID
+----------------------------------------------------------------------------------------*/
+int
+cef_frame_separate_name_and_cid (
+	unsigned char* org_name,
+	unsigned int org_name_len,
+	unsigned char* name_wo_cid,				/* Name without CID removed from org_name	*/
+	unsigned int* name_wo_cid_len,
+	unsigned char* cid,						/* CID(;CID=...)							*/
+	unsigned int* cid_len
+);
+/*--------------------------------------------------------------------------------------
+	Conversion CID to HexChar and Add to name
+----------------------------------------------------------------------------------------*/
+int											/* 0:Already contains CID, 1:Added			*/
+cef_frame_conversion_hexch_cid_add_to_name (
+	unsigned char* name,
+	unsigned int name_len,
+	unsigned char* cid,
+	unsigned int cid_len,
+	unsigned char* new_name,
+	unsigned int* new_name_len
+);
+/*--------------------------------------------------------------------------------------
+	Get name without attributes
+----------------------------------------------------------------------------------------*/
+int
+cef_frame_get_name_wo_attr (
+	unsigned char* org_name,
+	unsigned int org_name_len,
+	unsigned char* new_name,					/* name without attributes				*/
+	unsigned int* name_wo_attr_len				/* name length without attributes		*/
+);
+/*--------------------------------------------------------------------------------------
 	Convert name to string
 ----------------------------------------------------------------------------------------*/
 int
@@ -885,6 +977,14 @@ cef_frame_conversion_name_to_string (
 	unsigned int name_len,
 	char* uri, 
 	char* protocol
+);
+/*--------------------------------------------------------------------------------------
+	Get total length of T_NAMESEGMENT part
+----------------------------------------------------------------------------------------*/
+unsigned int
+cef_frame_get_len_total_namesegments (
+	unsigned char* name,
+	unsigned int name_len
 );
 /*--------------------------------------------------------------------------------------
 	Parses a payload form the specified message
@@ -898,5 +998,22 @@ cef_frame_payload_parse (
 	uint16_t* payload_offset, 
 	uint16_t* payload_len
 );
+
+
+/*--------------------------------------------------------------------------------------
+	Sets use OPT_SEQNUM flag
+----------------------------------------------------------------------------------------*/
+void
+cef_frame_opt_seqnum_flag_set (
+	uint16_t use_f		 							/* 0: NotUse, other: Use			*/
+);
+/*--------------------------------------------------------------------------------------
+	Gets use OPT_SEQNUM flag
+----------------------------------------------------------------------------------------*/
+uint16_t
+cef_frame_opt_seqnum_flag_get (
+	void
+);
+
 
 #endif // __CEF_FRAME_HEADER__

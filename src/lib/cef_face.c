@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -47,6 +47,7 @@
 #include <cefore/cef_frame.h>
 #include <cefore/cef_log.h>
 #include <cefore/cef_client.h>
+
 
 /****************************************************************************************
  Macros
@@ -139,19 +140,6 @@ cef_face_lookup_faceid (
 	char* port_str, 
 	int* create_f
 );
-/*--------------------------------------------------------------------------------------
-	Set the informations and payload for the applications
-----------------------------------------------------------------------------------------*/
-static int
-cef_face_app_sdu_create (
-	struct cef_app_frame* app_frame, 
-	unsigned char* name, 
-	uint16_t name_len, 
-	unsigned char* payload, 
-	uint16_t payload_len, 
-	uint32_t chnk_num
-);
-
 #ifdef CefC_DebugOld
 /****************************************************************************************
  For Debug Trace
@@ -289,6 +277,17 @@ cef_face_search_faceid (
 				sock_tbl, (const unsigned char*) peer_id, strlen (peer_id));
 	if (entry) {
 		return (entry->faceid);
+	}
+	if (prot_index == CefC_Face_Type_Tcp) {
+		char dest_usr_id[512];
+		sprintf(dest_usr_id, "%s:1", usr_id);
+		entry = (CefT_Sock*) cef_hash_tbl_item_get (
+				sock_tbl, (const unsigned char*) dest_usr_id, strlen (dest_usr_id));
+		if (entry)  {
+			if (face_tbl[entry->faceid].fd > 0) {
+				return (entry->faceid);
+			}
+		}
 	}
 	
 	return (-1);
@@ -461,6 +460,29 @@ cef_face_close (
 
 	return (1);
 }
+/*--------------------------------------------------------------------------------------
+	Closes the specified Face for down
+----------------------------------------------------------------------------------------*/
+int											/* Returns a negative value if it fails 	*/
+cef_face_close_for_down (
+	int faceid								/* Face-ID									*/
+) {
+	CefT_Sock* entry;
+	
+	entry = (CefT_Sock*) cef_hash_tbl_item_get_from_index (
+										sock_tbl, face_tbl[faceid].index);
+	
+	if (entry) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finer, 
+			"[face] Close the Face#%d (only FD#%d)\n", faceid, face_tbl[entry->faceid].fd);
+#endif // CefC_Debug
+		close (entry->sock);
+	}
+
+	return (1);
+}
+
 /*--------------------------------------------------------------------------------------
 	Half-closes the specified Face
 ----------------------------------------------------------------------------------------*/
@@ -944,6 +966,8 @@ cef_face_accept_connect (
 	char ip_str[256];
 	char port_str[256];
 	char peer_str[256];
+	char src_peer_str[256];
+
 #ifdef CefC_Neighbour
 	int msg_len;
 	unsigned char buff[CefC_Max_Length];
@@ -979,7 +1003,46 @@ cef_face_accept_connect (
 							sock_tbl, (const unsigned char*) peer_str, strlen (peer_str));
 	
 	if (entry) {
-		cef_face_close (entry->faceid);
+		if (face_tbl[entry->faceid].fd != 0) {	/* faceid of entry is not down */
+			close (entry->sock);
+		}
+		/* remove src entry */
+		cef_hash_tbl_item_remove_from_index (
+						sock_tbl, face_tbl[entry->faceid].index);
+		entry->ai_addr = (struct sockaddr*) sa;
+		entry->ai_addrlen = len;
+		entry->sock = cs;
+		entry->ai_family = sa->ss_family;
+		/* add dest entry */
+		index = cef_hash_tbl_item_set (
+			sock_tbl, (const unsigned char*) peer_str, strlen (peer_str), entry);
+		face_tbl[entry->faceid].index = index;
+		face_tbl[entry->faceid].fd = entry->sock;
+		face_tbl[entry->faceid].protocol = CefC_Face_Type_Tcp;
+		return (entry->faceid);
+	 }
+	else {
+		sprintf (src_peer_str, "%s:%s:%d", ip_str, port_str, CefC_Face_Type_Tcp);
+		entry = (CefT_Sock*) cef_hash_tbl_item_get (
+							sock_tbl, (const unsigned char*) src_peer_str, strlen (src_peer_str));
+		if (entry) {
+			if (face_tbl[entry->faceid].fd == 0) {	/* faceid of entry is down */
+				/* remove src entry */
+				cef_hash_tbl_item_remove_from_index (
+								sock_tbl, face_tbl[entry->faceid].index);
+				entry->ai_addr = (struct sockaddr*) sa;
+				entry->ai_addrlen = len;
+				entry->sock = cs;
+				entry->ai_family = sa->ss_family;
+				/* add dest entry */
+				index = cef_hash_tbl_item_set (
+					sock_tbl, (const unsigned char*) peer_str, strlen (peer_str), entry);
+				face_tbl[entry->faceid].index = index;
+				face_tbl[entry->faceid].fd = entry->sock;
+				face_tbl[entry->faceid].protocol = CefC_Face_Type_Tcp;
+				return (entry->faceid);
+			}
+		}
 	}
 	faceid = cef_face_unused_faceid_search ();
 	if (faceid < 0) {
@@ -1099,6 +1162,7 @@ cef_face_local_face_create (
 		entry);
 	face_tbl[CefC_Faceid_Local].index 	= index;
 	face_tbl[CefC_Faceid_Local].fd 		= entry->sock;
+	face_tbl[CefC_Faceid_Local].local_f	= 1;
 
 	return (CefC_Faceid_Local);
 }
@@ -1256,7 +1320,6 @@ cef_face_object_send (
 	CefT_Parsed_Message* pm 				/* Parsed message 							*/
 ) {
 	CefT_Sock* entry;
-	struct cef_app_frame app_frame;
 	int res;
 	
 	if (face_tbl[faceid].fd < 3) {
@@ -1269,15 +1332,7 @@ cef_face_object_send (
 	}
 	
 	if (face_tbl[faceid].local_f) {
-		res = cef_face_app_sdu_create (&app_frame, 
-				pm->name, pm->name_len, pm->payload, pm->payload_len, pm->chnk_num);
-		
-		if (res > 0) {
-			uint32_t magic_no = CefC_App_Magic_No;
-			memcpy((void *)&app_frame.data_entity[app_frame.name_len+app_frame.payload_len]
-				, (const void *)&magic_no, sizeof(magic_no));
-			send (entry->sock, &app_frame, app_frame.actual_data_len, 0);
-		}
+		send (entry->sock, msg, msg_len, 0);
 	} else {
 		if (face_tbl[faceid].protocol != CefC_Face_Type_Tcp) {
 			sendto (entry->sock, msg, msg_len
@@ -1298,14 +1353,10 @@ cef_face_object_send (
 int											/* Returns a negative value if it fails 	*/
 cef_face_object_send_iflocal (
 	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
-	unsigned char* 	name, 
-	uint16_t 		name_len, 
-	unsigned char* 	payload, 				/* a message to send						*/
-	size_t			payload_len,			/* length of the message to send 			*/
-	uint32_t		chnk_num				/* Chunk Number 							*/
+	unsigned char* 	msg, 					/* a message to send						*/
+	size_t			msg_len					/* length of the message to send 			*/
 ) {
 	CefT_Sock* entry;
-	struct cef_app_frame app_frame;
 	int res;
 	
 	if (face_tbl[faceid].fd < 3) {
@@ -1319,49 +1370,13 @@ cef_face_object_send_iflocal (
 	}
 	
 	if (face_tbl[faceid].local_f) {
-		res = cef_face_app_sdu_create (&app_frame, 
-				name, name_len, payload, payload_len, chnk_num);
-		
-		if (res > 0) {
-			uint32_t magic_no = CefC_App_Magic_No;
-			memcpy((void *)&app_frame.data_entity[app_frame.name_len+app_frame.payload_len]
-				, (const void *)&magic_no, sizeof(magic_no));
-			send (entry->sock, &app_frame, app_frame.actual_data_len, 0);
-		}
+		send (entry->sock, msg, msg_len, 0);
+		res = 1;
 	} else {
 		res = 0;
 	}
 	
 	return (res);
-}
-/*--------------------------------------------------------------------------------------
-	Set the informations and payload for the applications
-----------------------------------------------------------------------------------------*/
-static int
-cef_face_app_sdu_create (
-	struct cef_app_frame* app_frame, 
-	unsigned char* name, 
-	uint16_t name_len, 
-	unsigned char* payload, 
-	uint16_t payload_len, 
-	uint32_t chnk_num
-) {
-	if (!app_frame) {
-		return (-1);
-	}
-	
-	app_frame->version 		= CefC_App_Version;
-	app_frame->type 		= CefC_App_Type_Internal;
-	app_frame->name_len 	= name_len;
-	app_frame->payload_len 	= payload_len;
-	app_frame->chunk_num 	= chnk_num;
-	
-    memcpy (&(app_frame->data_entity[0]), name, name_len);
-	memcpy (&(app_frame->data_entity[name_len]), payload, payload_len);
-	app_frame->actual_data_len = sizeof(struct cef_app_frame)
-	                             - sizeof(app_frame->data_entity)
-	                             + name_len + payload_len + sizeof(CefC_App_Magic_No);
-	return (1);
 }
 /*--------------------------------------------------------------------------------------
 	Checks whether the specified Face is local or not
@@ -1680,6 +1695,18 @@ cef_face_lookup_faceid (
 	if (entry) {
 		if (face_tbl[entry->faceid].fd > 0) {
 			return (entry->faceid);
+		}
+	}
+	/* tcp dest check */
+	if (protocol == CefC_Face_Type_Tcp && entry == NULL) {
+		char peer_id[512];
+		sprintf(peer_id, "%s:%d", usr_id, CefC_Face_Type_Tcp);
+		entry = (CefT_Sock*) cef_hash_tbl_item_get (
+				sock_tbl, (const unsigned char*) peer_id, strlen (peer_id));
+		if (entry)  {
+			if (face_tbl[entry->faceid].fd > 0) {
+				return (entry->faceid);
+			}
 		}
 	}
 	

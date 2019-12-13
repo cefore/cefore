@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016, National Institute of Information and Communications
+# Copyright (c) 2016-2019, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -41,20 +41,6 @@ csmgrstatus_SOURCES=csmgrstatus.c
 # check debug build
 if CEFDBG_ENABLE
 csmgrstatus_CFLAGS+=-DCefC_Debug
-endif # CEFDBG_ENABLE
-
-bin_PROGRAMS+=csmgrecho
-csmgrecho_LDFLAGS=-L$(top_srcdir)/src/lib/
-if LINUX
-csmgrecho_LDFLAGS+=-pthread -lpthread
-endif # LINUX
-csmgrecho_LDADD=-lcefore -lssl -lcrypto
-csmgrecho_CFLAGS=$(AM_CFLAGS)
-csmgrecho_SOURCES=csmgrecho.c
-
-# check debug build
-if CEFDBG_ENABLE
-csmgrecho_CFLAGS+=-DCefC_Debug
 endif # CEFDBG_ENABLE
 
 DESTDIR=$(CEFORE_DIR_PATH)

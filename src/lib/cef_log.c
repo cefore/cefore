@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -77,6 +77,13 @@ static int 	dbg_lv = CefC_Dbg_None;
  Static Function Declaration
  ****************************************************************************************/
 
+static int
+cef_log_trim_line_string (
+	const char* p1, 							/* target string for trimming 			*/
+	char* p2,									/* name string after trimming			*/
+	char* p3									/* value string after trimming			*/
+);
+
 #ifdef CefC_Debug
 static int
 cef_dbg_trim_line_string (
@@ -91,24 +98,85 @@ cef_dbg_trim_line_string (
 
 void
 cef_log_init (
-	const char* proc_name
+	const char*	proc_name,
+	int			level
 ) {
-	char* wp;
-	
+
 	assert (proc_name != NULL);
 	
 	strcpy (log_porc, proc_name);
-	wp = getenv ("CEF_LOG");
-	if (wp == NULL) {
-		log_lv = -1;
+	log_lv = level;	
+}
+void
+cef_log_init2 (
+	const char* config_file_dir, 
+	int cefnetd_f
+) {
+	char* 	wp;
+	char 	file_path[PATH_MAX];
+	FILE* 	fp;
+	char	buff[1024];
+	char 	ws[1024];
+	char 	pname[1024];
+	int 	res;
+
+	/* Update the log level information 	*/
+	if (config_file_dir[0] != 0x00) {
+		if (cefnetd_f==1) {
+			sprintf (file_path, "%s/cefnetd.conf", config_file_dir);
+		} else if (cefnetd_f==2) {
+			sprintf (file_path, "%s/conpubd.conf", config_file_dir);
+		} else {
+			sprintf (file_path, "%s/csmgrd.conf", config_file_dir);
+		}
+		
+	} else {
+		wp = getenv (CefC_CEFORE_DIR);
+		if (wp != NULL && wp[0] != 0) {
+			if (cefnetd_f==1) {
+				sprintf (file_path, "%s/cefore/cefnetd.conf", wp);
+			} else if (cefnetd_f==2) {
+				sprintf (file_path, "%s/cefore/conpubd.conf", wp);
+			} else {
+				sprintf (file_path, "%s/cefore/csmgrd.conf", wp);
+			}
+		} else {
+			if (cefnetd_f==1) {
+				sprintf (file_path, "%s/cefnetd.conf", CefC_CEFORE_DIR_DEF);
+			} else if (cefnetd_f==2) {
+				sprintf (file_path, "%s/conpubd.conf", CefC_CEFORE_DIR_DEF);
+			} else {
+				sprintf (file_path, "%s/csmgrd.conf", CefC_CEFORE_DIR_DEF);
+			}
+		}
+	}
+
+	fp = fopen (file_path, "r");
+	if (fp == NULL) {
 		return;
 	}
-	log_lv = atoi (wp);
-	if (log_lv == 0) {
-		log_lv = CefC_Log_Critical;
-	} else {
-		log_lv = -1;
+
+	log_lv = 0;
+	/* Reads and records written values in the cefnetd's config file. */
+	while (fgets (buff, 1023, fp) != NULL) {
+		buff[1023] = 0;
+		
+		if (buff[0] == 0x23/* '#' */) {
+			continue;
+		}
+		res = cef_log_trim_line_string (buff, pname, ws);
+		if (res < 0) {
+			continue;
+		}
+		
+		if (strcmp (pname, "CEF_LOG_LEVEL") == 0) {
+			log_lv = atoi (ws);
+			if (!(0<=log_lv && log_lv <= 2)){
+				log_lv = 0;
+			}
+		}
 	}
+	fclose (fp);
 	
 }
 
@@ -119,6 +187,7 @@ cef_log_write (
 	...												/* parameters						*/
 ) {
 	va_list arg;
+	int		use_log_level;
 #ifndef CefC_Android
 	char 		time_str[64];
 	struct tm* 	timeptr;
@@ -126,10 +195,20 @@ cef_log_write (
 	struct timeval t;
 #endif // CefC_Android
 	
+	
 	assert (level <= CefC_Log_Critical);
 	assert (log_porc[0] != 0x00);
+
 	
-	if (level > log_lv) {
+    if (log_lv == 0) {
+		use_log_level = CefC_Log_Error;
+	} else if (log_lv == 1) {
+		use_log_level = CefC_Log_Warn;
+	} else {
+		use_log_level = -1;
+	}
+	
+	if (level >= use_log_level) {
 		va_start (arg, fmt);
 #ifdef CefC_Android
 		__android_log_vprint(
@@ -168,24 +247,31 @@ cef_dbg_init (
 	assert (proc_name != NULL);
 	strcpy (dbg_proc, proc_name);
 	
-	/* Records the debug level 			*/
+	/* Records the debug level information 			*/
 	if (config_file_dir[0] != 0x00) {
-		if (cefnetd_f) {
+		if (cefnetd_f==1) {
 			sprintf (file_path, "%s/cefnetd.conf", config_file_dir);
+		} else if (cefnetd_f==2) {
+			sprintf (file_path, "%s/conpubd.conf", config_file_dir);
 		} else {
 			sprintf (file_path, "%s/csmgrd.conf", config_file_dir);
 		}
+		
 	} else {
 		wp = getenv (CefC_CEFORE_DIR);
 		if (wp != NULL && wp[0] != 0) {
-			if (cefnetd_f) {
+			if (cefnetd_f==1) {
 				sprintf (file_path, "%s/cefore/cefnetd.conf", wp);
+			} else if (cefnetd_f==2) {
+				sprintf (file_path, "%s/cefore/conpubd.conf", wp);
 			} else {
 				sprintf (file_path, "%s/cefore/csmgrd.conf", wp);
 			}
 		} else {
-			if (cefnetd_f) {
+			if (cefnetd_f==1) {
 				sprintf (file_path, "%s/cefnetd.conf", CefC_CEFORE_DIR_DEF);
+			} else if (cefnetd_f==2) {
+				sprintf (file_path, "%s/conpubd.conf", CefC_CEFORE_DIR_DEF);
 			} else {
 				sprintf (file_path, "%s/csmgrd.conf", CefC_CEFORE_DIR_DEF);
 			}
@@ -209,7 +295,7 @@ cef_dbg_init (
 			continue;
 		}
 		
-		if (strcmp (pname, "LOG_LEVEL") == 0) {
+		if (strcmp (pname, "CEF_DEBUG_LEVEL") == 0) {
 			dbg_lv = atoi (ws);
 		}
 	}
@@ -339,5 +425,53 @@ cef_dbg_trim_line_string (
 
 	return (equal_f);
 }
-
 #endif // CefC_Debug
+static int
+cef_log_trim_line_string (
+	const char* p1, 							/* target string for trimming 			*/
+	char* p2,									/* name string after trimming			*/
+	char* p3									/* value string after trimming			*/
+) {
+	char ws[1024];
+	char* wp = ws;
+	char* rp = p2;
+	int equal_f = -1;
+
+	while (*p1) {
+		if ((*p1 == 0x0D) || (*p1 == 0x0A)) {
+			break;
+		}
+
+		if ((*p1 == 0x20) || (*p1 == 0x09)) {
+			p1++;
+			continue;
+		} else {
+			*wp = *p1;
+		}
+
+		p1++;
+		wp++;
+	}
+	*wp = 0x00;
+	wp = ws;
+
+	while (*wp) {
+		if (*wp == 0x3d /* '=' */) {
+			if (equal_f > 0) {
+				return (-1);
+			}
+			equal_f = 1;
+			*rp = 0x00;
+			rp = p3;
+		} else {
+			*rp = *wp;
+			rp++;
+		}
+		wp++;
+	}
+	*rp = 0x00;
+
+	return (equal_f);
+}
+
+

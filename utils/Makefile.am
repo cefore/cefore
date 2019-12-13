@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016, National Institute of Information and Communications
+# Copyright (c) 2016-2019, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -39,6 +39,7 @@ EXTRA_DIST+=csmgrdstart.sh csmgrdstop.sh
 SCRIPTSRC+=csmgrdstart.sh csmgrdstop.sh
 CEF_UTIL+=csmgrdstart csmgrdstop
 endif # CSMGR_ENABLE
+
 
 
 default all: $(CEF_UTIL)

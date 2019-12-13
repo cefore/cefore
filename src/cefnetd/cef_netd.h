@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -95,6 +95,8 @@
 #define CefC_Ctrl_Kill_Len			strlen(CefC_Ctrl_Kill)
 #define CefC_Ctrl_Status			"STATUS"
 #define CefC_Ctrl_Status_Len		strlen(CefC_Ctrl_Status)
+#define CefC_Ctrl_StatusPit			"STATUSPIT"
+#define CefC_Ctrl_StatusPit_Len		strlen(CefC_Ctrl_StatusPit)
 #define CefC_Ctrl_Route				"ROUTE"
 #define CefC_Ctrl_Route_Len			strlen(CefC_Ctrl_Route)
 #define CefC_Ctrl_Babel				"BABEL"
@@ -192,12 +194,13 @@ typedef struct {
 	/********** Parameters 			***********/
 	uint16_t 			port_num;				/* Port Number							*/
 	uint16_t 			fib_max_size;			/* Maximum FIB entry 					*/
-	uint16_t 			pit_max_size;			/* Maximum PIT entry 					*/
+	uint32_t 			pit_max_size;			/* Maximum PIT entry 					*/
 	int		 			sk_type;				/* Type of socket 						*/
 	uint16_t 			nbr_max_size;
 	uint64_t 			nbr_mng_intv;
 	uint16_t 			nbr_mng_thread;
 	uint16_t 			fwd_rate;
+	uint8_t 			cs_mode;
 	
 	/********** Tables				***********/
 	CefT_Hash_Handle	fib;					/* FIB 									*/
@@ -225,10 +228,11 @@ typedef struct {
 
 	/********** Content Store		***********/
 	CefT_Cs_Stat*		cs_stat;				/* Status of Content Store				*/
-#if (defined CefC_ContentStore) || (defined CefC_Dtc)
+#if (defined CefC_ContentStore) || (defined CefC_Dtc) \
+	|| (defined CefC_Conpub) || (defined CefC_CefnetdCache)
 	double				send_rate;				/* send content rate					*/
 	uint64_t			send_next;				/* Send content next					*/
-#endif // CefC_ContentStore
+#endif // CefC_ContentStore || CefC_Conpub
 	
 	/********** Neighbor Management ***********/
 	CefT_Uris* 			uris;				/* URIs are specified in neighbor list 		*/
@@ -244,6 +248,7 @@ typedef struct {
 	
 	/********** App Resister 		***********/
 	CefT_Hash_Handle	app_reg;				/* App Resister table					*/
+	CefT_Hash_Handle	app_pit;				/* App Resister PIT						*/
 	
 	/********** Plugin 				***********/
 	CefT_Plugin_Handle 	plugin_hdl;

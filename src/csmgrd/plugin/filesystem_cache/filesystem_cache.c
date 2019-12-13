@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -243,6 +243,15 @@ fsc_content_lifetime_set (
 	uint16_t name_len,							/* content name length					*/
 	uint64_t lifetime							/* Content Lifetime						*/
 );
+/*--------------------------------------------------------------------------------------
+	Delete content entry
+----------------------------------------------------------------------------------------*/
+static int							/* The return value is negative if an error occurs	*/
+fsc_cache_del (
+	unsigned char* name,						/* Content name							*/
+	uint16_t name_len,							/* Content name length					*/
+	uint32_t chunk_num							/* ChunkNumber							*/
+);
 #endif // CefC_Ccore
 /*--------------------------------------------------------------------------------------
 	Upload content byte steream
@@ -267,6 +276,7 @@ csmgrd_filesystem_plugin_load (
 #ifdef CefC_Ccore
 	cs_in->cache_cap_set 		= fsc_cache_change_cap;
 	cs_in->content_lifetime_set = fsc_content_lifetime_set;
+	cs_in->content_cache_del	= fsc_cache_del;
 #endif // CefC_Ccore
 	
 	if (config_dir) {
@@ -293,7 +303,8 @@ fsc_cs_create (
 	}
 	
 	/* Init logging 	*/
-	csmgrd_log_init ("filesystem");
+	csmgrd_log_init ("filesystem", 1);
+	csmgrd_log_init2 (csmgr_conf_dir);
 #ifdef CefC_Debug
 	csmgrd_dbg_init ("filesystem", csmgr_conf_dir);
 #endif // CefC_Debug
@@ -451,6 +462,8 @@ fsc_cob_process_thread (
 	
 	while (fsc_rcv_thread_f) {
 		sem_wait (fsc_comn_buff_sem);
+		if (!fsc_rcv_thread_f)
+			break;
 		for (i = 0 ; i < FscC_Max_Buff ; i++) {
 			pthread_mutex_lock (&fsc_comn_buff_mutex[i]);
 			
@@ -1086,11 +1099,11 @@ fsc_cs_destroy (
 	void* status;
 	
 	pthread_mutex_destroy (&fsc_cs_mutex);
-	sem_post(fsc_comn_buff_sem);	/* To avoid deadlock */
 	
 	/* Destory the threads 		*/
 	if (fsc_rcv_thread_f) {
 		fsc_rcv_thread_f = 0;
+		sem_post(fsc_comn_buff_sem);	/* To avoid deadlock */
 		pthread_join (fsc_rcv_thread, &status);
 	}
 	sem_close (fsc_comn_buff_sem);
@@ -1518,6 +1531,52 @@ fsc_content_lifetime_set (
 	/* Updtes the content information */
 	csmgrd_stat_content_lifetime_update (csmgr_stat_hdl, name, name_len, new_life);
 	
+	return (0);
+}
+/*--------------------------------------------------------------------------------------
+	Delete content entry
+----------------------------------------------------------------------------------------*/
+static int							/* The return value is negative if an error occurs	*/
+fsc_cache_del (
+	unsigned char* name,						/* Content name							*/
+	uint16_t name_len,							/* Content name length					*/
+	uint32_t chunk_num							/* ChunkNumber							*/
+) {
+	CsmgrT_Stat*	rcd = NULL;
+	unsigned char 	trg_key[CsmgrdC_Key_Max];
+	int 			trg_key_len;
+	uint32_t		i, n;
+	uint64_t 		mask = 0x0000000000000001;;
+	
+	pthread_mutex_lock (&fsc_cs_mutex);
+	
+	trg_key_len = csmgrd_name_chunknum_concatenate (
+						name, name_len, chunk_num, trg_key);
+	/* Obtain the information of the specified content 		*/
+	rcd = csmgrd_stat_content_info_get (csmgr_stat_hdl, name, name_len);
+	
+	if (!rcd) {
+		pthread_mutex_unlock (&fsc_cs_mutex);
+		return (-1);
+	}
+	
+	/* Removes the cache  		*/
+	i = chunk_num / 64;
+	n = chunk_num % 64;
+	if (hdl->algo_apis.erase) {
+		if (rcd->cob_map[i]) {
+			mask <<= n;
+			if (rcd->cob_map[i] & mask) {
+				(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
+				csmgrd_stat_cob_remove (
+					csmgr_stat_hdl, rcd->name, name_len, chunk_num, 0);
+				hdl->cache_cobs--;
+			}
+		}
+	}
+
+	pthread_mutex_unlock (&fsc_cs_mutex);
+
 	return (0);
 }
 #endif // CefC_Ccore

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -471,6 +471,9 @@ cef_fib_config_file_read (
 		}
 		
 		if (buff[0] == 0x23/* '#' */) {
+			continue;
+		}
+		if (isspace(buff[0])) {
 			continue;
 		}
 		

@@ -27,102 +27,163 @@
  * SUCH DAMAGE.
  */
 /*
- * lru.h
+ * cef_mem_cache.h
  */
+
+#ifndef __CEF_MEM_CACHE_HEADER__
+#define __CEF_MEM_CACHE_HEADER__
 
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
-
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <errno.h>
+#include <signal.h>
+#include <poll.h>
+#include <limits.h>
 
-#include <csmgrd/csmgrd_plugin.h>
+#ifndef CefC_Android
+#include <ifaddrs.h>
+#else // CefC_Android
+#include <cefore/cef_android.h>
+#endif // CefC_Android
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <net/if.h>
 
+#include <cefore/cef_define.h>
+#include <cefore/cef_fib.h>
+#include <cefore/cef_pit.h>
+#include <cefore/cef_face.h>
+#include <cefore/cef_frame.h>
+#include <cefore/cef_hash.h>
+#include <cefore/cef_client.h>
+#include <cefore/cef_print.h>
+#include <cefore/cef_csmgr.h>
+#include <cefore/cef_plugin.h>
+#include <cefore/cef_valid.h>
+#include <cefore/cef_log.h>
+#include <cefore/cef_csmgr_stat.h>
 
+#ifdef CefC_Ccore
+#include <ccore/ccore_common.h>
+#include <ccore/ccore_define.h>
+#include <ccore/ccore_frame.h>
+#include <ccore/ccore_valid.h>
+#endif // CefC_Ccore
+
+#ifdef CefC_Cefinfo
+#include <cefore/cef_cefinfo.h>
+#endif // CefC_Cefinfo
+#ifdef CefC_Ser_Log
+#include <cefore/cef_ser_log.h>
+#endif // CefC_Ser_Log
 
 /****************************************************************************************
  Macros
  ****************************************************************************************/
 
+#define CefMemCacheC_Key_Max 				1024
+
+/****************************************************************************************
+ Structure Declarations
+ ****************************************************************************************/
+
+typedef struct {
+
+	/********** Receive Content Object		***********/
+	unsigned char	msg[CefC_Max_Msg_Size];		/* Message								*/
+	uint16_t		msg_len;					/* Message length						*/
+	unsigned char	name[CefC_Max_Msg_Size];	/* Content name							*/
+	uint16_t		name_len;					/* Content name length					*/
+	uint16_t		pay_len;					/* Payload length						*/
+	uint32_t		chnk_num;					/* Chunk num							*/
+	uint64_t		cache_time;					/* Cache time							*/
+	uint64_t		expiry;						/* Expiry								*/
+	struct in_addr	node;						/* Node address							*/
+
+} CefMemCacheT_Content_Entry;
+
+typedef struct {
+
+	/********** Content Object in mem cache		***********/
+	unsigned char	*msg;						/* Message								*/
+	uint16_t		msg_len;					/* Message length						*/
+	unsigned char	*name;						/* Content name							*/
+	uint16_t		name_len;					/* Content name length					*/
+	uint16_t		pay_len;					/* Payload length						*/
+	uint32_t		chnk_num;					/* Chunk num							*/
+	uint64_t		cache_time;					/* Cache time							*/
+	uint64_t		expiry;						/* Expiry								*/
+	struct in_addr	node;						/* Node address							*/
+
+} CefMemCacheT_Content_Mem_Entry;
+
 
 
 /****************************************************************************************
- Structures Declaration
+ Global Variables
  ****************************************************************************************/
 
 
-
 /****************************************************************************************
- State Variables
- ****************************************************************************************/
-
-
-
-/****************************************************************************************
- Function Declaration
+ Function Declarations
  ****************************************************************************************/
 
 /*--------------------------------------------------------------------------------------
-	Init API
+	Intialize local cache environment
 ----------------------------------------------------------------------------------------*/
-int 							/* If the error occurs, this value is a negative value	*/
-init (
-	int capacity, 							/* Maximum number of entries that can be 	*/
-											/* listed (it is the same value as the 		*/
-											/* maximum value of the cache table) 		*/
-	int (*store)(CsmgrdT_Content_Entry*), 	/* store a content entry API 				*/
-	void (*remove)(unsigned char*, int)		/* remove a content entry API 				*/
+int
+cef_mem_cache_init(
+		uint32_t		capacity
 );
 /*--------------------------------------------------------------------------------------
-	Destroy API
+	A thread that puts a content object in the local cache
 ----------------------------------------------------------------------------------------*/
-void 
-destroy (
+void *
+cef_mem_cache_put_thread (
+	void *p
+);
+/*--------------------------------------------------------------------------------------
+	Thread to clear expirly content object of local cache
+----------------------------------------------------------------------------------------*/
+void *
+cef_mem_cache_clear_thread (
+	void *p
+);
+/*--------------------------------------------------------------------------------------
+	set the cob to memry cache 
+----------------------------------------------------------------------------------------*/
+int
+cef_mem_cache_item_set (
+	CefMemCacheT_Content_Entry* entry
+);
+/*--------------------------------------------------------------------------------------
+	Function to read a ContentObject from Local Cache
+----------------------------------------------------------------------------------------*/
+CefMemCacheT_Content_Mem_Entry*
+cef_mem_cache_item_get (
+	unsigned char* trg_key,						/* content name							*/
+	uint16_t trg_key_len						/* content name Length					*/
+);
+/*--------------------------------------------------------------------------------------
+	Destroy local cache resources
+----------------------------------------------------------------------------------------*/
+void
+cef_mem_cache_destroy (
 	void
 );
 /*--------------------------------------------------------------------------------------
-	Insert API
+	Function to increment access count
 ----------------------------------------------------------------------------------------*/
-void 
-insert (
-	CsmgrdT_Content_Entry* entry			/* content entry 							*/
+void
+cef_mem_cache_cs_ac_cnt_inc (
+	unsigned char* key,							/* content name							*/
+	uint16_t key_size,							/* content name Length					*/
+	uint32_t seq_num							/* sequence number						*/
 );
 
-/*--------------------------------------------------------------------------------------
-	Rrase API
-----------------------------------------------------------------------------------------*/
-void 
-erase (
-	unsigned char* key, 					/* key of content entry removed from cache 	*/
-											/* table									*/
-	int key_len								/* length of the key 						*/
-);
-
-/*--------------------------------------------------------------------------------------
-	Hit API
-----------------------------------------------------------------------------------------*/
-void 
-hit (
-	unsigned char* key, 					/* key of the content entry hits in the 	*/
-											/* cache table 								*/
-	int key_len								/* length of the key 						*/
-);
-
-/*--------------------------------------------------------------------------------------
-	Miss API
-----------------------------------------------------------------------------------------*/
-void 
-miss (
-	unsigned char* key, 					/* key of the content entry fails to hit 	*/
-											/* in the cache table						*/
-	int key_len								/* length of the key 						*/
-);
-
-/*--------------------------------------------------------------------------------------
-	Status API
-----------------------------------------------------------------------------------------*/
-void 
-status (
-	void* arg								/* state information						*/
-);
+#endif // __CEF_MEM_CACHE_HEADER__

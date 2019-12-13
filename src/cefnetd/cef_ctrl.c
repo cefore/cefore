@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -62,6 +62,11 @@
 #ifdef CefC_Ser_Log
 #define CefC_Arg_Ser_Log			"serlog"
 #endif // CefC_Ser_Log
+#ifndef CefC_Nwproc
+#define CefC_StatusRspWait			200000		/* msec */
+#else // CefC_Nwproc
+#define CefC_StatusRspWait			2000000
+#endif // CefC_Nwproc
 
 /****************************************************************************************
  Structures Declaration
@@ -98,7 +103,7 @@ int main (
 	int i;
 	int dir_path_f 		= 0;
 	int port_num_f 		= 0;
-	
+	int pit_f			= 0;
 	char*	work_arg;
 	char 	file_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
@@ -108,7 +113,7 @@ int main (
 	char launched_user_name[CefC_Ctrl_User_Len];
 	
 	/* Inits logging 		*/
-	cef_log_init ("cefctrl");
+	cef_log_init ("cefctrl", 1);
 	
 	if (argc < 2) {
 		cef_log_write (CefC_Log_Error, "Parameters are not specified.\n");
@@ -135,6 +140,14 @@ int main (
 			strcpy (file_path, argv[i + 1]);
 			dir_path_f++;
 			i++;
+		} else if (strcmp (work_arg, "--pit") == 0) {
+			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
+				pit_f++;
+				i++;
+			} else {
+				cef_log_write (CefC_Log_Error, "[--pit] has no parameter.\n");
+				exit (1);
+			}
 		} else if (strcmp (work_arg, "-p") == 0) {
 			if (i + 1 == argc) {
 				cef_log_write (CefC_Log_Error, "[-p] has no parameter.\n");
@@ -164,6 +177,7 @@ int main (
 		cef_log_write (CefC_Log_Error, "[-p] is specified more than once\n");
 		exit (1);
 	}
+	cef_log_init2 (file_path, 1 /* for CEFNETD */);
 #ifdef CefC_Debug
 	cef_dbg_init ("cefctrl", file_path, 1);
 	cef_dbg_write (CefC_Dbg_Fine, "operation is %s\n", argv[1]);
@@ -197,6 +211,12 @@ int main (
 						launched_user_name, CefC_Ctrl_User_Len);
 		cef_client_message_input (fhdl, buff, 
 			CefC_Ctrl_Len + CefC_Ctrl_Kill_Len + CefC_Ctrl_User_Len);
+	} else if (pit_f && strcmp (argv[1], CefC_Arg_Status) == 0) {
+		sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_StatusPit);
+		memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_StatusPit_Len], 
+						launched_user_name, CefC_Ctrl_User_Len);
+		cef_client_message_input (fhdl, buff, 
+			CefC_Ctrl_Len + CefC_Ctrl_StatusPit_Len + CefC_Ctrl_User_Len);
 	} else if (strcmp (argv[1], CefC_Arg_Status) == 0) {
 		sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_Status);
 		memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_Status_Len], 
@@ -204,7 +224,8 @@ int main (
 		cef_client_message_input (fhdl, buff, 
 			CefC_Ctrl_Len + CefC_Ctrl_Status_Len + CefC_Ctrl_User_Len);
 		
-		usleep (200000);
+		usleep (CefC_StatusRspWait);
+		
 		while (1) {
 			res = cef_client_read (fhdl, rsp_msg, CefC_Max_Length);
 			if (res > 0) {

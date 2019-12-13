@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -78,8 +78,11 @@
 #define MemC_Max_KLen 				1024
 #define MemC_Max_Buff 				32
 #define MemC_Min_Buff				4
+#define MemC_CID_HexCh_size			(MD5_DIGEST_LENGTH * 2)		/* Size to store binary CID converted to hex character */
+#define MemC_CID_KLen				(CefC_S_TLF+CefC_NWP_CID_Prefix_Len+MemC_CID_HexCh_size)
 
-#define MEM_TABLE_MAX 				4
+//#define MEM_TABLE_MAX 				4
+#define MEM_TABLE_MAX 				1
 
 #define MEM_SEMNAME					"/cefmemsem"
 
@@ -104,8 +107,12 @@ typedef struct {
 typedef struct CefT_Mem_Hash_Cell {
 	
 	uint32_t 					hash;
-	unsigned char 				key[MemC_Max_KLen];
+	unsigned char* 				key;
 	uint32_t 					klen;
+#ifdef CefC_Nwproc
+	unsigned char 				cid_key[MemC_CID_KLen];
+	uint32_t 					cid_klen;
+#endif // CefC_Nwproc
 	CsmgrdT_Content_Mem_Entry* 	elem;
 	struct CefT_Mem_Hash_Cell	*next;
 } CefT_Mem_Hash_Cell;
@@ -242,6 +249,15 @@ mem_cache_set_lifetime (
 	uint16_t name_len,							/* Content name length					*/
 	uint64_t lifetime							/* Content Lifetime						*/
 );
+/*--------------------------------------------------------------------------------------
+	Delete content entry
+----------------------------------------------------------------------------------------*/
+static int							/* The return value is negative if an error occurs	*/
+mem_cache_del (
+	unsigned char* name,						/* Content name							*/
+	uint16_t name_len,							/* Content name length					*/
+	uint32_t chunk_num							/* ChunkNumber							*/
+);
 #endif // CefC_Ccore
 
 /*--------------------------------------------------------------------------------------
@@ -268,6 +284,14 @@ cef_mem_hash_tbl_item_get (
 	const unsigned char* key,
 	uint32_t klen
 );
+#ifdef CefC_Nwproc
+static CsmgrdT_Content_Mem_Entry** 
+cef_mem_hash_tbl_item_gets (
+	const unsigned char* key,
+	uint32_t klen,
+	int* entry_num
+);
+#endif // CefC_Nwproc
 static CsmgrdT_Content_Mem_Entry* 
 cef_mem_hash_tbl_item_remove (
 	const unsigned char* key,
@@ -280,7 +304,6 @@ csmgrd_key_create_by_Mem_Entry (
 	CsmgrdT_Content_Mem_Entry* entry,
 	unsigned char* key
 );
-
 
 /****************************************************************************************
  ****************************************************************************************/
@@ -300,6 +323,7 @@ csmgrd_memory_plugin_load (
 #ifdef CefC_Ccore
 	cs_in->cache_cap_set 		= mem_change_cap;
 	cs_in->content_lifetime_set = mem_cache_set_lifetime;
+	cs_in->content_cache_del	= mem_cache_del;
 #endif // CefC_Ccore
 	
 	if (config_dir) {
@@ -317,6 +341,9 @@ mem_cs_create (
 ) {
 	MemT_Config_Param conf_param;
 	int res, i;
+#ifdef CefC_Nwproc
+	char algo_name_prefix[36] = {0};
+#endif
 	
 	/* create handle 		*/
 	if (hdl != NULL) {
@@ -325,7 +352,8 @@ mem_cs_create (
 	}
 
 	/* Init logging 	*/
-	csmgrd_log_init ("memcache");
+	csmgrd_log_init ("memcache", 1);
+	csmgrd_log_init2 (csmgr_conf_dir);
 #ifdef CefC_Debug
 	csmgrd_dbg_init ("memcache", csmgr_conf_dir);
 #endif // CefC_Debug
@@ -405,6 +433,17 @@ mem_cs_create (
 	} else {
 		csmgrd_log_write (CefC_Log_Info, "Library  : Not Specified\n");
 	}
+#ifdef CefC_Nwproc
+/* [Restriction]															*/
+/* For renovation in FY 2018, if NWProc is enabled, only FIFO is allowed.	*/
+	sprintf(algo_name_prefix, "libcsmgrd_fifo%s", CsmgrdC_Library_Name);
+	if (strcmp (hdl->algo_name, algo_name_prefix) != 0) {
+		csmgrd_log_write (CefC_Log_Error, 
+			"Library (Invalid value CACHE_ALGORITHM=%s)\n", hdl->algo_name);
+		return (-1);
+	}
+#endif // CefC_Nwproc
+
 	csmgr_stat_hdl = stat_hdl;
 	csmgrd_stat_cache_capacity_update (csmgr_stat_hdl, hdl->capacity);
 	
@@ -421,6 +460,8 @@ mem_cob_process_thread (
 	
 	while (mem_thread_f) {
 		sem_wait (mem_comn_buff_sem);
+		if (!mem_thread_f)
+			break;
 		for (i = 0 ; i < MemC_Max_Buff ; i++) {
 			if (pthread_mutex_trylock(&mem_comn_buff_mutex[i]) != 0) {
 				continue;
@@ -561,10 +602,10 @@ mem_cs_destroy (
 	void* status;
 
 	pthread_mutex_destroy (&mem_cs_mutex);
-	sem_post (mem_comn_buff_sem);	/* To avoid deadlock */
 	
 	if (mem_thread_f) {
 		mem_thread_f = 0;
+		sem_post (mem_comn_buff_sem);	/* To avoid deadlock */
 		pthread_join (mem_thread, &status);
 	}
 	sem_close (mem_comn_buff_sem);
@@ -682,14 +723,28 @@ mem_cache_item_get (
 	int 			trg_key_len;
 	uint64_t 		nowt;
 	struct timeval 	tv;
-	
+#ifdef CefC_Nwproc
+	int target_num = 0;
+	int i;
+#endif // CefC_Nwproc
+	CsmgrdT_Content_Mem_Entry** entry_p = NULL;
+	int exist_f = CefC_Csmgr_Cob_NotExist;
+
 	/* Creates the key 		*/
 	trg_key_len = csmgrd_name_chunknum_concatenate (key, key_size, seqno, trg_key);
 	
 	/* Access the specified entry 	*/
+#ifndef CefC_Nwproc
 	entry = cef_mem_hash_tbl_item_get (trg_key, trg_key_len);
 	
 	if (entry) {
+#else // CefC_Nwproc
+	entry_p = cef_mem_hash_tbl_item_gets (trg_key, trg_key_len, &target_num);
+	for (i = 0; i < target_num; i++) {
+		
+		entry = entry_p[i];
+		trg_key_len = csmgrd_name_chunknum_concatenate (entry->name, entry->name_len, seqno, trg_key);
+#endif // CefC_Nwproc
 		
 		gettimeofday (&tv, NULL);
 		nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
@@ -707,7 +762,7 @@ mem_cache_item_get (
 			
 			/* Send Cob to cefnetd */
 			csmgrd_plugin_cob_msg_send (sock, entry->msg, entry->msg_len);
-			return (CefC_Csmgr_Cob_Exist);
+			exist_f = CefC_Csmgr_Cob_Exist;
  		}
 		else {
 			pthread_mutex_lock (&mem_cs_mutex);
@@ -728,6 +783,10 @@ mem_cache_item_get (
 			pthread_mutex_unlock (&mem_cs_mutex);
 		}
 	}
+	
+	if (entry_p != NULL)
+		free (entry_p);
+	return (exist_f);
 	
 	if (hdl->algo_apis.miss) {
 		(*(hdl->algo_apis.miss))(trg_key, trg_key_len);
@@ -1131,6 +1190,46 @@ mem_cache_set_lifetime (
 	
 	return (0);
 }
+/*--------------------------------------------------------------------------------------
+	Delete content entry
+----------------------------------------------------------------------------------------*/
+static int							/* The return value is negative if an error occurs	*/
+mem_cache_del (
+	unsigned char* name,						/* Content name							*/
+	uint16_t name_len,							/* Content name length					*/
+	uint32_t chunk_num							/* ChunkNumber							*/
+) {
+	CsmgrdT_Content_Mem_Entry* entry = NULL;
+	unsigned char 	trg_key[CsmgrdC_Key_Max];
+	int 			trg_key_len;
+	
+	pthread_mutex_lock (&mem_cs_mutex);
+	/* Creates the key 				*/
+	trg_key_len = csmgrd_name_chunknum_concatenate (
+					name, name_len, chunk_num, trg_key);
+	
+	/* Removes the cache entry 		*/
+	entry = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
+	if (entry == NULL) {
+		pthread_mutex_unlock (&mem_cs_mutex);
+		return (0);
+	}
+	
+	if (hdl->algo_apis.erase) {
+		(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
+	}
+	
+	csmgrd_stat_cob_remove (
+		csmgr_stat_hdl, entry->name, entry->name_len, 
+		entry->chnk_num, entry->pay_len);
+	
+	free (entry->msg);
+	free (entry->name);
+	free (entry);
+	pthread_mutex_unlock (&mem_cs_mutex);
+
+	return (0);
+}
 #endif // CefC_Ccore
 
 /****************************************************************************************
@@ -1187,6 +1286,7 @@ cef_mem_hash_tbl_create (
 	return (ht);
 }
 
+#ifndef CefC_Nwproc
 static int 
 cef_mem_hash_tbl_item_set (
 	const unsigned char* key,
@@ -1206,10 +1306,11 @@ cef_mem_hash_tbl_item_set (
 	y = hash % ht->tabl_max;
 
 	if(ht->tbl[y] == NULL){
-		ht->tbl[y] = (CefT_Mem_Hash_Cell* )calloc(1, sizeof(CefT_Mem_Hash_Cell));
+		ht->tbl[y] = (CefT_Mem_Hash_Cell* )calloc(1, sizeof(CefT_Mem_Hash_Cell) + klen);
 		if (ht->tbl[y] == NULL) {
 			return (-1);
 		}
+		ht->tbl[y]->key = ((unsigned char*)ht->tbl[y]) + sizeof(CefT_Mem_Hash_Cell);
 		cp = ht->tbl[y];
 		cp->elem = elem;
 		cp->klen = klen;
@@ -1228,10 +1329,11 @@ cef_mem_hash_tbl_item_set (
 		}
 		/* insert */
 		wcp = ht->tbl[y];
-		ht->tbl[y] = (CefT_Mem_Hash_Cell* )calloc(1, sizeof(CefT_Mem_Hash_Cell));
+		ht->tbl[y] = (CefT_Mem_Hash_Cell* )calloc(1, sizeof(CefT_Mem_Hash_Cell) + klen);
 		if (ht->tbl[y] == NULL) {
 			return (-1);
 		}
+		ht->tbl[y]->key = ((unsigned char*)ht->tbl[y]) + sizeof(CefT_Mem_Hash_Cell);
 		cp = ht->tbl[y];
 		cp->next = wcp;
 		cp->elem = elem;
@@ -1242,7 +1344,81 @@ cef_mem_hash_tbl_item_set (
 		return (1);
 	}
 }
+#else // CefC_Nwproc
+static int 
+cef_mem_hash_tbl_item_set (
+	const unsigned char* key,
+	uint32_t klen,
+	CsmgrdT_Content_Mem_Entry* elem, 
+	CsmgrdT_Content_Mem_Entry* old_elem
+) {
+	CefT_Mem_Hash* ht = (CefT_Mem_Hash*) mem_hash_tbl;
+	uint32_t hash = 0;
+	uint32_t y;
+	CefT_Mem_Hash_Cell* cp;
+	CefT_Mem_Hash_Cell* wcp;
+	unsigned char cid_key[MemC_CID_KLen];
+	uint32_t cid_klen;
+	unsigned char key_wo_cid[MemC_Max_KLen];
+	unsigned int key_wo_cid_len;
 
+	old_elem = NULL;
+	cef_frame_separate_name_and_cid (
+				(unsigned char *)key, klen, 
+				key_wo_cid, &key_wo_cid_len, 
+				cid_key, &cid_klen);
+
+	hash = cef_mem_hash_number_create (key_wo_cid, key_wo_cid_len);
+	y = hash % ht->tabl_max;
+
+	if(ht->tbl[y] == NULL){
+		ht->tbl[y] = (CefT_Mem_Hash_Cell* )calloc(1, sizeof(CefT_Mem_Hash_Cell) + key_wo_cid_len);
+		if (ht->tbl[y] == NULL) {
+			return (-1);
+		}
+		ht->tbl[y]->key = ((unsigned char*)ht->tbl[y]) + sizeof(CefT_Mem_Hash_Cell);
+		cp = ht->tbl[y];
+		cp->elem = elem;
+		cp->klen = key_wo_cid_len;
+		memcpy (cp->key, key_wo_cid, key_wo_cid_len);
+		cp->cid_klen = cid_klen;
+		memcpy (cp->cid_key, cid_key, cid_klen);
+		cp->next = NULL;
+		ht->elem_num++;
+		return (1);
+	} else {
+		/* exist check & replace */
+		for (cp = ht->tbl[y]; cp != NULL; cp = cp->next) {
+			if((cp->klen == key_wo_cid_len) &&
+			   (cp->cid_klen == cid_klen) &&
+			   (memcmp (cp->key, key_wo_cid, key_wo_cid_len) == 0) &&
+			   (memcmp (cp->cid_key, cid_key, cid_klen) == 0)){
+				old_elem = cp->elem;
+				cp->elem = elem;
+				return (1);
+			}
+		}
+		/* insert */
+		wcp = ht->tbl[y];
+		ht->tbl[y] = (CefT_Mem_Hash_Cell* )calloc(1, sizeof(CefT_Mem_Hash_Cell) + key_wo_cid_len);
+		if (ht->tbl[y] == NULL) {
+			return (-1);
+		}
+		ht->tbl[y]->key = ((unsigned char*)ht->tbl[y]) + sizeof(CefT_Mem_Hash_Cell);
+		cp = ht->tbl[y];
+		cp->next = wcp;
+		cp->elem = elem;
+		cp->klen = key_wo_cid_len;
+		memcpy (cp->key, key_wo_cid, key_wo_cid_len);
+		cp->cid_klen = cid_klen;
+		memcpy (cp->cid_key, cid_key, cid_klen);
+		ht->elem_num++;
+		return (1);
+	}
+}
+#endif // CefC_Nwproc
+
+#ifndef CefC_Nwproc
 static CsmgrdT_Content_Mem_Entry* 
 cef_mem_hash_tbl_item_get (
 	const unsigned char* key,
@@ -1272,7 +1448,122 @@ cef_mem_hash_tbl_item_get (
 	
 	return (NULL);
 }
+#else // CefC_Nwproc
 
+static CsmgrdT_Content_Mem_Entry* 
+cef_mem_hash_tbl_item_get (
+	const unsigned char* key,
+	uint32_t klen
+) {
+	CefT_Mem_Hash* ht = (CefT_Mem_Hash*) mem_hash_tbl;
+	uint32_t hash = 0;
+	uint32_t y;
+	CefT_Mem_Hash_Cell* cp;
+	unsigned char cid_key[MemC_CID_KLen];
+	uint32_t cid_klen;
+	unsigned char key_wo_cid[MemC_Max_KLen];
+	unsigned int key_wo_cid_len;
+
+	if ((klen > MemC_Max_KLen) || (ht == NULL)) {
+		return (NULL);
+	}
+	cef_frame_separate_name_and_cid (
+				(unsigned char *)key, klen, 
+				key_wo_cid, &key_wo_cid_len, 
+				cid_key, &cid_klen);
+
+	hash = cef_mem_hash_number_create (key_wo_cid, key_wo_cid_len);
+	y = hash % ht->tabl_max;
+
+	cp = ht->tbl[y];
+	if(cp == NULL){
+		return (NULL);
+	} 
+	for (; cp != NULL; cp = cp->next) {
+		if((cp->klen == key_wo_cid_len) &&
+		   (cp->cid_klen == cid_klen) &&
+		   (memcmp (cp->key, key_wo_cid, key_wo_cid_len) == 0) &&
+		   (memcmp (cp->cid_key, cid_key, cid_klen) == 0)){
+				return (cp->elem);
+		}
+	}
+	
+	return (NULL);
+}
+
+static CsmgrdT_Content_Mem_Entry** 
+cef_mem_hash_tbl_item_gets (
+	const unsigned char* key,
+	uint32_t klen,
+	int* entry_num
+) {
+	CefT_Mem_Hash* ht = (CefT_Mem_Hash*) mem_hash_tbl;
+	uint32_t hash = 0;
+	uint32_t y;
+	CefT_Mem_Hash_Cell* cp;
+	unsigned char cid_key[MemC_CID_KLen];
+	uint32_t cid_klen;
+	unsigned char key_wo_cid[MemC_Max_KLen];
+	unsigned int key_wo_cid_len;
+	int elm_num = 0;
+	CsmgrdT_Content_Mem_Entry** tmp_p;
+	int i;
+
+	*entry_num = 0;
+
+	if ((klen > MemC_Max_KLen) || (ht == NULL)) {
+		return (NULL);
+	}
+	
+	cef_frame_separate_name_and_cid (
+				(unsigned char *)key, klen, 
+				key_wo_cid, &key_wo_cid_len, 
+				cid_key, &cid_klen);
+	hash = cef_mem_hash_number_create (key_wo_cid, key_wo_cid_len);
+	y = hash % ht->tabl_max;
+
+	cp = ht->tbl[y];
+	if(cp == NULL){
+		return (NULL);
+	} 
+
+	if (cid_klen < CefC_NWP_CID_Prefix_Len) {
+		for (; cp != NULL; cp = cp->next) {
+			if((cp->klen == key_wo_cid_len) &&
+			   (memcmp (cp->key, key_wo_cid, key_wo_cid_len) == 0)) {
+				elm_num++;
+			}
+		}
+		tmp_p = (CsmgrdT_Content_Mem_Entry**)calloc(elm_num, sizeof(CsmgrdT_Content_Mem_Entry*));
+		cp = ht->tbl[y];
+		for (i = 0; cp != NULL; cp = cp->next) {
+			if((cp->klen == key_wo_cid_len) &&
+			   (memcmp (cp->key, key_wo_cid, key_wo_cid_len) == 0)) {
+				tmp_p[i] = cp->elem;
+				i++;
+			}
+		}
+		*entry_num = elm_num;
+		return (tmp_p);
+	}
+	else {
+		for (; cp != NULL; cp = cp->next) {
+			if((cp->klen == key_wo_cid_len) &&
+			   (cp->cid_klen == cid_klen) &&
+			   (memcmp (cp->key, key_wo_cid, key_wo_cid_len) == 0) &&
+			   (memcmp (cp->cid_key, cid_key, cid_klen) == 0)){
+				tmp_p = (CsmgrdT_Content_Mem_Entry**)calloc(1, sizeof(CsmgrdT_Content_Mem_Entry*));
+				*entry_num = 1;
+				tmp_p[0] = cp->elem;
+				return (tmp_p);
+			}
+		}
+	}
+	return (NULL);
+}
+#endif // CefC_Nwproc
+
+#ifndef CefC_Nwproc
 static CsmgrdT_Content_Mem_Entry* 
 cef_mem_hash_tbl_item_remove (
 	const unsigned char* key,
@@ -1321,6 +1612,70 @@ cef_mem_hash_tbl_item_remove (
 	
 	return (NULL);
 }
+
+#else // CefC_Nwproc
+static CsmgrdT_Content_Mem_Entry* 
+cef_mem_hash_tbl_item_remove (
+	const unsigned char* key,
+	uint32_t klen
+) {
+	CefT_Mem_Hash* ht = (CefT_Mem_Hash*) mem_hash_tbl;
+	uint32_t hash = 0;
+	uint32_t y;
+	CsmgrdT_Content_Mem_Entry* ret_elem;
+	CefT_Mem_Hash_Cell* cp;
+	CefT_Mem_Hash_Cell* wcp;
+	unsigned char cid_key[MemC_CID_KLen];
+	uint32_t cid_klen;
+	unsigned char key_wo_cid[MemC_Max_KLen];
+	unsigned int key_wo_cid_len;
+	
+	if ((klen > MemC_Max_KLen) || (ht == NULL)) {
+		return (NULL);
+	}
+	
+	cef_frame_separate_name_and_cid (
+				(unsigned char *)key, klen, 
+				key_wo_cid, &key_wo_cid_len, 
+				cid_key, &cid_klen);
+
+	hash = cef_mem_hash_number_create (key_wo_cid, key_wo_cid_len);
+	y = hash % ht->tabl_max;
+	
+	cp = ht->tbl[y];
+	if(cp == NULL){
+		return (NULL);
+	}
+	if (cp != NULL) {
+		if((cp->klen == key_wo_cid_len) &&
+		   (cp->cid_klen == cid_klen) &&
+		   (memcmp (cp->key, key_wo_cid, key_wo_cid_len) == 0) &&
+		   (memcmp (cp->cid_key, cid_key, cid_klen) == 0)){
+			ht->tbl[y] = cp->next;
+			ht->elem_num--;
+			ret_elem = cp->elem;
+			free(cp);
+			return (ret_elem);
+		} else {
+			for (; cp->next != NULL; cp = cp->next) {
+				if((cp->next->klen == key_wo_cid_len) &&
+				   (cp->next->cid_klen == cid_klen) &&
+				   (memcmp (cp->next->key, key_wo_cid, key_wo_cid_len) == 0) &&
+				   (memcmp (cp->next->cid_key, cid_key, cid_klen) == 0)){
+					wcp = cp->next;
+					cp->next = cp->next->next;
+					ht->elem_num--;
+					ret_elem = wcp->elem;
+		   			free(wcp);
+		   			return (ret_elem);
+				}
+			}
+		}
+	}
+	
+	return (NULL);
+}
+#endif // CefC_Nwproc
 
 static uint32_t
 cef_mem_hash_number_create (

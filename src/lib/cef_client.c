@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -580,7 +580,47 @@ cef_client_prefix_reg (
 	
 	return;
 }
-
+/*--------------------------------------------------------------------------------------
+	Register/Deregister the specified Name of the Application in PIT
+----------------------------------------------------------------------------------------*/
+void
+cef_client_prefix_reg_for_pit (
+	CefT_Client_Handle fhdl, 					/* client handle						*/
+	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
+	const unsigned char* name,					/* Name (not URI)						*/
+	uint16_t name_len							/* length of the Name					*/
+){
+	CefT_Connect* conn = (CefT_Connect*) fhdl;
+	CefT_Interest_TLVs tlvs;
+	unsigned char buff[CefC_Max_Length];
+	int len;
+	
+	memset (&tlvs, 0, sizeof (CefT_Interest_TLVs));
+	
+	memcpy (tlvs.name, name, name_len);
+	tlvs.name_len = name_len;
+	tlvs.hoplimit 		= 1;
+	tlvs.opt.lifetime_f = 1;
+	tlvs.opt.lifetime 	= 1;
+	
+	if (func == CefC_App_Reg) {
+		tlvs.opt.symbolic_f = CefC_T_OPT_APP_PIT_REG;
+	} else {
+		tlvs.opt.symbolic_f = CefC_T_OPT_APP_PIT_DEREG;
+	}
+	
+	len = cef_frame_interest_create (buff, &tlvs);
+	if (len > 0) {
+		if (conn->ai) {
+			sendto (conn->sock, buff, len
+					, 0, conn->ai->ai_addr, conn->ai->ai_addrlen);
+		} else {
+			send (conn->sock, buff, len, 0);
+		}
+	}
+	
+	return;
+}
 /*--------------------------------------------------------------------------------------
 	Inputs the unformatted message to the socket
 ----------------------------------------------------------------------------------------*/
@@ -782,46 +822,227 @@ cef_client_payload_get_with_info (
 	int buff_len, 
 	struct cef_app_frame* app_frame
 ) {
-	struct cef_app_frame* wrk_frame;
 	int i = 0;
+	struct fixed_hdr* fix_hdr;
+	uint16_t 	pkt_len;
+	uint8_t 	hdr_len;
+	CefT_Parsed_Message 	pm;
+	CefT_Parsed_Opheader 	poh;
+	int						res;
 	int new_len = 0;
-	uint32_t magic_no = CefC_App_Magic_No;
-
-	/* Seek the head of message 		*/
-	while (1){
-		if((i + sizeof(struct cef_app_frame) - sizeof(wrk_frame->data_entity)) > buff_len){
-			new_len = buff_len - i;
-			break;
-		}
-		wrk_frame = (struct cef_app_frame*) &buff[i];
-		if ((wrk_frame->version == CefC_App_Version) && 
-			(wrk_frame->type == CefC_App_Type_Internal)) {
-			if( i + wrk_frame->actual_data_len > buff_len){
-				new_len = buff_len - i;
-				break;
-			}
-			if(memcmp(  (const void *)&magic_no
-				      , (const void *)&(buff[wrk_frame->actual_data_len-sizeof(magic_no)])
-					  , sizeof(magic_no)) == 0){
-				memcpy (app_frame, wrk_frame, wrk_frame->actual_data_len);
-				app_frame->name = &(app_frame->data_entity[0]);
-				app_frame->payload = &(app_frame->data_entity[app_frame->name_len]);
-				new_len = buff_len - wrk_frame->actual_data_len;
-				break;
+	
+	/* Searches the top of the message */
+	if ((buff[i] 	!= CefC_Version) || 
+		(buff[i + 1] > CefC_PT_PING_REP)) {
+		
+		while (i < buff_len) {
+			if ((buff[i] 	!= CefC_Version) || 
+				(buff[i + 1] != CefC_PT_OBJECT)) {
+				i += 2;
 			} else {
-				i++;
-				continue;
+				break;
 			}
-		} else {
-			i++;
-			continue;
+		}
+		if (i >= buff_len) {
+			return (-1);
 		}
 	}
+	if ((buff_len - i) < 8) {
+		return (-1);
+	}
+	
+	/* Parses the message */
+	fix_hdr = (struct fixed_hdr*)(&buff[i]);
+	pkt_len = ntohs (fix_hdr->pkt_len);
+	hdr_len = fix_hdr->hdr_len;
+	
+	if (pkt_len > (buff_len - i)) {
+		return (-1);
+	}
+	
+	new_len = buff_len - pkt_len;
+	
+	res = cef_frame_message_parse (
+				&buff[i], pkt_len, hdr_len, &poh, &pm, CefC_PT_OBJECT);
+	if (res < 0) {
+		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
+		memcpy (&buff[0], &work_buff[0], new_len);
+		return(new_len);
+	}
+	
+	app_frame->version = CefC_App_Version;
+	app_frame->type = CefC_App_Type_Internal;
+	app_frame->chunk_num = pm.chnk_num;
+	if (pm.end_chunk_num_f){
+		app_frame->end_chunk_num = (int64_t)0;
+		app_frame->end_chunk_num = (int64_t)pm.end_chunk_num;
+	}
+	else
+		app_frame->end_chunk_num = -1;
+	app_frame->name_len = pm.name_len;
+	app_frame->payload_len = pm.payload_len;
+	
+	memcpy (&(app_frame->data_entity[0]), pm.name, pm.name_len);
+	memcpy (&(app_frame->data_entity[pm.name_len]), pm.payload, pm.payload_len);
+	app_frame->actual_data_len = sizeof(struct cef_app_frame)
+	                             - sizeof(app_frame->data_entity)
+	                             + pm.name_len + pm.payload_len;
+	app_frame->name = &(app_frame->data_entity[0]);
+	app_frame->payload = &(app_frame->data_entity[pm.name_len]);
+
 	if (new_len !=  buff_len) {
 		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
 		memcpy (&buff[0], &work_buff[0], new_len);
 	}
-	return (new_len);
+	return(new_len);
+}
+/*--------------------------------------------------------------------------------------
+	Obtains one Interest message from the buffer
+----------------------------------------------------------------------------------------*/
+int 											/* remaining length of buffer 			*/
+cef_client_request_get_with_info (
+	unsigned char* buff, 
+	int buff_len, 
+	struct cef_app_request* app_request
+) {
+	int i = 0;
+	struct fixed_hdr* fix_hdr;
+	uint16_t 	pkt_len;
+	uint8_t 	hdr_len;
+	CefT_Parsed_Message 	pm;
+	CefT_Parsed_Opheader 	poh;
+	int						res;
+	int new_len = 0;
+	
+	/* Searches the top of the message */
+	if ((buff[i] 	!= CefC_Version) || 
+		(buff[i + 1] > CefC_PT_PING_REP)) {
+		
+		while (i < buff_len) {
+			if ((buff[i] 	!= CefC_Version) || 
+				(buff[i + 1] != CefC_PT_INTEREST)) {
+				i += 2;
+			} else {
+				break;
+			}
+		}
+		if (i >= buff_len) {
+			return (-1);
+		}
+	}
+	if ((buff_len - i) < 8) {
+		return (-1);
+	}
+	
+	/* Parses the message */
+	fix_hdr = (struct fixed_hdr*)(&buff[i]);
+	pkt_len = ntohs (fix_hdr->pkt_len);
+	hdr_len = fix_hdr->hdr_len;
+	
+	if (pkt_len > (buff_len - i)) {
+		return (-1);
+	}
+	
+	new_len = buff_len - pkt_len;
+	
+	res = cef_frame_message_parse (
+				&buff[i], pkt_len, hdr_len, &poh, &pm, CefC_PT_INTEREST);
+	if (res < 0) {
+		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
+		memcpy (&buff[0], &work_buff[0], new_len);
+		return(new_len);
+	}
+	
+/* [Restriction]												*/
+/* For renovation in FY 2018, only Regular/NWProc are allowed,	*/
+/* ignoring everything else.									*/
+	if (pm.org.longlife_f || poh.piggyback_f || poh.bitmap_f || 
+		poh.number_f || poh.symbolic_code_f || poh.app_reg_f) {
+		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
+		memcpy (&buff[0], &work_buff[0], new_len);
+		return(new_len);
+	}
+	
+	app_request->version = CefC_App_Version;
+	app_request->type = CefC_App_Type_Internal;
+	app_request->chunk_num = pm.chnk_num;
+
+	app_request->name_len = pm.name_len;
+	app_request->total_segs_len =
+		cef_frame_get_len_total_namesegments (pm.name, pm.name_len);
+	
+	memcpy (&(app_request->data_entity[0]), pm.name, pm.name_len);
+	app_request->name = &(app_request->data_entity[0]);
+
+	if (new_len !=  buff_len) {
+		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
+		memcpy (&buff[0], &work_buff[0], new_len);
+	}
+	return(new_len);
+
+}
+/*--------------------------------------------------------------------------------------
+	Obtains one Raw data from the buffer
+----------------------------------------------------------------------------------------*/
+int 											/* remaining length of buffer 			*/
+cef_client_rawdata_get (
+	unsigned char* buff, 						/* buffer 								*/
+	int buff_len,								/* length of buffer 					*/
+	unsigned char* frame,						/* get frame							*/
+	int* frame_len,								/* length of frame						*/
+	int* frame_type								/* type of frame						*/
+) {
+	int i = 0;
+	struct fixed_hdr* fix_hdr;
+	uint16_t 	pkt_len;
+	int new_len = 0;
+	
+	/* Searches the top of the message */
+	if ((buff[i] 	!= CefC_Version) || 
+		(buff[i + 1] > CefC_PT_PING_REP)) {
+		
+		while (i < buff_len) {
+			if ((buff[i] 	!= CefC_Version) || 
+/* [Restriction]												*/
+/* For renovation in FY 2018, only ContentObject are allowed,	*/
+/* ignoring everything else.									*/
+/* We have not confirmed the operation except ContentObject.	*/
+#if 0
+				(buff[i + 1] > CefC_PT_PING_REP)) {
+#else
+				(buff[i + 1] != CefC_PT_OBJECT)) {
+#endif
+				i += 2;
+			} else {
+				break;
+			}
+		}
+		if (i >= buff_len) {
+			return (-1);
+		}
+	}
+	if ((buff_len - i) < 8) {
+		return (-1);
+	}
+	
+	/* Parses the message */
+	fix_hdr = (struct fixed_hdr*)(&buff[i]);
+	pkt_len = ntohs (fix_hdr->pkt_len);
+	
+	if (pkt_len > (buff_len - i)) {
+		return (-1);
+	}
+	
+	new_len = buff_len - pkt_len;
+	*frame_type = fix_hdr->type;
+	memcpy (frame, &buff[i], pkt_len);
+	*frame_len = pkt_len;
+
+	if (new_len !=  buff_len) {
+		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
+		memcpy (&buff[0], &work_buff[0], new_len);
+	}
+	return(new_len);
 }
 
 uint64_t

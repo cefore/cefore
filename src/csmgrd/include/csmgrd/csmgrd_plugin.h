@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -109,6 +109,9 @@ typedef struct CsmgrdT_Plugin_Interface {
 	
 	/* Set cache lifetime 	*/
 	int (*content_lifetime_set) (unsigned char*, uint16_t, uint64_t);
+	
+	/* Delete cache entry */
+	int (*content_cache_del) (unsigned char*, uint16_t, uint32_t);
 #endif // CefC_Ccore
 	
 } CsmgrdT_Plugin_Interface;
@@ -244,7 +247,13 @@ cef_csmgr_con_entry_create (
 
 void
 csmgrd_log_init (
-	const char* proc_name
+	const char* proc_name,
+	int			level
+);
+
+void
+csmgrd_log_init2 (
+	const char* config_file_dir 
 );
 
 void

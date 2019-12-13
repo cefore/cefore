@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016, National Institute of Information and Communications
+# Copyright (c) 2016-2019, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -47,6 +47,12 @@ if CEFINFO_ENABLE
 CEF_NETD_CFLAGS+=-DCefC_Cefinfo
 endif # CEFINFO_ENABLE
 
+# check cache
+if CACHE_ENABLE
+CEF_NETD_CFLAGS+=-DCefC_CefnetdCache
+endif # CACHE_ENABLE
+
+
 # check cefping
 if CEFPING_ENABLE
 CEF_NETD_CFLAGS+=-DCefC_Cefping
@@ -69,6 +75,7 @@ cefnetd_LDADD=-lcef_plugin -lcefore -lssl -lcrypto
 
 cefnetd_CFLAGS=$(CEF_NETD_CFLAGS)
 cefnetd_SOURCES=cef_main.c cef_node.c cef_sched.c cef_netd.c cef_status.c cef_netd.h cef_status.h
+
 
 
 # set cefctrl option

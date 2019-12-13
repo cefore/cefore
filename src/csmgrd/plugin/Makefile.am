@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016, National Institute of Information and Communications
+# Copyright (c) 2016-2019, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -61,6 +61,8 @@ if CEFPING_ENABLE
 CSMGRD_PLUGIN_CFLAGS+=-DCefC_Cefping
 endif # CEFPING_ENABLE
 
+
+
 # lib csmgrd plugins library
 lib_LTLIBRARIES = libcsmgrd_plugin.la
 libcsmgrd_plugin_la_CFLAGS = $(CSMGRD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
@@ -75,13 +77,12 @@ libmem_cache_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)
 libcsmgrd_plugin_la_LIBADD += $(CSMGRD_PLUGIN_LIBADD) libmem_cache.la
 
 # check filesystem
-if !FILESYSTEM_CACHE_DISABLE
 noinst_LTLIBRARIES += libfilesystem_cache.la
 libfilesystem_cache_la_CFLAGS  = $(CSMGRD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
 libfilesystem_cache_la_SOURCES = filesystem_cache/filesystem_cache.c filesystem_cache/filesystem_cache.h
 libfilesystem_cache_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)
 libcsmgrd_plugin_la_LIBADD += $(CSMGRD_PLUGIN_LIBADD) libfilesystem_cache.la
-endif
+
 
 
 SUBDIRS = lib

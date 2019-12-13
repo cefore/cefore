@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,6 +55,7 @@ typedef struct {
 	
 	uint32_t 			capacity;
 	uint16_t			cached_con_num;
+	uint32_t			cached_cob_num;
 	CsmgrT_Stat* 		rcds[CsmgrT_Stat_Max];
 	
 } CsmgrT_Stat_Table;
@@ -69,27 +70,27 @@ typedef struct {
  ****************************************************************************************/
 
 static CsmgrT_Stat* 
-csmgrd_stat_content_lookup (
+csmgr_stat_content_lookup (
 	CsmgrT_Stat_Table* tbl, 
 	const unsigned char* name, 
 	uint16_t name_len, 
 	int* create_f
 );
 static CsmgrT_Stat* 
-csmgrd_stat_content_search (
+csmgr_stat_content_search (
 	CsmgrT_Stat_Table* tbl, 
 	const unsigned char* name, 
 	uint16_t name_len
 );
 static CsmgrT_Stat* 
-csmgrd_stat_content_salvage (
+csmgr_stat_content_salvage (
 	CsmgrT_Stat_Table* tbl, 
 	const unsigned char* name, 
 	uint16_t name_len, 
 	int* start_index
 );
 static uint32_t
-csmgrd_stat_hash_number_create (
+csmgr_stat_hash_number_create (
 	const unsigned char* key, 
 	uint16_t klen
 );
@@ -98,10 +99,10 @@ csmgrd_stat_hash_number_create (
  ****************************************************************************************/
 
 /*--------------------------------------------------------------------------------------
-	Creates the Csmgrd Stat Handle
+	Creates the Csmgr Stat Handle
 ----------------------------------------------------------------------------------------*/
 CsmgrT_Stat_Handle 
-csmgrd_stat_handle_create (
+csmgr_stat_handle_create (
 	void 
 ) {
 	CsmgrT_Stat_Table* tbl;
@@ -121,21 +122,24 @@ csmgrd_stat_handle_create (
 			return (CsmgrC_Invalid);
 		}
 		memset (tbl->rcds[i], 0, sizeof (CsmgrT_Stat));
+		tbl->rcds[i]->min_seq = UINT_MAX;
+		tbl->rcds[i]->max_seq = 0;
+
 	}
 	
 	return ((CsmgrT_Stat_Handle) tbl);
 }
 
 /*--------------------------------------------------------------------------------------
-	Destroy the Csmgrd Stat Handle
+	Destroy the Csmgr Stat Handle
 ----------------------------------------------------------------------------------------*/
 void 
-csmgrd_stat_handle_destroy (
+csmgr_stat_handle_destroy (
 	CsmgrT_Stat_Handle hdl
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	int i;
-	
+
 	if (tbl) {
 		for (i = 0 ; i < CsmgrT_Stat_Max ; i++) {
 			if (tbl->rcds[i]) {
@@ -151,7 +155,7 @@ csmgrd_stat_handle_destroy (
 	Access the content information
 ----------------------------------------------------------------------------------------*/
 CsmgrT_Stat* 
-csmgrd_stat_content_info_access (
+csmgr_stat_content_info_access (
 	CsmgrT_Stat_Handle hdl, 
 	const unsigned char* name, 
 	uint16_t name_len
@@ -167,7 +171,7 @@ csmgrd_stat_content_info_access (
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
-	rcd = csmgrd_stat_content_search (tbl, name, name_len);
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	
 	if (rcd) {
 		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)){
@@ -181,7 +185,7 @@ csmgrd_stat_content_info_access (
 	Obtain the content information
 ----------------------------------------------------------------------------------------*/
 CsmgrT_Stat* 
-csmgrd_stat_content_info_get (
+csmgr_stat_content_info_get (
 	CsmgrT_Stat_Handle hdl, 
 	const unsigned char* name, 
 	uint16_t name_len
@@ -201,7 +205,7 @@ csmgrd_stat_content_info_get (
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
-	rcd = csmgrd_stat_content_search (tbl, name, name_len);
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	
 	if (rcd) {
 		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)){
@@ -245,7 +249,7 @@ csmgrd_stat_content_info_get (
 	Obtain the content information
 ----------------------------------------------------------------------------------------*/
 int 
-csmgrd_stat_content_info_gets (
+csmgr_stat_content_info_gets (
 	CsmgrT_Stat_Handle hdl, 
 	const unsigned char* name, 
 	uint16_t name_len, 
@@ -275,7 +279,7 @@ csmgrd_stat_content_info_gets (
 			return (0);
 		}
 		
-		rcd = csmgrd_stat_content_search (tbl, name, name_len);
+		rcd = csmgr_stat_content_search (tbl, name, name_len);
 		
 		if (!rcd) {
 			return (0);
@@ -321,7 +325,7 @@ csmgrd_stat_content_info_gets (
 	}
 	
 	do {
-		rcd = csmgrd_stat_content_salvage (tbl, name, name_len, &index);
+		rcd = csmgr_stat_content_salvage (tbl, name, name_len, &index);
 		
 		if (!rcd) {
 			break;
@@ -372,7 +376,7 @@ csmgrd_stat_content_info_gets (
 	Obtain the expred lifetime content information
 ----------------------------------------------------------------------------------------*/
 CsmgrT_Stat* 
-csmgrd_stat_expired_content_info_get (
+csmgr_stat_expired_content_info_get (
 	CsmgrT_Stat_Handle hdl, 
 	int* index
 ) {
@@ -401,7 +405,7 @@ csmgrd_stat_expired_content_info_get (
 	Update cached Cob status
 ----------------------------------------------------------------------------------------*/
 void 
-csmgrd_stat_cob_update (
+csmgr_stat_cob_update (
 	CsmgrT_Stat_Handle hdl, 
 	const unsigned char* name, 
 	uint16_t name_len, 
@@ -421,7 +425,7 @@ csmgrd_stat_cob_update (
 		return;
 	}
 	
-	rcd = csmgrd_stat_content_lookup (tbl, name, name_len, &create_f);
+	rcd = csmgr_stat_content_lookup (tbl, name, name_len, &create_f);
 	if (!rcd) {
 		return;
 	}
@@ -441,6 +445,7 @@ csmgrd_stat_cob_update (
 	if (!(rcd->cob_map[x] & mask)) {
 		rcd->cob_num++;
 		rcd->con_size += cob_size;
+		tbl->cached_cob_num++;
 	}
 	rcd->cob_map[x] |= mask;
 	
@@ -450,7 +455,7 @@ csmgrd_stat_cob_update (
 	Remove the specified cached Cob status
 ----------------------------------------------------------------------------------------*/
 int 
-csmgrd_stat_cob_remove (
+csmgr_stat_cob_remove (
 	CsmgrT_Stat_Handle hdl, 
 	const unsigned char* name, 
 	uint16_t name_len, 
@@ -467,7 +472,7 @@ csmgrd_stat_cob_remove (
 		return (-1);
 	}
 	
-	rcd = csmgrd_stat_content_search (tbl, name, name_len);
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	if (!rcd) {
 		return (-1);
 	}
@@ -478,6 +483,7 @@ csmgrd_stat_cob_remove (
 	if (rcd->cob_map[x] & mask) {
 		rcd->cob_num--;
 		rcd->con_size -= cob_size;
+		tbl->cached_cob_num--;
 	}
 	rcd->cob_map[x] &= ~mask;
 	
@@ -486,6 +492,8 @@ csmgrd_stat_cob_remove (
 		tbl->cached_con_num--;
 		memset (rcd, 0, sizeof (CsmgrT_Stat));
 		rcd->name_len = 0xFFFF;
+		rcd->min_seq = UINT_MAX;
+		rcd->max_seq = 0;
 		return (index);
 	}
 	
@@ -495,7 +503,7 @@ csmgrd_stat_cob_remove (
 	Update access count
 ----------------------------------------------------------------------------------------*/
 void 
-csmgrd_stat_access_count_update (
+csmgr_stat_access_count_update (
 	CsmgrT_Stat_Handle hdl, 
 	const unsigned char* name, 
 	uint16_t name_len
@@ -507,7 +515,7 @@ csmgrd_stat_access_count_update (
 		return;
 	}
 	
-	rcd = csmgrd_stat_content_search (tbl, name, name_len);
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	if (!rcd) {
 		return;
 	}
@@ -520,7 +528,7 @@ csmgrd_stat_access_count_update (
 	Update cache capacity
 ----------------------------------------------------------------------------------------*/
 void 
-csmgrd_stat_cache_capacity_update (
+csmgr_stat_cache_capacity_update (
 	CsmgrT_Stat_Handle hdl, 
 	uint32_t capacity
 ) {
@@ -535,6 +543,7 @@ csmgrd_stat_cache_capacity_update (
 	}
 	tbl->cached_con_num = 0;
 	tbl->capacity = capacity;
+	tbl->cached_cob_num = 0;
 	
 	return;
 }
@@ -543,7 +552,7 @@ csmgrd_stat_cache_capacity_update (
 	Update content expire time
 ----------------------------------------------------------------------------------------*/
 void 
-csmgrd_stat_content_lifetime_update (
+csmgr_stat_content_lifetime_update (
 	CsmgrT_Stat_Handle hdl, 
 	const unsigned char* name, 
 	uint16_t name_len, 
@@ -555,7 +564,7 @@ csmgrd_stat_content_lifetime_update (
 	if (!tbl) {
 		return;
 	}
-	rcd = csmgrd_stat_content_search (tbl, name, name_len);
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	if (!rcd) {
 		return;
 	}
@@ -567,7 +576,7 @@ csmgrd_stat_content_lifetime_update (
 	Init the valiables of the specified content
 ----------------------------------------------------------------------------------------*/
 CsmgrT_Stat* 
-csmgrd_stat_content_info_init (
+csmgr_stat_content_info_init (
 	CsmgrT_Stat_Handle hdl, 
 	const unsigned char* name, 
 	uint16_t name_len
@@ -580,7 +589,7 @@ csmgrd_stat_content_info_init (
 		return (NULL);
 	}
 	
-	rcd = csmgrd_stat_content_lookup (tbl, name, name_len, &create_f);
+	rcd = csmgr_stat_content_lookup (tbl, name, name_len, &create_f);
 	if (!rcd) {
 		return (NULL);
 	}
@@ -595,7 +604,7 @@ csmgrd_stat_content_info_init (
 	Deletes the content information
 ----------------------------------------------------------------------------------------*/
 void 
-csmgrd_stat_content_info_delete (
+csmgr_stat_content_info_delete (
 	CsmgrT_Stat_Handle hdl, 
 	const unsigned char* name, 
 	uint16_t name_len
@@ -607,12 +616,14 @@ csmgrd_stat_content_info_delete (
 		return;
 	}
 	
-	rcd = csmgrd_stat_content_search (tbl, name, name_len);
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	
 	if (rcd) {
 		tbl->cached_con_num--;
 		memset (rcd, 0, sizeof (CsmgrT_Stat));
 		rcd->name_len = 0xFFFF;
+		rcd->min_seq = UINT_MAX;
+		rcd->max_seq = 0;
 	}
 	return;
 }
@@ -620,7 +631,7 @@ csmgrd_stat_content_info_delete (
 	Obtains the number of cached content
 ----------------------------------------------------------------------------------------*/
 uint16_t 
-csmgrd_stat_cached_con_num_get (
+csmgr_stat_cached_con_num_get (
 	CsmgrT_Stat_Handle hdl
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
@@ -630,12 +641,26 @@ csmgrd_stat_cached_con_num_get (
 	}
 	return (tbl->cached_con_num);
 }
+/*--------------------------------------------------------------------------------------
+	Obtains the number of cached cob
+----------------------------------------------------------------------------------------*/
+uint32_t 
+csmgr_stat_cached_cob_num_get (
+	CsmgrT_Stat_Handle hdl
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	
+	if (!tbl) {
+		return (0);
+	}
+	return (tbl->cached_cob_num);
+}
 
 /*--------------------------------------------------------------------------------------
 	Obtains the Cache capacity
 ----------------------------------------------------------------------------------------*/
 uint32_t 
-csmgrd_stat_cache_capacity_get (
+csmgr_stat_cache_capacity_get (
 	CsmgrT_Stat_Handle hdl
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
@@ -645,12 +670,186 @@ csmgrd_stat_cache_capacity_get (
 	}
 	return (tbl->capacity);
 }
+/*--------------------------------------------------------------------------------------
+	Obtain the content information for publisher
+----------------------------------------------------------------------------------------*/
+CsmgrT_Stat* 
+csmgr_stat_content_info_get_for_pub (
+	CsmgrT_Stat_Handle hdl, 
+	const unsigned char* name, 
+	uint16_t name_len
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	CsmgrT_Stat* rcd = NULL;
+	uint64_t nowt;
+	struct timeval tv;
+	
+	if (!tbl) {
+		return (NULL);
+	}
+	gettimeofday (&tv, NULL);
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
+	
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
+	
+	if (rcd) {
+		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)){
+			rcd->expire_f = 1;
+			return (NULL);
+		}
+	}
+	
+	return (rcd);
+}
+/*--------------------------------------------------------------------------------------
+	Obtain the content information for publisher
+----------------------------------------------------------------------------------------*/
+int 
+csmgr_stat_content_info_gets_for_pub (
+	CsmgrT_Stat_Handle hdl, 
+	const unsigned char* name, 
+	uint16_t name_len, 
+	int partial_match_f, 
+	CsmgrT_Stat* ret[CefstatC_MaxUri]
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	CsmgrT_Stat* rcd = NULL;
+	
+	int index = 0;
+	int num = 0;
+	uint64_t nowt;
+	struct timeval tv;
+	
+	if (!tbl) {
+		return (0);
+	}
+	gettimeofday (&tv, NULL);
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
+	
+	if (!partial_match_f) {
+		if (!name_len) {
+			return (0);
+		}
+		
+		rcd = csmgr_stat_content_search (tbl, name, name_len);
+		
+		if (!rcd) {
+			return (0);
+		}
+		
+		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)){
+			rcd->expire_f = 1;
+			return (0);
+		}
+		
+		ret[0] = rcd;
+		
+		return (1);
+	}
+	
+	do {
+		rcd = csmgr_stat_content_salvage (tbl, name, name_len, &index);
+		
+		if (!rcd) {
+			break;
+		}
+		
+		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)){
+			rcd->expire_f = 1;
+			continue;
+		}
+		
+		ret[num] = rcd;
+		num++;
+		
+	} while (rcd);
+	
+	return (num);
+}
+/*--------------------------------------------------------------------------------------
+	Update cached Cob status for publisher
+----------------------------------------------------------------------------------------*/
+void 
+csmgr_stat_cob_update_for_pub (
+	CsmgrT_Stat_Handle hdl, 
+	const unsigned char* name, 
+	uint16_t name_len, 
+	uint32_t seq, 
+	uint32_t cob_size, 
+	uint64_t expiry, 
+	uint64_t cached_time, 
+	struct in_addr node
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	CsmgrT_Stat* rcd;
+	int create_f = 0;
+	
+	rcd = csmgr_stat_content_lookup (tbl, name, name_len, &create_f);
+	if (!rcd) {
+		return;
+	}
+	if (create_f) {
+		tbl->cached_con_num++;
+	}
+	
+	if (rcd->cob_num < 1) {
+		rcd->expiry 		= expiry;
+		rcd->cached_time 	= cached_time;
+		rcd->node 			= node;
+	}
+	rcd->cob_num++;
+	rcd->con_size += cob_size;
+	tbl->cached_cob_num++;
+	if (rcd->min_seq > seq) {
+	 	rcd->min_seq = seq;
+	}
+	if (rcd->max_seq < seq) {
+	 	rcd->max_seq = seq;
+	}
+	
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Remove the specified cached Cob status for publisher
+----------------------------------------------------------------------------------------*/
+int 
+csmgr_stat_cob_remove_for_pub (
+	CsmgrT_Stat_Handle hdl, 
+	const unsigned char* name, 
+	uint16_t name_len, 
+	uint32_t seq, 
+	uint32_t cob_size
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	CsmgrT_Stat* rcd;
+	int index;
+	
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
+	if (!rcd) {
+		return (-1);
+	}
+	
+	rcd->cob_num--;
+	rcd->con_size -= cob_size;
+	tbl->cached_cob_num--;
+	if (rcd->cob_num == 0) {
+		index = rcd->index;
+		tbl->cached_con_num--;
+		memset (rcd, 0, sizeof (CsmgrT_Stat));
+		rcd->name_len = 0xFFFF;
+		rcd->min_seq = UINT_MAX;
+		rcd->max_seq = 0;
+		return (index);
+	}
+	
+	return (-1);
+}
 
 /****************************************************************************************
  ****************************************************************************************/
 
 static CsmgrT_Stat* 
-csmgrd_stat_content_lookup (
+csmgr_stat_content_lookup (
 	CsmgrT_Stat_Table* tbl, 
 	const unsigned char* name, 
 	uint16_t name_len, 
@@ -670,7 +869,7 @@ csmgrd_stat_content_lookup (
 		return (NULL);
 	}
 	
-	hash = csmgrd_stat_hash_number_create (name, name_len);
+	hash = csmgr_stat_hash_number_create (name, name_len);
 	i = hash % CsmgrT_Stat_Max;
 	
 	if (tbl->rcds[i]->hash == hash) {
@@ -760,7 +959,7 @@ csmgrd_stat_content_lookup (
 }
 
 static CsmgrT_Stat* 
-csmgrd_stat_content_search (
+csmgr_stat_content_search (
 	CsmgrT_Stat_Table* tbl, 
 	const unsigned char* name, 
 	uint16_t name_len
@@ -772,7 +971,7 @@ csmgrd_stat_content_search (
 		return (NULL);
 	}
 	
-	hash = csmgrd_stat_hash_number_create (name, name_len);
+	hash = csmgr_stat_hash_number_create (name, name_len);
 	i = hash % CsmgrT_Stat_Max;
 	
 	if (tbl->rcds[i]->hash == hash) {
@@ -806,7 +1005,7 @@ csmgrd_stat_content_search (
 }
 
 static CsmgrT_Stat* 
-csmgrd_stat_content_salvage (
+csmgr_stat_content_salvage (
 	CsmgrT_Stat_Table* tbl, 
 	const unsigned char* name, 
 	uint16_t name_len, 
@@ -833,7 +1032,7 @@ csmgrd_stat_content_salvage (
 }
 
 static uint32_t
-csmgrd_stat_hash_number_create (
+csmgr_stat_hash_number_create (
 	const unsigned char* key, 
 	uint16_t klen
 ) {

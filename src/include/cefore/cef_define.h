@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -111,6 +111,7 @@
 #define CefC_ParamName_Sktype			"SOCK_TYPE"
 #define CefC_ParamName_Babel			"USE_CEFBABEL"
 #define CefC_ParamName_Babel_Route		"CEFBABEL_ROUTE"
+#define CefC_ParamName_Cs_Mode			"CS_MODE"
 #ifdef CefC_Ser_Log
 #define CefC_ParamName_Log_Size			"SER_LOG_SIZE"
 #define CefC_ParamName_Log_Enable		"SER_LOG_ENABLE"
@@ -119,7 +120,11 @@
 
 /*************** Default Values ***************/
 #define CefC_Default_PortNum			9896
+#ifndef CefC_Nwproc
 #define CefC_Default_PitSize			2048
+#else // CefC_Nwproc
+#define CefC_Default_PitSize			40000
+#endif // CefC_Nwproc
 #define CefC_Default_FibSize			1024
 #define CefC_Default_Sktype				SOCK_STREAM
 #define CefC_Default_NbrSize			1
@@ -132,11 +137,21 @@
 #define CefC_App_Version				0xCEF00101
 #define CefC_App_Type_Internal			0x10000000
 #define CefC_App_Header_Size			16
+#define CefC_App_FibSize				64
+#define CefC_App_PitSize				256
 
 /*************** Upper limit of Face 	***************/
 #define CefC_Face_Receiver_Max		64
 #define CefC_Face_Router_Max		1024
 #define CefC_Face_Publisher_Max		256
+
+#ifdef CefC_Nwproc
+/*************** For NWProc ***************/
+#define CefC_NWP_Delimiter			';'
+#define CefC_NWP_CID_Prefix			";CID="
+#define CefC_NWP_CID_Prefix_Len		(sizeof (CefC_NWP_CID_Prefix) - 1)	/* Except terminating characters */
+#endif // CefC_Nwproc
+
 
 #ifdef CefC_DebugOld
 /****************************************************************************************

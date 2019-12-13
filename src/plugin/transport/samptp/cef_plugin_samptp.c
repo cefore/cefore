@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -131,9 +131,7 @@ cef_plugin_samptp_cob (
 			rx_elem->msg, rx_elem->msg_len, &name_off, &name_len, &pay_off, &pay_len);
 		
 		res = cef_face_object_send_iflocal (
-			rx_elem->out_faceids[i], &rx_elem->msg[name_off], name_len, 
-			rx_elem->parsed_msg->payload,rx_elem->parsed_msg->payload_len, 
-			rx_elem->parsed_msg->chnk_num);
+			rx_elem->out_faceids[i], rx_elem->msg, rx_elem->msg_len);
 		
 		if (res > 0) {
 			faceids[idx] = rx_elem->out_faceids[i];

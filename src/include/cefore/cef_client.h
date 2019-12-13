@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -64,6 +64,8 @@
 #define CefC_App_Reg				0x01
 #define CefC_App_DeReg				0x02
 #define CefC_App_RegPrefix			0x03		/* for prefix match 					*/
+#define CefC_App_RegPit				0x04
+#define CefC_App_DeRegPit			0x05
 
 #define CefC_Unset_Port 			0
 #define CefC_Unset_Id 				NULL
@@ -218,6 +220,26 @@ cef_client_payload_get_with_info (
 	struct cef_app_frame* app_frame
 );
 /*--------------------------------------------------------------------------------------
+	Obtains one Interest message from the buffer
+----------------------------------------------------------------------------------------*/
+int 											/* remaining length of buffer 			*/
+cef_client_request_get_with_info (
+	unsigned char* buff, 
+	int buff_len, 
+	struct cef_app_request* app_request
+);
+/*--------------------------------------------------------------------------------------
+	Obtains one Raw data from the buffer
+----------------------------------------------------------------------------------------*/
+int 											/* remaining length of buffer 			*/
+cef_client_rawdata_get (
+	unsigned char* buff, 						/* buffer 								*/
+	int buff_len,								/* length of buffer 					*/
+	unsigned char* frame,						/* get frame							*/
+	int* frame_len,								/* length of frame						*/
+	int* frame_type								/* type of frame						*/
+);
+/*--------------------------------------------------------------------------------------
 	Inputs the object to the cefnetd
 ----------------------------------------------------------------------------------------*/
 int												/* length of the created object 		*/
@@ -256,6 +278,16 @@ cef_client_name_reg (
 ----------------------------------------------------------------------------------------*/
 void
 cef_client_prefix_reg (
+	CefT_Client_Handle fhdl, 					/* client handle						*/
+	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
+	const unsigned char* name,					/* Name (not URI)						*/
+	uint16_t name_len							/* length of the Name					*/
+);
+/*--------------------------------------------------------------------------------------
+	Register/Deregister the specified Name of the Application in PIT
+----------------------------------------------------------------------------------------*/
+void
+cef_client_prefix_reg_for_pit (
 	CefT_Client_Handle fhdl, 					/* client handle						*/
 	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
 	const unsigned char* name,					/* Name (not URI)						*/

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016, National Institute of Information and Communications
+# Copyright (c) 2016-2019, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -39,6 +39,7 @@ cefping_SOURCES=cefping.c
 if CEFDBG_ENABLE
 cefping_CFLAGS+=-DCefC_Debug
 endif # CEFDBG_ENABLE
+
 
 DESTDIR=$(CEFORE_DIR_PATH)
 bindir=bin

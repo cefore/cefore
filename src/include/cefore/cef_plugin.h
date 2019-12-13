@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -73,6 +73,7 @@
 /***** size of ring buffer 		*****/
 #define CefC_Tx_Que_Size 				512
 #define CefC_Rx_Que_Size 				256
+
 
 /*---------------------------------------------------------
 	Transport
@@ -359,6 +360,7 @@ CefT_Plugin_Tag* 									/* tag informations					*/
 cef_plugin_tag_get (
 	const char* tag 								/* tag 								*/
 );
+
 
 /*=======================================================================================
 	Transport

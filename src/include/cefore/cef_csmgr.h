@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,8 +55,9 @@
 /* Cefore cache mode												*/
 /*------------------------------------------------------------------*/
 #define CefC_Cache_Type_None			0			/* Mode None						*/
-#define CefC_Cache_Type_Excache			1			/* Mode Excache						*/
-
+#define CefC_Cache_Type_Localcache		1			/* Mode Local cache					*/
+#define CefC_Cache_Type_Excache			2			/* Mode Excache (csmgrd)			*/
+#define CefC_Cache_Type_ExConpub		3			/* Mode Excache (conpubd)			*/
 /*------------------------------------------------------------------*/
 /* Default cache status												*/
 /*------------------------------------------------------------------*/
@@ -72,8 +73,10 @@
 /* Macros for csmgr													*/
 /*------------------------------------------------------------------*/
 #define CefC_Csmgr_File_Path_Length		1024		/* Max length of file path			*/
-#define CefC_Csmgr_Conf_Name			"csmgrd.conf"
+#define CefC_Csmgrd_Conf_Name			"csmgrd.conf"
 													/* csmrd Config file name			*/
+#define CefC_Conpud_Conf_Name			"conpubd.conf"
+													/* conpubd Config file name			*/
 #define CefC_Csmgr_Max_Table_Num		65535		/* Max size of table				*/
 #define CefC_Csmgr_Max_Table_Margin		10000		/* Margin size of table				*/
 #define CefC_Csmgr_Max_Send_Num			16
@@ -81,7 +84,7 @@
 #define CefC_Default_Cache_Send_Rate	512			/* default send rate for mem cache	*/
 
 #define CefC_Csmgr_Cmd_MaxLen			1024
-#define CefC_Csmgr_Cmd_ConnOK			"CMD://CsmgrdConnOK"
+#define CefC_Csmgr_Cmd_ConnOK			"CMD://CsmgrConnOK"
 
 /*------------------------------------------------------------------*/
 /* type of queue entry												*/
@@ -99,7 +102,7 @@
 #define CefC_Csmgr_Msg_Type_Increment	0x04		/* Type Increment Access Count		*/
 #define CefC_Csmgr_Msg_Type_Echo		0x05		/* Type Echo						*/
 #define CefC_Csmgr_Msg_Type_Status		0x06		/* Type Get Status					*/
-#define CefC_Csmgr_Msg_Type_Cefinfo	0x08		/* Type Cefinfo message			*/
+#define CefC_Csmgr_Msg_Type_Cefinfo		0x08		/* Type Cefinfo message			*/
 #define CefC_Csmgr_Msg_Type_Cefping		0x09		/* Type Cefping						*/
 #define CefC_Csmgr_Msg_Type_Bulk_Cob	0x0a		/* Type Content Object (Bulk)		*/
 #define CefC_Csmgr_Msg_Type_Kill		0x0b		/* Type Kill command				*/
@@ -107,7 +110,11 @@
 #define CefC_Csmgr_Msg_Type_SCap		0x0d		/* Type Set cache capacity			*/
 #define CefC_Csmgr_Msg_Type_RCLT		0x0e		/* Type Retrieve Content Life Time	*/
 #define CefC_Csmgr_Msg_Type_SCLT		0x0f		/* Type Set Content Life Time		*/
-#define CefC_Csmgr_Msg_Type_Num			0x10
+#define CefC_Csmgr_Msg_Type_CnpbStatus	0x10		/* Type Get Conpub Status			*/
+#define CefC_Csmgr_Msg_Type_CnpbRload	0x11		/* Type Reload Conpub Contents		*/
+#define CefC_Csmgr_Msg_Type_RCCH		0x12		/* Type Retrieve cache chunk		*/
+#define CefC_Csmgr_Msg_Type_SCDL		0x13		/* Type Delete cache				*/
+#define CefC_Csmgr_Msg_Type_Num			0x14
 
 #define CefC_Csmgr_Cob_Exist			0x00		/* Type Content is exist			*/
 #define CefC_Csmgr_Cob_NotExist			0x01		/* Type Content is not exist		*/
@@ -130,7 +137,7 @@
 #define CefC_Csmgr_Interest_ChunkNum_Exist		1	/* Chunk Num Flag on				*/
 
 /*------------------------------------------------------------------*/
-/* Macros for get csmgrd status										*/
+/* Macros for get csmgr status										*/
 /*------------------------------------------------------------------*/
 #define CefC_Csmgr_Stat_MaxUri			128
 #define CefC_Csmgr_Stat_Mtu				65535
@@ -150,41 +157,29 @@ typedef enum {
 	CefC_Csmgr_Stat_Type_Unavailable 	= 0xFF		/* Unavailable 						*/
 } CefC_Csmgr_Stat_Type;
 
+/*------------------------------------------------------------------*/
+/* Macros for get Conpub Status										*/
+/*------------------------------------------------------------------*/
+#define CefC_CnpbStatus_Name				0x0001
+#define CefC_CnpbStatus_Path				0x0002
+#define CefC_CnpbStatus_Date				0x0003
+#define CefC_CnpbStatus_Expiry				0x0004
+#define CefC_CnpbStatus_Interest			0x0005
+#define CefC_CnpbStatus_Hash				0x0006
+#define CefC_CnpbStatus_ValidAlg			0x0007
 
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
 
 typedef struct {
-	
-	unsigned char 	name[CefC_Max_Msg_Size];
-	uint16_t 		name_len;
-	uint64_t 		cob_total_size;
-	uint64_t 		cob_total_num;
-	uint64_t 		cob_access_cnt;
-	uint32_t 		seq_map[CefC_Max_Msg_Size];
-	uint64_t 		expiry;
-	uint64_t 		cached_time;
-	uint32_t 		min_seq;
-	uint32_t 		max_seq;
-	char 			node[1024];
-	
-} CsmgrT_Entry;
-
-typedef struct {
-	
-	int 			capacity;
-	uint16_t		cached_con_num;
-	CsmgrT_Entry 	table[CefC_Max_Msg_Size];
-	
-} CsmgrT_Table;
-
-typedef struct {
 
 	/********** Content Store Information	***********/
-	uint8_t			cache_type;					/* Cache Type							*/
+	uint8_t			cache_type;					/* CS mode								*/
 												/* 0 : None								*/
-												/* 1 : Excache							*/
+												/* 1 : Local cache						*/
+												/* 2 : Excache(csmgrd)					*/
+												/* 3 : Excache(Conpubd)					*/
 	uint32_t		def_rct;					/* default RCT 							*/
 	
 	/********** Memory Cache Information	***********/
@@ -211,6 +206,13 @@ typedef struct {
 	/********** Local connection 	***********/
 	int 			local_sock;
 	char 			local_sock_name[1024];
+
+	/********** local Cache Information ***********/
+	uint32_t		local_cache_capacity;			/* Cache Capacity						*/
+	uint32_t		local_cache_interval;			/* Expired check cycle (sec)			*/
+	int 			pipe_fd[2];					/* socket of cefnetd->Local cache		*/
+												/*  0: for cefnetd						*/
+												/*  1: for Local cache				*/
 	
 } CefT_Cs_Stat;
 
@@ -221,6 +223,7 @@ typedef struct {
 	uint16_t		msg_len;					/* Length of message 					*/
 	uint32_t		chunk_num;					/* Chunk Num							*/
 	uint64_t		expiry;
+	uint64_t		cache_time;
 	
 } CefT_Cob_Entry;
 
@@ -242,19 +245,11 @@ typedef struct {
 	uint32_t		chnk_num;
 	uint64_t		cache_time;
 	uint64_t		expiry;
-} CefT_Csmgrd_Content_Info;
+} CefT_Csmgrd_Content_Info; 
 
 /*------------------------------------------------------------------*/
 /* for cache information field										*/
 /*------------------------------------------------------------------*/
-typedef struct {
-	uint64_t size;									/* total size of a content			*/
-	int freshness_sec;							/* length of time until content is	*/
-													/* expired							*/
-	unsigned int access_cnt;						/* access-count of ContentObject	*/
-	unsigned int elapsed_time;						/* elapsed time after content was	*/
-													/* stored							*/
-} CefT_Csmgrd_Stat_Cache;
 
 /***** Tx Queue Element 	*****/
 typedef struct {
@@ -281,6 +276,11 @@ struct CefT_Csmgr_Status_Rep {
 	
 } __attribute__((__packed__));
 
+struct CefT_Csmgr_CnpbStatus_TL {
+	uint16_t 	type;
+	uint16_t 	length;
+} __attribute__((__packed__));
+
 
 /****************************************************************************************
  Function Declarations
@@ -291,7 +291,7 @@ struct CefT_Csmgr_Status_Rep {
 ----------------------------------------------------------------------------------------*/
 CefT_Cs_Stat*						/* The return value is null if an error occurs		*/
 cef_csmgr_stat_create (
-	void
+	uint8_t cs_mode
 );
 /*--------------------------------------------------------------------------------------
 	Destroy Content Store Manager Status
@@ -307,6 +307,14 @@ int									/* The return value is negative if an error occurs	*/
 cef_csmgr_config_read (
 	CefT_Cs_Stat* cs_stat					/* Content Store Status						*/
 );
+
+/*--------------------------------------------------------------------------------------
+	Reads the config file for conpub
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_config_read_for_conpub (
+	CefT_Cs_Stat* cs_stat					/* Content Store Status						*/
+);
 /*--------------------------------------------------------------------------------------
 	Search and replies the Cob from the temporary cache
 ----------------------------------------------------------------------------------------*/
@@ -317,8 +325,10 @@ cef_csmgr_cache_lookup (
 											/* transmission of the message(s)			*/
 	CefT_Parsed_Message* pm,				/* Parsed CEFORE message					*/
 	CefT_Parsed_Opheader* poh,				/* Parsed Option Header						*/
-	CefT_Pit_Entry* pe						/* PIT entry								*/
+	CefT_Pit_Entry* pe,						/* PIT entry								*/
+	unsigned char** cob
 );
+
 /*--------------------------------------------------------------------------------------
 	Check reply flag. Don't forward interest if reply flag is on.
 ----------------------------------------------------------------------------------------*/
@@ -340,15 +350,7 @@ cef_csmgr_cache_insert (
 	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
 );
 /*--------------------------------------------------------------------------------------
-	Connect csmgrd external socket
-----------------------------------------------------------------------------------------*/
-int									/* The return value is negative if an error occurs	*/
-cef_csmgr_csmgrd_connect_ext (
-	const char* destination, 				/* String of the destination address 		*/
-	const char* port_str					/* String of the destination port			*/
-);
-/*--------------------------------------------------------------------------------------
-	Send message from csmgrd to cefnetd
+	Send message from csmgr to cefnetd
 ----------------------------------------------------------------------------------------*/
 int									/* The return value is negative if an error occurs	*/
 cef_csmgr_send_msg (
@@ -460,22 +462,22 @@ cef_csmgr_excache_info_get (
 	uint16_t trace_flag						/* Trace Flag 								*/
 );
 /*--------------------------------------------------------------------------------------
-	Connect csmgrd with TCP socket
+	Connect csmgr with TCP socket
 ----------------------------------------------------------------------------------------*/
 int											/* created socket							*/
-cef_csmgr_connect_tcp_to_csmgrd (
+cef_csmgr_connect_tcp_to_csmgr (
 	const char* dest, 
 	const char* port
 );
 /*--------------------------------------------------------------------------------------
-	Create the work buffer for csmgrd
+	Create the work buffer for csmgr
 ----------------------------------------------------------------------------------------*/
 unsigned char* 
 cef_csmgr_buffer_init (
 	void 
 );
 /*--------------------------------------------------------------------------------------
-	Destroy the work buffer for csmgrd
+	Destroy the work buffer for csmgr
 ----------------------------------------------------------------------------------------*/
 void 
 cef_csmgr_buffer_destroy (
@@ -519,6 +521,29 @@ cef_csmgr_con_lifetime_set (
 	char* name,								/* Content name								*/
 	uint16_t name_len,						/* Name length								*/
 	uint64_t lifetime						/* Lifetime									*/
+);
+/*--------------------------------------------------------------------------------------
+	Retrieve Cache Chunk
+----------------------------------------------------------------------------------------*/
+int
+cef_csmgr_con_chunk_retrieve (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	char* name,								/* Content name								*/
+	uint16_t name_len,						/* Name length								*/
+	char* range,							/* Cache Range								*/
+	uint16_t range_len,						/* Range length								*/
+	char* info								/* cache information						*/
+);
+/*--------------------------------------------------------------------------------------
+	Delete Cache Chunk
+----------------------------------------------------------------------------------------*/
+int
+cef_csmgr_con_chunk_delete (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	char* name,								/* Content name								*/
+	uint16_t name_len,						/* Name length								*/
+	char* range,							/* Cache Range								*/
+	uint16_t range_len						/* Range length								*/
 );
 #endif // CefC_Ccore
 #ifdef CefC_Dtc

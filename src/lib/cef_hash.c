@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,6 +35,7 @@
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
+#include <limits.h>
 #include <openssl/md5.h>
 
 #include <cefore/cef_hash.h>
@@ -62,8 +63,9 @@ typedef struct CefT_Hash_Table {
 typedef struct CefT_Hash {
 	uint32_t 			seed;
 	CefT_Hash_Table*	tbl;
-	uint32_t 			elem_max;
+	uint32_t 			elem_max;			/* Prime numbers larger than the user defined maximum size */
 	uint32_t 			elem_num;
+	uint32_t 			def_elem_max;		/* User defined maximum size	*/
 
 	uint32_t 			cleanup_mwin;
 	uint32_t 			cleanup_cwin;
@@ -71,7 +73,7 @@ typedef struct CefT_Hash {
 } CefT_Hash;
 
 typedef struct CefT_List_Hash_Cell {
-	unsigned char 			key[CefC_Max_KLen + 1];
+	unsigned char* 			key;
 	void* 					elem;
 	uint32_t 				klen;
 	struct CefT_List_Hash_Cell*	next;
@@ -113,7 +115,11 @@ cef_hash_tbl_create (
 	CefT_Hash* ht = NULL;
 	int i, n;
 	int flag;
+	int def_tbl_size = table_size;
 	
+	/* A prime number larger than the maximum size defined by the user	*/
+	/* is set as the table size.										*/
+	/* The maximum size defined by the user is set to "def_elem_max".	*/
 	for (i = table_size ; i > 1 ; i++) {
 		flag = 0;
 		
@@ -130,7 +136,7 @@ cef_hash_tbl_create (
 		}
 	}
 	
-	if (table_size > 1048576) {
+	if (table_size > UINT_MAX) {
 		return ((CefT_Hash_Handle) NULL);
 	}
 
@@ -150,6 +156,7 @@ cef_hash_tbl_create (
 	srand ((unsigned) time (NULL));
 	ht->seed = (uint32_t)(rand () + 1);
 	ht->elem_max = table_size;
+	ht->def_elem_max = def_tbl_size;
 	ht->cleanup_step = CefC_Cleanup_Smin;
 	ht->cleanup_mwin = CefC_Cleanup_Wmin;
 	ht->cleanup_cwin = 0;
@@ -578,6 +585,7 @@ cef_hash_tbl_item_remove (
 		ht->tbl[index].opt_f = 0;
 		ht->elem_num--;
 		rtc = (void*) ht->tbl[index].elem;
+		ht->tbl[index].elem = NULL;
 		removed_f = 1;
 		removed_indx = index;
 		goto ENDFUNC;
@@ -596,6 +604,7 @@ cef_hash_tbl_item_remove (
 			ht->tbl[i].opt_f = 0;
 			ht->elem_num--;
 			rtc = (void*) ht->tbl[i].elem;
+			ht->tbl[i].elem = NULL;
 			removed_f = 1;
 			removed_indx = i;
 			goto ENDFUNC;
@@ -614,6 +623,7 @@ cef_hash_tbl_item_remove (
 			ht->tbl[i].opt_f = 0;
 			ht->elem_num--;
 			rtc = (void*) ht->tbl[i].elem;
+			ht->tbl[i].elem = NULL;
 			removed_f = 1;
 			removed_indx = i;
 			goto ENDFUNC;
@@ -682,6 +692,7 @@ cef_hash_tbl_item_remove_from_index (
 	uint32_t index
 ) {
 	CefT_Hash* ht = (CefT_Hash*) handle;
+	void* rtc = (void*) NULL;
 
 	if (index > ht->elem_max) {
 		return ((void*) NULL);
@@ -691,7 +702,9 @@ cef_hash_tbl_item_remove_from_index (
 		ht->tbl[index].hash = 0;
 		ht->tbl[index].klen = -1;
 		ht->elem_num--;
-		return ((void*) ht->tbl[index].elem);
+		rtc = (void*) ht->tbl[index].elem;
+		ht->tbl[index].elem = NULL;
+		return (rtc);
 	}
 
 	return ((void*) NULL);
@@ -702,6 +715,21 @@ cef_hash_tbl_item_num_get (
 	CefT_Hash_Handle handle
 ) {
 	return ((int)(((CefT_Hash*) handle)->elem_num));
+}
+
+/* Get user defined maximum size	*/
+int
+cef_hash_tbl_def_max_get (
+	CefT_Hash_Handle handle
+) {
+	return ((int)(((CefT_Hash*) handle)->def_elem_max));
+}
+
+int
+cef_hash_tbl_item_max_idx_get (
+	CefT_Hash_Handle handle
+) {
+	return ((int)(((CefT_Hash*) handle)->elem_max));
 }
 
 void*
@@ -837,6 +865,51 @@ cef_lhash_tbl_create (
 
 	return ((CefT_Hash_Handle) ht);
 }
+CefT_Hash_Handle
+cef_lhash_tbl_create_u32 (
+	uint32_t table_size
+) {
+	CefT_List_Hash* ht = NULL;
+	int i, n;
+	int flag;
+	
+	for (i = table_size ; i > 1 ; i++) {
+		flag = 0;
+		
+		for (n = 2 ; n < table_size ; n++) {
+			if (table_size % n == 0) {
+				flag = 1;
+				break;
+			}
+		}
+		if (flag) {
+			table_size++;
+		} else {
+			break;
+		}
+	}
+
+	if (table_size > UINT_MAX) {
+		table_size = UINT_MAX;
+	}
+
+	ht = (CefT_List_Hash*) malloc (sizeof (CefT_List_Hash));
+	if (ht == NULL) {
+		return ((CefT_Hash_Handle) NULL);
+	}
+	memset (ht, 0, sizeof (CefT_List_Hash));
+
+	ht->tbl = (CefT_List_Hash_Cell**) malloc (sizeof (CefT_List_Hash_Cell *) * table_size);
+	if (ht->tbl == NULL) {
+		free (ht);
+		return ((CefT_Hash_Handle) NULL);
+	}
+	memset (ht->tbl, 0, sizeof (CefT_List_Hash_Cell*) * table_size);
+	
+	ht->elem_max = table_size;
+
+	return ((CefT_Hash_Handle) ht);
+}
 
 void
 cef_lhash_tbl_destroy ( 
@@ -885,10 +958,11 @@ cef_lhash_tbl_item_set (
 	index = hash % ht->elem_max;
 
 	if(ht->tbl[index] == NULL){
-		ht->tbl[index] = (CefT_List_Hash_Cell* )calloc(1, sizeof(CefT_List_Hash_Cell));
+		ht->tbl[index] = (CefT_List_Hash_Cell* )calloc(1, sizeof(CefT_List_Hash_Cell) + klen);
 		if (ht->tbl[index] == NULL) {
 			return (-1);
 		}
+		ht->tbl[index]->key = ((unsigned char*)ht->tbl[index]) + sizeof(CefT_List_Hash_Cell);
 		cp = ht->tbl[index];
 		cp->elem = elem;
 		cp->klen = klen;
@@ -906,10 +980,11 @@ cef_lhash_tbl_item_set (
 		}
 		/* insert */
 		wcp = ht->tbl[index];
-		ht->tbl[index] = (CefT_List_Hash_Cell* )calloc(1, sizeof(CefT_List_Hash_Cell));
+		ht->tbl[index] = (CefT_List_Hash_Cell* )calloc(1, sizeof(CefT_List_Hash_Cell) + klen);
 		if (ht->tbl[index] == NULL) {
 			return (-1);
 		}
+		ht->tbl[index]->key = ((unsigned char*)ht->tbl[index]) + sizeof(CefT_List_Hash_Cell);
 		cp = ht->tbl[index];
 		cp->next = wcp;
 		cp->elem = elem;

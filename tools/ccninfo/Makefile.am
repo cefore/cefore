@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016, National Institute of Information and Communications
+# Copyright (c) 2016-2019, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@ ccninfo_SOURCES=ccninfo.c
 if CEFDBG_ENABLE
 ccninfo_CFLAGS+=-DCefC_Debug
 endif # CEFDBG_ENABLE
+
 
 DESTDIR=$(CEFORE_DIR_PATH)
 bindir=bin

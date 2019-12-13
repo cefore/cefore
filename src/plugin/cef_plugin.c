@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -69,6 +69,8 @@ static CefT_Plugin_Tag plugin_tag; 				/* store parameters in plugin.conf 		*/
 static uint16_t plugin_log_lv = CefT_Log_None;	/* logging flag 						*/
 static FILE* plugin_log_fp = NULL;
 
+
+
 /****************************************************************************************
  Static Function Declaration
  ****************************************************************************************/
@@ -122,6 +124,7 @@ int
 cef_plugin_init (
 	CefT_Plugin_Handle* plgin_hdl					/* plugin handle 					*/
 ) {
+	
 	/* Reads the plugin.conf and stores values as the string 	*/
 	cef_plugin_config_read ();
 	

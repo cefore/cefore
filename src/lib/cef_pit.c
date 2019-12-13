@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -138,6 +138,12 @@ cef_pit_entry_lookup (
 	CefT_Pit_Entry* entry;
 	uint16_t name_len = pm->name_len;
 
+	if(cef_hash_tbl_item_num_get(pit) == cef_hash_tbl_def_max_get(pit)) {
+		cef_log_write (CefC_Log_Warn, 
+			"PIT table is full(PIT_SIZE = %d)\n", cef_hash_tbl_def_max_get(pit));
+		return (NULL);
+	}
+	
 	/* Searches a PIT entry 	*/
 	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, pm->name, name_len);
 
@@ -220,8 +226,9 @@ cef_pit_entry_search (
 	}
 	
 	if (pm->chnk_num_f) {
-		entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (
-			pit, pm->name, name_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum));
+		uint16_t name_len_wo_chunk;
+		name_len_wo_chunk = name_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
+		entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, pm->name, name_len_wo_chunk);
 
 		if (entry != NULL) {
 			if (entry->symbolic_f) {
@@ -252,6 +259,197 @@ cef_pit_entry_search (
 	
 	return (NULL);
 }
+/*--------------------------------------------------------------------------------------
+	Searches a PIT entry matching the specified Name
+----------------------------------------------------------------------------------------*/
+CefT_Pit_Entry* 							/* a PIT entry								*/
+cef_pit_entry_search_specified_name (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	unsigned char* sp_name,					/* specified Name							*/
+	uint16_t sp_name_len,					/* length of Name							*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh,				/* Parsed Option Header						*/
+	int match_type							/* 0:Exact, 1:Prefix						*/
+) {
+	CefT_Pit_Entry* entry;
+	uint16_t name_len = sp_name_len;
+	
+	if (poh->symbolic_code_f) {
+		memcpy (&sp_name[name_len], &poh->symbolic_code, sizeof (struct value32x2_tlv));
+		name_len += sizeof (struct value32x2_tlv);
+	}
+#ifdef CefC_Debug
+	{
+		int dbg_x;
+		
+		sprintf (pit_dbg_msg, "[pit] Search the entry [");
+		for (dbg_x = 0 ; dbg_x < name_len ; dbg_x++) {
+			sprintf (pit_dbg_msg, "%s %02X", pit_dbg_msg, sp_name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
+	}
+#endif // CefC_Debug
+	
+	/* Searches a PIT entry 	*/
+	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, sp_name, name_len);
+	
+	if (entry != NULL) {
+		if (match_type) {
+			/* PrefixMatch */
+			if (pm->chnk_num_f) {
+				if (entry->symbolic_f) {
+					entry = cef_pit_cleanup (pit, entry);
+				}
+			}
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Finest, "[pit] Partial matched to the entry\n");
+#endif // CefC_Debug
+			return (entry);
+		} else {
+			/* ExactMatch */
+			if (!entry->symbolic_f) {
+				entry->stole_f = 1;
+			}
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Finest, "[pit] Exact matched to the entry\n");
+#endif // CefC_Debug
+			return (entry);
+		}
+	}
+	
+	if (pm->chnk_num_f) {
+		uint16_t name_len_wo_chunk;
+		name_len_wo_chunk = name_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
+		entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, pm->name, name_len_wo_chunk);
+
+		if (entry != NULL) {
+			if (entry->symbolic_f) {
+				entry = cef_pit_cleanup (pit, entry);
+#ifdef CefC_Debug
+				{
+					int dbg_x;
+					
+					if (entry) {
+						sprintf (pit_dbg_msg, "[pit] Partial matched to the entry [");
+						for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
+							sprintf (pit_dbg_msg, 
+								"%s %02X", pit_dbg_msg, entry->key[dbg_x]);
+						}
+						cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
+					} else {
+						cef_dbg_write (CefC_Dbg_Finest, "[pit] Mismatched\n");
+					}
+				}
+#endif // CefC_Debug
+				return (entry);
+			}
+		}
+	}
+
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Finest, "[pit] Mismatched\n");
+#endif // CefC_Debug
+	return (NULL);
+}
+/*--------------------------------------------------------------------------------------
+	Searches a PIT(for App) entry matching the specified Name --- Prefix(Longest) Match
+----------------------------------------------------------------------------------------*/
+CefT_Pit_Entry* 							/* a PIT entry								*/
+cef_pit_entry_search_specified_name_for_app (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	unsigned char* sp_name,					/* specified Name							*/
+	uint16_t sp_name_len,					/* length of Name							*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+) {
+	CefT_Pit_Entry* entry;
+	uint16_t name_len = sp_name_len;
+
+	unsigned char* msp;
+	unsigned char* mep;
+	uint16_t length;
+
+	
+	if (poh->symbolic_code_f) {
+		memcpy (&sp_name[name_len], &poh->symbolic_code, sizeof (struct value32x2_tlv));
+		name_len += sizeof (struct value32x2_tlv);
+	}
+#ifdef CefC_Debug
+	{
+		int dbg_x;
+		
+		sprintf (pit_dbg_msg, "[pit] Search the entry [");
+		for (dbg_x = 0 ; dbg_x < name_len ; dbg_x++) {
+			sprintf (pit_dbg_msg, "%s %02X", pit_dbg_msg, sp_name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
+	}
+#endif // CefC_Debug
+	
+	/* Searches a PIT entry 	*/
+	while (name_len > 0) {
+		entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, sp_name, name_len);
+		if (entry != NULL) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "[pit] Matched to the entry\n");
+#endif // CefC_Debug
+			return (entry);
+		}
+		
+		msp = sp_name;
+		mep = sp_name + name_len - 1;
+		while (msp < mep) {
+			memcpy (&length, &msp[CefC_S_Length], CefC_S_Length);
+			length = ntohs (length);
+			
+			if (msp + CefC_S_Type + CefC_S_Length + length < mep) {
+				msp += CefC_S_Type + CefC_S_Length + length;
+			} else {
+				break;
+			}
+		}
+		name_len = msp - sp_name;
+	}
+	
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Finest, "[pit] Mismatched\n");
+#endif // CefC_Debug
+	return (NULL);
+}
+
+#ifdef CefC_Debug
+void
+cef_pit_entry_print (
+	CefT_Hash_Handle pit					/* PIT										*/
+) {
+	int pit_num, cnt, index;
+	CefT_Pit_Entry* entry;
+	int pit_max = cef_hash_tbl_item_max_idx_get (pit);
+	
+	pit_num = cef_hash_tbl_item_num_get (pit);
+	fprintf(stderr,"===== PIT (entry=%d) =====\n", pit_num);
+	for (index = 0, cnt = 0; (cnt < pit_num && index < pit_max); index++) {
+		entry = (CefT_Pit_Entry*)cef_hash_tbl_item_get_from_index (pit, index);
+		if (entry != NULL) {
+			if (entry->klen != -1) {
+				fprintf(stderr,"    (%d)(%d) len=%d [", index, cnt, entry->klen);
+				{
+					int dbg_x;
+					for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
+						fprintf (stderr, "%02x ", entry->key[dbg_x]);
+					}
+					fprintf (stderr, "]\n");
+				}
+				cnt++;
+			} else {
+				fprintf(stderr,"    (%d) len=-1 **************************************\n", index);
+			}
+		}
+	}
+	fprintf(stderr,"==============================\n");
+	return;
+}
+#endif // CefC_Debug
 #if 0
 /*--------------------------------------------------------------------------------------
 	Searches a PIT entry matching the specified Name for Cefore-Router
@@ -316,7 +514,7 @@ cef_pit_entry_down_face_update (
 	
 	/* Looks up a Down Face entry 		*/
 	new_downface_f = cef_pit_entry_down_face_lookup (
-						entry, faceid, &face, pm->nonce, poh->longlife_f);
+						entry, faceid, &face, pm->nonce, pm->org.longlife_f);
 	
 	/* Checks flags 					*/
 	if (new_downface_f) {
@@ -328,7 +526,7 @@ cef_pit_entry_down_face_update (
 		face->nonce = pm->nonce;
 	}
 	
-	if (poh->longlife_f) {
+	if (pm->org.longlife_f) {
 		face->symbolic_f = CefC_Pit_True;
 		if (new_downface_f) {
 			entry->symbolic_f++;
@@ -340,9 +538,17 @@ cef_pit_entry_down_face_update (
 	}
 	
 	/* Checks whether the life time is smaller than the limit 	*/
+#ifndef CefC_Nwproc
 	if (poh->lifetime > CefC_Maximum_Lifetime) {
 		poh->lifetime = CefC_Maximum_Lifetime;
 	}
+#else // CefC_Nwproc
+	if (!poh->nwproc_f){
+		if (poh->lifetime > CefC_Maximum_Lifetime) {
+			poh->lifetime = CefC_Maximum_Lifetime;
+		}
+	}
+#endif // CefC_Nwproc
 	
 	/* Updates Interest Lifetime of this PIT entry 		*/
 	if (poh->lifetime_f) {
@@ -368,7 +574,11 @@ cef_pit_entry_down_face_update (
 	/* Checks the advertised lifetime to upstream 		*/
 	if (face->lifetime_us > entry->drp_lifetime_us) {
 		forward_interest_f = 1;
+#ifndef CefC_Nwproc
 		entry->drp_lifetime_us = face->lifetime_us + 1000000;
+#else // CefC_Nwproc
+		entry->drp_lifetime_us = face->lifetime_us + extent_us;
+#endif // CefC_Nwproc
 		entry->adv_lifetime_us = face->lifetime_us;
 	} else {
 		
@@ -487,6 +697,7 @@ cef_pit_entry_free (
 	}
 #endif // CefC_Dtc
 
+	free (entry->key);
 	free (entry);
 
 	return;

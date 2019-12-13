@@ -2,6 +2,13 @@
 # cefnetd.conf
 #
 
+# Operational Log Level
+#  0: Error only
+#  1: Warning and Error
+#  2: Info, Warning, and Error
+#
+#CEF_LOG_LEVEL=0
+
 #
 # Port number used by cefnetd.
 # This value must be higther than 1024 and lower than 65536.
@@ -13,6 +20,17 @@
 # This value is the string type, not the integer type.
 #
 #LOCAL_SOCK_ID=0
+
+#
+# csmgr's IP address
+#
+#CSMGR_NODE=127.0.0.1
+
+#
+# csmgr's TCP port number.
+# This value must be higher than 1024 and lower than 65536.
+#
+#CSMGR_PORT_NUM=9799
 
 #
 # Maximum number of PIT entries.
@@ -27,33 +45,31 @@
 #FIB_SIZE=1024
 
 #
-# Cache used by cefnetd
-#  0 : No cache
-#  1 : Use external cache (i.e., use csmgrd)
+# Content Store used by cefnetd
+#  0 : No Content Store
+#  1 : Use cefnetd's Local cache
+#  2 : Use external Content Store (use csmgrd)
+#  3 : Use external Content Store (use conpubd)
 #
-#USE_CACHE=0
+#CS_MODE=0
+
+#
+# Maximum number of Cobs used in local cache of cefnetd.
+# This value must be greater than 1 and less than or equal to 8,000,000.
+#
+#LOCAL_CACHE_CAPACITY=65535
+
+#
+# cefnetd local cache expired content check interval(sec)
+# This value must be greater than 1 and less than 86,400(24 hours).
+#
+#LOCAL_CACHE_INTERVAL=60
 
 #
 # Buffer size to keep the number of Cobs.
 # This value must be higher than or equal to 0 and lower than 65536.
 #
 #BUFFER_CAPACITY=30000
-
-#
-# csmgrd's IP address
-#
-#CSMGR_NODE=127.0.0.1
-
-#
-# csmgrd's TCP port number.
-# This value must be higher than 1024 and lower than 65536.
-#
-#CSMGR_PORT_NUM=9799
-
-#
-# Logging level
-#
-#LOG_LEVEL=0
 
 #
 # cefnetd controller
@@ -86,3 +102,10 @@
 #SER_LOG_ENABLE=0
 #SER_LOG_SIZE=65535
 #SER_LOG_DIR=/path/to/file.csv
+
+# Debug log level
+#
+#  Range of the debug log level can be specified from 0 to 3. (0 indicates "no debug logging")
+#  Note that you must specify "--enable-debug" for configure option to enable this debug logging.
+#
+#CEF_DEBUG_LEVEL=0

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -156,7 +156,7 @@ int main (
 		Init variables
 	------------------------------------------------------------------*/
 	/* Inits logging 		*/
-	cef_log_init ("cefinfo");
+	cef_log_init ("cefinfo", 1);
 	
 	cef_frame_init ();
 	memset (&params, 0, sizeof (CefT_Ct_Parms));
@@ -183,6 +183,7 @@ int main (
 		ct_usage_output ("error: Default Name is specified with [-o].");
 		exit (0);
 	}
+	cef_log_init2 (conf_path, 1 /* for CEFNETD */);
 #ifdef CefC_Debug
 	cef_dbg_init ("cefinfo", conf_path, 1);
 #endif // CefC_Debug

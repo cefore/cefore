@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -113,7 +113,7 @@ int main (
 	fprintf (stderr, "[cefgetchunk] Parsing parameters ... ");
 	
 	/* Inits logging 		*/
-	cef_log_init ("cefgetchunk");
+	cef_log_init ("cefgetchunk", 1);
 	
 	/* Parses parameters 		*/
 	for (i = 1 ; i < argc ; i++) {
@@ -211,6 +211,7 @@ int main (
 		exit (1);
 	}
 	fprintf (stderr, "OK\n");
+	cef_log_init2 (conf_path, 1 /* for CEFNETD */);
 #ifdef CefC_Debug
 	cef_dbg_init ("cefgetchunk", conf_path, 1);
 #endif // CefC_Debug

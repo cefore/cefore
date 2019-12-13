@@ -2,6 +2,13 @@
 # csmgrd.conf
 #
 
+# Operational Log Level
+#  0: Error only
+#  1: Warning and Error
+#  2: Info, Warning, and Error
+#
+#CEF_LOG_LEVEL=0
+
 #
 # Port number used by csmgrd.
 # This value must be higher than 1024 and lower than 65536.
@@ -66,7 +73,10 @@
 #
 #CACHE_CAPACITY=65536
 
+# Debug log level
 #
-# Logging level
+#  Range of the debug log level can be specified from 0 to 3. (0 indicates "no debug logging")
+#  Note that you must specify "--enable-debug" for configure option to enable this debug logging.
 #
-#LOG_LEVEL=0
+#CEF_DEBUG_LEVEL=0
+

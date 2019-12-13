@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -181,6 +181,36 @@ cef_pit_entry_search (
 	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
 	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
 );
+/*--------------------------------------------------------------------------------------
+	Searches a PIT entry matching the specified Name
+----------------------------------------------------------------------------------------*/
+CefT_Pit_Entry* 							/* a PIT entry								*/
+cef_pit_entry_search_specified_name (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	unsigned char* sp_name,					/* specified Name							*/
+	uint16_t sp_name_len,					/* length of Name							*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh,				/* Parsed Option Header						*/
+	int match_type							/* 0:Exact, 1:Prefix						*/
+);
+/*--------------------------------------------------------------------------------------
+	Searches a PIT(for App) entry matching the specified Name --- Prefix(Longest) Match
+----------------------------------------------------------------------------------------*/
+CefT_Pit_Entry* 							/* a PIT entry								*/
+cef_pit_entry_search_specified_name_for_app (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	unsigned char* sp_name,					/* specified Name							*/
+	uint16_t sp_name_len,					/* length of Name							*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+);
+
+#ifdef CefC_Debug
+void
+cef_pit_entry_print (
+	CefT_Hash_Handle pit					/* PIT										*/
+);
+#endif // CefC_Debug
 /*--------------------------------------------------------------------------------------
 	Looks up and creates the specified Down Face entry
 ----------------------------------------------------------------------------------------*/

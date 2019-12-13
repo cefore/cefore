@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,21 +32,9 @@
 
 #define __CEF_CSMGR_SOURCE__
 
-
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
-#include <ctype.h>
-#include <errno.h>
-#include <limits.h>
-#include <netdb.h>
-#include <poll.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-
 #include <cefore/cef_client.h>
 #include <cefore/cef_csmgr.h>
 #include <cefore/cef_define.h>
@@ -56,6 +44,7 @@
 #ifdef CefC_Ccore
 #include <ccore/ccore_frame.h>
 #endif // CefC_Ccore
+#include <cefore/cef_mem_cache.h>
 
 
 
@@ -94,7 +83,7 @@ cef_csmgr_excache_access_increment (
 );
 #endif // CefC_Dtc
 /*--------------------------------------------------------------------------------------
-	Create Interest message for csmgrd
+	Create Interest message for csmgr
 ----------------------------------------------------------------------------------------*/
 static void
 cef_csmgr_interest_msg_create (
@@ -104,17 +93,17 @@ cef_csmgr_interest_msg_create (
 	CefT_Parsed_Message* pm					/* Parsed CEFORE message					*/
 );
 /*--------------------------------------------------------------------------------------
-	Connect csmgrd local socket
+	Connect csmgr local socket
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
-cef_csmgr_csmgrd_connect_local (
+cef_csmgr_csmgr_connect_local (
 	CefT_Cs_Stat* cs_stat					/* Content Store Status						*/
 );
 /*--------------------------------------------------------------------------------------
-	Send message from cefnetd to csmgrd
+	Send message from cefnetd to csmgr
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
-cef_csmgr_send_msg_to_csmgrd (
+cef_csmgr_send_msg_to_csmgr (
 	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
 	unsigned char* msg,						/* send message								*/
 	int msg_len								/* message length							*/
@@ -128,8 +117,10 @@ cef_csmgr_send_msg_to_csmgrd (
 ----------------------------------------------------------------------------------------*/
 CefT_Cs_Stat*						/* The return value is null if an error occurs		*/
 cef_csmgr_stat_create (
-	void
+	uint8_t		cs_mode
 ) {
+
+
 	CefT_Cs_Stat* cs_stat = NULL;
 	int res;
 	char port_str[NI_MAXSERV];
@@ -144,13 +135,24 @@ cef_csmgr_stat_create (
 	cs_stat->tx_que = NULL;
 	cs_stat->local_sock = -1;
 	cs_stat->tcp_sock 	= -1;
+	cs_stat->pipe_fd[0] = -1;
+	cs_stat->pipe_fd[1] = -1;
 	
 	/* read config */
-	res = cef_csmgr_config_read (cs_stat);
-	if (res < 0) {
-		cef_log_write (CefC_Log_Error, "%s (Loading csmgrd.conf)\n", __func__);
-		cef_csmgr_stat_destroy (&cs_stat);
-		return (NULL);
+	if(cs_mode != CefC_Cache_Type_ExConpub){
+		res = cef_csmgr_config_read (cs_stat);
+		if (res < 0) {
+			cef_log_write (CefC_Log_Error, "%s (Loading csmgrd.conf)\n", __func__);
+			cef_csmgr_stat_destroy (&cs_stat);
+			return (NULL);
+		}
+	} else {
+		res = cef_csmgr_config_read_for_conpub (cs_stat);
+		if (res < 0) {
+			cef_log_write (CefC_Log_Error, "%s (Loading conpubd.conf)\n", __func__);
+			cef_csmgr_stat_destroy (&cs_stat);
+			return (NULL);
+		}
 	}
 
 	if (cs_stat->cache_type == CefC_Cache_Type_Excache) {
@@ -159,14 +161,14 @@ cef_csmgr_stat_create (
 			(strcmp (cs_stat->peer_id_str, "127.0.0.1"))) {
 			sprintf (port_str, "%d", cs_stat->tcp_port_num);
 			cs_stat->tcp_sock 
-				= cef_csmgr_connect_tcp_to_csmgrd (cs_stat->peer_id_str, port_str);
+				= cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
 			if (cs_stat->tcp_sock < 0) {
 				cef_csmgr_stat_destroy (&cs_stat);
 				cef_log_write (CefC_Log_Error, "%s (connect to csmgrd)\n", __func__);
 				return (NULL);
 			}
 		} else {
-			cs_stat->local_sock = cef_csmgr_csmgrd_connect_local (cs_stat);
+			cs_stat->local_sock = cef_csmgr_csmgr_connect_local (cs_stat);
 			
 			if (cs_stat->local_sock < 0) {
 				cef_csmgr_stat_destroy (&cs_stat);
@@ -175,9 +177,59 @@ cef_csmgr_stat_create (
 			}
 		}
 	}
-	
+#ifdef CefC_Conpub
+	else
+	if (cs_stat->cache_type == CefC_Cache_Type_ExConpub) {
+		
+		if ((strcmp (cs_stat->peer_id_str, "localhost")) &&
+			(strcmp (cs_stat->peer_id_str, "127.0.0.1"))) {
+			sprintf (port_str, "%d", cs_stat->tcp_port_num);
+			cs_stat->tcp_sock 
+				= cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
+			if (cs_stat->tcp_sock < 0) {
+				cef_csmgr_stat_destroy (&cs_stat);
+				cef_log_write (CefC_Log_Error, "%s (connect to conpubd)\n", __func__);
+				return (NULL);
+			}
+		} else {
+			cs_stat->local_sock = cef_csmgr_csmgr_connect_local (cs_stat);
+			
+			if (cs_stat->local_sock < 0) {
+				cef_csmgr_stat_destroy (&cs_stat);
+				cef_log_write (CefC_Log_Error, "%s (connect to conpubd)\n", __func__);
+				return (NULL);
+			}
+		}
+	}
+#endif //CefC_Conpub
+#ifdef CefC_CefnetdCache 
+	else
+	if (cs_stat->cache_type == CefC_Cache_Type_Localcache) {
+		int flags;
+		/* Create socket for communication between cednetd and memory cache */
+		if ( socketpair(AF_UNIX,SOCK_DGRAM, 0, cs_stat->pipe_fd) == -1 ) {
+			cef_csmgr_stat_destroy (&cs_stat);
+			cef_log_write (CefC_Log_Error, "%s pair socket creation error (%s)\n"
+							, __func__, strerror(errno));
+			return (NULL);
+	  	}
+		/* Set cefnetd side socket as non-blocking I/O */
+		if ( (flags = fcntl(cs_stat->pipe_fd[0], F_GETFL, 0) ) < 0) {
+			cef_log_write (CefC_Log_Error, "%s fcntl error (%s)\n"
+							, __func__, strerror(errno));
+			return (NULL);
+		}
+		flags |= O_NONBLOCK;
+		if (fcntl(cs_stat->pipe_fd[0], F_SETFL, flags) < 0) {
+			cef_log_write (CefC_Log_Error, "%s fcntl error (%s)\n"
+							, __func__, strerror(errno));
+			return (NULL);
+		}
+	}
+#endif
+		
 	/* Create memory cache */
-	if (cs_stat->cache_type == CefC_Cache_Type_Excache) {
+	if (cs_stat->cache_type != CefC_Default_Cache_Type) {
 		/* create Cs_Tx_Que */
 		cs_stat->tx_que = cef_rngque_create (CefC_Tx_Que_Size);
 		cs_stat->tx_cob_mp = cef_mpool_init (
@@ -198,30 +250,65 @@ cef_csmgr_stat_create (
 		}
 		
 #ifdef CefC_Debug
-		cef_dbg_write (CefC_Dbg_Fine, "CACHE_TYPE     = Excache\n");
-		cef_dbg_write (CefC_Dbg_Fine, "CACHE_CAPACITY = "FMTU64"\n", cs_stat->cache_cap);
+		cef_dbg_write (CefC_Dbg_Fine, "CACHE_TYPE     != CefC_Default_Cache_Type\n");
+		cef_dbg_write (CefC_Dbg_Fine, "CACHE_CAPACITY =  "FMTU64"\n", cs_stat->cache_cap);
 #endif // CefC_Debug
-		if (cs_stat->cache_cap > 0) {
-			/* create CS */
-			cs_stat->cs_cob_entry_mp = cef_mpool_init (
-				"CefCsCobEnt", sizeof (CefT_Cob_Entry), cs_stat->cache_cap);
-			if (cs_stat->cs_cob_entry_mp == 0) {
+#ifdef	CefC_CefnetdCache
+		if (cs_stat->cache_type != CefC_Cache_Type_Localcache) {
+#endif  //CefC_CefnetdCache
+			cs_stat->cob_table = (CefT_Hash_Handle) NULL;
+			if (cs_stat->cache_cap > 0) {
+				/* create CS */
+				cs_stat->cs_cob_entry_mp = cef_mpool_init (
+					"CefCsCobEnt", sizeof (CefT_Cob_Entry), cs_stat->cache_cap);
+				if (cs_stat->cs_cob_entry_mp == 0) {
+					cef_csmgr_stat_destroy (&cs_stat);
+					cef_log_write (CefC_Log_Error, "%s (mpool CefCsCobEnt)\n", __func__);
+					return (NULL);
+				}
+				cef_log_write (CefC_Log_Info, 
+					"The maximum number of cached Cobs is "FMTU64"\n", cs_stat->cache_cap);
+				/* create hash table for work buffer */
+				cs_stat->cob_table = cef_hash_tbl_create (
+					(uint16_t) cs_stat->cache_cap + CefC_Csmgr_Max_Table_Margin);
+				if (cs_stat->cob_table == (CefT_Hash_Handle) NULL) {
+					cef_log_write (CefC_Log_Error, "%s (creation buffer)\n", __func__);
+					cef_csmgr_stat_destroy (&cs_stat);
+					return (NULL);
+				}
+			}
+#ifdef	CefC_CefnetdCache
+		} else 
+		if (cs_stat->cache_type == CefC_Cache_Type_Localcache) {
+			pthread_t cef_mem_cache_put_th;
+			pthread_t cef_mem_cache_clear_th;
+			int rtc;
+			rtc = cef_mem_cache_init (cs_stat->cache_cap);
+			if(rtc != 0){
 				cef_csmgr_stat_destroy (&cs_stat);
-				cef_log_write (CefC_Log_Error, "%s (mpool CefCsCobEnt)\n", __func__);
+				cef_log_write (CefC_Log_Error
+								, "%s Failed to initialize cefnetd on memory cache\n"
+								, __func__);
 				return (NULL);
 			}
-			cef_log_write (CefC_Log_Info, 
-				"The maximum number of cached Cobs is "FMTU64"\n", cs_stat->cache_cap);
-			
-			cs_stat->cob_table = cef_hash_tbl_create (
-				(uint16_t) cs_stat->cache_cap + CefC_Csmgr_Max_Table_Margin);
-			if (cs_stat->cob_table == (CefT_Hash_Handle) NULL) {
-				cef_log_write (CefC_Log_Error, "%s (creation buffer)\n", __func__);
+			if (pthread_create(&cef_mem_cache_put_th, NULL
+							, &cef_mem_cache_put_thread, &(cs_stat->pipe_fd[1])) == -1) {
 				cef_csmgr_stat_destroy (&cs_stat);
+				cef_log_write (CefC_Log_Error
+								, "%s Failed to create the new thread(cef_mem_cache_put_thead)\n"
+								, __func__);
+				return (NULL);
 			}
-		} else {
-			cs_stat->cob_table = (CefT_Hash_Handle) NULL;
+			if (pthread_create(&cef_mem_cache_clear_th, NULL
+								, &cef_mem_cache_clear_thread, &(cs_stat->local_cache_interval)) == -1) {
+				cef_csmgr_stat_destroy (&cs_stat);
+				cef_log_write (CefC_Log_Error
+								, "%s Failed to create the new thread(cef_mem_cache_clear_thead)\n"
+								, __func__);
+				return (NULL);
+			}
 		}
+#endif  //CefC_CefnetdCache
 	}
 	if (cefnetd_msg_buff) {
 		free (cefnetd_msg_buff);
@@ -238,7 +325,7 @@ cef_csmgr_stat_create (
 	return (cs_stat);
 }
 /*--------------------------------------------------------------------------------------
-	Create the work buffer for csmgrd
+	Create the work buffer for csmgr
 ----------------------------------------------------------------------------------------*/
 unsigned char* 
 cef_csmgr_buffer_init (
@@ -255,7 +342,7 @@ cef_csmgr_buffer_init (
 	return (work_msg_buff);
 }
 /*--------------------------------------------------------------------------------------
-	Destroy the work buffer for csmgrd
+	Destroy the work buffer for csmgr
 ----------------------------------------------------------------------------------------*/
 void 
 cef_csmgr_buffer_destroy (
@@ -322,6 +409,10 @@ cef_csmgr_config_read (
 	cs_stat->cache_cap 		= CefC_Default_Cache_Capacity;
 	cs_stat->tcp_port_num 	= CefC_Default_Tcp_Prot;
 	strcpy (cs_stat->peer_id_str, CefC_Default_Node_Path);
+#ifdef CefC_CefnetdCache
+	cs_stat->local_cache_capacity = 65535;
+	cs_stat->local_cache_interval = 60;
+#endif //CefC_CefnetdCache
 	
 	/* get parameter */
 	while (fgets (param_buff, sizeof (param_buff), fp) != NULL) {
@@ -345,19 +436,15 @@ cef_csmgr_config_read (
 		if(value == NULL){
 			continue;
 		}
-
-		if (strcmp (option, "USE_CACHE") == 0) {
+		if (strcmp (option, "CS_MODE") == 0) {
 			res = cef_csmgr_config_get_value (option, value);
-			if ((res < 0) || (res > 1)) {
-				cef_log_write (CefC_Log_Warn, "USE_CACHE must be 0 or 1\n");
-				return (-1);
-			}
 			cs_stat->cache_type = res;
 		} else if (strcmp (option, "BUFFER_CAPACITY") == 0) {
 			res = cef_csmgr_config_get_value (option, value);
 			if ((res < 0) || (res > CefC_Csmgr_Max_Table_Num)) {
 				cef_log_write (CefC_Log_Warn, 
 					"BUFFER_CAPACITY must be higher than 0 and lower than 65536.\n");
+				fclose (fp);
 				return (-1);
 			}
 			cs_stat->cache_cap = res;
@@ -378,11 +465,44 @@ cef_csmgr_config_read (
 				return (-1);
 			}
 			strcpy (local_sock_id, value);
-		} else {
+		} 
+#ifdef CefC_CefnetdCache
+		else if (strcmp (option, "LOCAL_CACHE_CAPACITY") == 0) {
+			res = cef_csmgr_config_get_value (option, value);
+			if ((res <= 1) || (res > 8000000)) {
+				cef_log_write (CefC_Log_Warn, 
+					"LOCAL_CACHE_CAPACITY must be greater than 1 and less than or equal to 8,000,000.\n");
+				return (-1);
+			}
+			cs_stat->local_cache_capacity = res;
+		}
+		else if (strcmp (option, "LOCAL_CACHE_INTERVAL") == 0) {
+			res = cef_csmgr_config_get_value (option, value);
+			if ((res <= 1) || (res >= 86400)) {
+				cef_log_write (CefC_Log_Warn, 
+					"LOCAL_CACHE_INTERVAL must be higher than 1 and lower than 86400.\n");
+				return (-1);
+			}
+			cs_stat->local_cache_interval = res;
+		}
+#endif //CefC_CefnetdCache
+		else {
 			/* NOP */;
 		}
 	}
+#ifdef CefC_CefnetdCache
+	if(cs_stat->cache_type == CefC_Cache_Type_Localcache) {
+		cef_log_write (CefC_Log_Info, "Local cache expire check interval: %lu\n", cs_stat->local_cache_interval);
+	}
+#endif //CefC_CefnetdCache
 	fclose (fp);
+#ifdef CefC_CefnetdCache
+	if(cs_stat->cache_type == CefC_Cache_Type_Localcache) {
+		cs_stat->cache_cap = cs_stat->local_cache_capacity;
+	}
+#endif //CefC_CefnetdCache
+
+if (cs_stat->cache_type == CefC_Cache_Type_Excache) {	
 	sprintf (cs_stat->local_sock_name, 
 		"/tmp/csmgr_%d.%s", cs_stat->tcp_port_num, local_sock_id);
 	
@@ -422,9 +542,184 @@ cef_csmgr_config_read (
 			if ((res < 1000) || (res > 3600000)) {
 				cef_log_write (CefC_Log_Warn, 
 				"CACHE_DEFAULT_RCT must be higher than 1000 and lower than 3600000.\n");
+				fclose (fp);
 				return (-1);
 			}
 			cs_stat->def_rct = (uint32_t)(res * 1000);
+		} else {
+			/* NOP */;
+		}
+	}
+	fclose (fp);
+  }
+	return (0);
+}
+
+/*--------------------------------------------------------------------------------------
+	Reads the config file for conpub
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_config_read_for_conpub (
+	CefT_Cs_Stat* cs_stat					/* Content Store Status						*/
+) {
+	FILE*	fp = NULL;								/* file pointer						*/
+	char	file_name[1024];						/* file name						*/
+	char	file_path[1024];						/* file path						*/
+
+	char	param[4096] = {0};						/* parameter						*/
+	char	param_buff[4096] = {0};					/* param buff						*/
+	int		len;									/* read length						*/
+
+	char*	option;									/* deny option						*/
+	char*	value;									/* parameter						*/
+
+	int		i, n;
+	int64_t	res;
+	
+	char 	local_sock_id[1024] = {"0"};
+	
+	/* Obtains the directory path where the cefnetd's config file is located. */
+#ifndef CefC_Android
+	cef_client_config_dir_get (file_path);
+#else // CefC_Android
+	/* Android local cache storage is data/data/package_name/ */
+	sprintf (file_path, "data/data/icn.app.cefore/.cefore");
+#endif // CefC_Android
+
+	if (mkdir (file_path, 0777) != 0) {
+		if (errno == ENOENT) {
+			cef_log_write (CefC_Log_Error, "%s (mkdir)\n", __func__);
+			return (-1);
+		}
+	}
+	sprintf (file_name, "%s/cefnetd.conf", file_path);
+	
+	/* Opens the cefnetd's config file. */
+	fp = fopen (file_name, "r");
+	if (fp == NULL) {
+		fp = fopen (file_name, "w");
+		if (fp == NULL) {
+			cef_log_write (CefC_Log_Error, "%s (open cefnetd.conf)\n", __func__);
+			return (-1);
+		}
+		fclose (fp);
+		fp = fopen (file_name, "r");
+	}
+	
+	/* Set default value */
+	cs_stat->cache_type  	= CefC_Cache_Type_Excache;
+	cs_stat->def_rct		= CefC_Default_Def_Rct;
+	cs_stat->cache_cap 		= CefC_Default_Cache_Capacity;
+	cs_stat->tcp_port_num 	= CefC_Default_Tcp_Prot;
+	strcpy (cs_stat->peer_id_str, CefC_Default_Node_Path);
+	/* get parameter */
+	while (fgets (param_buff, sizeof (param_buff), fp) != NULL) {
+		len = strlen (param_buff);
+		if ((param_buff[0] == '#') || (param_buff[0] == '\n') || (len == 0)) {
+			continue;
+		}
+		if (param_buff[len - 1] == '\n') {
+			param_buff[len - 1] = '\0';
+		}
+
+		for (i = 0, n = 0; i < len; i++) {
+			if (param_buff[i] != ' ') {
+				param[n] = param_buff[i];
+				n++;
+			}
+		}
+		/* get option */
+		value = param;
+		option = strsep (&value, "=");
+		if(value == NULL){
+			continue;
+		}
+
+		if (strcmp (option, "CS_MODE") == 0) {
+			res = cef_csmgr_config_get_value (option, value);
+			if (!(0 <= res && res <= 3)) {
+				cef_log_write (CefC_Log_Warn, "CS_MODE must be a value between 0 and 3.\n");
+				fclose (fp);
+				return (-1);
+			}
+			cs_stat->cache_type = res;
+		} else 
+		if (strcmp (option, "BUFFER_CAPACITY") == 0) {
+			res = cef_csmgr_config_get_value (option, value);
+			if ((res < 0) || (res > CefC_Csmgr_Max_Table_Num)) {
+				cef_log_write (CefC_Log_Warn, 
+					"BUFFER_CAPACITY must be higher than 0 and lower than 65536.\n");
+				fclose (fp);
+				return (-1);
+			}
+			cs_stat->cache_cap = res;
+		} else if (strcmp (option, "CSMGR_NODE") == 0) {
+			strcpy (cs_stat->peer_id_str, value);
+		} else if (strcmp (option, "CSMGR_PORT_NUM") == 0) {
+			res = cef_csmgr_config_get_value (option, value);
+			if ((res < 1025) || (res > 65535)) {
+				cef_log_write (CefC_Log_Warn, 
+					"CSMGR_PORT_NUM must be higher than 1024 and lower than 65536.\n");
+				fclose (fp);
+				return (-1);
+			}
+			cs_stat->tcp_port_num = res;
+		} else if (strcmp (option, "LOCAL_SOCK_ID") == 0) {
+			if (strlen (value) > 1024) {
+				cef_log_write (CefC_Log_Warn, 
+					"LOCAL_SOCK_ID must be shorter than 1024.\n");
+				fclose (fp);
+				return (-1);
+			}
+			strcpy (local_sock_id, value);
+		} else {
+			/* NOP */;
+		}
+	}
+	fclose (fp);
+	sprintf (cs_stat->local_sock_name, 
+		"/tmp/conpub_%d.%s", cs_stat->tcp_port_num, local_sock_id);
+	
+	sprintf (file_name, "%s/conpubd.conf", file_path);
+	
+	fp = fopen (file_name, "r");
+	if (fp == NULL) {
+		cef_log_write (CefC_Log_Error, "%s (open conpubd.conf)\n", __func__);
+		return (-1);
+	}
+	
+	/* get parameter */
+	while (fgets (param_buff, sizeof (param_buff), fp) != NULL) {
+		len = strlen (param_buff);
+		if ((param_buff[0] == '#') || (param_buff[0] == '\n') || (len == 0)) {
+			continue;
+		}
+		if (param_buff[len - 1] == '\n') {
+			param_buff[len - 1] = '\0';
+		}
+
+		for (i = 0, n = 0; i < len; i++) {
+			if (param_buff[i] != ' ') {
+				param[n] = param_buff[i];
+				n++;
+			}
+		}
+		/* get option */
+		value = param;
+		option = strsep (&value, "=");
+		if(value == NULL){
+			continue;
+		}
+
+		if (strcmp (option, "CACHE_DEFAULT_RCT") == 0) {
+			res = cef_csmgr_config_get_value (option, value);
+			if ((res < 1) || (res > 3600)) {
+				cef_log_write (CefC_Log_Warn, 
+					"CACHE_DEFAULT_RCT must be higher than 1 and lower than 3600 (secs).\n");
+				fclose (fp);
+				return (-1);
+			}
+			cs_stat->def_rct = (uint32_t)(res * 1000000llu);
 		} else {
 			/* NOP */;
 		}
@@ -434,10 +729,10 @@ cef_csmgr_config_read (
 	return (0);
 }
 /*--------------------------------------------------------------------------------------
-	Connect csmgrd local socket
+	Connect csmgr local socket
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
-cef_csmgr_csmgrd_connect_local (
+cef_csmgr_csmgr_connect_local (
 	CefT_Cs_Stat* cs_stat					/* Content Store Status						*/
 ) {
 	struct sockaddr_un saddr;
@@ -454,7 +749,7 @@ cef_csmgr_csmgrd_connect_local (
 	saddr.sun_family = AF_UNIX;
 	strcpy (saddr.sun_path, cs_stat->local_sock_name);
 	len = strlen (cs_stat->local_sock_name);
-	
+
 	/* prepares a source socket */
 #ifdef __APPLE__
 	saddr.sun_len = sizeof (saddr);
@@ -490,8 +785,8 @@ cef_csmgr_stat_destroy (
 	CefT_Cs_Stat** cs_stat					/* Content Store Status						*/
 ) {
 	CefT_Cs_Stat* stat = *cs_stat;
-	
-	if (stat->cache_type == CefC_Cache_Type_Excache) {
+
+	if (stat->cache_type != CefC_Cache_Type_None) {
 		if (stat->cob_table != (CefT_Hash_Handle)NULL) {
 			cef_hash_tbl_destroy (stat->cob_table);
 		}
@@ -510,6 +805,17 @@ cef_csmgr_stat_destroy (
 		if (stat->cache_type == CefC_Cache_Type_Excache) {
 			csmgr_sock_close (stat);
 		}
+#ifdef CefC_CefnetdCache
+		if(stat->cache_type == CefC_Cache_Type_Localcache){
+			cef_mem_cache_destroy ();
+			if(stat->pipe_fd[0] != -1){
+				close(stat->pipe_fd[0]);
+			}
+			if(stat->pipe_fd[1] != -1){
+				close(stat->pipe_fd[1]);
+			}
+		}
+#endif //CefC_CefnetdCache
 	}
 
 	if (stat != NULL) {
@@ -522,6 +828,7 @@ cef_csmgr_stat_destroy (
 		cefnetd_msg_buff = NULL;
 	}
 	cefnetd_msg_buff_index = 0;
+
 	
 	return;
 }
@@ -535,82 +842,74 @@ cef_csmgr_cache_lookup (
 											/* transmission of the message(s)			*/
 	CefT_Parsed_Message* pm,				/* Parsed CEFORE message					*/
 	CefT_Parsed_Opheader* poh,				/* Parsed Option Header						*/
-	CefT_Pit_Entry* pe						/* PIT entry								*/
+	CefT_Pit_Entry* pe,						/* PIT entry								*/
+	unsigned char** cob
 ) {
 	CefT_Cob_Entry* cob_entry = NULL;
 	uint64_t nowt;
-	CefT_Cs_Tx_Elem* tx_elem_que;
-	CefT_Cs_Tx_Elem_Cob* tx_elem_cob;
-	int res;
 	
+	*cob = NULL;
 	/* If the Interest is longlife or bulk, process is left to csmrd 	*/
-	if (poh->longlife_f) {
+	if (pm->org.longlife_f) {
 		return (-1);
 	}
 	
-	/* Searches content entry 	*/
-	if (cs_stat->cob_table) {
-		cob_entry = (CefT_Cob_Entry*) 
-			cef_hash_tbl_item_get_prg (cs_stat->cob_table, pm->name, pm->name_len);
-	}
 	
-	if (cob_entry) {
-		nowt = cef_client_present_timeus_get ();
-		
-		if (nowt < cob_entry->expiry) {
-			if (pm->chnk_num_f) {
+	if (cs_stat->cache_type == CefC_Cache_Type_Excache){
+		/* Searches content entry 	*/
+		if (cs_stat->cob_table) {
+			cob_entry = (CefT_Cob_Entry*) 
+				cef_hash_tbl_item_get_prg (cs_stat->cob_table, pm->name, pm->name_len);
+		}
+		if (cob_entry) {
+			nowt = cef_client_present_timeus_get ();
+			
+			if ((nowt < cob_entry->cache_time) && (nowt < cob_entry->expiry)) {
+				if (pm->chnk_num_f) {
 #ifndef CefC_Dtc
-				cef_csmgr_excache_access_increment (
-					cs_stat, pm->name, pm->name_len, pm->chnk_num);
+#ifdef CefC_CefnetdCache
+					if (cs_stat->cache_type == CefC_Cache_Type_Localcache){
+#endif //CefC_CefnetdCache
+						cef_csmgr_excache_access_increment (
+							cs_stat, pm->name, pm->name_len, pm->chnk_num);
+#ifdef CefC_CefnetdCache
+					}
+#endif //CefC_CefnetdCache
 #endif // CefC_Dtc
-			}
-			
-			/* Allocs memory */
-			tx_elem_que = (CefT_Cs_Tx_Elem*) cef_mpool_alloc (cs_stat->tx_que_mp);
-			tx_elem_cob = (CefT_Cs_Tx_Elem_Cob*) cef_mpool_alloc (cs_stat->tx_cob_mp);
-			
-			if ((tx_elem_que == NULL) || (tx_elem_cob == NULL)) {
-				/* reply ring queue is full */
-#ifdef CefC_Debug
-				cef_dbg_write (CefC_Dbg_Fine, "%s (cef_mpool_alloc)\n", __func__);
-#endif // CefC_Debug
-				if (tx_elem_que != NULL) {
-					cef_mpool_free (cs_stat->tx_que_mp, tx_elem_que);
 				}
-				if (tx_elem_cob != NULL) {
-					cef_mpool_free (cs_stat->tx_cob_mp, tx_elem_cob);
-				}
-				/* delete down face. wait next interest */
-				if (pe->dnfacenum > 0) {
-					cef_pit_down_faceid_remove (pe, faceid);
-				}
-				return (-1);
+				*cob = cob_entry->msg;
+				return (1);
 			}
-			/* Inserts cob entry */
-			memcpy (&tx_elem_cob->cob, cob_entry, sizeof (CefT_Cob_Entry));
+		}
+		
+	}
+#ifdef CefC_CefnetdCache
+	else if (cs_stat->cache_type == CefC_Cache_Type_Localcache){
+		CefMemCacheT_Content_Mem_Entry* entry;
+		entry = cef_mem_cache_item_get (pm->name, pm->name_len);
+		if (entry) {
+			nowt = cef_client_present_timeus_get ();
 			
-			if (pm->symbolic_code_f) {
-				tx_elem_cob->cob.msg_len = cef_frame_symbolic_code_add (
-					tx_elem_cob->cob.msg, tx_elem_cob->cob.msg_len, pm);
+			if ((nowt < entry->cache_time) && (nowt < entry->expiry)) {
+				if (pm->chnk_num_f) {
+#ifndef CefC_Dtc
+#ifdef CefC_CefnetdCache
+					if (cs_stat->cache_type == CefC_Cache_Type_Localcache){
+#endif //CefC_CefnetdCache
+/////						cef_csmgr_excache_access_increment (
+/////							cs_stat, pm->name, pm->name_len, pm->chnk_num);
+#ifdef CefC_CefnetdCache
+					}
+#endif //CefC_CefnetdCache
+#endif // CefC_Dtc
+				}
+				*cob = entry->msg;
+				return (1);
 			}
-			
-			tx_elem_cob->faceid = faceid;
-			tx_elem_que->type = CefC_Cs_Tx_Elem_Type_Cob;
-			tx_elem_que->data = (void*) tx_elem_cob;
-			res = cef_rngque_push (cs_stat->tx_que, tx_elem_que);
-			if (res < 1) {
-				/* push failed */
-				cef_mpool_free (cs_stat->tx_cob_mp, tx_elem_cob);
-				cef_mpool_free (cs_stat->tx_que_mp, tx_elem_que);
-				return (-1);
-			}
-			/* delete down face. reply content object */
-			if (pe->dnfacenum > 0) {
-				cef_pit_down_faceid_remove (pe, faceid);
-			}
-			return (1);
 		}
 	}
+#endif //CefC_CefnetdCache
+	
 	
 	return (-1);
 }
@@ -628,40 +927,51 @@ cef_csmgr_cache_insert (
 	uint64_t nowt;
 	CefT_Cob_Entry* new_entry;
 	CefT_Cob_Entry* old_entry;
-	
-	if (!cs_stat->cob_table) {
-		return;
-	}
-	
-	/* Checks the lifetime 			*/
-	nowt = cef_client_present_timeus_get ();
-	if (poh->cachetime_f) {
-		if (poh->cachetime < nowt) {
+
+	if (cs_stat->cache_type == CefC_Cache_Type_Excache){
+		if (!cs_stat->cob_table) {
 			return;
 		}
-	}
 	
-	/* Insert Cob Table */
-	new_entry = (CefT_Cob_Entry*) cef_mpool_alloc (cs_stat->cs_cob_entry_mp);
-	if (new_entry == NULL) {
-		return;
-	}
-	memcpy (new_entry->msg, msg, msg_len);
-	new_entry->msg_len = msg_len;
-	new_entry->chunk_num = pm->chnk_num;
+		/* Checks the lifetime 			*/
+		nowt = cef_client_present_timeus_get ();
+		if (poh->cachetime_f) {
+			if (poh->cachetime < nowt) {
+				return;
+			}
+		}
+		
+		/* Insert Cob Table */
+		new_entry = (CefT_Cob_Entry*) cef_mpool_alloc (cs_stat->cs_cob_entry_mp);
+		if (new_entry == NULL) {
+			return;
+		}
+		memcpy (new_entry->msg, msg, msg_len);
+		new_entry->msg_len = msg_len;
+		new_entry->chunk_num = pm->chnk_num;
 #ifndef CefC_Dtc
-	new_entry->expiry = nowt + 10000000;
+		new_entry->cache_time = nowt + 10000000;
+		new_entry->expiry = nowt + 10000000;
 #else // CefC_Dtc
-	new_entry->expiry = pm->expiry;
+		new_entry->cache_time = poh->cachetime;
+		new_entry->expiry = pm->expiry;
 #endif // CefC_Dtc
-	
-	old_entry = (CefT_Cob_Entry*) cef_hash_tbl_item_set_prg (
-			cs_stat->cob_table, pm->name, pm->name_len, new_entry);
-	
-	if (old_entry) {
-		cef_mpool_free (cs_stat->cs_cob_entry_mp, old_entry);
+		
+		old_entry = (CefT_Cob_Entry*) cef_hash_tbl_item_set_prg (
+				cs_stat->cob_table, pm->name, pm->name_len, new_entry);
+		
+		if (old_entry) {
+			cef_mpool_free (cs_stat->cs_cob_entry_mp, old_entry);
+		}
 	}
-	
+#ifdef	CefC_CefnetdCache	
+	else if (cs_stat->cache_type == CefC_Cache_Type_Localcache){
+		/* Send to Local cache write thread */
+		if (write(cs_stat->pipe_fd[0], msg, msg_len) != msg_len){
+			; /* NOP */
+		}
+	}
+#endif	//CefC_CefnetdCache	
 	return;
 }
 /*--------------------------------------------------------------------------------------
@@ -688,96 +998,7 @@ cef_csmgr_rep_f_check (
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
-	Connect csmgrd external socket
-----------------------------------------------------------------------------------------*/
-int									/* The return value is negative if an error occurs	*/
-cef_csmgr_csmgrd_connect_ext (
-	const char* destination, 				/* String of the destination address 		*/
-	const char* port_str					/* String of the destination port			*/
-) {
-	struct addrinfo hints;
-	struct addrinfo* res;
-	struct addrinfo* cres;
-	int flag;
-	int ret;
-	int sock = -1;
-	struct pollfd fds[1];
-
-	memset (&hints, 0, sizeof (hints));
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_NUMERICSERV;
-
-	/* get address information */
-	if ((ret = getaddrinfo (destination, port_str, &hints, &res)) != 0) {
-		cef_log_write (CefC_Log_Error, 
-			"%s (getaddrinfo:%s)\n", __func__, gai_strerror (ret));
-		return (-1);
-	}
-	for (cres = res ; cres != NULL ; cres = cres->ai_next) {
-		/* get socket */
-		if ((sock = socket (cres->ai_family, cres->ai_socktype, cres->ai_protocol)) < 0) {
-			cef_log_write (CefC_Log_Error, 
-				"%s (socket:%s)\n", __func__, strerror (errno));
-			continue;
-		}
-		flag = fcntl (sock, F_GETFL, 0);
-		if (flag < 0) {
-			close (sock);
-			sock = -1;
-			continue;
-		}
-		if (fcntl (sock, F_SETFL, flag | O_NONBLOCK) < 0) {
-			close (sock);
-			sock = -1;
-			continue;
-		}
-		if (connect (sock, cres->ai_addr, cres->ai_addrlen) < 0) {
-			if (errno != EINPROGRESS) {
-				cef_log_write (CefC_Log_Error, 
-					"%s (connect:%s)\n", __func__, strerror (errno));
-				close (sock);
-				sock = -1;
-				continue;
-			}
-		} else {
-			/* connect success */
-			break;
-		}
-		fds[0].fd = sock;
-		fds[0].events = POLLIN | POLLERR;
-		/* poll */
-		ret = poll (fds, 1, 1000);
-		if (ret < 0) {
-			/* poll error */
-			cef_log_write (CefC_Log_Error, "%s (poll:%s)\n", __func__, strerror (errno));
-			close (sock);
-			sock = -1;
-			continue;
-		}
-		
-		if (fds[0].revents & (POLLERR | POLLNVAL | POLLHUP)) {
-			/* events error. */
-			if (fds[0].revents & POLLERR) {
-				cef_log_write (CefC_Log_Error, "%s (POLLNVAL)\n", __func__);
-			} else if (fds[0].revents & POLLNVAL) {
-				cef_log_write (CefC_Log_Error, "%s (POLLNVAL)\n", __func__);
-			} else {
-				cef_log_write (CefC_Log_Error, "%s (POLLHUP)\n", __func__);
-			}
-			close (sock);
-			sock = -1;
-			continue;
-		}
-		break;
-	}
-
-	freeaddrinfo (res);
-
-	return (sock);
-}
-/*--------------------------------------------------------------------------------------
-	Send message from csmgrd to cefnetd
+	Send message from csmgr to cefnetd
 ----------------------------------------------------------------------------------------*/
 int									/* The return value is negative if an error occurs	*/
 cef_csmgr_send_msg (
@@ -795,10 +1016,10 @@ cef_csmgr_send_msg (
 	return (0);
 }
 /*--------------------------------------------------------------------------------------
-	Send message from cefnetd to csmgrd
+	Send message from cefnetd to csmgr
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
-cef_csmgr_send_msg_to_csmgrd (
+cef_csmgr_send_msg_to_csmgr (
 	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
 	unsigned char* msg,						/* send message								*/
 	int msg_len								/* message length							*/
@@ -821,7 +1042,7 @@ cef_csmgr_send_msg_to_csmgrd (
 	}
 	sprintf (port_str, "%d", cs_stat->tcp_port_num);
 	cs_stat->tcp_sock 
-			= cef_csmgr_connect_tcp_to_csmgrd (cs_stat->peer_id_str, port_str);
+			= cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
 	
 	if (cs_stat->tcp_sock != -1) {
 		res = write (cs_stat->tcp_sock, msg, msg_len);
@@ -851,6 +1072,7 @@ cef_csmgr_excache_item_put (
 	uint32_t value32;
 	uint64_t value64;
 	int chunk_field_len = CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum;
+	uint16_t value16_namelen;
 	struct in_addr node;
 	CefT_Face* face = NULL;
 	CefT_Sock* sock = NULL;
@@ -860,7 +1082,7 @@ cef_csmgr_excache_item_put (
 	/* Checks cache time 		*/
 	if (poh->cachetime_f) {
 		if (poh->cachetime < nowt) {
-			return;
+			poh->cachetime = nowt + cs_stat->def_rct;
 		}
 	} else {
 		poh->cachetime = nowt + cs_stat->def_rct;
@@ -875,87 +1097,90 @@ cef_csmgr_excache_item_put (
 		return;
 	}
 	
-	/* Inserts the Cob into temporary cache 	*/
+	/* Inserts the Cob into temporary/local cache 	*/
 	cef_csmgr_cache_insert (cs_stat, msg, msg_len, pm, poh);
 	
-	/* Creates Upload Request message 		*/
-	/* set header */
-	buff[CefC_O_Fix_Ver]  = CefC_Version;
-	buff[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_UpReq;
-	index += CefC_Csmgr_Msg_HeaderLen;
-	
-	/* set payload length */
-	value16 = htons (pm->payload_len);
-	memcpy (buff + index, &value16, CefC_S_Length);
-	index += CefC_S_Length;
-	
-	/* set cob message */
-	value16 = htons (msg_len);
-	memcpy (buff + index, &value16, CefC_S_Length);
-	memcpy (buff + index + CefC_S_Length, msg, msg_len);
-	index += CefC_S_Length + msg_len;
-	
-	/* set cob name */
-	if (pm->chnk_num_f) {
-		value16 = htons (pm->name_len - chunk_field_len);
+	if (cs_stat->cache_type == CefC_Cache_Type_Excache) {
+		/* Creates Upload Request message 		*/
+		/* set header */
+		buff[CefC_O_Fix_Ver]  = CefC_Version;
+		buff[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_UpReq;
+		index += CefC_Csmgr_Msg_HeaderLen;
+		
+		/* set payload length */
+		value16 = htons (pm->payload_len);
 		memcpy (buff + index, &value16, CefC_S_Length);
-		memcpy (buff + index + CefC_S_Length, pm->name, pm->name_len - chunk_field_len);
-		index += CefC_S_Length + (pm->name_len - chunk_field_len);
-	} else {
-		return;
-	}
-	
-	/* set chunk num */
-	value32 = htonl (pm->chnk_num);
-	memcpy (buff + index, &value32, CefC_S_ChunkNum);
-	index += CefC_S_ChunkNum;
-	
-	/* set cache time */
-	value64 = cef_client_htonb (poh->cachetime);
-	memcpy (buff + index, &value64, CefC_S_Cachetime);
-	index += CefC_S_Cachetime;
-	
-	/* set expiry */
-	value64 = cef_client_htonb (pm->expiry);
-	memcpy (buff + index, &value64, CefC_S_Expiry);
-	index += CefC_S_Expiry;
-	
-	/* get address */
-	/* check local face flag */
-	face = cef_face_get_face_from_faceid (faceid);
-	if (face->local_f || (faceid == 0)) {
-		/* local face */
-		node.s_addr = 0;
-	} else {
-		/* set face info */
-		sock_tbl = cef_face_return_sock_table ();
-		sock = (CefT_Sock*)cef_hash_tbl_item_get_from_index (*sock_tbl, face->index);
-		if ((sock != NULL) &&
-			(sock->faceid >= CefC_Face_Reserved)) {
-			/* set address */
-			node.s_addr = ((struct sockaddr_in *)(sock->ai_addr))->sin_addr.s_addr;
+		index += CefC_S_Length;
+		
+		/* set cob message */
+		value16 = htons (msg_len);
+		memcpy (buff + index, &value16, CefC_S_Length);
+		memcpy (buff + index + CefC_S_Length, msg, msg_len);
+		index += CefC_S_Length + msg_len;
+		
+		/* set cob name */
+		if (pm->chnk_num_f) {
+			value16_namelen = pm->name_len - chunk_field_len;
+			value16 = htons (value16_namelen);
+			memcpy (buff + index, &value16, CefC_S_Length);
+			memcpy (buff + index + CefC_S_Length, pm->name, value16_namelen);
+			index += CefC_S_Length + value16_namelen;
 		} else {
-			/* unknown socket */
-			node.s_addr = 0;
+			return;
 		}
-	}
+		
+		/* set chunk num */
+		value32 = htonl (pm->chnk_num);
+		memcpy (buff + index, &value32, CefC_S_ChunkNum);
+		index += CefC_S_ChunkNum;
+		
+		/* set cache time */
+		value64 = cef_client_htonb (poh->cachetime);
+		memcpy (buff + index, &value64, CefC_S_Cachetime);
+		index += CefC_S_Cachetime;
+		
+		/* set expiry */
+		value64 = cef_client_htonb (pm->expiry);
+		memcpy (buff + index, &value64, CefC_S_Expiry);
+		index += CefC_S_Expiry;
+		
+		/* get address */
+		/* check local face flag */
+		face = cef_face_get_face_from_faceid (faceid);
+		if (face->local_f || (faceid == 0)) {
+			/* local face */
+			node.s_addr = 0;
+		} else {
+			/* set face info */
+			sock_tbl = cef_face_return_sock_table ();
+			sock = (CefT_Sock*)cef_hash_tbl_item_get_from_index (*sock_tbl, face->index);
+			if ((sock != NULL) &&
+				(sock->faceid >= CefC_Face_Reserved)) {
+				/* set address */
+				node.s_addr = ((struct sockaddr_in *)(sock->ai_addr))->sin_addr.s_addr;
+			} else {
+				/* unknown socket */
+				node.s_addr = 0;
+			}
+		}
 
-	/* set address */
-	memcpy (buff + index, &node, sizeof (struct in_addr));
-	index += sizeof (struct in_addr);
-	
-	/* set Length */
-	value16 = htons (index);
-	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
-	
-	/* send message */
-	if (cefnetd_msg_buff_index > 0) {
-		cef_csmgr_send_msg_to_csmgrd (
-				cs_stat, cefnetd_msg_buff, cefnetd_msg_buff_index);
-		cefnetd_msg_buff_index = 0;
+		/* set address */
+		memcpy (buff + index, &node, sizeof (struct in_addr));
+		index += sizeof (struct in_addr);
+		
+		/* set Length */
+		value16 = htons (index);
+		memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
+		
+		/* send message */
+		if (cefnetd_msg_buff_index > 0) {
+			cef_csmgr_send_msg_to_csmgr (
+					cs_stat, cefnetd_msg_buff, cefnetd_msg_buff_index);
+			cefnetd_msg_buff_index = 0;
+		}
+		memcpy (&cefnetd_msg_buff[cefnetd_msg_buff_index], buff, index);
+		cefnetd_msg_buff_index += index;
 	}
-	memcpy (&cefnetd_msg_buff[cefnetd_msg_buff_index], buff, index);
-	cefnetd_msg_buff_index += index;
 	
 	return;
 }
@@ -967,7 +1192,7 @@ cef_csmgr_excache_item_push (
 	CefT_Cs_Stat* cs_stat					/* Content Store status						*/
 ) {
 	if (cefnetd_msg_buff_index > 0) {
-		cef_csmgr_send_msg_to_csmgrd (cs_stat, cefnetd_msg_buff, cefnetd_msg_buff_index);
+		cef_csmgr_send_msg_to_csmgr (cs_stat, cefnetd_msg_buff, cefnetd_msg_buff_index);
 		cefnetd_msg_buff_index = 0;
 	}
 	
@@ -989,15 +1214,20 @@ cef_csmgr_excache_lookup (
 	uint16_t index = 0;
 	int res;
 	
-	if (poh->longlife_f) {
+	if (pm->org.longlife_f) {
 		return;
 	}
+#ifdef	CefC_CefnetdCache	
+	if (cs_stat->cache_type == CefC_Cache_Type_Localcache){
+		return;
+	}
+#endif	//CefC_CefnetdCache
 	
 	/* Create Interest message 		*/
 	cef_csmgr_interest_msg_create (buff, &index, poh, pm);
 	
 	/* Send messages 				*/
-	res = cef_csmgr_send_msg_to_csmgrd (cs_stat, buff, index);
+	res = cef_csmgr_send_msg_to_csmgr (cs_stat, buff, index);
 	if (res < 0) {
 		cef_log_write (CefC_Log_Warn, "%s (%s)\n", __func__, strerror (errno));
 	}
@@ -1020,6 +1250,7 @@ csmgr_frame_get (
 	uint16_t len;
 	uint16_t value16;
 	*frame_size = 0;
+	
 	
 	/* check message size */
 	if (buff_len <= CefC_Csmgr_Msg_HeaderLen) {
@@ -1046,7 +1277,6 @@ csmgr_frame_get (
 			}
 			memcpy (work_msg_buff, buff, buff_len);
 			memcpy (buff, &work_msg_buff[buff_len - new_len], new_len);
-			
 			return (csmgr_frame_get (buff, new_len, msg, frame_size, type));
 		}
 		return (0);
@@ -1105,8 +1335,7 @@ csmgr_cob_forward (
 			cef_frame_payload_parse (
 				msg, msg_len, &name_off, &name_len, &pay_off, &pay_len);
 			if (pay_len != 0) {
-				cef_face_object_send_iflocal (
-					faceid, msg + name_off, name_len, msg + pay_off, pay_len, chnk_num);
+				cef_face_object_send_iflocal (faceid, msg, msg_len);
 			}
 		} else {
 			/* face is not local */
@@ -1219,13 +1448,19 @@ cef_csmgr_excache_item_check (
 	
 	char port_str[NI_MAXSERV];
 	int tmp_sock;
+
+#ifdef CefC_CefnetdCache
+	if (cs_stat->cache_type == CefC_Cache_Type_Localcache){
+		return 0;
+	}
+#endif //CefC_CefnetdCache
 	
 	/*----------------------------------------------------
 		Sends the cefping request message
 	------------------------------------------------------*/
-	/* Creates the socket to csmgrd with TCP 		*/
+	/* Creates the socket to csmgr with TCP 		*/
 	sprintf (port_str, "%d", cs_stat->tcp_port_num);
-	tmp_sock = cef_csmgr_connect_tcp_to_csmgrd (cs_stat->peer_id_str, port_str);
+	tmp_sock = cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
 	if (tmp_sock < 0) {
 		return (-1);
 	}
@@ -1309,9 +1544,9 @@ cef_csmgr_excache_info_get (
 	/*----------------------------------------------------
 		Sends the cefinfo request message
 	------------------------------------------------------*/
-	/* Creates the socket to csmgrd with TCP 		*/
+	/* Creates the socket to csmgr with TCP 		*/
 	sprintf (port_str, "%d", cs_stat->tcp_port_num);
-	tmp_sock = cef_csmgr_connect_tcp_to_csmgrd (cs_stat->peer_id_str, port_str);
+	tmp_sock = cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
 	if (tmp_sock < 0) {
 		return (-1);
 	}
@@ -1413,9 +1648,9 @@ cef_csmgr_capacity_retrieve (
 		return (0);
 	}
 
-	/* Creates the socket to csmgrd with TCP */
+	/* Creates the socket to csmgr with TCP */
 	sprintf (port_str, "%d", cs_stat->tcp_port_num);
-	tmp_sock = cef_csmgr_connect_tcp_to_csmgrd (cs_stat->peer_id_str, port_str);
+	tmp_sock = cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
 	if (tmp_sock < 0) {
 		/* Connection Failed */
 		return (-1);
@@ -1501,9 +1736,9 @@ cef_csmgr_capacity_update (
 	uint16_t value16;
 	uint64_t value64;
 
-	/* Creates the socket to csmgrd with TCP */
+	/* Creates the socket to csmgr with TCP */
 	sprintf (port_str, "%d", cs_stat->tcp_port_num);
-	tmp_sock = cef_csmgr_connect_tcp_to_csmgrd (cs_stat->peer_id_str, port_str);
+	tmp_sock = cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
 	if (tmp_sock < 0) {
 		/* Connection Failed */
 		return (-1);
@@ -1594,9 +1829,9 @@ cef_csmgr_con_lifetime_retrieve (
 		return (0);
 	}
 
-	/* Creates the socket to csmgrd with TCP */
+	/* Creates the socket to csmgr with TCP */
 	sprintf (port_str, "%d", cs_stat->tcp_port_num);
-	tmp_sock = cef_csmgr_connect_tcp_to_csmgrd (cs_stat->peer_id_str, port_str);
+	tmp_sock = cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
 	if (tmp_sock < 0) {
 		/* Connection Failed */
 		return (-1);
@@ -1691,9 +1926,9 @@ cef_csmgr_con_lifetime_set (
 		return (0);
 	}
 
-	/* Creates the socket to csmgrd with TCP */
+	/* Creates the socket to csmgr with TCP */
 	sprintf (port_str, "%d", cs_stat->tcp_port_num);
-	tmp_sock = cef_csmgr_connect_tcp_to_csmgrd (cs_stat->peer_id_str, port_str);
+	tmp_sock = cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
 	if (tmp_sock < 0) {
 		/* Connection Failed */
 		return (-1);
@@ -1761,6 +1996,214 @@ cef_csmgr_con_lifetime_set (
 	close (tmp_sock);
 	return (res);
 }
+/*--------------------------------------------------------------------------------------
+	Retrieve Cache Chunk
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_con_chunk_retrieve (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	char* name,								/* Content name								*/
+	uint16_t name_len,						/* Name length								*/
+	char* range,							/* Cache Range								*/
+	uint16_t range_len,						/* Range length								*/
+	char* info								/* cache information						*/
+) {
+	char port_str[NI_MAXSERV];
+	int tmp_sock;
+	unsigned char buff[CefC_Max_Length] = {0};
+	int buff_size;
+	unsigned char msg[CefC_Max_Length] = {0};
+	uint16_t index = 0;
+	uint16_t value16;
+	int res = 0;
+	struct pollfd fds[1];
+	int len;
+	uint8_t type;
+	uint8_t result;
+
+	if (cs_stat == NULL) {
+		/* CS is not used */
+		return (-1);
+	}
+
+	/* Creates the socket to csmgr with TCP */
+	sprintf (port_str, "%d", cs_stat->tcp_port_num);
+	tmp_sock = cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
+	if (tmp_sock < 0) {
+		/* Connection Failed */
+		return (-1);
+	}
+
+	/* Creates the retrieve cache chunk message */
+	buff[CefC_O_Fix_Ver]  = CefC_Version;
+	buff[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_RCCH;
+	index += CefC_Csmgr_Msg_HeaderLen;
+	/* Set content name */
+	value16 = htons (name_len);
+	memcpy (buff + index, &value16, CefC_S_Length);
+	memcpy (buff + index + sizeof (value16), name, name_len);
+	index += sizeof (value16) + name_len;
+	/* Set chunk range */
+	value16 = htons (range_len);
+	memcpy (buff + index, &value16, CefC_S_Length);
+	memcpy (buff + index + sizeof (value16), range, range_len);
+	index += sizeof (value16) + range_len;
+	/* Set length */
+	value16 = htons (index);
+	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
+	/* Sends the created message 		*/
+	res = write (tmp_sock, buff, index);
+	if (res < 0) {
+		close (tmp_sock);
+		return (-1);
+	}
+
+	/*----------------------------------------------------
+		Receives the chunk response message
+	------------------------------------------------------*/
+	fds[0].fd = tmp_sock;
+	fds[0].events = POLLIN | POLLERR;
+	memset (buff, 0, sizeof (buff));
+	res = poll (fds, 1, CefC_Csmgr_Max_Wait_Response);
+	if ((res <= 0) || (fds[0].revents & (POLLERR | POLLNVAL | POLLHUP))) {
+		close (tmp_sock);
+		return (-1);
+	}
+
+	index = 0;
+	len = recv (fds[0].fd, buff, CefC_Max_Length, 0);
+	if (len > 0) {
+		/* Parses the received message */
+		len = csmgr_frame_get (buff, len, msg, &buff_size, &type);
+		if (buff_size > 0) {
+			if (type != CefC_Csmgr_Msg_Type_RCCH) {
+				res = -1;
+			} else {
+				if (buff_size < (sizeof (result))) {
+					res = -1;
+				} else {
+					/* Checks the result */
+					memcpy (&result, msg, sizeof (result));
+					if (result == CcoreC_Success) {
+						res = 1;
+					} else {
+						res = -1;
+					}
+					if (buff_size > (sizeof (result))) {
+						memcpy (&value16, msg + sizeof (result), sizeof (value16));
+						len = ntohs (value16);
+						if (len > 0) {
+							memcpy (info, msg + (sizeof (result) + sizeof (value16)), len);
+						}
+					}
+				}
+			}
+		}
+	}
+	close (tmp_sock);
+	return (res);
+}
+/*--------------------------------------------------------------------------------------
+	Delete Cache Chunk
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_con_chunk_delete (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	char* name,								/* Content name								*/
+	uint16_t name_len,						/* Name length								*/
+	char* range,							/* Cache Range								*/
+	uint16_t range_len						/* Range length								*/
+) {
+	char port_str[NI_MAXSERV];
+	int tmp_sock;
+	unsigned char buff[CefC_Max_Length] = {0};
+	int buff_size;
+	unsigned char msg[CefC_Max_Length] = {0};
+	uint16_t index = 0;
+	uint16_t value16;
+	int res = 0;
+	struct pollfd fds[1];
+	int len;
+	uint8_t type;
+	uint8_t result;
+
+	if (cs_stat == NULL) {
+		/* CS is not used */
+		return (-1);
+	}
+
+	/* Creates the socket to csmgr with TCP */
+	sprintf (port_str, "%d", cs_stat->tcp_port_num);
+	tmp_sock = cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
+	if (tmp_sock < 0) {
+		/* Connection Failed */
+		return (-1);
+	}
+
+	/* Creates the delete content chunk message */
+	buff[CefC_O_Fix_Ver]  = CefC_Version;
+	buff[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_SCDL;
+	index += CefC_Csmgr_Msg_HeaderLen;
+	/* Set content name */
+	value16 = htons (name_len);
+	memcpy (buff + index, &value16, CefC_S_Length);
+	memcpy (buff + index + sizeof (value16), name, name_len);
+	index += sizeof (value16) + name_len;
+	/* Set chunk range */
+	value16 = htons (range_len);
+	memcpy (buff + index, &value16, CefC_S_Length);
+	memcpy (buff + index + sizeof (value16), range, range_len);
+	index += sizeof (value16) + range_len;
+	/* Set length */
+	value16 = htons (index);
+	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
+	/* Sends the created message 		*/
+	res = write (tmp_sock, buff, index);
+	if (res < 0) {
+		close (tmp_sock);
+		return (-1);
+	}
+
+	/*----------------------------------------------------
+		Receives the chunk response message
+	------------------------------------------------------*/
+	fds[0].fd = tmp_sock;
+	fds[0].events = POLLIN | POLLERR;
+	memset (buff, 0, sizeof (buff));
+	res = poll (fds, 1, CefC_Csmgr_Max_Wait_Response);
+	if ((res <= 0) || (fds[0].revents & (POLLERR | POLLNVAL | POLLHUP))) {
+		close (tmp_sock);
+		return (-1);
+	}
+
+	index = 0;
+	len = recv (fds[0].fd, buff, CefC_Max_Length, 0);
+	if (len > 0) {
+		/* Parses the received message */
+		len = csmgr_frame_get (buff, len, msg, &buff_size, &type);
+		if (buff_size > 0) {
+			if (type != CefC_Csmgr_Msg_Type_SCDL) {
+				res = -1;
+			} else {
+				if (buff_size < (sizeof (result))) {
+					res = -1;
+				} else {
+					/* Checks the result */
+					memcpy (&result, msg, sizeof (result));
+					if (result == CcoreC_Success) {
+						res = 1;
+					} else {
+						cef_log_write (CefC_Log_Warn,
+							"Failed to acquire the value inside Content Store.\n");
+						res = -1;
+					}
+				}
+			}
+		}
+	}
+	close (tmp_sock);
+	return (res);
+}
 #endif // CefC_Ccore
 #ifndef CefC_Dtc
 /*--------------------------------------------------------------------------------------
@@ -1779,6 +2222,12 @@ cef_csmgr_excache_access_increment (
 	uint32_t value32;
 	int res;
 
+#ifdef CefC_CefnetdCache
+	if (cs_stat->cache_type == CefC_Cache_Type_Localcache){
+		return;
+	}
+#endif //CefC_CefnetdCache
+	
 	/* Create Upload Request message */
 	/* set header */
 	buff[CefC_O_Fix_Ver]  = CefC_Version;
@@ -1801,7 +2250,7 @@ cef_csmgr_excache_access_increment (
 	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
 
 	/* send message */
-	res = cef_csmgr_send_msg_to_csmgrd (cs_stat, buff, index);
+	res = cef_csmgr_send_msg_to_csmgr (cs_stat, buff, index);
 	if (res < 0) {
 		cef_log_write (CefC_Log_Warn, "%s (%s)\n", __func__, strerror (errno));
 	}
@@ -1810,7 +2259,7 @@ cef_csmgr_excache_access_increment (
 }
 #endif // CefC_Dtc
 /*--------------------------------------------------------------------------------------
-	Create Interest message for csmgrd
+	Create Interest message for csmgr
 ----------------------------------------------------------------------------------------*/
 static void
 cef_csmgr_interest_msg_create (
@@ -1865,10 +2314,10 @@ cef_csmgr_interest_msg_create (
 	return;
 }
 /*--------------------------------------------------------------------------------------
-	Connect csmgrd with TCP socket
+	Connect csmgr with TCP socket
 ----------------------------------------------------------------------------------------*/
 int											/* created socket							*/
-cef_csmgr_connect_tcp_to_csmgrd (
+cef_csmgr_connect_tcp_to_csmgr (
 	const char* dest, 
 	const char* port
 ) {
@@ -1892,7 +2341,7 @@ cef_csmgr_connect_tcp_to_csmgrd (
 	
 	/* Obtains the addrinfo 	*/
 	if ((err = getaddrinfo (dest, port, &hints, &res)) != 0) {
-		fprintf (stderr, "ERROR : connect_tcp_to_csmgrd (getaddrinfo)\n");
+		fprintf (stderr, "ERROR : connect_tcp_to_csmgr (getaddrinfo)\n");
 		return (-1);
 	}
 	
@@ -1948,8 +2397,6 @@ cef_csmgr_connect_tcp_to_csmgrd (
 						free (cres);
 						continue;
 					}
-//					cmd[ret] = 0x00;
-//					fprintf (stderr, "# %s\n", cmd);
 					/* NOP */;
 				}
 			}
@@ -2095,7 +2542,7 @@ cef_csmgr_dtc_item_put (
 		return;
 	}
 	
-	/* Inserts the Cob into temporary cache 	*/
+	/* Inserts the Cob into temporary/local cache 	*/
 	cef_csmgr_cache_insert (cs_stat, msg, msg_len, pm, poh);
 	return;
 }

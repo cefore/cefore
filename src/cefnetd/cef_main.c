@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -71,7 +71,7 @@ int main (
 	int 	port_num = CefC_Unset_Port;
 	
 	/* Inits logging 		*/
-	cef_log_init ("cefnetd");
+	cef_log_init ("cefnetd", 1);
 	
 	/* Parses the options 	*/
 	for (i = 1 ; i < argc ; i++) {
@@ -111,6 +111,7 @@ int main (
 		cef_log_write (CefC_Log_Error, "[-p] options is specified duplicately.\n");
 		exit (1);
 	}
+	cef_log_init2 (file_path, 1/* for CEFNETD */);
 #ifdef CefC_Debug
 	cef_dbg_init ("cefnetd", file_path, 1);
 #endif // CefC_Debug

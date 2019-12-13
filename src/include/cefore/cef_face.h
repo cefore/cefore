@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -295,6 +295,13 @@ cef_face_close (
 	int faceid								/* Face-ID									*/
 );
 /*--------------------------------------------------------------------------------------
+	Closes the specified Face for down
+----------------------------------------------------------------------------------------*/
+int											/* Returns a negative value if it fails 	*/
+cef_face_close_for_down (
+	int faceid								/* Face-ID									*/
+);
+/*--------------------------------------------------------------------------------------
 	Half-closes the specified Face
 ----------------------------------------------------------------------------------------*/
 int											/* Returns a negative value if it fails 	*/
@@ -317,11 +324,8 @@ cef_face_object_send (
 int											/* Returns a negative value if it fails 	*/
 cef_face_object_send_iflocal (
 	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
-	unsigned char* 	name, 
-	uint16_t 		name_len, 
-	unsigned char* 	payload, 				/* a message to send						*/
-	size_t			payload_len,			/* length of the message to send 			*/
-	uint32_t		chnk_num				/* Chunk Number 							*/
+	unsigned char* 	msg, 					/* a message to send						*/
+	size_t			msg_len					/* length of the message to send 			*/
 );
 /*--------------------------------------------------------------------------------------
 	Sends a message if the specified is local Face with API Header

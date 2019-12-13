@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -64,6 +64,10 @@ int
 cef_status_stats_output (
 	CefT_Netd_Handle* hdl,						/* cefnetd handle						*/
 	unsigned char* rsp
+);
+int
+cef_status_stats_output_pit (
+	CefT_Netd_Handle* hdl						/* cefnetd handle						*/
 );
 
 #endif // __CEF_STATUS_HEADER__

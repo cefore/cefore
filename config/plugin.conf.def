@@ -16,8 +16,11 @@ samptp=no
 #
 # Mobility Configurations
 #
+# set only one Mobility-plugin name to use
+# default is disable
+# scheme=disable/defmb/...
 [MOBILITY]
-defmb=no
+scheme=disable
 #
 # NDN Plugin Configurations
 #

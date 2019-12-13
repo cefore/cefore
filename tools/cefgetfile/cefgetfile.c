@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -173,7 +173,7 @@ int main (
 	fprintf (stdout, "[cefgetfile] Parsing parameters ... ");
 	
 	/* Inits logging 		*/
-	cef_log_init ("cefgetfile");
+	cef_log_init ("cefgetfile", 1);
 	
 	/* Obtains options 		*/
 	for (i = 1 ; i < argc ; i++) {
@@ -382,6 +382,7 @@ int main (
 		pipeline = sv_max_seq + 1;
 	}
 	fprintf (stdout, "OK\n");
+	cef_log_init2 (conf_path, 1/* for CEFNETD */);
 #ifdef CefC_Debug
 	cef_dbg_init ("cefgetfile", conf_path, 1);
 #endif // CefC_Debug
@@ -444,7 +445,7 @@ int main (
 	params.opt.lifetime_f 			= 1;
 	
 	if (nsg_flag) {
-		params.opt.symbolic_f		= CefC_T_OPT_LONGLIFE;
+		params.opt.symbolic_f		= CefC_T_LONGLIFE;
 		params.opt.lifetime 		= 10000;
 	} else {
 		params.opt.symbolic_f		= CefC_T_OPT_REGULAR;

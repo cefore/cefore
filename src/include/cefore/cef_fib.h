@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,7 @@
  Macros
  ****************************************************************************************/
 
-#define CefC_Fib_UpFace_Max				8
+#define CefC_Fib_UpFace_Max				64
 #define CefC_Fib_Route_Ope_Invalid		0x00
 #define CefC_Fib_Route_Ope_Add			0x01
 #define CefC_Fib_Route_Ope_Del			0x02

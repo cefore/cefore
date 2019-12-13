@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016, National Institute of Information and Communications
+# Copyright (c) 2016-2019, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,8 @@
 # specify the include file
 CEF_HEADER=cef_client.h cef_csmgr.h cef_csmgr_stat.h cef_cefinfo.h \
 	cef_define.h cef_face.h cef_fib.h cef_frame.h cef_hash.h cef_mpool.h \
-	cef_pit.h cef_log.h cef_print.h cef_rngque.h cef_plugin.h cef_plugin_com.h cef_valid.h
+	cef_pit.h cef_log.h cef_print.h cef_rngque.h cef_plugin.h cef_plugin_com.h cef_valid.h \
+	cef_mem_cache.h
 
 
 includedir=$(CEFORE_DIR_PATH)/include/cefore

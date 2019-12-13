@@ -15,7 +15,7 @@
 @SET_MAKE@
 
 #
-# Copyright (c) 2016, National Institute of Information and Communications
+# Copyright (c) 2016-2019, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -117,15 +117,11 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-bin_PROGRAMS = csmgrstatus$(EXEEXT) csmgrecho$(EXEEXT)
+bin_PROGRAMS = csmgrstatus$(EXEEXT)
 @LINUX_TRUE@am__append_1 = -pthread -lpthread
 
 # check debug build
 @CEFDBG_ENABLE_TRUE@am__append_2 = -DCefC_Debug
-@LINUX_TRUE@am__append_3 = -pthread -lpthread
-
-# check debug build
-@CEFDBG_ENABLE_TRUE@am__append_4 = -DCefC_Debug
 subdir = tools/csmgr
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -141,19 +137,13 @@ CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
-am_csmgrecho_OBJECTS = csmgrecho-csmgrecho.$(OBJEXT)
-csmgrecho_OBJECTS = $(am_csmgrecho_OBJECTS)
-csmgrecho_DEPENDENCIES =
+am_csmgrstatus_OBJECTS = csmgrstatus-csmgrstatus.$(OBJEXT)
+csmgrstatus_OBJECTS = $(am_csmgrstatus_OBJECTS)
+csmgrstatus_DEPENDENCIES =
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
 am__v_lt_0 = --silent
 am__v_lt_1 = 
-csmgrecho_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
-	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(csmgrecho_CFLAGS) \
-	$(CFLAGS) $(csmgrecho_LDFLAGS) $(LDFLAGS) -o $@
-am_csmgrstatus_OBJECTS = csmgrstatus-csmgrstatus.$(OBJEXT)
-csmgrstatus_OBJECTS = $(am_csmgrstatus_OBJECTS)
-csmgrstatus_DEPENDENCIES =
 csmgrstatus_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(csmgrstatus_CFLAGS) \
 	$(CFLAGS) $(csmgrstatus_LDFLAGS) $(LDFLAGS) -o $@
@@ -191,8 +181,8 @@ AM_V_CCLD = $(am__v_CCLD_@AM_V@)
 am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(csmgrecho_SOURCES) $(csmgrstatus_SOURCES)
-DIST_SOURCES = $(csmgrecho_SOURCES) $(csmgrstatus_SOURCES)
+SOURCES = $(csmgrstatus_SOURCES)
+DIST_SOURCES = $(csmgrstatus_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -341,10 +331,6 @@ csmgrstatus_LDFLAGS = -L$(top_srcdir)/src/lib/ $(am__append_1)
 csmgrstatus_LDADD = -lcefore -lssl -lcrypto
 csmgrstatus_CFLAGS = $(AM_CFLAGS) $(am__append_2)
 csmgrstatus_SOURCES = csmgrstatus.c
-csmgrecho_LDFLAGS = -L$(top_srcdir)/src/lib/ $(am__append_3)
-csmgrecho_LDADD = -lcefore -lssl -lcrypto
-csmgrecho_CFLAGS = $(AM_CFLAGS) $(am__append_4)
-csmgrecho_SOURCES = csmgrecho.c
 DESTDIR = $(CEFORE_DIR_PATH)
 all: all-am
 
@@ -429,10 +415,6 @@ clean-binPROGRAMS:
 	echo " rm -f" $$list; \
 	rm -f $$list
 
-csmgrecho$(EXEEXT): $(csmgrecho_OBJECTS) $(csmgrecho_DEPENDENCIES) $(EXTRA_csmgrecho_DEPENDENCIES) 
-	@rm -f csmgrecho$(EXEEXT)
-	$(AM_V_CCLD)$(csmgrecho_LINK) $(csmgrecho_OBJECTS) $(csmgrecho_LDADD) $(LIBS)
-
 csmgrstatus$(EXEEXT): $(csmgrstatus_OBJECTS) $(csmgrstatus_DEPENDENCIES) $(EXTRA_csmgrstatus_DEPENDENCIES) 
 	@rm -f csmgrstatus$(EXEEXT)
 	$(AM_V_CCLD)$(csmgrstatus_LINK) $(csmgrstatus_OBJECTS) $(csmgrstatus_LDADD) $(LIBS)
@@ -443,7 +425,6 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/csmgrecho-csmgrecho.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/csmgrstatus-csmgrstatus.Po@am__quote@
 
 .c.o:
@@ -466,20 +447,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$<' object='$@' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LTCOMPILE) -c -o $@ $<
-
-csmgrecho-csmgrecho.o: csmgrecho.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(csmgrecho_CFLAGS) $(CFLAGS) -MT csmgrecho-csmgrecho.o -MD -MP -MF $(DEPDIR)/csmgrecho-csmgrecho.Tpo -c -o csmgrecho-csmgrecho.o `test -f 'csmgrecho.c' || echo '$(srcdir)/'`csmgrecho.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/csmgrecho-csmgrecho.Tpo $(DEPDIR)/csmgrecho-csmgrecho.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='csmgrecho.c' object='csmgrecho-csmgrecho.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(csmgrecho_CFLAGS) $(CFLAGS) -c -o csmgrecho-csmgrecho.o `test -f 'csmgrecho.c' || echo '$(srcdir)/'`csmgrecho.c
-
-csmgrecho-csmgrecho.obj: csmgrecho.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(csmgrecho_CFLAGS) $(CFLAGS) -MT csmgrecho-csmgrecho.obj -MD -MP -MF $(DEPDIR)/csmgrecho-csmgrecho.Tpo -c -o csmgrecho-csmgrecho.obj `if test -f 'csmgrecho.c'; then $(CYGPATH_W) 'csmgrecho.c'; else $(CYGPATH_W) '$(srcdir)/csmgrecho.c'; fi`
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/csmgrecho-csmgrecho.Tpo $(DEPDIR)/csmgrecho-csmgrecho.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='csmgrecho.c' object='csmgrecho-csmgrecho.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(csmgrecho_CFLAGS) $(CFLAGS) -c -o csmgrecho-csmgrecho.obj `if test -f 'csmgrecho.c'; then $(CYGPATH_W) 'csmgrecho.c'; else $(CYGPATH_W) '$(srcdir)/csmgrecho.c'; fi`
 
 csmgrstatus-csmgrstatus.o: csmgrstatus.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(csmgrstatus_CFLAGS) $(CFLAGS) -MT csmgrstatus-csmgrstatus.o -MD -MP -MF $(DEPDIR)/csmgrstatus-csmgrstatus.Tpo -c -o csmgrstatus-csmgrstatus.o `test -f 'csmgrstatus.c' || echo '$(srcdir)/'`csmgrstatus.c

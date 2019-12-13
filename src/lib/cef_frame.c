@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@
 #include <string.h>
 #include <time.h>
 #include <arpa/inet.h>
+#include <ctype.h>
 
 #include <cefore/cef_define.h>
 #ifndef CefC_MACOS
@@ -107,6 +108,7 @@ static char ccnprefix2[] = {"ccn://"};
 static size_t ccnprefix1_len = sizeof (ccnprefix1) - 1; /* without NULL */
 static size_t ccnprefix2_len = sizeof (ccnprefix2) - 1; /* without NULL */
 
+
 /*------------------------------------------------------------------
 	the Link Message template
  -------------------------------------------------------------------*/
@@ -153,7 +155,7 @@ static uint16_t ftvh_symcode 		= CefC_T_SYMBOLIC_CODE;
 static uint16_t ftvh_meta 			= CefC_T_META;
 static uint16_t ftvh_payldtype 		= CefC_T_PAYLDTYPE;
 static uint16_t ftvh_expiry 		= CefC_T_EXPIRY;
-static uint16_t ftvh_endchunk 		= CefC_T_ENDChunk;
+static uint16_t ftvh_endchunk		= CefC_T_ENDCHUNK;
 
 /***** for hop-by-hop option header 	*****/
 static uint16_t ftvh_intlife 		= CefC_T_OPT_INTLIFE;
@@ -165,13 +167,15 @@ static uint16_t ftvh_trace_req		= CefC_T_OPT_TRACE_REQ;
 static uint16_t ftvh_trace_rpt		= CefC_T_OPT_TRACE_RPT;
 static uint16_t ftvh_org 			= CefC_T_OPT_ORG;
 static uint16_t ftvh_symbolic 		= CefC_T_OPT_SYMBOLIC;
-static uint16_t ftvh_longlife 		= CefC_T_OPT_LONGLIFE;
 static uint16_t ftvh_innovate 		= CefC_T_OPT_INNOVATIVE;
 static uint16_t ftvh_number 		= CefC_T_OPT_NUMBER;
 static uint16_t ftvh_piggyback 		= CefC_T_OPT_PIGGYBACK;
+static uint16_t ftvh_nwproc 		= CefC_T_OPT_NWPROC;
 static uint16_t ftvh_app_reg 		= CefC_T_OPT_APP_REG;
 static uint16_t ftvh_app_dereg 		= CefC_T_OPT_APP_DEREG;
 static uint16_t ftvh_app_reg_p		= CefC_T_OPT_APP_REG_P;
+static uint16_t ftvh_app_reg_pit 	= CefC_T_OPT_APP_PIT_REG;
+static uint16_t ftvh_app_dereg_pit 	= CefC_T_OPT_APP_PIT_DEREG;
 static uint16_t ftvh_transport 		= CefC_T_OPT_TRANSPORT;
 static uint16_t ftvh_efi 			= CefC_T_OPT_EFI;
 static uint16_t ftvh_iur 			= CefC_T_OPT_IUR;
@@ -232,13 +236,15 @@ static uint16_t ftvn_trace_req;
 static uint16_t ftvn_trace_rpt;
 static uint16_t ftvn_org;
 static uint16_t ftvn_symbolic;
-static uint16_t ftvn_longlife;
 static uint16_t ftvn_innovate;
 static uint16_t ftvn_number;
 static uint16_t ftvn_piggyback;
+static uint16_t ftvn_nwproc;
 static uint16_t ftvn_app_reg;
 static uint16_t ftvn_app_dereg;
 static uint16_t ftvn_app_reg_p;
+static uint16_t ftvn_app_reg_pit;
+static uint16_t ftvn_app_dereg_pit;
 static uint16_t ftvn_transport;
 static uint16_t ftvn_efi;
 static uint16_t ftvn_iur;
@@ -366,6 +372,16 @@ cef_frame_message_payloadtype_tlv_parse (
 	unsigned char* value,					/* Value of this TLV						*/
 	uint16_t offset							/* Offset from the top of message 			*/
 );
+/*--------------------------------------------------------------------------------------
+	Parses a EndChunkNumber TLV in a CEFORE message
+----------------------------------------------------------------------------------------*/
+static int									/* No care now								*/
+cef_frame_message_endchunk_tlv_parse (
+	CefT_Parsed_Message* pm, 				/* Structure to set parsed CEFORE message	*/
+	uint16_t length, 						/* Length of this TLV						*/
+	unsigned char* value,					/* Value of this TLV						*/
+	uint16_t offset							/* Offset from the top of message 			*/
+);
 
 static int									/* No care now								*/
 (*cef_frame_message_tlv_parse[CefC_T_MSG_TLV_NUM]) (
@@ -380,7 +396,13 @@ static int									/* No care now								*/
 	cef_frame_message_objhashrestr_tlv_parse,
 	cef_frame_message_invalid_tlv_parse,
 	cef_frame_message_payloadtype_tlv_parse,
-	cef_frame_message_expiry_tlv_parse
+	cef_frame_message_expiry_tlv_parse,
+	cef_frame_message_invalid_tlv_parse,
+	cef_frame_message_invalid_tlv_parse,
+	cef_frame_message_invalid_tlv_parse,
+	cef_frame_message_invalid_tlv_parse,
+	cef_frame_message_invalid_tlv_parse,
+	cef_frame_message_endchunk_tlv_parse
 };
 /*--------------------------------------------------------------------------------------
 	Parses an Invalid TLV in an Option Header
@@ -556,7 +578,6 @@ static int 									/* Length of the default Name				*/
 cef_frame_default_name_get (
 	unsigned char* buff 					/* buffer to set a message					*/
 );
-#ifdef CefC_Ser_Log
 /*--------------------------------------------------------------------------------------
 	Parses a ORG TLV in a CEFORE message
 ----------------------------------------------------------------------------------------*/
@@ -567,7 +588,14 @@ cef_frame_message_user_tlv_parse (
 	unsigned char* value,					/* Value of this TLV						*/
 	uint16_t offset							/* Offset from the top of message 			*/
 );
-#endif // CefC_Ser_Log
+/*--------------------------------------------------------------------------------------
+	Sets T_ORG Field to Interest from the specified Parameters
+----------------------------------------------------------------------------------------*/
+static uint16_t
+cef_frame_interest_torg_set (
+	unsigned char* buff, 					/* buffer to set a message					*/
+	CefT_Interest_TLVs* tlvs				/* Parameters to set Interest 				*/
+);
 
 // static void
 // cef_frame_tlv_print (
@@ -617,13 +645,15 @@ cef_frame_init (
 	ftvn_trace_req 		= htons (ftvh_trace_req);
 	ftvn_trace_rpt 		= htons (ftvh_trace_rpt);
 	ftvn_org 			= htons (ftvh_org);
-	ftvn_longlife 		= htons (ftvh_longlife);
 	ftvn_innovate 		= htons (ftvh_innovate);
 	ftvn_number 		= htons (ftvh_number);
 	ftvn_piggyback 		= htons (ftvh_piggyback);
+	ftvn_nwproc 		= htons (ftvh_nwproc);
 	ftvn_app_reg 		= htons (ftvh_app_reg);
 	ftvn_app_dereg 		= htons (ftvh_app_dereg);
 	ftvn_app_reg_p 		= htons (ftvh_app_reg_p);
+	ftvn_app_reg_pit	= htons (ftvh_app_reg_pit);
+	ftvn_app_dereg_pit	= htons (ftvh_app_dereg_pit);
 	ftvn_symbolic 		= htons (ftvh_symbolic);
 	ftvn_transport 		= htons (ftvh_transport);
 	ftvn_efi 			= htons (ftvh_efi);
@@ -743,14 +773,12 @@ cef_frame_message_parse (
 			if (res < 0) {
 				return (-1);
 			}
-#ifdef CefC_Ser_Log
-		} else if (type == CefC_T_OPT_ORG) {
+		} else if (type == CefC_T_ORG) {
 			res = cef_frame_message_user_tlv_parse (
 						pm, length, &wmp[CefC_O_Value], offset);
 			if (res < 0) {
 				return (-1);
 			}
-#endif // CefC_Ser_Log
 		}
 		wmp += CefC_S_TLF + length;
 		offset += CefC_S_TLF + length;
@@ -870,6 +898,10 @@ cef_frame_conversion_uri_to_name (
 
 	char protocol[1024];
 	uint16_t name_len, prot_len, n;
+#ifdef CefC_Nwproc
+	uint16_t nameseg_cnt = 0;
+	uint16_t cid_f = 0;
+#endif // CefC_Nwproc
 
 	strcpy (protocol, "ccn");
 
@@ -930,9 +962,24 @@ cef_frame_conversion_uri_to_name (
 			if(*curi != 0x2d &&							/* - */
 				*curi != 0x2e &&						/* . */
 				*curi != 0x2f &&						/* / */
+#ifdef CefC_Nwproc
+				*curi != CefC_NWP_Delimiter &&			/* ; */
+#endif // CefC_Nwproc
 				*curi != 0x5f &&						/* _ */
 				*curi != 0x7e) {						/* ~ */
+#ifdef CefC_Nwproc
+				if(*curi == 0x3d) {						/* = */
+					if(memcmp((curi-4), CefC_NWP_CID_Prefix, CefC_NWP_CID_Prefix_Len)==0) {
+						cid_f = 1;
+					} else {
+						return(-1);
+					}
+				} else {
+					return(-1);
+				}
+#else // CefC_Nwproc
 				return(-1);
+#endif // CefC_Nwproc
 			}
 		}
 		ruri = curi + 1;
@@ -944,28 +991,179 @@ cef_frame_conversion_uri_to_name (
 			if ((*ruri == 0x00) && (*curi != 0x2f)) {
 				curi++;
 			}
-			memcpy (wp, &ftvn_nameseg, CefC_S_Type);
-			wp += CefC_S_Type;
-			value = (uint16_t)(curi - suri);
-			value = htons (value);
-			memcpy (wp, &value, CefC_S_Length);
-			wp += CefC_S_Length;
-			while (suri < curi) {
-				*wp = *suri;
-				wp++;
-				suri++;
-			}
-			if (*curi == 0x2f) {
-				suri++;
-			}
-			if (*curi == 0x00) {
-				break;
+#ifdef CefC_Nwproc
+			nameseg_cnt++;
+#endif // CefC_Nwproc
+			if (memcmp("0x", suri, 2) != 0) { /* none HEX Name */
+				memcpy (wp, &ftvn_nameseg, CefC_S_Type);
+				wp += CefC_S_Type;
+				value = (uint16_t)(curi - suri);
+				value = htons (value);
+				memcpy (wp, &value, CefC_S_Length);
+				wp += CefC_S_Length;
+				while (suri < curi) {
+					*wp = *suri;
+					wp++;
+					suri++;
+				}
+				if (*curi == 0x2f) {
+					suri++;
+				}
+				if (*curi == 0x00) {
+					break;
+				}
+			} else  { /* HEX Name */
+				char hcbuff[1024];
+				int  hclen;
+			  	char *hcp;
+			  	char hvbuff[1024];
+				int  hvlen;
+			  	int  i;
+			  	memset (hcbuff, 0 , sizeof(hcbuff));
+			  	hcp = hcbuff;
+			  	memset (hvbuff, 0 , sizeof(hvbuff));
+				while (suri < curi) {
+					*hcp = *suri;
+					hcp++;
+					suri++;
+				}
+				/* length check */
+				hclen = strlen(hcbuff);
+				hclen -= 2; /* Subtract the length of "0x" */
+				if(hclen < 2) {
+					return(-1);
+				}
+				if ((hclen%2) != 0) {
+					return(-1);
+				}
+				/* HEX char check */
+				for (i=0; i<hclen; i++) {
+					if(isxdigit(hcbuff[2+i]) == 0) {
+						return(-1);
+					}
+				}
+				/* conv. HEX char to val */
+			    for (i=0; i<hclen; i+=2) {
+					unsigned int x;
+					sscanf((char *)((hcbuff+2)+i), "%02x", &x);
+			    	if (x == '/') {
+						return(-1); /* '/' Is not allowed in HEX */
+			    	}
+					hvbuff[i/2] = x;
+				}
+			  	hvlen = hclen / 2 ;
+			  	/* create TLV */
+				memcpy (wp, &ftvn_nameseg, CefC_S_Type);
+				wp += CefC_S_Type;
+				value = (uint16_t)(hvlen);
+				value = htons (value);
+				memcpy (wp, &value, CefC_S_Length);
+				wp += CefC_S_Length;
+			  	memcpy (wp, hvbuff, hvlen);
+			  	wp += hvlen;
+				if (*curi == 0x2f) {
+					suri++;
+				}
+				if (*curi == 0x00) {
+					break;
+				}
 			}
 		}
 		curi++;
 	}
 
+#ifndef CefC_Nwproc
 	return ((int)(wp - name));
+#else // CefC_Nwproc
+	{
+		int base_name_len = (int)(wp - name);
+		int x = 0;
+		int tmp_seg_cnt = nameseg_cnt;
+		unsigned char* wp2;
+		unsigned char wp3[CefC_Max_Length];
+		int delim_pos = 0;
+		int delim_pos_cid = 0;
+		int y = 0;
+		struct tlv_hdr* tlv_hdr;
+		int seg_len;
+		int add_name_len = 0;
+		int wo_cid_len;
+		
+		/* Check the position of the delimiter */
+		wp2 = name;
+		x = base_name_len - 1;
+		while (x >= 0) {
+			if(wp2[x] == CefC_NWP_Delimiter) {
+				if (tmp_seg_cnt != nameseg_cnt) {
+					return (-1);
+				}
+				delim_pos = x;
+				if(cid_f) {
+					cid_f = 0;
+					delim_pos_cid = x;
+				}
+			}
+			if(x > 0 && wp2[x-1] == 0x00 && wp2[x] == 0x01){
+				tmp_seg_cnt--;
+			}
+			x--;
+		}
+		
+		if(delim_pos == 0)
+			return (base_name_len);
+		
+		/* Separate T_NAMESEGMENT for attributes */
+		x = 0;
+		while (x < delim_pos) {
+			tlv_hdr = (struct tlv_hdr*) &name[x];
+			seg_len = ntohs (tlv_hdr->length);
+			x += CefC_S_TLF;
+			if (x+seg_len > delim_pos) {
+				tlv_hdr->length = htons(delim_pos - x);
+				seg_len = base_name_len - delim_pos;
+				memcpy (&(wp3[y]), tlv_hdr, sizeof (struct tlv_hdr));
+				y += CefC_S_TLF;
+				memcpy (&(wp3[y]), &(name[x]), delim_pos - x);
+				y += (delim_pos - x);
+				
+				if(delim_pos_cid > 0) 
+					wo_cid_len = delim_pos_cid - delim_pos;
+				else
+					wo_cid_len = seg_len;
+				/* attributes */
+				memcpy (&(wp3[y]), &ftvn_nameseg, CefC_S_Type);
+				y += CefC_S_Type;
+				value = htons (wo_cid_len);
+				memcpy (&(wp3[y]), &value, CefC_S_Length);
+				y += CefC_S_Length;
+				memcpy (&(wp3[y]), &(name[delim_pos]), wo_cid_len);
+				add_name_len += CefC_S_TLF;
+				/* CID */
+				if(delim_pos_cid > 0) {
+					y += wo_cid_len;
+					memcpy (&(wp3[y]), &ftvn_nameseg, CefC_S_Type);
+					y += CefC_S_Type;
+					value = htons (seg_len - wo_cid_len);
+					memcpy (&(wp3[y]), &value, CefC_S_Length);
+					y += CefC_S_Length;
+					memcpy (&(wp3[y]), &(name[delim_pos_cid]), seg_len - wo_cid_len);
+					add_name_len += CefC_S_TLF;
+				}
+				
+				break;
+			} else {
+				memcpy (&(wp3[y]), tlv_hdr, sizeof (struct tlv_hdr));
+				y += CefC_S_TLF;
+				memcpy (&(wp3[y]), &(name[x]), seg_len);
+				y += seg_len;
+				x += seg_len;
+			}
+		}
+		
+		memcpy( name, wp3, (int)(base_name_len + add_name_len) );
+		return (base_name_len + add_name_len);
+	}
+#endif // CefC_Nwproc
 }
 /*--------------------------------------------------------------------------------------
 	Creates the Interest from the specified Parameters
@@ -1093,6 +1291,11 @@ cef_frame_interest_create (
 		index += CefC_S_TLF + tlvs->cob_len;
 	}
 
+	/*=========================================
+		ORG TLV
+	===========================================*/
+	index +=
+		cef_frame_interest_torg_set (&buff[index], tlvs);
 #ifdef CefC_Android
 	/*=========================================
 		ORG TLV (only Android)
@@ -1165,7 +1368,116 @@ cef_frame_interest_create (
 
 	return (index);
 }
+/*--------------------------------------------------------------------------------------
+	Sets T_ORG Field to Interest from the specified Parameters
+----------------------------------------------------------------------------------------*/
+static uint16_t
+cef_frame_interest_torg_set (
+	unsigned char* buff, 					/* buffer to set a message					*/
+	CefT_Interest_TLVs* tlvs				/* Parameters to set Interest 				*/
+) {
+	int set_hdr_f = 0;
+	uint16_t index = 0;
+	struct tlv_hdr fld_thdr;
+	uint16_t vsv = 0;
+	uint16_t length = 0;
 
+	/*
+		+---------------+---------------+---------------+---------------+
+		|             T_ORG             |             Length            |
+		+---------------+---------------+---------------+---------------+
+		|     PEN[0]    |     PEN[1]    |     PEN[2]    |               /
+		+---------------+---------------+---------------+---------------+
+		/                     Vendor Specific Value                     |
+		+---------------+-------------------------------+---------------+
+		If the first bit is 0, the length does not follow the Type.
+		+---------------+
+		|0|<-- 15bit -->|
+		+---------------+
+		If the first bit is 1, the length follows the Type.
+		+---------------+---------------+---------------+---------------+
+		|1|<-- 15bit -->|             Length            |     Value     /
+		+---------------+---------------+---------------+---------------+
+	*/
+	
+#ifdef CefC_Android
+	/* Sets Type */
+	fld_thdr.type = htons (CefC_T_ORG);
+	memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+	index += CefC_S_TLF;
+	
+	/* Sets IANA Private Enterprise Numbers */
+	buff[index]   = (0xFF0000 & CefC_NICT_PEN) >> 16;
+	buff[++index] = (0x00FF00 & CefC_NICT_PEN) >> 8;
+	buff[++index] = (0x0000FF & CefC_NICT_PEN);
+	index++;
+	
+	/* Original field (Serial Log) */
+	value32_fld.type = htons (CefC_T_SER_LOG);
+	value32_fld.length = ftvn_4byte;
+	/* Value is Android sirial num (CRC32) */
+	value32_fld.value = htonl (cef_android_serial_num_get ());
+	memcpy (&buff[index], &value32_fld, sizeof (struct value32_tlv));
+	index += sizeof (struct value32_tlv);
+	set_hdr_f = 1;
+#endif
+	
+/* [Restriction] */
+/* For renovation in FY 2018, T_ORG is supported only for Symbolic, LongLife. */
+/* In the future --->	if (!tlvs->opt.symbolic_f) {*/
+	if (tlvs->opt.symbolic_f != CefC_T_LONGLIFE ||
+		tlvs->symbolic_code_f == 1) {
+/* <---In the future 	if (!tlvs->opt.symbolic_f) {*/
+#ifdef CefC_Android
+		/* Sets Length */
+		length = htons (index - CefC_S_TLF);
+		memcpy (&buff[CefC_S_TLF], &length, sizeof (uint16_t));
+#endif
+		return (index);
+	}
+	
+	if (tlvs->opt.symbolic_f) {
+		if (!set_hdr_f) {
+			set_hdr_f = 1;
+			
+			/* Sets Type */
+			fld_thdr.type = htons (CefC_T_ORG);
+			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+			index += CefC_S_TLF;
+			
+			/* Sets IANA Private Enterprise Numbers */
+			buff[index]   = (0xFF0000 & CefC_NICT_PEN) >> 16;
+			buff[++index] = (0x00FF00 & CefC_NICT_PEN) >> 8;
+			buff[++index] = (0x0000FF & CefC_NICT_PEN);
+			index++;
+		}
+	} else {
+#ifdef CefC_Android
+		/* Sets Length */
+		length = htons (index - CefC_S_TLF);
+		memcpy (&buff[CefC_S_TLF], &length, sizeof (uint16_t));
+#endif
+		return (index);
+	}
+	
+	if (tlvs->opt.symbolic_f == CefC_T_LONGLIFE) {
+		/* Sets Type of Symbolic Interest */
+		vsv = htons (CefC_T_SYMBOLIC);
+		memcpy (&buff[index], &vsv, sizeof (uint16_t));
+		index += sizeof (uint16_t);
+		
+		/* Sets Type of Longlife Interest */
+		vsv =  htons (CefC_T_LONGLIFE);
+		memcpy (&buff[index], &vsv, sizeof (uint16_t));
+		index += sizeof (uint16_t);
+	}
+	
+	/* Sets Length */
+	length = htons (index - CefC_S_TLF);
+	memcpy (&buff[CefC_O_Length], &length, sizeof (uint16_t));
+	
+	return (index);
+}
 /*--------------------------------------------------------------------------------------
 	Creates the Content Object from the specified Parameters
 ----------------------------------------------------------------------------------------*/
@@ -1264,6 +1576,36 @@ cef_frame_object_create (
 	value64_fld.value  = cef_frame_htonb (tlvs->expiry);
 	memcpy (&buff[index], &value64_fld, sizeof (struct value64_tlv));
 	index += CefC_S_TLF + CefC_S_Expiry;
+
+	/*----- Sets T_ENDCHUNK		-----*/
+	if (tlvs->end_chunk_num_f) {
+		uint16_t end_chunk_len;
+		uint16_t end_chunk_len_ns;
+		uint64_t value;
+		char buffer[128];
+	 	int  i = 0;
+	 	int mustContinue = 0;
+		
+		value = tlvs->end_chunk_num;
+		memset(buffer, 0, sizeof(buffer));
+		for (int byte = 7; byte >= 0; byte--) {
+			uint8_t b = (value >> (byte * 8)) & 0xFF;
+			if (b != 0 || byte == 0 || mustContinue) {
+				buffer[i] = b;
+				i++;
+				mustContinue = 1;
+			}
+		}
+		end_chunk_len = i;
+
+		memcpy (&buff[index], &ftvn_endchunk, sizeof(CefC_S_Type));
+		index += CefC_S_Type;
+		end_chunk_len_ns = htons(end_chunk_len);
+		memcpy (&buff[index], &end_chunk_len_ns, sizeof(CefC_S_Length));
+		index += CefC_S_Length;
+		memcpy (&buff[index], buffer, end_chunk_len);
+		index += end_chunk_len;
+	}
 
 	/*----- PAYLOAD TLV 			-----*/
 	if (tlvs->payload_len > 0) {
@@ -1649,21 +1991,21 @@ cef_frame_seqence_update (
 	unsigned char* buff, 					/* packet									*/
 	uint32_t seqnum
 ) {
+#if defined (CefC_Plugin_Samptp) || defined (CefC_Mobility)
 	struct value32_tlv* value32_fld;
 	uint16_t type;
 	uint16_t length;
-
+	
 	value32_fld = (struct value32_tlv*) &buff[CefC_S_Fix_Header];
 	type   = ntohs (value32_fld->type);
 	length = ntohs (value32_fld->length);
-
+	
 	if ((type == CefC_T_OPT_SEQNUM) && (length == CefC_S_SeqNum)) {
 		value32_fld->value = htonl (seqnum);
 	}
-
+#endif	//(CefC_Plugin_Samptp) || (CefC_Mobility)
 	return;
 }
-
 /*--------------------------------------------------------------------------------------
 	Updates the T_INNOVATIVE and T_NUMBER
 ----------------------------------------------------------------------------------------*/
@@ -1709,7 +2051,45 @@ cef_frame_innovative_update (
 
 	return;
 }
+/*--------------------------------------------------------------------------------------
+	Update cache time
+----------------------------------------------------------------------------------------*/
+void 										/* Returns a negative value if it fails 	*/
+cef_frame_opheader_cachetime_update (
+	unsigned char* 	cob, 					/* the cob message to parse					*/
+	uint64_t		cachetime
+) {
+	unsigned char* scp;
+	unsigned char* ecp;
+	unsigned char* wcp;
+	struct tlv_hdr* thdr;
+	uint16_t length;
+	uint16_t type;
+	uint64_t val64u;
 
+	/*----------------------------------------------------------------------*/
+	/* Parses Option Header				 									*/
+	/*----------------------------------------------------------------------*/
+	scp = cob + CefC_S_Fix_Header;
+	length = cob[CefC_O_Fix_HeaderLength] - CefC_S_Fix_Header;
+
+	wcp = scp;
+	ecp = scp + length;
+
+	while (wcp < ecp) {
+		thdr = (struct tlv_hdr*) wcp;
+		type   = ntohs (thdr->type);
+		length = ntohs (thdr->length);
+
+		if (type == CefC_T_OPT_CACHETIME) {
+			/* set */
+			val64u  = cef_frame_htonb (cachetime);
+			memcpy(&wcp[CefC_S_TLF], &val64u, sizeof (val64u));
+		}
+				
+		wcp += CefC_S_TLF + length;
+	}
+}
 /*--------------------------------------------------------------------------------------
 	Adds the Symbolic Code to the Content Object
 ----------------------------------------------------------------------------------------*/
@@ -1801,13 +2181,6 @@ cef_frame_interest_opt_header_create (
 	index += CefC_S_TLF;
 
 	switch (tlvs->opt.symbolic_f) {
-		case CefC_T_OPT_LONGLIFE: {
-			fld_thdr.type 	= ftvn_longlife;
-			fld_thdr.length = 0x0000;
-			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
-			index += CefC_S_TLF;
-			break;
-		}
 		case CefC_T_OPT_INNOVATIVE: {
 			if ((tlvs->symbolic_code_f > 0) &&
 				(tlvs->max_seq >= tlvs->min_seq)) {
@@ -1849,6 +2222,13 @@ cef_frame_interest_opt_header_create (
 			}
 			break;
 		}
+		case CefC_T_OPT_NWPROC: {
+			fld_thdr.type 	= ftvn_nwproc;
+			fld_thdr.length = 0x0000;
+			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+			index += CefC_S_TLF;
+			break;
+		}
 		case CefC_T_OPT_APP_REG: {
 			fld_thdr.type 	= ftvn_app_reg;
 			fld_thdr.length = 0x0000;
@@ -1865,6 +2245,20 @@ cef_frame_interest_opt_header_create (
 		}
 		case CefC_T_OPT_APP_REG_P: {
 			fld_thdr.type 	= ftvn_app_reg_p;
+			fld_thdr.length = 0x0000;
+			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+			index += CefC_S_TLF;
+			break;
+		}
+		case CefC_T_OPT_APP_PIT_REG: {
+			fld_thdr.type 	= ftvn_app_reg_pit;
+			fld_thdr.length = 0x0000;
+			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+			index += CefC_S_TLF;
+			break;
+		}
+		case CefC_T_OPT_APP_PIT_DEREG: {
+			fld_thdr.type 	= ftvn_app_dereg_pit;
 			fld_thdr.length = 0x0000;
 			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
 			index += CefC_S_TLF;
@@ -1922,15 +2316,19 @@ cef_frame_object_opt_header_create (
 ) {
 	unsigned int index = 0;
 	struct tlv_hdr fld_thdr;
+#if defined (CefC_Plugin_Samptp) || defined (CefC_Mobility)
 	struct value32_tlv value32_fld;
+#endif	//(CefC_Plugin_Samptp) || (CefC_Mobility)
 	struct value64_tlv value64_fld;
 
+#if defined (CefC_Plugin_Samptp) || defined (CefC_Mobility)
 	/* Sets Sequence Number 				*/
 	value32_fld.type   = ftvn_seqnum;
 	value32_fld.length = flvn_seqnum;
 	value32_fld.value  = 0;
 	memcpy (&buff[index], &value32_fld, sizeof (struct value32_tlv));
 	index += CefC_S_TLF + flvh_seqnum;
+#endif	//(CefC_Plugin_Samptp) || (CefC_Mobility)
 
 	/* Sets Recommended Cache Time (RCT)	*/
 	if (tlvs->opt.cachetime_f) {
@@ -2318,7 +2716,6 @@ cef_frame_opheader_cachetime_tlv_parse (
 	memcpy (&poh->cachetime, value, sizeof (uint64_t));
 	poh->cachetime 	 = cef_frame_ntohb (poh->cachetime) * 1000;
 	poh->cachetime_f = offset;
-
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -2421,9 +2818,7 @@ cef_frame_opheader_user_tlv_parse (
 				sub_len  = ntohs (thdr->length);
 				index += CefC_S_TLF;
 
-				if (sub_type == CefC_T_OPT_LONGLIFE) {
-					poh->longlife_f = offset;
-				} else if (sub_type == CefC_T_OPT_PIGGYBACK) {
+				if (sub_type == CefC_T_OPT_PIGGYBACK) {
 					poh->piggyback_f = offset;
 				} else if (sub_type == CefC_T_OPT_APP_REG) {
 					poh->app_reg_f = CefC_App_Reg;
@@ -2431,6 +2826,10 @@ cef_frame_opheader_user_tlv_parse (
 					poh->app_reg_f = CefC_App_DeReg;
 				} else if (sub_type == CefC_T_OPT_APP_REG_P) {
 					poh->app_reg_f = CefC_App_RegPrefix;
+				} else if (sub_type == CefC_T_OPT_APP_PIT_REG) {
+					poh->app_reg_f = CefC_App_RegPit;
+				} else if (sub_type == CefC_T_OPT_APP_PIT_DEREG) {
+					poh->app_reg_f = CefC_App_DeRegPit;
 				} else if (sub_type == CefC_T_OPT_INNOVATIVE) {
 					poh->bitmap_f = offset + index;
 					memcpy (poh->bitmap, &value[index], CefC_S_Innovate);
@@ -2449,6 +2848,10 @@ cef_frame_opheader_user_tlv_parse (
 					poh->symbolic_code.value1 = *v32p;
 					v32p = (uint32_t*)(&value[index + sizeof (uint32_t)]);
 					poh->symbolic_code.value2 = *v32p;
+#ifdef CefC_Nwproc
+				} else if (sub_type == CefC_T_OPT_NWPROC) {
+					poh->nwproc_f = offset;
+#endif // CefC_Nwproc
 				} else {
 					/* Ignore */;
 				}
@@ -2582,24 +2985,33 @@ cef_frame_message_name_tlv_parse (
 	memcpy (pm->name, value, name_len);
 
 	if (pm->chnk_num_f) {
+		uint32_t chank_num_wk;
+		uint16_t chunk_len_wk;
+		int		 indx;
+		chank_num_wk = htonl(pm->chnk_num);
+		chunk_len_wk = htons(CefC_S_ChunkNum);
 
-		{
-			uint32_t chank_num_wk;
-			uint16_t chunk_len_wk;
-			int		 indx;
-			chank_num_wk = htonl(pm->chnk_num);
-			chunk_len_wk = htons(CefC_S_ChunkNum);
-
-			indx = 0;
-			memcpy (&(pm->name[name_len+indx]), &ftvn_chunk, sizeof(CefC_S_Type));
-			indx += CefC_S_Type;
-			memcpy (&(pm->name[name_len+indx]), &chunk_len_wk, sizeof(CefC_S_Length));
-			indx += CefC_S_Length;
-			memcpy (&(pm->name[name_len+indx]), &chank_num_wk, sizeof(CefC_S_ChunkNum));
-			pm->name_len += (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
-		}
+		indx = 0;
+		memcpy (&(pm->name[name_len+indx]), &ftvn_chunk, sizeof(CefC_S_Type));
+		indx += CefC_S_Type;
+		memcpy (&(pm->name[name_len+indx]), &chunk_len_wk, sizeof(CefC_S_Length));
+		indx += CefC_S_Length;
+		memcpy (&(pm->name[name_len+indx]), &chank_num_wk, sizeof(CefC_S_ChunkNum));
+		pm->name_len += (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
+		indx += CefC_S_ChunkNum;
 	}
-
+#ifdef CefC_Nwproc
+	/* Get name without attributes			*/
+	{
+	unsigned int tmp_val, t_val;
+	cef_frame_get_name_wo_attr (pm->name, pm->name_len, pm->name_wo_attr, &tmp_val);
+	pm->name_wo_attr_len = tmp_val;
+	/* cef_frame_separate_name_and_cid		*/
+	cef_frame_separate_name_and_cid (pm->name, pm->name_len, pm->name_wo_cid, &t_val, pm->cid, &tmp_val);
+	pm->name_wo_cid_len = t_val;
+	pm->cid_len = tmp_val;
+	}
+#endif // CefC_Nwproc
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -2670,6 +3082,22 @@ cef_frame_message_payloadtype_tlv_parse (
 	uint16_t offset							/* Offset from the top of message 			*/
 ) {
 	// TODO
+	return (1);
+}
+/*--------------------------------------------------------------------------------------
+	Parses a EndChunkNumber TLV in a CEFORE message
+----------------------------------------------------------------------------------------*/
+static int									/* No care now								*/
+cef_frame_message_endchunk_tlv_parse (
+	CefT_Parsed_Message* pm, 				/* Structure to set parsed CEFORE message	*/
+	uint16_t length, 						/* Length of this TLV						*/
+	unsigned char* value,					/* Value of this TLV						*/
+	uint16_t offset							/* Offset from the top of message 			*/
+) {
+	pm->end_chunk_num_f = offset;
+	for (int i = 0; i < length; i++) {
+		pm->end_chunk_num = (pm->end_chunk_num << 8) | value[i];
+	}
 	return (1);
 }
 
@@ -2829,25 +3257,65 @@ cef_frame_conversion_name_to_uri (
 	}
 
 	while (x < name_len) {
+		int hname = 0;
 		tlv_hdr = (struct tlv_hdr*) &name[x];
 		seg_len = ntohs (tlv_hdr->length);
 		x += CefC_S_TLF;
 
+		/* Check if it contains non-print character */
 		for (i = 0 ; i < seg_len ; i++) {
-			if(((name[x + i] >= 0x30) && (name[x + i] <= 0x39)) ||		/* 0~9 */
-				((name[x + i] >= 0x41) && (name[x + i] <= 0x5a)) ||		/* A~Z */
-				((name[x + i] >= 0x61) && (name[x + i] <= 0x7a))) {		/* a~z */
-				
-				uri[uri_len] = name[x + i];
-				uri_len++;
-			} else if ((name[x + i] == 0x2d) ||						/* - */
-					(name[x + i] == 0x2e) ||						/* . */
-					(name[x + i] == 0x2f) ||						/* / */
-					(name[x + i] == 0x5f) ||						/* _ */
-					(name[x + i] == 0x7e)) {						/* ~ */
-				uri[uri_len] = name[x + i];
-				uri_len++;
-			} else {
+			if(!(isprint(name[x+i]))) { /* HEX Name */
+				hname = 1;
+				break;
+			}
+		}
+		if(hname == 0){
+			for (i = 0 ; i < seg_len ; i++) {
+				if(((name[x + i] >= 0x30) && (name[x + i] <= 0x39)) ||		/* 0~9 */
+					((name[x + i] >= 0x41) && (name[x + i] <= 0x5a)) ||		/* A~Z */
+					((name[x + i] >= 0x61) && (name[x + i] <= 0x7a))) {		/* a~z */
+					
+					uri[uri_len] = name[x + i];
+					uri_len++;
+				} else if ((name[x + i] == 0x2d) ||						/* - */
+						(name[x + i] == 0x2e) ||						/* . */
+						(name[x + i] == 0x2f) ||						/* / */
+#ifdef CefC_Nwproc
+						(name[x + i] == CefC_NWP_Delimiter) ||			/* ; */
+#endif // CefC_Nwproc
+						(name[x + i] == 0x5f) ||						/* _ */
+						(name[x + i] == 0x7e)) {						/* ~ */
+#ifdef CefC_Nwproc
+					if (i == 0 && name[x + i] == CefC_NWP_Delimiter && uri[uri_len - 1] == 0x2f) {
+						uri_len -= 1;
+					}
+#endif // CefC_Nwproc
+					uri[uri_len] = name[x + i];
+					uri_len++;
+				} else {
+#ifdef CefC_Nwproc
+					if (name[x + i] == 0x3d) {
+						if (x + i > CefC_NWP_CID_Prefix_Len+1 &&
+							memcmp(&(name[(x+i)-CefC_NWP_CID_Prefix_Len+1]), 
+									CefC_NWP_CID_Prefix, 
+									CefC_NWP_CID_Prefix_Len ) == 0) {
+							uri[uri_len] = name[x + i];
+							uri_len++;
+						}
+					} else {
+#endif // CefC_Nwproc
+						sprintf (work, "%02x", name[x + i]);
+						strcpy (&uri[uri_len], work);
+						uri_len += strlen (work);
+#ifdef CefC_Nwproc
+					}
+#endif // CefC_Nwproc
+				}
+			}
+		} else {
+			uri[uri_len++] = '0';
+			uri[uri_len++] = 'x';
+			for (i = 0 ; i < seg_len ; i++) {
 				sprintf (work, "%02x", name[x + i]);
 				strcpy (&uri[uri_len], work);
 				uri_len += strlen (work);
@@ -2868,6 +3336,259 @@ cef_frame_conversion_name_to_uri (
 	return (uri_len);
 }
 /*--------------------------------------------------------------------------------------
+	Convert name to uri without ChunkNum
+----------------------------------------------------------------------------------------*/
+int
+cef_frame_conversion_name_to_uri_without_chunknum (
+	unsigned char* name,
+	unsigned int name_len,
+	char* uri
+) {
+	int i;
+	int x = 0;
+	int seg_len, uri_len;
+	struct tlv_hdr* tlv_hdr;
+	char work[16];
+	unsigned char def_name[CefC_Max_Length];
+	int def_name_len;
+
+	strcpy (uri, "ccn:/");
+	uri_len = strlen ("ccn:/");
+
+	/* Check default name */
+	def_name_len = cef_frame_default_name_get (def_name);
+	if ((name_len == def_name_len) && (memcmp (name, def_name, name_len)) == 0) {
+		return (uri_len);
+	}
+
+	while (x < name_len) {
+		int hname = 0;
+		tlv_hdr = (struct tlv_hdr*) &name[x];
+		if (ntohs(tlv_hdr->type) == CefC_T_CHUNK) {
+			break;
+		}
+		
+		seg_len = ntohs (tlv_hdr->length);
+		x += CefC_S_TLF;
+		/* Check if it contains non-print character */
+		for (i = 0 ; i < seg_len ; i++) {
+			if(!(isprint(name[x+i]))) { /* HEX Name */
+				hname = 1;
+				break;
+			}
+		}
+		if(hname == 0){
+			for (i = 0 ; i < seg_len ; i++) {
+				if(((name[x + i] >= 0x30) && (name[x + i] <= 0x39)) ||		/* 0~9 */
+					((name[x + i] >= 0x41) && (name[x + i] <= 0x5a)) ||		/* A~Z */
+					((name[x + i] >= 0x61) && (name[x + i] <= 0x7a))) {		/* a~z */
+					
+					uri[uri_len] = name[x + i];
+					uri_len++;
+				} else if ((name[x + i] == 0x2d) ||						/* - */
+						(name[x + i] == 0x2e) ||						/* . */
+						(name[x + i] == 0x2f) ||						/* / */
+#ifdef CefC_Nwproc
+						(name[x + i] == CefC_NWP_Delimiter) ||			/* ; */
+#endif // CefC_Nwproc
+						(name[x + i] == 0x5f) ||						/* _ */
+						(name[x + i] == 0x7e)) {						/* ~ */
+#ifdef CefC_Nwproc
+					if (i == 0 && name[x + i] == CefC_NWP_Delimiter && uri[uri_len - 1] == 0x2f) {
+						uri_len -= 1;
+					}
+#endif // CefC_Nwproc
+					uri[uri_len] = name[x + i];
+					uri_len++;
+				} else {
+#ifdef CefC_Nwproc
+					if (name[x + i] == 0x3d) {
+						if (x + i > CefC_NWP_CID_Prefix_Len+1 &&
+							memcmp(&(name[(x+i)-CefC_NWP_CID_Prefix_Len+1]), 
+									CefC_NWP_CID_Prefix, 
+									CefC_NWP_CID_Prefix_Len ) == 0) {
+							uri[uri_len] = name[x + i];
+							uri_len++;
+						}
+					} else {
+#endif // CefC_Nwproc
+						sprintf (work, "%02x", name[x + i]);
+						strcpy (&uri[uri_len], work);
+						uri_len += strlen (work);
+#ifdef CefC_Nwproc
+					}
+#endif // CefC_Nwproc
+				}
+			}
+		} else {
+			uri[uri_len++] = '0';
+			uri[uri_len++] = 'x';
+			for (i = 0 ; i < seg_len ; i++) {
+				sprintf (work, "%02x", name[x + i]);
+				strcpy (&uri[uri_len], work);
+				uri_len += strlen (work);
+			}
+		}
+		uri[uri_len] = '/';
+		uri_len++;
+
+		x += seg_len;
+	}
+	
+	if ((uri_len > strlen ("ccn:/")) && (uri[uri_len-1] == 0x2f)) {
+		uri_len--;
+	}
+	uri[uri_len] = 0x00;
+
+	return (uri_len);
+}
+/*--------------------------------------------------------------------------------------
+	Separate name and CID
+----------------------------------------------------------------------------------------*/
+int
+cef_frame_separate_name_and_cid (
+	unsigned char* org_name,
+	unsigned int org_name_len,
+	unsigned char* name_wo_cid,				/* Name without CID removed from org_name	*/
+	unsigned int* name_wo_cid_len,
+	unsigned char* cid,						/* CID(;CID=...)							*/
+	unsigned int* cid_len
+) {
+#ifdef CefC_Nwproc
+	int x = 0;
+	struct tlv_hdr* tlv_hdr;
+	int seg_len = 0;
+	int wo_cid_idx = 0;
+	int cid_idx = 0;
+	
+	*name_wo_cid_len = 0;
+	*cid_len = 0;
+	while (x < org_name_len) {
+		tlv_hdr = (struct tlv_hdr*) &org_name[x];
+		seg_len = ntohs (tlv_hdr->length);
+		x += CefC_S_TLF;
+		
+		if ((memcmp (&(org_name[x]), CefC_NWP_CID_Prefix, CefC_NWP_CID_Prefix_Len)) == 0) {
+			memcpy (&(cid[cid_idx]), tlv_hdr, sizeof (struct tlv_hdr));
+			cid_idx += CefC_S_TLF;
+			memcpy (&(cid[cid_idx]), &(org_name[x]), seg_len);
+			*cid_len = cid_idx + seg_len;
+		} else {
+			memcpy (&(name_wo_cid[wo_cid_idx]), tlv_hdr, sizeof (struct tlv_hdr));
+			wo_cid_idx += CefC_S_TLF;
+			memcpy (&(name_wo_cid[wo_cid_idx]), &(org_name[x]), seg_len);
+			wo_cid_idx += seg_len;
+		}
+		x += seg_len;
+	}
+	*name_wo_cid_len = wo_cid_idx;
+	
+	return(1);
+#else // CefC_Nwproc
+	memcpy (name_wo_cid, org_name, org_name_len);
+	*name_wo_cid_len = org_name_len;
+	*cid_len = 0;
+	return(0);
+#endif // CefC_Nwproc
+}
+/*--------------------------------------------------------------------------------------
+	Conversion CID to HexChar and Add to name
+----------------------------------------------------------------------------------------*/
+int												/* 0:Already contains CID, 1:Added		*/
+cef_frame_conversion_hexch_cid_add_to_name (
+	unsigned char* name,
+	unsigned int name_len,
+	unsigned char* cid,
+	unsigned int cid_len,
+	unsigned char* new_name,
+	unsigned int* new_name_len
+) {
+#ifdef CefC_Nwproc
+	int x = 0;
+	struct tlv_hdr* tlv_hdr;
+	int seg_len = 0;
+	uint16_t value;
+	
+	/* Confirm that CID is not included		*/
+	while (x < name_len) {
+		tlv_hdr = (struct tlv_hdr*) &name[x];
+		seg_len = ntohs (tlv_hdr->length);
+		x += CefC_S_TLF;
+		
+		if ((memcmp (&(name[x]), CefC_NWP_CID_Prefix, CefC_NWP_CID_Prefix_Len)) == 0) {
+			return (0);
+		}
+		x += seg_len;
+	}
+	
+	/* Add CID								*/
+	x = 0;
+	seg_len = 0;
+	*new_name_len = 0;
+	memcpy(new_name, name, name_len);
+	seg_len += name_len;
+	memcpy (&(new_name[seg_len]), &ftvn_nameseg, CefC_S_Type);
+	seg_len += CefC_S_Type;
+	value = (uint16_t)(cid_len * 2) + CefC_NWP_CID_Prefix_Len;
+	value = htons (value);
+	memcpy (&(new_name[seg_len]), &value, CefC_S_Length);
+	seg_len += CefC_S_Length;
+	memcpy (&(new_name[seg_len]), CefC_NWP_CID_Prefix, CefC_NWP_CID_Prefix_Len);
+	seg_len += CefC_NWP_CID_Prefix_Len;
+	for (x = 0; x < cid_len; x++) {
+		sprintf ((char*)&(new_name[seg_len+x*2]), "%02x", cid[x]);
+	}
+	*new_name_len = seg_len + (cid_len * 2);
+	
+	return (1);
+#else // CefC_Nwproc
+	memcpy (new_name, name, name_len);
+	*new_name_len = name_len;
+	return (0);
+#endif // CefC_Nwproc
+}
+/*--------------------------------------------------------------------------------------
+	Get name without attributes
+----------------------------------------------------------------------------------------*/
+int
+cef_frame_get_name_wo_attr (
+	unsigned char* org_name,
+	unsigned int org_name_len,
+	unsigned char* new_name,					/* name without attributes				*/
+	unsigned int* name_wo_attr_len				/* name length without attributes		*/
+) {
+#ifdef CefC_Nwproc
+	int x = 0;
+	int y = 0;
+	struct tlv_hdr* tlv_hdr;
+	int seg_len = 0;
+	
+	*name_wo_attr_len = 0;
+	while (x < org_name_len) {
+		tlv_hdr = (struct tlv_hdr*) &org_name[x];
+		seg_len = ntohs (tlv_hdr->length);
+		x += CefC_S_TLF;
+		
+		if (ntohs(tlv_hdr->type) == CefC_T_NAMESEGMENT &&
+			org_name[x] == CefC_NWP_Delimiter) {
+			/* Nop */
+		} else {
+			memcpy (&(new_name[y]), tlv_hdr, sizeof (struct tlv_hdr));
+			y += CefC_S_TLF;
+			memcpy (&(new_name[y]), &(org_name[x]), seg_len);
+			y += seg_len;
+		}
+		x += seg_len;
+	}
+	*name_wo_attr_len = y;
+	return (1);
+#else // CefC_Nwproc
+	memcpy (new_name, org_name, org_name_len);
+	*name_wo_attr_len = org_name_len;
+	return(0);
+#endif // CefC_Nwproc
+}
+/*--------------------------------------------------------------------------------------
 	Convert name to string
 ----------------------------------------------------------------------------------------*/
 int
@@ -2875,44 +3596,38 @@ cef_frame_conversion_name_to_string (
 	unsigned char* name,
 	unsigned int name_len,
 	char* uri,
-	char* protocol
+	char* protocol			/* NOTE: 													*/
+							/*	This argument is unused.								*/
+							/*	"ccn:/" is fixedly used as a protocol.					*/
 ) {
-	unsigned int uri_len 	= 0;
-	unsigned int read_len 	= 0;
-	unsigned int sec_len 	= 0;
-	char* uri_p = uri;
-	unsigned char* name_p = name;
+	int uri_len;
 
-	/* set prefix	*/
-	if (protocol) {
-		sprintf (uri_p, "%s:/", protocol);
-		uri_len = strlen (protocol) + 2/* ":/" */;
-	}
-
-	/* convert name to uri	*/
-	while (read_len < name_len) {
-		sec_len = (name_p[CefC_S_Type] << 8) + (name_p[CefC_S_Type + 1]);
-		if (sec_len == 0) {
-			break;
-		}
-		name_p += CefC_S_TLF;
-		memcpy (uri_p + uri_len, name_p, sec_len);
-		uri_p[uri_len + sec_len] = '/';
-		name_p += sec_len;
-		read_len = name_p - name;
-		uri_len += sec_len + 1;
-	}
-	uri_p[uri_len] = 0x00;
-
-	/* delete last '/' */
-	if(uri[uri_len-2] != ':' && uri[uri_len-1] == '/'){
-		uri[uri_len-1] = 0x00;
-		uri_len--;
-	}
-
+	uri_len = cef_frame_conversion_name_to_uri (name, name_len, uri);
 	return (uri_len);
 }
-#ifdef CefC_Ser_Log
+/*--------------------------------------------------------------------------------------
+	Get total length of T_NAMESEGMENT part
+----------------------------------------------------------------------------------------*/
+unsigned int
+cef_frame_get_len_total_namesegments (
+	unsigned char* name,
+	unsigned int name_len
+) {
+	int x = 0;
+	struct tlv_hdr* tlv_hdr;
+	unsigned int seg_tlen = 0;
+	unsigned int len = 0;
+	
+	while (x < name_len) {
+		tlv_hdr = (struct tlv_hdr*) &name[x];
+		len = ntohs (tlv_hdr->length);
+		if (ntohs(tlv_hdr->type) == CefC_T_NAMESEGMENT) {
+			seg_tlen += CefC_S_TLF + len;
+		}
+		x += (CefC_S_TLF + len);
+	}
+	return (seg_tlen);
+}
 /*--------------------------------------------------------------------------------------
 	Parses a ORG TLV in a CEFORE message
 ----------------------------------------------------------------------------------------*/
@@ -2923,18 +3638,69 @@ cef_frame_message_user_tlv_parse (
 	unsigned char* value,					/* Value of this TLV						*/
 	uint16_t offset							/* Offset from the top of message 			*/
 ) {
-	if (length < 4) {
+	unsigned char* wp;
+	unsigned char* ewp;
+	
+	if (length < 7) {
+		/* Type+Length+PEN */
 		return (-1);
 	}
-
+	
 	/* Get IANA Private Enterprise Numbers */
-	pm->org.pen[0] = value[0];
-	pm->org.pen[1] = value[1];
-	pm->org.pen[2] = value[2];
+	if( (((CefC_NICT_PEN & 0xFF0000) >> 16) != value[0])
+		  ||
+		(((CefC_NICT_PEN & 0x00FF00) >>  8) != value[1])
+		  ||
+		(((CefC_NICT_PEN & 0x0000FF)      ) != value[2])){
+			return (-1);
+	}
+	pm->org.nict_pen[0] = value[0];
+	pm->org.nict_pen[1] = value[1];
+	pm->org.nict_pen[2] = value[2];
+	
 	/* Get Length */
 	pm->org.length = (uint16_t)(length - 3);
+	
 	/* Get Message header */
 	pm->org.offset = value + 3;
+	
+	wp = value + 3;
+	ewp = value + 3 + pm->org.length;
+	while (wp < ewp) {
+		struct tlv_hdr* tlv_hdr;
+		
+		tlv_hdr = (struct tlv_hdr*) &wp[0];
+/* [Restriction] */
+/* For renovation in FY 2018, T_ORG is supported only for Symbolic, LongLife. */
+		switch (ntohs(tlv_hdr->type)) {
+			case CefC_T_SYMBOLIC:
+				pm->org.symbolic_f = 1;
+				wp += CefC_S_Type;
+				break;
+			case CefC_T_LONGLIFE:
+				pm->org.longlife_f = 1;
+				wp += CefC_S_Type;
+				break;
+#ifdef CefC_Ser_Log
+			case CefC_T_SER_LOG:
+				pm->org.sl_offset = wp;
+				pm->org.sl_length = ntohs(tlv_hdr->length);
+				wp += (CefC_S_TLF + pm->org.sl_length);
+				break;
+#endif // CefC_Ser_Log
+			default:
+				if (wp[0] & 0x80){
+					/* exist length field */
+					wp += (CefC_S_TLF + ntohs(tlv_hdr->length));
+				} else {
+					/* only type field */
+					wp += CefC_S_Type;
+				}
+				break;
+		}
+	}
+	
 	return (1);
 }
-#endif // CefC_Ser_Log
+
+

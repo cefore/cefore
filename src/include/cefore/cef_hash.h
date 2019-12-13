@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -146,6 +146,14 @@ int
 cef_hash_tbl_item_num_get (
 	CefT_Hash_Handle handle
 );
+int
+cef_hash_tbl_def_max_get (
+	CefT_Hash_Handle handle
+);
+int
+cef_hash_tbl_item_max_idx_get (
+	CefT_Hash_Handle handle
+);
 void*
 cef_hash_tbl_elem_get (
 	CefT_Hash_Handle handle,
@@ -188,6 +196,12 @@ CefT_Hash_Handle
 cef_lhash_tbl_create (
 	uint32_t table_size
 );
+
+CefT_Hash_Handle
+cef_lhash_tbl_create_u32 (
+	uint32_t table_size
+);
+
 void
 cef_lhash_tbl_destroy (
 	CefT_Hash_Handle handle

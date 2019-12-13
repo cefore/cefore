@@ -15,7 +15,7 @@
 @SET_MAKE@
 
 #
-# Copyright (c) 2016, National Institute of Information and Communications
+# Copyright (c) 2016-2019, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -124,10 +124,6 @@ host_triplet = @host@
 @CEFINFO_ENABLE_TRUE@am__append_2 = -DCefC_Cefinfo
 # check cefping
 @CEFPING_ENABLE_TRUE@am__append_3 = -DCefC_Cefping
-
-# check filesystem
-@FILESYSTEM_CACHE_DISABLE_FALSE@am__append_4 = libfilesystem_cache.la
-@FILESYSTEM_CACHE_DISABLE_FALSE@am__append_5 = $(CSMGRD_PLUGIN_LIBADD) libfilesystem_cache.la
 subdir = src/csmgrd/plugin
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -171,11 +167,8 @@ am__uninstall_files_from_dir = { \
 am__installdirs = "$(DESTDIR)$(libdir)"
 LTLIBRARIES = $(lib_LTLIBRARIES) $(noinst_LTLIBRARIES)
 am__DEPENDENCIES_1 =
-@FILESYSTEM_CACHE_DISABLE_FALSE@am__DEPENDENCIES_2 =  \
-@FILESYSTEM_CACHE_DISABLE_FALSE@	$(am__DEPENDENCIES_1) \
-@FILESYSTEM_CACHE_DISABLE_FALSE@	libfilesystem_cache.la
 libcsmgrd_plugin_la_DEPENDENCIES = $(am__DEPENDENCIES_1) \
-	libmem_cache.la $(am__DEPENDENCIES_2)
+	libmem_cache.la $(am__DEPENDENCIES_1) libfilesystem_cache.la
 am_libcsmgrd_plugin_la_OBJECTS =
 libcsmgrd_plugin_la_OBJECTS = $(am_libcsmgrd_plugin_la_OBJECTS)
 AM_V_lt = $(am__v_lt_@AM_V@)
@@ -187,17 +180,14 @@ libcsmgrd_plugin_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
 	$(libcsmgrd_plugin_la_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
 libfilesystem_cache_la_LIBADD =
-am__libfilesystem_cache_la_SOURCES_DIST =  \
-	filesystem_cache/filesystem_cache.c \
-	filesystem_cache/filesystem_cache.h
 am__dirstamp = $(am__leading_dot)dirstamp
-@FILESYSTEM_CACHE_DISABLE_FALSE@am_libfilesystem_cache_la_OBJECTS = filesystem_cache/libfilesystem_cache_la-filesystem_cache.lo
+am_libfilesystem_cache_la_OBJECTS =  \
+	filesystem_cache/libfilesystem_cache_la-filesystem_cache.lo
 libfilesystem_cache_la_OBJECTS = $(am_libfilesystem_cache_la_OBJECTS)
 libfilesystem_cache_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CCLD) \
 	$(libfilesystem_cache_la_CFLAGS) $(CFLAGS) \
 	$(libfilesystem_cache_la_LDFLAGS) $(LDFLAGS) -o $@
-@FILESYSTEM_CACHE_DISABLE_FALSE@am_libfilesystem_cache_la_rpath =
 libmem_cache_la_LIBADD =
 am_libmem_cache_la_OBJECTS = mem_cache/libmem_cache_la-mem_cache.lo
 libmem_cache_la_OBJECTS = $(am_libmem_cache_la_OBJECTS)
@@ -242,8 +232,7 @@ am__v_CCLD_1 =
 SOURCES = $(libcsmgrd_plugin_la_SOURCES) \
 	$(libfilesystem_cache_la_SOURCES) $(libmem_cache_la_SOURCES)
 DIST_SOURCES = $(libcsmgrd_plugin_la_SOURCES) \
-	$(am__libfilesystem_cache_la_SOURCES_DIST) \
-	$(libmem_cache_la_SOURCES)
+	$(libfilesystem_cache_la_SOURCES) $(libmem_cache_la_SOURCES)
 RECURSIVE_TARGETS = all-recursive check-recursive cscopelist-recursive \
 	ctags-recursive dvi-recursive html-recursive info-recursive \
 	install-data-recursive install-dvi-recursive \
@@ -445,7 +434,9 @@ CSMGRD_PLUGINS_DIR = $(top_srcdir)/src/csmgrd
 # set noinst_LTLIBRARIES
 
 # check mem cache
-noinst_LTLIBRARIES = libmem_cache.la $(am__append_4)
+
+# check filesystem
+noinst_LTLIBRARIES = libmem_cache.la libfilesystem_cache.la
 
 # set csmgrd plugin cflags
 CSMGRD_PLUGIN_CFLAGS = $(AM_CFLAGS) $(am__append_1) $(am__append_2) \
@@ -459,13 +450,13 @@ lib_LTLIBRARIES = libcsmgrd_plugin.la
 libcsmgrd_plugin_la_CFLAGS = $(CSMGRD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
 libcsmgrd_plugin_la_SOURCES = 
 libcsmgrd_plugin_la_LIBADD = $(CSMGRD_PLUGIN_LIBADD) libmem_cache.la \
-	$(am__append_5)
+	$(CSMGRD_PLUGIN_LIBADD) libfilesystem_cache.la
 libmem_cache_la_CFLAGS = $(CSMGRD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
 libmem_cache_la_SOURCES = mem_cache/mem_cache.c mem_cache/mem_cache.h
 libmem_cache_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)
-@FILESYSTEM_CACHE_DISABLE_FALSE@libfilesystem_cache_la_CFLAGS = $(CSMGRD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
-@FILESYSTEM_CACHE_DISABLE_FALSE@libfilesystem_cache_la_SOURCES = filesystem_cache/filesystem_cache.c filesystem_cache/filesystem_cache.h
-@FILESYSTEM_CACHE_DISABLE_FALSE@libfilesystem_cache_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)
+libfilesystem_cache_la_CFLAGS = $(CSMGRD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
+libfilesystem_cache_la_SOURCES = filesystem_cache/filesystem_cache.c filesystem_cache/filesystem_cache.h
+libfilesystem_cache_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)
 SUBDIRS = lib
 all: all-recursive
 
@@ -560,7 +551,7 @@ filesystem_cache/libfilesystem_cache_la-filesystem_cache.lo:  \
 	filesystem_cache/$(DEPDIR)/$(am__dirstamp)
 
 libfilesystem_cache.la: $(libfilesystem_cache_la_OBJECTS) $(libfilesystem_cache_la_DEPENDENCIES) $(EXTRA_libfilesystem_cache_la_DEPENDENCIES) 
-	$(AM_V_CCLD)$(libfilesystem_cache_la_LINK) $(am_libfilesystem_cache_la_rpath) $(libfilesystem_cache_la_OBJECTS) $(libfilesystem_cache_la_LIBADD) $(LIBS)
+	$(AM_V_CCLD)$(libfilesystem_cache_la_LINK)  $(libfilesystem_cache_la_OBJECTS) $(libfilesystem_cache_la_LIBADD) $(LIBS)
 mem_cache/$(am__dirstamp):
 	@$(MKDIR_P) mem_cache
 	@: > mem_cache/$(am__dirstamp)

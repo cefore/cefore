@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016, National Institute of Information and Communications
+# Copyright (c) 2016-2019, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
 AM_CFLAGS=-I$(top_srcdir)/src/include -Wall -O2 -fPIC
 AM_LDFLAGS=-lssl -lcrypto
 AM_CSOURCES=cef_hash.c cef_client.c cef_fib.c cef_pit.c cef_face.c cef_frame.c \
-	cef_log.c cef_print.c cef_mpool.c cef_rngque.c cef_valid.c
+	cef_log.c cef_print.c cef_mpool.c cef_rngque.c cef_valid.c 
 
 # check debug build
 if CEFDBG_ENABLE
@@ -40,7 +40,7 @@ endif # CEFDBG_ENABLE
 # check csmgr
 if CSMGR_ENABLE
 AM_CFLAGS+=-DCefC_ContentStore
-AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c
+AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c 
 endif
 
 # check cefping
@@ -52,6 +52,19 @@ endif # CEFPING_ENABLE
 if CEFINFO_ENABLE
 AM_CFLAGS+=-DCefC_Cefinfo
 endif # CEFINFO_ENABLE
+
+# check cache
+if CACHE_ENABLE
+AM_CFLAGS+=-DCefC_CefnetdCache
+AM_CSOURCES+=cef_mem_cache.c cef_csmgr.c cef_csmgr_stat.c
+endif # CACHE_ENABLE
+
+
+
+if SAMPTP_ENABLE
+AM_CFLAGS+=-DCefC_Plugin_Samptp
+endif # SAMPTP_ENABLE
+
 
 lib_LIBRARIES=libcefore.a
 libcefore_a_CFLAGS=$(AM_CFLAGS)

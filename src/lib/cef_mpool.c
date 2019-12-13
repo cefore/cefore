@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,7 +45,7 @@
  ****************************************************************************************/
 #define CefC_Mp_Block_Min			32
 #define CefC_Mp_Block_UnitBytes		16
-#define CefC_Mp_Max_Elem_Size		512000
+#define CefC_Mp_Max_Elem_Size		819200
 
 /****************************************************************************************
  Structures Declaration

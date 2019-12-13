@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016, National Institute of Information and Communications
+# Copyright (c) 2016-2019, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -27,7 +27,7 @@
 # SUCH DAMAGE.
 #
 
-EXTRA_DIST=cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def cefnetd.key.def default-private-key.pem default-public-key.pem
+EXTRA_DIST=cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def cefnetd.key.def default-private-key.pem default-public-key.pem 
 CEF_CONF=cefnetd.conf cefnetd.fib csmgrd.conf plugin.conf cefnetd.key default-private-key default-public-key
 INSTALLDIR=$(CEFORE_DIR_PATH)/cefore
 

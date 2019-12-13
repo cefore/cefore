@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -199,7 +199,7 @@ main (
 		strcpy (dst, "127.0.0.1");
 	}
 	fprintf (stderr, "\nConnect to %s:%s\n", dst, port_str);
-	tcp_sock = cef_csmgr_connect_tcp_to_csmgrd (dst, port_str);
+	tcp_sock = cef_csmgr_connect_tcp_to_csmgr (dst, port_str);
 
 	if (tcp_sock < 1) {
 		fprintf (stderr, "ERROR : connect to csmgrd\n");

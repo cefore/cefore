@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -87,7 +87,6 @@ static pthread_mutex_t 		csmgr_comn_buff_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t 		csmgr_main_cob_buff_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t		csmgr_comn_buff_cond = PTHREAD_COND_INITIALIZER;
 
-static CsmgrT_Table* 		csmgr_tbl = NULL;
 static unsigned char* 		csmgr_main_cob_buff 		= NULL;
 static int 					csmgr_main_cob_buff_idx 	= 0;
 static unsigned char* 		csmgr_comn_cob_buff 		= NULL;
@@ -392,6 +391,52 @@ csmgrd_sclt_response_send (
 	int sock,									/* recv socket							*/
 	uint8_t result								/* result								*/
 );
+/*--------------------------------------------------------------------------------------
+	Incoming Retrieve Cache Chunk message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_incoming_rcch_msg (
+	CefT_Csmgrd_Handle* hdl,					/* csmgr daemon handle					*/
+	int sock,									/* recv socket							*/
+	unsigned char* buff,						/* receive message						*/
+	int buff_len								/* receive message length				*/
+);
+/*--------------------------------------------------------------------------------------
+	Send Retrieve Cache Chunk response message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_rcch_response_send (
+	int sock,									/* recv socket							*/
+	uint8_t result,								/* result								*/
+	unsigned char* info							/* chunk range							*/
+);
+/*--------------------------------------------------------------------------------------
+	Incoming Delete Cache message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_incoming_scdl_msg (
+	CefT_Csmgrd_Handle* hdl,					/* csmgr daemon handle					*/
+	int sock,									/* recv socket							*/
+	unsigned char* buff,						/* receive message						*/
+	int buff_len								/* receive message length				*/
+);
+/*--------------------------------------------------------------------------------------
+	Send Delete Cache response message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_scdl_response_send (
+	int sock,									/* recv socket							*/
+	uint8_t result								/* result								*/
+);
+/*--------------------------------------------------------------------------------------
+	In the case of START:END, check the validity of the numerical value.
+----------------------------------------------------------------------------------------*/
+static int
+csmgrd_start_end_num_get (
+	char* buff,
+	int* start,
+	int* end
+);
 #endif // CefC_Ccore
 /*--------------------------------------------------------------------------------------
 	Post process
@@ -488,7 +533,7 @@ main (
 	char file_path[PATH_MAX] = {0};
 	
 	/* Init logging 	*/
-	cef_log_init ("csmgrd");
+	cef_log_init ("csmgrd", 1);
 	
 	/* Obtains options 		*/
 	for (i = 1 ; i < argc ; i++) {
@@ -514,6 +559,7 @@ main (
 			return (-1);
 		}
 	}
+	cef_log_init2 (file_path, 0 /* for CSMGRD */);
 #ifdef CefC_Debug
 	cef_dbg_init ("csmgrd", file_path, 0);
 #endif
@@ -584,7 +630,7 @@ csmgrd_handle_create (
 #endif // CefC_Debug
 	/* Load config */
 	if (csmgrd_config_read (&(conf_param)) < 0) {
-		cef_log_write (CefC_Log_Error, "Failed to load the %s\n", CefC_Csmgr_Conf_Name);
+		cef_log_write (CefC_Log_Error, "Failed to load the %s\n", CefC_Csmgrd_Conf_Name);
 		free (hdl);
 		return (NULL);
 	}
@@ -683,17 +729,8 @@ csmgrd_handle_create (
 		csmgrd_handle_destroy (&hdl);
 		return (NULL);
 	}
-	cef_log_write (CefC_Log_Info, "Loading %s ... OK\n", CefC_Csmgr_Conf_Name);
-	
-	/* Allocates the Csmgr Table and message buffer 		*/
-	csmgr_tbl = (CsmgrT_Table*) malloc (sizeof (CsmgrT_Table));
-	if (csmgr_tbl == NULL) {
-		cef_log_write (CefC_Log_Error, "Failed to allocation Csmgr Talbe\n");
-		csmgrd_handle_destroy (&hdl);
-		return (NULL);
-	}
-	memset (csmgr_tbl, 0, sizeof (CsmgrT_Table));
-	
+	cef_log_write (CefC_Log_Info, "Loading %s ... OK\n", CefC_Csmgrd_Conf_Name);
+		
 	csmgr_main_cob_buff = 
 		(unsigned char*) malloc (sizeof (unsigned char) * CsmgrC_Buff_Size);
 	if (csmgr_main_cob_buff == NULL) {
@@ -1337,10 +1374,6 @@ csmgrd_handle_destroy (
 	if (strlen (csmgr_local_sock_name) != 0) {
 		unlink (csmgr_local_sock_name);
 	}
-	
-	if (csmgr_tbl) {
-		free (csmgr_tbl);
-	}
 	if (csmgr_main_cob_buff) {
 		free (csmgr_main_cob_buff);
 	}
@@ -1375,7 +1408,7 @@ csmgrd_config_read (
 	int64_t	res;
 	
 	/* Obtains the directory path where the cefnetd's config file is located. */
-	sprintf (file_name, "%s/%s", csmgr_conf_dir, CefC_Csmgr_Conf_Name);
+	sprintf (file_name, "%s/%s", csmgr_conf_dir, CefC_Csmgrd_Conf_Name);
 	
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finest, "csmgrd config path = %s\n", file_name);
@@ -1455,6 +1488,16 @@ csmgrd_config_read (
 			continue;
 		}
 	}
+#ifdef CefC_Nwproc
+/* [Restriction]																*/
+/* For renovation in FY 2018, if NWProc is enabled, only MemoryCache is allowed.*/
+	if (strcmp (conf_param->cs_mod_name, "memory") != 0) {
+		cef_log_write (CefC_Log_Error,
+			"EXCACHE_PLUGIN (Invalid value CACHE_TYPE=%s)\n", conf_param->cs_mod_name);
+		return (-1);
+	}
+#endif // CefC_Nwproc
+	
 	sprintf (csmgr_local_sock_name, 
 		"/tmp/csmgr_%d.%s", conf_param->port_num, conf_param->local_sock_id);
 	
@@ -1953,6 +1996,20 @@ csmgrd_input_message_process (
 			csmgrd_incoming_sclt_msg (hdl, sock, msg, msg_len);
 			break;
 		}
+		case CefC_Csmgr_Msg_Type_RCCH: {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "Receive the Retrieve Cache Chunk message\n");
+#endif // CefC_Debug
+			csmgrd_incoming_rcch_msg (hdl, sock, msg, msg_len);
+			break;
+		}
+		case CefC_Csmgr_Msg_Type_SCDL: {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "Receive the Delete Cache message\n");
+#endif // CefC_Debug
+			csmgrd_incoming_scdl_msg (hdl, sock, msg, msg_len);
+			break;
+		}
 #endif // CefC_Ccore
 		default: {
 #ifdef CefC_Debug
@@ -2213,7 +2270,7 @@ csmgrd_incoming_cefinfo_msg (
 		rec_index = index;
 		index += CefC_S_TLF;
 		
-		rep_blk.cont_size 	= htonl ((uint32_t) stat[i]->con_size / 1000);
+		rep_blk.cont_size 	= htonl ((uint32_t) (stat[i]->con_size / 1000));
 		rep_blk.cont_cnt 	= htonl ((uint32_t) stat[i]->cob_num);
 		rep_blk.rcv_int 	= htonl ((uint32_t) stat[i]->access);
 		rep_blk.first_seq 	= htonl (stat[i]->min_seq);
@@ -2372,7 +2429,7 @@ csmgrd_ext_white_list_read (
 	hdl->allow_all_f = 0;
 
 	/* Obtains the directory path where the csmgrd's config file is located. */
-	sprintf (file_name, "%s/%s", csmgr_conf_dir, CefC_Csmgr_Conf_Name);
+	sprintf (file_name, "%s/%s", csmgr_conf_dir, CefC_Csmgrd_Conf_Name);
 
 	/* Opens the csmgr's config file. */
 	fp = fopen (file_name, "r");
@@ -2398,6 +2455,9 @@ csmgrd_ext_white_list_read (
 		wl_entry->next = NULL;
 	} else {
 		cef_log_write (CefC_Log_Error, "Failed to get memory required for startup.\n");
+		if (fp != NULL) {
+			fclose (fp);
+		}
 		return (-1);
 	}
 	wk_entry = (CsmgrT_White_List*) malloc (sizeof (CsmgrT_White_List));
@@ -2414,6 +2474,9 @@ csmgrd_ext_white_list_read (
 		wk_entry->next = NULL;
 	} else {
 		cef_log_write (CefC_Log_Error, "Failed to get memory required for startup.\n");
+		if (fp != NULL) {
+			fclose (fp);
+		}
 		return (-1);
 	}
 
@@ -3095,6 +3158,464 @@ csmgrd_sclt_response_send (
 #endif // CefC_Debug
 	}
 	return;
+}
+/*--------------------------------------------------------------------------------------
+	Incoming Retrieve Cache Chunk message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_incoming_rcch_msg (
+	CefT_Csmgrd_Handle* hdl,					/* csmgr daemon handle					*/
+	int sock,									/* recv socket							*/
+	unsigned char* buff,						/* receive message						*/
+	int buff_len								/* receive message length				*/
+) {
+	CsmgrT_Stat* rcd = NULL;
+	uint16_t value16;
+	unsigned char name[CefC_Max_Length] = {0};
+	uint16_t name_len;
+	unsigned char range[1024] = {0};
+	uint16_t range_len;
+	int s_val, e_val, val, sidx, eidx, i, n, st, ed;
+	uint64_t mask;
+	int find_f = 0;
+	char info[CefC_Max_Length] = {0};
+	char tmp_str[32] = {0};
+	char* wp = info;
+	size_t len;
+	
+	/* Check length */
+	if (buff_len < sizeof (uint16_t)) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Message is too short.\n");
+#endif // CefC_Debug
+		csmgrd_rcch_response_send (sock, CcoreC_Failed, NULL);
+		return;
+	}
+	
+	/* Get name */
+	memcpy (&value16, buff, sizeof (value16));
+	name_len = ntohs (value16);
+	
+	if (buff_len < sizeof (uint16_t) + name_len) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Message is too short.\n");
+#endif // CefC_Debug
+		csmgrd_rcch_response_send (sock, CcoreC_Failed, NULL);
+		return;
+	}
+	memcpy (name, buff + sizeof (value16), name_len);
+	
+	/* Obtain cached content information 			*/
+	rcd = csmgr_stat_content_info_get (stat_hdl, name, name_len);
+	if (rcd) {
+		/* Get Range */
+		if ((buff_len - sizeof (uint16_t) - name_len) < sizeof (value16)) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "Message is too short.\n");
+#endif // CefC_Debug
+			csmgrd_rcch_response_send (sock, CcoreC_Failed, NULL);
+			return;
+		}
+		memcpy (&value16, buff + sizeof (value16) + name_len, sizeof (value16));
+		range_len = ntohs (value16);
+		
+		if (buff_len < sizeof (uint16_t) + name_len + range_len) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "Message is too short.\n");
+#endif // CefC_Debug
+			csmgrd_rcch_response_send (sock, CcoreC_Failed, NULL);
+			return;
+		}
+		memcpy (range, buff + sizeof (value16) + name_len + sizeof (uint16_t), range_len);
+		if (csmgrd_start_end_num_get ((char*)range, &s_val, &e_val) < 0) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "Range is invalid.\n");
+#endif // CefC_Debug
+			csmgrd_rcch_response_send (sock, CcoreC_Failed, NULL);
+			return;
+		}
+		if (s_val != -1) {
+			if (s_val > rcd->max_seq) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "Range is invalid.\n");
+#endif // CefC_Debug
+				sprintf(info, "The Maximum sequence number that is stored is %d.", rcd->max_seq);
+				csmgrd_rcch_response_send (sock, CcoreC_Failed, (unsigned char*)info);
+				return;
+			} else if (s_val < rcd->min_seq) {
+				s_val = rcd->min_seq;
+			}
+			sidx = s_val / 64;
+		} else {
+			sidx = rcd->min_seq / 64;
+			s_val = rcd->min_seq;
+		}
+		if (e_val != -1) {
+			if (e_val < rcd->min_seq) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "Range is incalid.\n");
+#endif // CefC_Debug
+				sprintf(info, "The Minimum sequence number that is stored is %d.", rcd->min_seq);
+				csmgrd_rcch_response_send (sock, CcoreC_Failed, (unsigned char*)info);
+				return;
+			} else if (e_val > rcd->max_seq) {
+				eidx = rcd->max_seq;
+			}
+			eidx = (e_val / 64) + 1;
+		} else {
+			eidx = (rcd->max_seq / 64) + 1;
+			e_val = rcd->max_seq;
+		}
+		st = ed = s_val;
+		for(i = sidx; i < eidx; i++) {
+			if (rcd->cob_map[i]) {
+				mask = 0x0000000000000001;
+				for (n = 0 ; n < 64 ; n++) {
+					val = i * 64 + n;
+					if (rcd->cob_map[i] & mask && 
+						(s_val <= val && val <= e_val)) {
+						if (find_f == 0) {
+							find_f = 1;
+							st = val;
+							sprintf(tmp_str, "%d", st);
+							len = strlen((char*)tmp_str);
+							memcpy(wp, tmp_str, len);
+							wp = wp + len;
+						}
+					} else {
+						if (find_f == 1) {
+							find_f = 0;
+							ed = val - 1;
+							if(st < ed)
+								sprintf(tmp_str, ":%d,", ed);
+							else
+								sprintf(tmp_str, ",");
+							len = strlen((char*)tmp_str);
+							memcpy(wp, tmp_str, len);
+							wp = wp + len;
+						}
+						if (val > e_val)
+							goto OUT_COBMAP_LOOP;
+					}
+					mask <<= 1;
+				}
+			}
+		}
+OUT_COBMAP_LOOP:
+		if (find_f == 1) {
+			if(st < e_val)
+				sprintf(tmp_str, ":%d,", ed);
+			else
+				sprintf(tmp_str, ",");
+			len = strlen((char*)tmp_str);
+			memcpy(wp, tmp_str, len);
+		}
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Retrieve Cache Chunk.\n");
+#endif // CefC_Debug
+		csmgrd_rcch_response_send (sock, CcoreC_Success, (unsigned char*)info);
+	} else {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "No entry.\n");
+#endif // CefC_Debug
+		sprintf(info, "No entry.");
+		csmgrd_rcch_response_send (sock, CcoreC_Failed, (unsigned char*)info);
+	}
+	
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Send Retrieve Cache Chunk response message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_rcch_response_send (
+	int sock,									/* recv socket							*/
+	uint8_t result,								/* result								*/
+	unsigned char* info							/* chunk range							*/
+) {
+	unsigned char buff[CefC_Max_Length] = {0};
+	int res;
+	uint16_t index = 0;
+	uint16_t value16;
+	uint16_t len;
+
+	/* Create Retrieve Cache Chunk response message */
+	/* Set header */
+	buff[CefC_O_Fix_Ver]  = CefC_Version;
+	buff[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_RCCH;
+	index += CefC_Csmgr_Msg_HeaderLen;
+
+	/* Set result */
+	memcpy (buff + index, &result, sizeof (uint8_t));
+	index += sizeof (uint8_t);
+
+	/* Set Info */
+	if (info == NULL) {
+		value16 = htons (index);
+		memcpy (buff + index, &value16, CefC_S_Length);
+		index += sizeof (uint16_t);
+	} else {
+		len = strlen((char*)info);
+		value16 = htons (len);
+		memcpy (buff + index, &value16, CefC_S_Length);
+		index += sizeof (uint16_t);
+		memcpy (buff + index, info, len);
+		index += len;
+	}
+
+	/* Set Length */
+	value16 = htons (index);
+	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
+	
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Fine,
+			"Send the Retrieve Cache Chunk response(len = %u).\n", index);
+	cef_dbg_buff_write (CefC_Dbg_Finest, buff, index);
+#endif // CefC_Debug
+	/* Send a response to source node */
+	res = cef_csmgr_send_msg (sock, buff, index);
+
+	if (res < 0) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine,
+				"Failed to send the Retrieve Cache Chunk response\n");
+#endif // CefC_Debug
+	}
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Incoming Delete Cache message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_incoming_scdl_msg (
+	CefT_Csmgrd_Handle* hdl,					/* csmgr daemon handle					*/
+	int sock,									/* recv socket							*/
+	unsigned char* buff,						/* receive message						*/
+	int buff_len								/* receive message length				*/
+) {
+	CsmgrT_Stat* rcd = NULL;
+	uint16_t value16;
+	unsigned char name[CefC_Max_Length] = {0};
+	uint16_t name_len;
+	unsigned char range[1024] = {0};
+	uint16_t range_len;
+	int s_val, e_val, i;
+	
+	if (hdl->cs_mod_int->content_cache_del == NULL) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Cache plugin has no scdl function.\n");
+#endif // CefC_Debug
+		csmgrd_scdl_response_send (sock, CcoreC_Failed);
+		return;
+	}
+	
+	/* Check length */
+	if (buff_len < sizeof (uint16_t)) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Message is too short.\n");
+#endif // CefC_Debug
+		csmgrd_scdl_response_send (sock, CcoreC_Failed);
+		return;
+	}
+	
+	/* Get name */
+	memcpy (&value16, buff, sizeof (value16));
+	name_len = ntohs (value16);
+	
+	if (buff_len < sizeof (uint16_t) + name_len) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Message is too short.\n");
+#endif // CefC_Debug
+		csmgrd_scdl_response_send (sock, CcoreC_Failed);
+		return;
+	}
+	memcpy (name, buff + sizeof (value16), name_len);
+	
+	/* Obtain cached content information 			*/
+	rcd = csmgr_stat_content_info_get (stat_hdl, name, name_len);
+	if (rcd) {
+		/* Get Range */
+		if ((buff_len - sizeof (uint16_t) - name_len) < sizeof (value16)) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "Message is too short.\n");
+#endif // CefC_Debug
+			csmgrd_scdl_response_send (sock, CcoreC_Failed);
+			return;
+		}
+		memcpy (&value16, buff + sizeof (value16) + name_len, sizeof (value16));
+		range_len = ntohs (value16);
+		
+		if (buff_len < sizeof (uint16_t) + name_len + range_len) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "Message is too short.\n");
+#endif // CefC_Debug
+			csmgrd_scdl_response_send (sock, CcoreC_Failed);
+			return;
+		}
+		memcpy (range, buff + sizeof (value16) + name_len + sizeof (uint16_t), range_len);
+		if (csmgrd_start_end_num_get ((char*)range, &s_val, &e_val) < 0) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "Range is invalid.\n");
+#endif // CefC_Debug
+			csmgrd_scdl_response_send (sock, CcoreC_Failed);
+			return;
+		}
+		
+		if (s_val != -1) {
+			if (s_val > rcd->max_seq) {
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine, "There is no cache in the requested range.\n");
+#endif // CefC_Debug
+				csmgrd_scdl_response_send (sock, CcoreC_Success);
+				return;
+			} else if (s_val < rcd->min_seq) {
+				s_val = rcd->min_seq;
+			}
+		} else {
+			s_val = rcd->min_seq;
+		}
+		if (e_val != -1) {
+			if (e_val < rcd->min_seq) {
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine, "There is no cache in the requested range.\n");
+#endif // CefC_Debug
+				csmgrd_scdl_response_send (sock, CcoreC_Success);
+				return;
+			} else if (e_val > rcd->max_seq) {
+				e_val = rcd->max_seq;
+			}
+		} else {
+			e_val = rcd->max_seq;
+		}
+		
+		for (i = s_val; i <= e_val; i++) {
+			
+			if (hdl->cs_mod_int->content_cache_del (name, name_len, i) < 0) {
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Finest, "Delete Content Cache error.\n");
+#endif // CefC_Debug
+				csmgrd_scdl_response_send (sock, CcoreC_Failed);
+				return;
+			}
+		}
+	} else {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "No entry.\n");
+#endif // CefC_Debug
+		csmgrd_scdl_response_send (sock, CcoreC_Success);
+		return;
+	}
+	
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Finest, "Delete Content Cache success.\n");
+#endif // CefC_Debug
+	csmgrd_scdl_response_send (sock, CcoreC_Success);
+	
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Send Delete Cache response message
+----------------------------------------------------------------------------------------*/
+static void
+csmgrd_scdl_response_send (
+	int sock,									/* recv socket							*/
+	uint8_t result								/* result								*/
+) {
+	unsigned char buff[CefC_Max_Length] = {0};
+	int res;
+	uint16_t index = 0;
+	uint16_t value16;
+
+	/* Create Delete Cache response message */
+	/* Set header */
+	buff[CefC_O_Fix_Ver]  = CefC_Version;
+	buff[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_SCDL;
+	index += CefC_Csmgr_Msg_HeaderLen;
+
+	/* Set result */
+	memcpy (buff + index, &result, sizeof (uint8_t));
+	index += sizeof (uint8_t);
+
+	/* Set Length */
+	value16 = htons (index);
+	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
+
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Fine, "Send the scdl response(len = %u).\n", index);
+	cef_dbg_buff_write (CefC_Dbg_Finest, buff, index);
+#endif // CefC_Debug
+	/* Send a response to source node */
+	res = cef_csmgr_send_msg (sock, buff, index);
+
+	if (res < 0) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Failed to send the scdl response\n");
+#endif // CefC_Debug
+	}
+	
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	In the case of START:END, check the validity of the numerical value.
+----------------------------------------------------------------------------------------*/
+static int
+csmgrd_start_end_num_get (
+	char* buff,
+	int* start,
+	int* end
+) {
+	char *wp, *sp, *ep;
+	int i, wplen;
+	int sval, eval;
+	
+	wp = buff;
+	if (wp[0] == 0x3a) {
+		sp = NULL;
+		if (strlen(wp) == 1) {
+			ep = NULL;
+		} else {
+			ep = &wp[1];
+			eval = atoi (ep);
+			if (eval <= 0) {
+				return (-1);
+			}
+		}
+	} else {
+		sp = &wp[0];
+		wplen = strlen (wp);
+		for (i = 1; i < wplen;i++) {
+			if (wp[i] == 0x3a)
+				break;
+		}
+		if (i == wplen) {
+			fprintf (stderr, "ERROR : Invalid STARTNO:ENDNO\n");
+			return (-1);
+		}
+		if (i == wplen - 1) {
+			ep = NULL;
+		} else {
+			ep = &wp[i+1];
+		}
+		sval = atoi (sp);
+		if (sval < 0) {
+			return (-1);
+		}
+		if (ep != NULL) {
+			eval = atoi (ep);
+			if (eval <= 0 || eval < sval) {
+				return (-1);
+			}
+		}
+	}
+	if (sp == NULL)
+		*start = -1;
+	else
+		*start = sval;
+	if (ep == NULL)
+		*end = -1;
+	else
+		*end = eval;
+	return (1);
 }
 #endif // CefC_Ccore
 /*--------------------------------------------------------------------------------------

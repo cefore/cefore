@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, National Institute of Information and Communications
+ * Copyright (c) 2016-2019, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -154,7 +154,7 @@ int main (
 	fprintf (stdout, "[cefputfile] Parsing parameters ... ");
 	
 	/* Inits logging 		*/
-	cef_log_init ("cefputfile");
+	cef_log_init ("cefputfile", 1);
 	
 	/* Obtains options 		*/
 	for (i = 1 ; i < argc ; i++) {
@@ -403,6 +403,7 @@ int main (
 		expiry 		= 10;
 	}
 	fprintf (stdout, "OK\n");
+	cef_log_init2 (conf_path, 1/* for CEFNETD */);
 #ifdef CefC_Debug
 	cef_dbg_init ("cefputfile", conf_path, 1);
 #endif // CefC_Debug
@@ -609,16 +610,16 @@ post_process (
 	fprintf (stdout, "OK\n");
 	
 	fprintf (stdout, "[cefputfile] Terminate\n");
-	fprintf (stdout, "[cefputfile] Tx Frames = "FMTU64"\n", stat_send_frames);
-	fprintf (stdout, "[cefputfile] Tx Bytes  = "FMTU64"\n", stat_send_bytes);
+	fprintf (stdout, "[cefputfile] Tx Frames  = "FMTU64"\n", stat_send_frames);
+	fprintf (stdout, "[cefputfile] Tx Bytes   = "FMTU64"\n", stat_send_bytes);
 	if (diff_t > 0) {
 		diff_t_dbl = (double)diff_t / 1000000.0;
-		fprintf (stdout, "[cefgetfile] Duration  = %.3f sec\n", diff_t_dbl + 0.0009);
+		fprintf (stdout, "[cefputfile] Duration   = %.3f sec\n", diff_t_dbl + 0.0009);
 		send_bits = stat_send_bytes * 8;
 		thrpt = (double)(send_bits) / diff_t_dbl;
-		fprintf (stdout, "[cefputfile] Thorghput = %d bps\n", (int)thrpt);
+		fprintf (stdout, "[cefputfile] Throughput = %d bps\n", (int)thrpt);
 	} else {
-		fprintf (stdout, "[cefgetfile] Duration  = 0.000 sec\n");
+		fprintf (stdout, "[cefputfile] Duration   = 0.000 sec\n");
 	}
 	
 	exit (0);
