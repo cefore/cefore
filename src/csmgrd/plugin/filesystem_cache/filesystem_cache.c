@@ -53,6 +53,7 @@
 #include <pthread.h>
 #include <sys/mman.h>
 #include <pthread.h>
+#include <semaphore.h>
 
 #include "filesystem_cache.h"
 #include <cefore/cef_client.h>
@@ -73,8 +74,12 @@
 #endif // __APPLE__
 
 #define FscC_Max_Buff 			32
+#define FscC_Min_Buff			24
+
 #define FscC_Tx_Cob_Num 		256
 #define FscC_File_Area			(sizeof (FscT_File_Element) * FscC_Page_Cob_Num)
+
+#define FcsC_SEMNAME			"/ceffscsem"
 
 /****************************************************************************************
  Structures Declaration
@@ -93,6 +98,7 @@ int fsc_compare_name(const void *a, const void *b);
 static char csmgr_conf_dir[PATH_MAX] = {"/usr/local/cefore"};
 
 static pthread_mutex_t 			fsc_comn_buff_mutex[FscC_Max_Buff];
+static sem_t*					fsc_comn_buff_sem;
 static pthread_t				fsc_rcv_thread;
 static int 						fsc_rcv_thread_f = 0;
 static unsigned char* 			fsc_tx_buffer = NULL;
@@ -396,15 +402,28 @@ fsc_cs_create (
 	
 	/* Creates the process buffer 		*/
 	for (i = 0 ; i < FscC_Max_Buff ; i++) {
-		fsc_proc_cob_buff[i] = (CsmgrdT_Content_Entry*) 
-			malloc (sizeof (CsmgrdT_Content_Entry) * CsmgrC_Buff_Num);
-		if (fsc_proc_cob_buff[i] == NULL) {
-			csmgrd_log_write (CefC_Log_Info, 
-				"Failed to allocation process cob buffer\n");
-			return (-1);
+		if (i < FscC_Min_Buff) {
+			fsc_proc_cob_buff[i] = (CsmgrdT_Content_Entry*) 
+				malloc (sizeof (CsmgrdT_Content_Entry) * CsmgrC_Buff_Num);
+			if (fsc_proc_cob_buff[i] == NULL) {
+				csmgrd_log_write (CefC_Log_Info, 
+					"Failed to allocation process cob buffer\n");
+				return (-1);
+			}
+		} else {
+			fsc_proc_cob_buff[i] = NULL;
 		}
 		fsc_proc_cob_buff_idx[i] = 0;
 		pthread_mutex_init (&fsc_comn_buff_mutex[i], NULL);
+	}
+	fsc_comn_buff_sem = sem_open (FcsC_SEMNAME, O_CREAT | O_EXCL, 0777, 0);
+	if (fsc_comn_buff_sem == SEM_FAILED && errno == EEXIST){
+		sem_unlink (FcsC_SEMNAME);
+		fsc_comn_buff_sem = sem_open (FcsC_SEMNAME, O_CREAT | O_EXCL, 0777, 0);
+	}
+	if (fsc_comn_buff_sem == SEM_FAILED){
+		csmgrd_log_write (CefC_Log_Info, "Failed to create the new semaphore\n");
+		return (-1);
 	}
 	csmgrd_log_write (CefC_Log_Info, "Inits rx buffer ... OK\n");
 	
@@ -431,6 +450,7 @@ fsc_cob_process_thread (
 	int i;
 	
 	while (fsc_rcv_thread_f) {
+		sem_wait (fsc_comn_buff_sem);
 		for (i = 0 ; i < FscC_Max_Buff ; i++) {
 			pthread_mutex_lock (&fsc_comn_buff_mutex[i]);
 			
@@ -443,6 +463,10 @@ fsc_cob_process_thread (
 				fsc_cache_cob_write (&fsc_proc_cob_buff[i][0], fsc_proc_cob_buff_idx[i]);
 				pthread_mutex_unlock (&fsc_cs_mutex);
 				fsc_proc_cob_buff_idx[i] = 0;
+				if (i >= FscC_Min_Buff) {
+					free (fsc_proc_cob_buff[i]);
+					fsc_proc_cob_buff[i] = NULL;
+				}
 #ifdef CefC_Debug
 				csmgrd_dbg_write (CefC_Dbg_Fine, 
 					"cob put thread completed writing cobs\n");
@@ -833,7 +857,7 @@ fsc_config_read (
 
 	/* Set default value */
 	strcpy (conf_param->fsc_root_path, csmgr_conf_dir);
-	conf_param->cache_cob_max 	= 65535;
+	conf_param->cache_cob_max 	= 65536;
 	sprintf (conf_param->algo_name, "libcsmgrd_lru");
 	
 	/* Get parameter */
@@ -1061,11 +1085,16 @@ fsc_cs_destroy (
 	int i = 0;
 	void* status;
 	
+	pthread_mutex_destroy (&fsc_cs_mutex);
+	sem_post(fsc_comn_buff_sem);	/* To avoid deadlock */
+	
 	/* Destory the threads 		*/
 	if (fsc_rcv_thread_f) {
 		fsc_rcv_thread_f = 0;
 		pthread_join (fsc_rcv_thread, &status);
 	}
+	sem_close (fsc_comn_buff_sem);
+	sem_unlink (FcsC_SEMNAME);
 
 	/* Destroy the common work buffer 		*/
 	for (i = 0 ; i < FscC_Max_Buff ; i++) {
@@ -1312,6 +1341,7 @@ fsc_cache_item_puts (
 	int i;
 	int res;
 	int index = 0;
+	int write_f = 0;
 	
 #ifdef CefC_Debug
 	csmgrd_dbg_write (CefC_Dbg_Fine, "cob rcv thread receives %d bytes\n", msg_len);
@@ -1324,6 +1354,18 @@ fsc_cache_item_puts (
 		}
 		
 		if (fsc_proc_cob_buff_idx[i] == 0) {
+			if (i >= FscC_Min_Buff &&
+				fsc_proc_cob_buff[i] == NULL) {
+				
+				fsc_proc_cob_buff[i] = (CsmgrdT_Content_Entry*) 
+					malloc (sizeof (CsmgrdT_Content_Entry) * CsmgrC_Buff_Num);
+				if (fsc_proc_cob_buff[i] == NULL) {
+					csmgrd_log_write (CefC_Log_Info, 
+						"Failed to allocation process cob buffer(temporary)\n");
+					pthread_mutex_unlock (&fsc_comn_buff_mutex[i]);
+					return (-1);
+				}
+			}
 #ifdef CefC_Debug
 			csmgrd_dbg_write (CefC_Dbg_Fine, 
 				"cob rcv thread starts to write %d bytes to buffer#%d\n"
@@ -1348,12 +1390,16 @@ fsc_cache_item_puts (
 				}
 			}
 		}
+		if (fsc_proc_cob_buff_idx[i] > 0)
+			write_f++;
 		pthread_mutex_unlock (&fsc_comn_buff_mutex[i]);
 		
 		if (index >= msg_len) {
 			break;
 		}
 	}
+	if (write_f > 0)
+		sem_post (fsc_comn_buff_sem);
 	
 #ifdef CefC_Debug
 	if (i == FscC_Max_Buff) {

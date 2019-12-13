@@ -53,6 +53,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <semaphore.h>
 
 #include <openssl/md5.h>
 
@@ -76,8 +77,11 @@
 #define MemC_Max_Conntent_Num 		512
 #define MemC_Max_KLen 				1024
 #define MemC_Max_Buff 				32
+#define MemC_Min_Buff				4
 
 #define MEM_TABLE_MAX 				4
+
+#define MEM_SEMNAME					"/cefmemsem"
 
 /****************************************************************************************
  Structures Declaration
@@ -123,6 +127,7 @@ static char 					csmgr_conf_dir[PATH_MAX] = {"/usr/local/cefore"};
 static CefT_Mem_Hash* 			mem_hash_tbl = NULL;
 static uint32_t 				mem_tabl_max = 65536;
 static pthread_mutex_t 			mem_comn_buff_mutex[MemC_Max_Buff];
+static sem_t*					mem_comn_buff_sem;
 static pthread_t				mem_thread;
 static int 						mem_thread_f = 0;
 static CsmgrdT_Content_Entry* 	mem_proc_cob_buff[MemC_Max_Buff]		= {0};
@@ -363,15 +368,28 @@ mem_cs_create (
 	}
 	
 	for (i = 0 ; i < MemC_Max_Buff ; i++) {
-		mem_proc_cob_buff[i] = (CsmgrdT_Content_Entry*) 
-			malloc (sizeof (CsmgrdT_Content_Entry) * CsmgrC_Buff_Num);
-		if (mem_proc_cob_buff[i] == NULL) {
-			csmgrd_log_write (CefC_Log_Info, 
-				"Failed to allocation process cob buffer\n");
-			return (-1);
+		if (i < MemC_Min_Buff) {
+			mem_proc_cob_buff[i] = (CsmgrdT_Content_Entry*) 
+				malloc (sizeof (CsmgrdT_Content_Entry) * CsmgrC_Buff_Num);
+			if (mem_proc_cob_buff[i] == NULL) {
+				csmgrd_log_write (CefC_Log_Info, 
+					"Failed to allocation process cob buffer\n");
+				return (-1);
+			}
+		} else {
+			mem_proc_cob_buff[i] = NULL;
 		}
 		mem_proc_cob_buff_idx[i] = 0;
 		pthread_mutex_init (&mem_comn_buff_mutex[i], NULL);
+	}
+	mem_comn_buff_sem = sem_open (MEM_SEMNAME, O_CREAT | O_EXCL, 0777, 0);
+	if (mem_comn_buff_sem == SEM_FAILED && errno == EEXIST){
+		sem_unlink (MEM_SEMNAME);
+		mem_comn_buff_sem = sem_open (MEM_SEMNAME, O_CREAT | O_EXCL, 0777, 0);
+	}
+	if (mem_comn_buff_sem == SEM_FAILED){
+		csmgrd_log_write (CefC_Log_Info, "Failed to create the new semaphore\n");
+		return (-1);
 	}
 	
 	if (pthread_create (&mem_thread, NULL, mem_cob_process_thread, hdl) == -1) {
@@ -402,6 +420,7 @@ mem_cob_process_thread (
 	int i;
 	
 	while (mem_thread_f) {
+		sem_wait (mem_comn_buff_sem);
 		for (i = 0 ; i < MemC_Max_Buff ; i++) {
 			if (pthread_mutex_trylock(&mem_comn_buff_mutex[i]) != 0) {
 				continue;
@@ -415,6 +434,10 @@ mem_cob_process_thread (
 				mem_cache_cob_write (&mem_proc_cob_buff[i][0], mem_proc_cob_buff_idx[i]);
 				pthread_mutex_unlock (&mem_cs_mutex);
 				mem_proc_cob_buff_idx[i] = 0;
+				if (i >= MemC_Min_Buff) {
+					free (mem_proc_cob_buff[i]);
+					mem_proc_cob_buff[i] = NULL;
+				}
 #ifdef CefC_Debug
 				csmgrd_dbg_write (CefC_Dbg_Fine, 
 					"cob put thread completed writing cobs\n");
@@ -537,10 +560,15 @@ mem_cs_destroy (
 	int i;
 	void* status;
 
+	pthread_mutex_destroy (&mem_cs_mutex);
+	sem_post (mem_comn_buff_sem);	/* To avoid deadlock */
+	
 	if (mem_thread_f) {
 		mem_thread_f = 0;
 		pthread_join (mem_thread, &status);
 	}
+	sem_close (mem_comn_buff_sem);
+	sem_unlink (MEM_SEMNAME);
 	
 	for (i = 0 ; i < MemC_Max_Buff ; i++) {
 		if (mem_proc_cob_buff[i]) {
@@ -719,6 +747,7 @@ mem_cache_item_puts (
 	int i;
 	int res;
 	int index = 0;
+	int write_f = 0;
 	
 #ifdef CefC_Debug
 	csmgrd_dbg_write (CefC_Dbg_Fine, "cob rcv thread receives %d bytes\n", msg_len);
@@ -731,6 +760,19 @@ mem_cache_item_puts (
 		}
 		
 		if (mem_proc_cob_buff_idx[i] == 0) {
+			if (i >= MemC_Min_Buff &&
+				mem_proc_cob_buff[i] == NULL) {
+				
+				mem_proc_cob_buff[i] = (CsmgrdT_Content_Entry*) 
+					malloc (sizeof (CsmgrdT_Content_Entry) * CsmgrC_Buff_Num);
+				if (mem_proc_cob_buff[i] == NULL) {
+					csmgrd_log_write (CefC_Log_Info, 
+						"Failed to allocation process cob buffer(temporary)\n");
+					pthread_mutex_unlock (&mem_comn_buff_mutex[i]);
+					return (-1);
+				}
+			}
+
 #ifdef CefC_Debug
 			csmgrd_dbg_write (CefC_Dbg_Fine, 
 				"cob rcv thread starts to write %d bytes to buffer#%d\n"
@@ -756,12 +798,16 @@ mem_cache_item_puts (
 			}
 		}
 		
+		if (mem_proc_cob_buff_idx[i] > 0)
+			write_f++;
 		pthread_mutex_unlock (&mem_comn_buff_mutex[i]);
 		
 		if (index >= msg_len) {
 			break;
 		}
 	}
+	if (write_f > 0)
+		sem_post (mem_comn_buff_sem);
 	
 #ifdef CefC_Debug
 	if (i == MemC_Max_Buff) {

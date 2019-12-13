@@ -753,7 +753,7 @@ post_process (
 		fprintf (stdout, "[cefgetfile] Duration  = %.3f sec\n", diff_t_dbl + 0.0009);
 		recv_bits = stat_recv_bytes * 8;
 		thrpt = (double)(recv_bits) / diff_t_dbl;
-		fprintf (stdout, "[cefgetfile] Throghput = %d bps\n", (int)thrpt);
+		fprintf (stdout, "[cefgetfile] Throughput = %d bps\n", (int)thrpt);
 	} else {
 		fprintf (stdout, "[cefgetfile] Duration  = 0.000 sec\n");
 	}

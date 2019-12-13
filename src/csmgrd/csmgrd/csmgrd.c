@@ -85,6 +85,7 @@ static char 				csmgr_local_sock_name[PATH_MAX] = {0};
 
 static pthread_mutex_t 		csmgr_comn_buff_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t 		csmgr_main_cob_buff_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t		csmgr_comn_buff_cond = PTHREAD_COND_INITIALIZER;
 
 static CsmgrT_Table* 		csmgr_tbl = NULL;
 static unsigned char* 		csmgr_main_cob_buff 		= NULL;
@@ -763,7 +764,9 @@ csmgrd_event_dispatch (
 	int res;
 	int i;
 	
-	pthread_t		thread;
+	pthread_t		csmgrd_msg_process_th;
+	pthread_t		csmgrd_expire_check_th;
+	pthread_t		push_bytes_process_th;
 	void*			status;
 		
 	/* running flag on */
@@ -783,17 +786,17 @@ csmgrd_event_dispatch (
 
 	cef_log_write (CefC_Log_Info, "Running\n");
 	
-	if (pthread_create (&thread, NULL, csmgrd_msg_process_thread, hdl) == -1) {
+	if (pthread_create (&csmgrd_msg_process_th, NULL, csmgrd_msg_process_thread, hdl) == -1) {
 		cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 		csmgrd_running_f = 0;
 	}
 
-	if (pthread_create (&thread, NULL, csmgrd_expire_check_thread, hdl) == -1) {
+	if (pthread_create (&csmgrd_expire_check_th, NULL, csmgrd_expire_check_thread, hdl) == -1) {
 		cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 		csmgrd_running_f = 0;
 	}
 	
-		if (pthread_create (&thread, NULL, push_bytes_process_thread, hdl) == -1) {
+		if (pthread_create (&push_bytes_process_th, NULL, push_bytes_process_thread, hdl) == -1) {
 		cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 		csmgrd_running_f = 0;
 	}
@@ -931,7 +934,11 @@ csmgrd_event_dispatch (
 			}
 		}
 	}
-	pthread_join (thread, &status);
+	pthread_cond_signal (&csmgr_comn_buff_cond);		/* To avoid deadlock */
+	pthread_join (csmgrd_msg_process_th, &status);
+	pthread_join (csmgrd_expire_check_th, &status);
+	pthread_join (push_bytes_process_th, &status);
+	pthread_cond_destroy (&csmgr_comn_buff_cond);
 	
 	/* post process */
 	csmgrd_post_process (hdl);
@@ -951,24 +958,23 @@ csmgrd_msg_process_thread (
 	
 	while (csmgrd_running_f) {
 		
+		pthread_mutex_lock (&csmgr_comn_buff_mutex);
+		pthread_cond_wait (&csmgr_comn_buff_cond, &csmgr_comn_buff_mutex);
+		
 		if (csmgr_comn_cob_buff_idx > 0) {
-			pthread_mutex_lock (&csmgr_comn_buff_mutex);
-			
-			if (csmgr_comn_cob_buff_idx > 0) {
-				if (CsmgrC_Buff_Max - csmgr_proc_cob_buff_idx > 
-					csmgr_comn_cob_buff_idx) {
-					
-					memcpy (
-						&csmgr_proc_cob_buff[csmgr_proc_cob_buff_idx], 
-						&csmgr_comn_cob_buff[0], 
-						csmgr_comn_cob_buff_idx);
-					
-					csmgr_proc_cob_buff_idx += csmgr_comn_cob_buff_idx;
-				}
-				csmgr_comn_cob_buff_idx = 0;
+			if (CsmgrC_Buff_Max - csmgr_proc_cob_buff_idx > 
+				csmgr_comn_cob_buff_idx) {
+				
+				memcpy (
+					&csmgr_proc_cob_buff[csmgr_proc_cob_buff_idx], 
+					&csmgr_comn_cob_buff[0], 
+					csmgr_comn_cob_buff_idx);
+				
+				csmgr_proc_cob_buff_idx += csmgr_comn_cob_buff_idx;
 			}
-			pthread_mutex_unlock (&csmgr_comn_buff_mutex);
+			csmgr_comn_cob_buff_idx = 0;
 		}
+		pthread_mutex_unlock (&csmgr_comn_buff_mutex);
 		
 		if (csmgr_proc_cob_buff_idx > 0) {
 			hdl->cs_mod_int->cache_item_puts (
@@ -1102,6 +1108,7 @@ csmgr_input_bytes_process (
 				csmgr_comn_cob_buff_idx = csmgr_main_cob_buff_idx;
 				csmgr_main_cob_buff_idx = 0;
 				
+				pthread_cond_signal (&csmgr_comn_buff_cond);
 				pthread_mutex_unlock (&csmgr_comn_buff_mutex);
 			}
 			memcpy (
@@ -1147,6 +1154,7 @@ csmgr_push_bytes_process (
 			csmgr_main_cob_buff_idx = 0;
 		}
 		
+		pthread_cond_signal (&csmgr_comn_buff_cond);
 		pthread_mutex_unlock (&csmgr_comn_buff_mutex);
 	}
 	pthread_mutex_unlock (&csmgr_main_cob_buff_mutex);
