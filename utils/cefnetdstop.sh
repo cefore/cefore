@@ -40,7 +40,7 @@ hasProcess() {
 # check the number of parameters 
 if [ $# -gt 4 ]
 then
-	echo 'usage : cefnetdstop [-d config_file_dir] [-p port_num]'
+	echo 'usage : cefnetdstop [-F] [-d config_file_dir] [-p port_num]'
 	exit 1
 fi
 

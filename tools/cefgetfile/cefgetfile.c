@@ -537,7 +537,7 @@ int main (
 				start_t.tv_sec  = t.tv_sec;
 				start_t.tv_usec = t.tv_usec;
 			} else {
-				val = (t.tv_sec - end_t.tv_sec) * 1000000 + (t.tv_usec - end_t.tv_usec);
+				val = (t.tv_sec - end_t.tv_sec) * 1000000llu + (t.tv_usec - end_t.tv_usec);
 				
 				stat_jitter_sum    += val;
 				stat_jitter_sq_sum += val * val;
@@ -711,14 +711,17 @@ print_usage (
 ) {
 	
 	fprintf (stdout, "\nUsage: cefgetfile\n\n");
-	fprintf (stdout, "  cefgetfile uri -f file [-o] [-m chunks] [-v valid_algo]\n\n");
+	fprintf (stdout, "  cefgetfile uri -f file [-o] [-m chunks] [-s pipeline] [-v valid_algo] [-d config_file_dir] [-p port_num] [-z sg]\n\n");
 	fprintf (stdout, "  uri     Specify the URI.\n");
 	fprintf (stdout, "  file    Specify the file name of output. \n");
 	fprintf (stdout, "  -o      Specify this option, if you require the content\n"
 	                 "          that the owner is caching\n");
 	fprintf (stdout, " chunks   Specify the number of chunk that you want to obtain\n");
+	fprintf (stdout, " pipeline     Number of pipeline\n");
 	fprintf (stdout, 
-		" valid_algo   Specify the validation algorithm (crc32 or sha256)\n\n");
+		" valid_algo   Specify the validation algorithm (crc32 or sha256)\n");
+	fprintf (stdout, 
+		" -z sg    Send Long Life Interest\n\n");
 }
 
 static void
@@ -726,12 +729,14 @@ post_process (
 	void
 ) {
 	uint64_t diff_t;
+	double diff_t_dbl = 0.0;
+	double thrpt = 0.0;
 	uint64_t recv_bits;
 	uint64_t jitter_ave;
 	
 	if (stat_recv_frames) {
-		diff_t = ((end_t.tv_sec - start_t.tv_sec) * 1000000
-								+ (end_t.tv_usec - start_t.tv_usec)) / 1000000;
+		diff_t = (end_t.tv_sec - start_t.tv_sec) * 1000000llu
+								+ (end_t.tv_usec - start_t.tv_usec);
 	} else {
 		diff_t = 0;
 	}
@@ -743,10 +748,14 @@ post_process (
 	fprintf (stdout, "[cefgetfile] Terminate\n");
 	fprintf (stdout, "[cefgetfile] Rx Frames = "FMTU64"\n", stat_recv_frames);
 	fprintf (stdout, "[cefgetfile] Rx Bytes  = "FMTU64"\n", stat_recv_bytes);
-	fprintf (stdout, "[cefgetfile] Duration  = "FMTU64" sec\n", diff_t);
 	if (diff_t > 0) {
+		diff_t_dbl = (double)diff_t / 1000000.0;
+		fprintf (stdout, "[cefgetfile] Duration  = %.3f sec\n", diff_t_dbl + 0.0009);
 		recv_bits = stat_recv_bytes * 8;
-		fprintf (stdout, "[cefgetfile] Throghput = "FMTU64" bps\n", recv_bits / diff_t);
+		thrpt = (double)(recv_bits) / diff_t_dbl;
+		fprintf (stdout, "[cefgetfile] Throghput = %d bps\n", (int)thrpt);
+	} else {
+		fprintf (stdout, "[cefgetfile] Duration  = 0.000 sec\n");
 	}
 	if (stat_recv_frames > 0) {
 		jitter_ave = stat_jitter_sum / stat_recv_frames;

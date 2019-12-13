@@ -360,14 +360,14 @@ output_result (
 			cef_frame_conversion_name_to_uri (name, stat_rep.name_len, get_uri);
 			fprintf (stderr, "[%d]\n", con_no);
 			fprintf (stderr, "  Content Name : %s\n", get_uri);
-			fprintf (stderr, "  Content Size : "FMTU64" Bytes\n", stat_rep.con_size);
-			fprintf (stderr, "  Access Count : "FMTU64"\n", stat_rep.access);
+			fprintf (stderr, "  Content Size : %llu Bytes\n", (unsigned long long)stat_rep.con_size);
+			fprintf (stderr, "  Access Count : %llu\n", (unsigned long long)stat_rep.access);
 			if (stat_rep.freshness) {
-				fprintf (stderr, "  Freshness    : "FMTU64" Sec\n", stat_rep.freshness);
+				fprintf (stderr, "  Freshness    : %llu Sec\n", (unsigned long long)stat_rep.freshness);
 			} else {
 				fprintf (stderr, "  Freshness    : Permanent\n");
 			}
-			fprintf (stderr, "  Elapsed Time : "FMTU64" Sec\n", stat_rep.elapsed_time);
+			fprintf (stderr, "  Elapsed Time : %llu Sec\n", (unsigned long long)stat_rep.elapsed_time);
 			fprintf (stderr, "\n");
 			con_no++;
 		}

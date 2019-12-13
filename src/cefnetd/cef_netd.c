@@ -62,6 +62,9 @@
 #define CefC_Connection_Type_Ndn		3
 #define CefC_Connection_Type_Ccr		4
 
+#define CefC_App_MatchType_Exact		0
+#define CefC_App_MatchType_Prefix		1
+
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
@@ -80,6 +83,7 @@ typedef struct {
 	uint16_t 		faceid;
 	unsigned char 	name[CefC_Max_Length];
 	uint16_t 		name_len;
+	uint8_t 		match_type;				/* Exact or Prefix */
 } CefT_App_Reg;
 
 /****************************************************************************************
@@ -1156,7 +1160,11 @@ cefnetd_event_dispatch (
 					(*cefnetd_input_process[fd_type[i]]) (
 										hdl, fds[i].fd, faceids[i]);
 				}
+#ifdef __APPLE__
+				if (fds[i].revents & (POLLERR | POLLNVAL)) {
+#else // __APPLE__
 				if (fds[i].revents & (POLLERR | POLLNVAL | POLLHUP)) {
+#endif // __APPLE__
 					if (fd_type[i] < CefC_Connection_Type_Csm) {
 						cef_face_close (faceids[i]);
 					}
@@ -1579,10 +1587,12 @@ cefnetd_input_app_reg_command (
 	CefT_App_Reg* wp;
 	
 #ifdef CefC_Debug
-	if (poh->app_reg_f != CefC_App_Reg) {
+	if (poh->app_reg_f == CefC_App_DeReg) {
 		sprintf (cnd_dbg_msg, "Unreg the application name filter [");
-	} else {
+	} else if (poh->app_reg_f == CefC_App_Reg){
 		sprintf (cnd_dbg_msg, "Reg the application name filter [");
+	} else {
+		sprintf (cnd_dbg_msg, "Reg(prefix) the application name filter [");
 	}
 	{
 		int dbg_x;
@@ -1594,14 +1604,26 @@ cefnetd_input_app_reg_command (
 	}
 #endif // CefC_Debug
 	
-	if (poh->app_reg_f == CefC_App_Reg) {
+	if (poh->app_reg_f == CefC_App_Reg || poh->app_reg_f == CefC_App_RegPrefix) {
 		wp = (CefT_App_Reg*) malloc (sizeof (CefT_App_Reg));
 		wp->faceid = faceid;
 		wp->name_len = pm->name_len;
 		memcpy (wp->name, pm->name, pm->name_len);
-		cef_hash_tbl_item_set (hdl->app_reg, pm->name, pm->name_len, wp);
-		
-		cefnetd_xroute_change_report (hdl, pm->name, pm->name_len, 1);
+		if (poh->app_reg_f == CefC_App_Reg) {
+			wp->match_type = CefC_App_MatchType_Exact;
+		} else {
+			wp->match_type = CefC_App_MatchType_Prefix;
+		}
+		if (CefC_Hash_Faile != 
+				cef_hash_tbl_item_set_for_app (hdl->app_reg, pm->name, 
+											   pm->name_len, wp->match_type, wp)) {
+			cefnetd_xroute_change_report (hdl, pm->name, pm->name_len, 1);
+		}
+		else{
+			char uri[2048];
+			cef_frame_conversion_name_to_string (pm->name, pm->name_len, uri, "ccn");
+			cef_log_write (CefC_Log_Warn, "This Name[%s] has already been registered or can't register any more, so SKIP register\n", uri);
+		}
 	} else {
 		wp = (CefT_App_Reg*) 
 				cef_hash_tbl_item_remove (hdl->app_reg, pm->name, pm->name_len);
@@ -3549,7 +3571,7 @@ FORWARD_INTEREST:
 		} else {
 			name_len = pm.name_len;
 		}
-		fip = (uint16_t*) cef_hash_tbl_item_get (hdl->app_reg, pm.name, name_len);
+		fip = (uint16_t*) cef_hash_tbl_item_get_for_app (hdl->app_reg, pm.name, name_len);
 		
 		if (fip) {
 			if (cef_face_check_active (*fip) > 0) {

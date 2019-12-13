@@ -525,13 +525,21 @@ ct_results_output (
 			n += CefC_S_TLF;
 			
 			for (x = 0 ; x < seg_len ; x++) {
-				if (name[n + x] == 0x2d) {
+				if(((name[n + x] >= 0x30) && (name[n + x] <= 0x39)) ||		/* 0~9 */
+					((name[n + x] >= 0x41) && (name[n + x] <= 0x5a)) ||		/* A~Z */
+					((name[n + x] >= 0x61) && (name[n + x] <= 0x7a))) {		/* a~z */
+					
 					fprintf (stderr, "%c", name[n + x]);
-				}else if ((name[n + x] < 0x30) || (name[n + x] > 0x7E)) {
-					fprintf (stderr, "%02X", name[n + x]);
+				} else if ((name[n + x] == 0x2d) ||						/* - */
+						(name[n + x] == 0x2e) ||						/* . */
+						(name[n + x] == 0x2f) ||						/* / */
+						(name[n + x] == 0x5f) ||						/* _ */
+						(name[n + x] == 0x7e)) {						/* ~ */
+					fprintf (stderr, "%c", name[n + x]);
 				} else {
-					fprintf (stderr, "%c", name[n + x]);
+					fprintf (stderr, "%02x", name[n + x]);
 				}
+
 			}
 			fprintf (stderr, "/");
 			n += seg_len;
@@ -542,8 +550,8 @@ ct_results_output (
 		
 		fprintf (stderr, "%u-%u   ", rep_blk.first_seq, rep_blk.last_seq);
 		
-		fprintf (stderr, FMTU64" secs   "FMTU64" secs\n"
-			, rep_blk.remain_time, rep_blk.cache_time);
+		fprintf (stderr, "%llu secs   %llu secs\n"
+			, (unsigned long long)rep_blk.remain_time, (unsigned long long)rep_blk.cache_time);
 		
 		i++;
 		index += fd_len;
@@ -562,7 +570,7 @@ ct_usage_output (
 	const char* msg									/* Supplementary information 		*/
 ) {
 	fprintf (stderr, 	"Usage:cefinfo name_prefix [-P] [-n] [-o] [-r hop_count]"
-						" [-s skip_hop] [-w wait_time]\n");
+						" [-s skip_hop] [-d config_file_dir] [-w wait_time]\n");
 	
 	if (msg) {
 		fprintf (stderr, "%s\n", msg);
@@ -674,11 +682,11 @@ ct_parse_parameters (
 		} else if (strcmp (work_arg, "-s") == 0) {
 			/* Checks whether [-s] is not specified more than twice. 	*/
 			if (num_opt_s) {
-				ct_usage_output ("error: [-s hop_count] is duplicated.");
+				ct_usage_output ("error: [-s skip_hop] is duplicated.");
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				ct_usage_output ("error: [-s hop_count] is invalid.");
+				ct_usage_output ("error: [-s skip_hop] is invalid.");
 				return (-1);
 			}
 			
@@ -686,14 +694,14 @@ ct_parse_parameters (
 			work_arg = argv[i + 1];
 			for (n = 0 ; work_arg[n] ; n++) {
 				if (isdigit (work_arg[n]) == 0) {
-					ct_usage_output ("error: [-s hop_count] is invalid.");
+					ct_usage_output ("error: [-s skip_hop] is invalid.");
 					return (-1);
 				}
 			}
 			params.skip_hop = atoi (work_arg);
 			
 			if (params.skip_hop < 1) {
-				ct_usage_output ("error: [-s hop_count] is smaller than 1.");
+				ct_usage_output ("error: [-s skip_hop] is smaller than 1.");
 				return (-1);
 			}
 			if (params.skip_hop > 255) {

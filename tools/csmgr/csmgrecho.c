@@ -95,7 +95,6 @@ main (
 ) {
 	uint8_t 	port_f 			= 0;
 	uint8_t 	dst_f 			= 0;
-	int 		dir_path_f 		= 0;
 	char 		port_str[32] 	= {0};
 	char 		dst[64] 		= {0};
 	int tcp_sock;
@@ -110,7 +109,6 @@ main (
 	int frame_size;
 	int len;
 	uint16_t value16;
-	char file_path[PATH_MAX] = {0};
 	
 	/* Inits logging 		*/
 	cef_log_init ("csmgrecho");
@@ -135,17 +133,6 @@ main (
 			strcpy (port_str, argv[i + 1]);
 			port_f++;
 			i++;
-		} else if (strcmp (work_arg, "-d") == 0) {
-			if (dir_path_f) {
-				cef_log_write (CefC_Log_Error, "[-d] is specified more than once\n");
-			}
-			if (i + 1 == argc) {
-				cef_log_write (CefC_Log_Error, "[-d] has no parameter.\n");
-				return (-1);
-			}
-			strcpy (file_path, argv[i + 1]);
-			dir_path_f++;
-			i++;
 		} else if (strcmp (work_arg, "-h") == 0) {
 			if (dst_f) {
 				cef_log_write (CefC_Log_Error, "[-h] is specified more than once\n");
@@ -165,7 +152,7 @@ main (
 		}
 	}
 #ifdef CefC_Debug
-	cef_dbg_init ("csmgrecho", file_path, 0);
+	cef_dbg_init ("csmgrecho", (char*)NULL, 0);
 #endif // CefC_Debug
 	
 	/* check port flag */

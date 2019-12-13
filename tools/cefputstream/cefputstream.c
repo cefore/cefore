@@ -460,7 +460,7 @@ print_usage (
 	
 	fprintf (stderr, "\nUsage: \n");
 	fprintf (stderr, "  cefputstream uri [-r rate] [-b block_size] [-e expiry] "
-					 "[-t cache_time]\n\n");
+					 "[-t cache_time] [-v valid_algo] [-d config_file_dir] [-p port_num]\n\n");
 	
 }
 
@@ -469,12 +469,14 @@ post_process (
 	void
 ) {
 	uint64_t diff_t;
+	double diff_t_dbl = 0.0;
+	double thrpt = 0.0;
 	uint64_t send_bits;
 	uint64_t jitter_ave;
 	
 	if (stat_send_frames) {
 		diff_t = ((end_t.tv_sec - start_t.tv_sec) * T_USEC
-							+ (end_t.tv_usec - start_t.tv_usec)) / T_USEC;
+							+ (end_t.tv_usec - start_t.tv_usec));
 	} else {
 		diff_t = 0;
 	}
@@ -486,10 +488,14 @@ post_process (
 	fprintf (stderr, "[cefputstream] Stop\n");
 	fprintf (stderr, "[cefputstream] Tx Frames = "FMTU64"\n", stat_send_frames);
 	fprintf (stderr, "[cefputstream] Tx Bytes  = "FMTU64"\n", stat_send_bytes);
-	fprintf (stderr, "[cefputstream] Duration  = "FMTU64"\n", diff_t);
 	if (diff_t > 0) {
+		diff_t_dbl = (double)diff_t / 1000000.0;
+		fprintf (stdout, "[cefputstream] Duration  = %.3f sec\n", diff_t_dbl + 0.0009);
 		send_bits = stat_send_bytes * 8;
-		fprintf (stderr, "[cefputstream] Thorghput = "FMTU64"\n", send_bits / diff_t);
+		thrpt = (double)(send_bits) / diff_t_dbl;
+		fprintf (stdout, "[cefputstream] Thorghput = %d bps\n", (int)thrpt);
+	} else {
+		fprintf (stdout, "[cefputstream] Duration  = 0.000 sec\n");
 	}
 	if (stat_send_frames > 0) {
 		jitter_ave = stat_jitter_sum / stat_send_frames;

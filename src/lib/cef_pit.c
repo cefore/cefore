@@ -308,7 +308,7 @@ cef_pit_entry_down_face_update (
 	uint16_t new_lifetime_ms;
 	
 	gettimeofday (&now, NULL);
-	nowt_us = now.tv_sec * 1000000 + now.tv_usec;
+	nowt_us = now.tv_sec * 1000000llu + now.tv_usec;
 	
 	/* Looks up a Down Face entry 		*/
 	new_downface_f = cef_pit_entry_down_face_lookup (
@@ -344,7 +344,7 @@ cef_pit_entry_down_face_update (
 	if (poh->lifetime_f) {
 #ifdef CefC_Dtc
 		if (pm->app_comp == CefC_T_APP_DTC) {
-			extent_us = (uint64_t)poh->lifetime * 1000000;
+			extent_us = (uint64_t)poh->lifetime * 1000000llu;
 		} else {
 			extent_us = poh->lifetime * 1000;
 		}
@@ -707,7 +707,7 @@ cefrt_pit_cleanup (
 	struct timeval t;
 
 	gettimeofday (&t, NULL);
-	now = t.tv_sec * 1000000 + t.tv_usec;
+	now = t.tv_sec * 1000000llu + t.tv_usec;
 
 	if (now < entry->clean_us) {
 		return (entry);

@@ -539,6 +539,47 @@ cef_client_name_reg (
 	
 	return;
 }
+/*--------------------------------------------------------------------------------------
+	Register/Deregister the specified Name of the Application (accept prefix match of Name)
+----------------------------------------------------------------------------------------*/
+void
+cef_client_prefix_reg (
+	CefT_Client_Handle fhdl, 					/* client handle						*/
+	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
+	const unsigned char* name,					/* Name (not URI)						*/
+	uint16_t name_len							/* length of the Name					*/
+) {
+	CefT_Connect* conn = (CefT_Connect*) fhdl;
+	CefT_Interest_TLVs tlvs;
+	unsigned char buff[CefC_Max_Length];
+	int len;
+	
+	memset (&tlvs, 0, sizeof (CefT_Interest_TLVs));
+	
+	memcpy (tlvs.name, name, name_len);
+	tlvs.name_len = name_len;
+	tlvs.hoplimit 		= 1;
+	tlvs.opt.lifetime_f = 1;
+	tlvs.opt.lifetime 	= 1;
+	
+	if (func == CefC_App_Reg) {
+		tlvs.opt.symbolic_f = CefC_T_OPT_APP_REG_P;		/* for partial match */
+	} else {
+		tlvs.opt.symbolic_f = CefC_T_OPT_APP_DEREG;
+	}
+	
+	len = cef_frame_interest_create (buff, &tlvs);
+	if (len > 0) {
+		if (conn->ai) {
+			sendto (conn->sock, buff, len
+					, 0, conn->ai->ai_addr, conn->ai->ai_addrlen);
+		} else {
+			send (conn->sock, buff, len, 0);
+		}
+	}
+	
+	return;
+}
 
 /*--------------------------------------------------------------------------------------
 	Inputs the unformatted message to the socket
@@ -746,10 +787,6 @@ cef_client_payload_get_with_info (
 	int new_len = 0;
 	uint32_t magic_no = CefC_App_Magic_No;
 
-	
-	/* Check if the frame is complete 	*/
-	memset (app_frame, 0, sizeof (struct cef_app_frame));
-
 	/* Seek the head of message 		*/
 	while (1){
 		if((i + sizeof(struct cef_app_frame) - sizeof(wrk_frame->data_entity)) > buff_len){
@@ -759,17 +796,17 @@ cef_client_payload_get_with_info (
 		wrk_frame = (struct cef_app_frame*) &buff[i];
 		if ((wrk_frame->version == CefC_App_Version) && 
 			(wrk_frame->type == CefC_App_Type_Internal)) {
-			if( i + wrk_frame->actual_data_len + sizeof(magic_no) > buff_len){
+			if( i + wrk_frame->actual_data_len > buff_len){
 				new_len = buff_len - i;
 				break;
 			}
 			if(memcmp(  (const void *)&magic_no
-				      , (const void *)&(wrk_frame->data_entity[wrk_frame->name_len+wrk_frame->payload_len])
+				      , (const void *)&(buff[wrk_frame->actual_data_len-sizeof(magic_no)])
 					  , sizeof(magic_no)) == 0){
 				memcpy (app_frame, wrk_frame, wrk_frame->actual_data_len);
 				app_frame->name = &(app_frame->data_entity[0]);
 				app_frame->payload = &(app_frame->data_entity[app_frame->name_len]);
-				new_len = buff_len - wrk_frame->actual_data_len + sizeof(magic_no);
+				new_len = buff_len - wrk_frame->actual_data_len;
 				break;
 			} else {
 				i++;
@@ -792,7 +829,7 @@ cef_client_covert_timeval_to_us (
 	struct timeval t
 ) {
 	uint64_t tus;
-	tus = t.tv_sec * 1000000 + t.tv_usec;
+	tus = t.tv_sec * 1000000llu + t.tv_usec;
 	return (tus);
 }
 uint64_t
@@ -802,7 +839,7 @@ cef_client_present_timeus_calc (
 	struct timeval t;
 
 	gettimeofday (&t, NULL);
-	nowtus = t.tv_sec * 1000000 + t.tv_usec;
+	nowtus = t.tv_sec * 1000000llu + t.tv_usec;
 
 	return (nowtus);
 }

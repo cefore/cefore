@@ -1176,6 +1176,9 @@ cef_face_frame_send_forced (
 	
 	entry = (CefT_Sock*) cef_hash_tbl_item_get_from_index (
 										sock_tbl, face_tbl[faceid].index);
+	if (entry == NULL) {
+		return;
+	}
 	
 	if (face_tbl[faceid].local_f) {
 		send (entry->sock, msg, msg_len, 0);
@@ -1212,6 +1215,9 @@ cef_face_object_send (
 	}
 	entry = (CefT_Sock*) cef_hash_tbl_item_get_from_index (
 										sock_tbl, face_tbl[faceid].index);
+	if (entry == NULL) {
+		return (-1);
+	}
 	
 	if (face_tbl[faceid].local_f) {
 		res = cef_face_app_sdu_create (&app_frame, 
@@ -1221,7 +1227,7 @@ cef_face_object_send (
 			uint32_t magic_no = CefC_App_Magic_No;
 			memcpy((void *)&app_frame.data_entity[app_frame.name_len+app_frame.payload_len]
 				, (const void *)&magic_no, sizeof(magic_no));
-			send (entry->sock, &app_frame, app_frame.actual_data_len + sizeof(magic_no), 0);
+			send (entry->sock, &app_frame, app_frame.actual_data_len, 0);
 		}
 	} else {
 		if (face_tbl[faceid].protocol != CefC_Face_Type_Tcp) {
@@ -1259,6 +1265,10 @@ cef_face_object_send_iflocal (
 
 	entry = (CefT_Sock*) cef_hash_tbl_item_get_from_index (
 										sock_tbl, face_tbl[faceid].index);
+	if (entry == NULL) {
+		return (-1);
+	}
+	
 	if (face_tbl[faceid].local_f) {
 		res = cef_face_app_sdu_create (&app_frame, 
 				name, name_len, payload, payload_len, chnk_num);
@@ -1267,7 +1277,7 @@ cef_face_object_send_iflocal (
 			uint32_t magic_no = CefC_App_Magic_No;
 			memcpy((void *)&app_frame.data_entity[app_frame.name_len+app_frame.payload_len]
 				, (const void *)&magic_no, sizeof(magic_no));
-			send (entry->sock, &app_frame, app_frame.actual_data_len + sizeof(magic_no), 0);
+			send (entry->sock, &app_frame, app_frame.actual_data_len, 0);
 		}
 	} else {
 		res = 0;
@@ -1301,7 +1311,7 @@ cef_face_app_sdu_create (
 	memcpy (&(app_frame->data_entity[name_len]), payload, payload_len);
 	app_frame->actual_data_len = sizeof(struct cef_app_frame)
 	                             - sizeof(app_frame->data_entity)
-	                             + name_len + payload_len;
+	                             + name_len + payload_len + sizeof(CefC_App_Magic_No);
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -1350,6 +1360,10 @@ cef_face_apimsg_send_iflocal (
 
 	entry = (CefT_Sock*) cef_hash_tbl_item_get_from_index (
 										sock_tbl, face_tbl[faceid].index);
+	if (entry == NULL) {
+		return (-1);
+	}
+	
 	if (face_tbl[faceid].local_f) {
 		memcpy (api_frame, api_hdr, api_hdr_len);
 		if ( payload && 0 < payload_len )

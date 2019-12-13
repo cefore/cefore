@@ -84,6 +84,8 @@ static char 				root_user_name[CefC_Csmgr_User_Len] = {"root"};
 static char 				csmgr_local_sock_name[PATH_MAX] = {0};
 
 static pthread_mutex_t 		csmgr_comn_buff_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t 		csmgr_main_cob_buff_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static CsmgrT_Table* 		csmgr_tbl = NULL;
 static unsigned char* 		csmgr_main_cob_buff 		= NULL;
 static int 					csmgr_main_cob_buff_idx 	= 0;
@@ -435,6 +437,20 @@ csmgrd_msg_process_thread (
 	void* arg
 );
 /*--------------------------------------------------------------------------------------
+	function for processing the expire check
+----------------------------------------------------------------------------------------*/
+static void* 
+csmgrd_expire_check_thread (
+	void* arg
+);
+/*--------------------------------------------------------------------------------------
+	function for processing buffering messages
+----------------------------------------------------------------------------------------*/
+static void* 
+push_bytes_process_thread (
+	void* arg
+);
+/*--------------------------------------------------------------------------------------
 	Get frame from received message
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
@@ -749,13 +765,7 @@ csmgrd_event_dispatch (
 	
 	pthread_t		thread;
 	void*			status;
-	
-	/* set interval */
-	uint64_t interval = (uint64_t) hdl->interval * 1000;
-	uint64_t nowt = cef_client_present_timeus_calc ();
-	uint64_t expire_check_time = nowt + interval;
-	uint64_t push_buff_time = nowt + csmgr_wait_time;
-	
+		
 	/* running flag on */
 	csmgrd_running_f = 1;
 
@@ -777,28 +787,20 @@ csmgrd_event_dispatch (
 		cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 		csmgrd_running_f = 0;
 	}
+
+	if (pthread_create (&thread, NULL, csmgrd_expire_check_thread, hdl) == -1) {
+		cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
+		csmgrd_running_f = 0;
+	}
+	
+		if (pthread_create (&thread, NULL, push_bytes_process_thread, hdl) == -1) {
+		cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
+		csmgrd_running_f = 0;
+	}
+
 	
 	/* Main loop */
 	while (csmgrd_running_f) {
-
-		/* Calculates the present time 		*/
-		nowt = cef_client_present_timeus_calc ();
-		
-		
-		/* Checks content expire 			*/
-		if ((interval != 0) && (nowt > expire_check_time)) {
-#ifdef CefC_Debug
-			cef_dbg_write (CefC_Dbg_Finer, "Checks for expired contents.\n");
-#endif // CefC_Debug
-			hdl->cs_mod_int->expire_check ();
-			/* set interval */
-			expire_check_time = nowt + interval;
-		}
-		
-		if (nowt > push_buff_time) {
-			csmgr_push_bytes_process ();
-			push_buff_time = nowt + csmgr_wait_time;
-		}
 		
 		/* check accept */
 		csmgrd_local_sock_check (hdl);
@@ -980,6 +982,54 @@ csmgrd_msg_process_thread (
 	return ((void*) NULL);
 }
 /*--------------------------------------------------------------------------------------
+	function for processing the expire check
+----------------------------------------------------------------------------------------*/
+static void* 
+csmgrd_expire_check_thread (
+	void* arg
+) {
+
+	CefT_Csmgrd_Handle* hdl = (CefT_Csmgrd_Handle*) arg;
+	uint64_t interval = (uint64_t) hdl->interval * 1000;
+	uint64_t nowt = cef_client_present_timeus_calc ();
+	uint64_t expire_check_time = nowt + interval;
+	
+	while (csmgrd_running_f) {
+		sleep(1);
+		nowt = cef_client_present_timeus_calc ();
+		/* Checks content expire 			*/
+		if ((interval != 0) && (nowt > expire_check_time)) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finer, "Checks for expired contents.\n");
+#endif // CefC_Debug
+			hdl->cs_mod_int->expire_check ();
+			/* set interval */
+			expire_check_time = nowt + interval;
+		}
+	}
+	
+	pthread_exit (NULL);
+	
+	return ((void*) NULL);
+}
+/*--------------------------------------------------------------------------------------
+	function for processing buffering messages
+----------------------------------------------------------------------------------------*/
+static void* 
+push_bytes_process_thread (
+	void* arg
+) {
+	
+	while (csmgrd_running_f) {
+		usleep (csmgr_wait_time);
+		csmgr_push_bytes_process ();
+	}
+	
+	pthread_exit (NULL);
+	
+	return ((void*) NULL);
+}
+/*--------------------------------------------------------------------------------------
 	Get frame from received message
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
@@ -1040,6 +1090,7 @@ csmgr_input_bytes_process (
 				return (0);
 			}
 		} else {
+			pthread_mutex_lock (&csmgr_main_cob_buff_mutex);
 			if (csmgr_main_cob_buff_idx + len > CsmgrC_Buff_Size) {
 				pthread_mutex_lock (&csmgr_comn_buff_mutex);
 				
@@ -1058,6 +1109,7 @@ csmgr_input_bytes_process (
 				&buff[index], len);
 			
 			csmgr_main_cob_buff_idx += len;
+			pthread_mutex_unlock (&csmgr_main_cob_buff_mutex);
 		}
 		
 		buff_len -= len;
@@ -1079,6 +1131,8 @@ csmgr_push_bytes_process (
 	void 
 ) {
 	
+	pthread_mutex_lock (&csmgr_main_cob_buff_mutex);
+	
 	if (csmgr_main_cob_buff_idx > 0) {
 		
 		pthread_mutex_lock (&csmgr_comn_buff_mutex);
@@ -1095,6 +1149,7 @@ csmgr_push_bytes_process (
 		
 		pthread_mutex_unlock (&csmgr_comn_buff_mutex);
 	}
+	pthread_mutex_unlock (&csmgr_main_cob_buff_mutex);
 	
 	return;
 }
@@ -2036,9 +2091,10 @@ csmgrd_incoming_status_msg (
 	struct CefT_Csmgr_Status_Rep stat_rep;
 	uint16_t value16;
 	struct pollfd fds[1];
+	uint16_t 		con_num = 0;
 	
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	/* Obtain parameters from request message 		*/
 	klen = buff_len - 1;
@@ -2051,15 +2107,13 @@ csmgrd_incoming_status_msg (
 	wbuf[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_Status;
 	index = CefC_Csmgr_Msg_HeaderLen;
 	
-	stat_hdr.node_num = htons ((uint16_t) hdl->peer_num);
-	stat_hdr.con_num  = htons (csmgrd_stat_cached_con_num_get (stat_hdl));
-	memcpy (&wbuf[index], &stat_hdr, sizeof (struct CefT_Csmgr_Status_Hdr));
 	index += sizeof (struct CefT_Csmgr_Status_Hdr);
 	
 	if (buff[0]) {
 		res = csmgrd_stat_content_info_gets (stat_hdl, key, klen, 1, stat);
 		
 		for (i = 0 ; i < res ; i++) {
+			con_num ++;
 			stat_rep.name_len 	= htons (stat[i]->name_len);
 			stat_rep.con_size 	= cef_client_htonb (stat[i]->con_size);
 			stat_rep.access 	= cef_client_htonb (stat[i]->access);
@@ -2076,6 +2130,9 @@ csmgrd_incoming_status_msg (
 			index += stat[i]->name_len;
 		}
 	}
+	stat_hdr.node_num = htons ((uint16_t) hdl->peer_num);
+	stat_hdr.con_num  = htons (con_num);
+	memcpy (&wbuf[CefC_Csmgr_Msg_HeaderLen], &stat_hdr, sizeof (struct CefT_Csmgr_Status_Hdr));
 	
 	value16 = htons (index);
 	memcpy (&wbuf[CefC_O_Length], &value16, CefC_S_Length);
@@ -2132,7 +2189,7 @@ csmgrd_incoming_cefinfo_msg (
 	
 	name_tlv_hdr.type = htons (CefC_T_NAME);
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	/* Obtain parameters from request message 		*/
 	partial_match_f = buff[0];
@@ -2862,7 +2919,7 @@ csmgrd_incoming_rclt_msg (
 	
 	if (stat) {
 		gettimeofday (&tv, NULL);
-		nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+		nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 		csmgrd_rclt_response_send (sock, CcoreC_Success, stat->expiry - nowt);
 	} else {
 		csmgrd_rclt_response_send (sock, CcoreC_Failed, 0);

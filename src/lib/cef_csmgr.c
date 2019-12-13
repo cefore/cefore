@@ -949,7 +949,7 @@ cef_csmgr_excache_item_put (
 	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
 	
 	/* send message */
-	if (cefnetd_msg_buff_index + index > CefC_Cefnetd_Buff_Max) {
+	if (cefnetd_msg_buff_index > 0) {
 		cef_csmgr_send_msg_to_csmgrd (
 				cs_stat, cefnetd_msg_buff, cefnetd_msg_buff_index);
 		cefnetd_msg_buff_index = 0;

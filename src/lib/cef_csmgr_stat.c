@@ -165,7 +165,7 @@ csmgrd_stat_content_info_access (
 		return (NULL);
 	}
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	rcd = csmgrd_stat_content_search (tbl, name, name_len);
 	
@@ -199,7 +199,7 @@ csmgrd_stat_content_info_get (
 		return (NULL);
 	}
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	rcd = csmgrd_stat_content_search (tbl, name, name_len);
 	
@@ -268,7 +268,7 @@ csmgrd_stat_content_info_gets (
 		return (0);
 	}
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	if (!partial_match_f) {
 		if (!name_len) {
@@ -385,7 +385,7 @@ csmgrd_stat_expired_content_info_get (
 		return (0);
 	}
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	for (i = *index ; i < CsmgrT_Stat_Max ; i++) {
 		if ((tbl->rcds[i]->hash) && (nowt > tbl->rcds[i]->expiry)) {
@@ -485,6 +485,7 @@ csmgrd_stat_cob_remove (
 		index = rcd->index;
 		tbl->cached_con_num--;
 		memset (rcd, 0, sizeof (CsmgrT_Stat));
+		rcd->name_len = 0xFFFF;
 		return (index);
 	}
 	
@@ -658,6 +659,8 @@ csmgrd_stat_content_lookup (
 	uint32_t hash;
 	uint32_t i, n;
 	int find_f = 0;
+	uint32_t empty_index;
+	int empty_ff = 0;
 	
 	if (create_f) {
 		*create_f = 0;
@@ -677,7 +680,7 @@ csmgrd_stat_content_lookup (
 		}
 	}
 	
-	if (tbl->rcds[i]->name_len == 0 || tbl->rcds[i]->name_len == 0xFFFF) {
+	if (tbl->rcds[i]->name_len == 0) {
 		memset (tbl->rcds[i], 0, sizeof (CsmgrT_Stat));
 		tbl->rcds[i]->hash 		= hash;
 		tbl->rcds[i]->index 	= (uint16_t) i;
@@ -691,24 +694,38 @@ csmgrd_stat_content_lookup (
 	}
 	
 	for (n = i + 1 ; n < CsmgrT_Stat_Max ; n++) {
-		if (tbl->rcds[i]->name_len == 0) {
-			find_f = 1;
+		if (tbl->rcds[n]->name_len == 0) {
+ 			find_f = 1;
 			break;
 		}
-		if ((tbl->rcds[n]->name_len == name_len) && 
-			(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
-			return (tbl->rcds[n]);
+		if (tbl->rcds[n]->hash == hash) {
+			if ((tbl->rcds[n]->name_len == name_len) && 
+				(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
+				return (tbl->rcds[n]);
+			}
+		}
+		if ((tbl->rcds[n]->name_len == 0xFFFF) &&
+			(empty_ff == 0)) {
+			empty_index = n;
+			empty_ff = 1;
 		}
 	}
 	if (find_f == 0) {
 		for (n = 0 ; n < i ; n++) {
-			if (tbl->rcds[i]->name_len == 0) {
+			if (tbl->rcds[n]->name_len == 0) {
 				find_f = 1;
 				break;
 			}
-			if ((tbl->rcds[n]->name_len == name_len) && 
-				(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
-				return (tbl->rcds[n]);
+			if (tbl->rcds[n]->hash == hash) {
+				if ((tbl->rcds[n]->name_len == name_len) && 
+					(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
+					return (tbl->rcds[n]);
+				}
+			}
+			if ((tbl->rcds[n]->name_len == 0xFFFF) &&
+				(empty_ff == 0)) {
+				empty_index = n;
+				empty_ff = 1;
 			}
 		}
 	}
@@ -717,12 +734,26 @@ csmgrd_stat_content_lookup (
 		memset (tbl->rcds[n], 0, sizeof (CsmgrT_Stat));
 		tbl->rcds[n]->hash 		= hash;
 		tbl->rcds[n]->name_len 	= name_len;
+		tbl->rcds[n]->index 	= (uint16_t) n;
 		memcpy (tbl->rcds[n]->name, name, name_len);
 		
 		if (create_f) {
 			*create_f = 1;
 		}
 		return (tbl->rcds[n]);
+	}
+	if (empty_ff == 1) {
+		memset (tbl->rcds[empty_index], 0, sizeof (CsmgrT_Stat));
+		tbl->rcds[empty_index]->hash 		= hash;
+		tbl->rcds[empty_index]->name_len 	= name_len;
+		tbl->rcds[empty_index]->index 	= (uint16_t) n;
+		memcpy (tbl->rcds[empty_index]->name, name, name_len);
+		
+		if (create_f) {
+			*create_f = 1;
+		}
+		
+		return (tbl->rcds[empty_index]);
 	}
 	
 	return (NULL);

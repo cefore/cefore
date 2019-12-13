@@ -97,20 +97,17 @@ typedef struct {
 
 } CsmgrdT_Content_Mem_Entry;
 
-typedef struct CefT_Hash_Table {
+typedef struct CefT_Mem_Hash_Cell {
 	
 	uint32_t 					hash;
 	unsigned char 				key[MemC_Max_KLen];
 	uint32_t 					klen;
 	CsmgrdT_Content_Mem_Entry* 	elem;
-	
-} CefT_Mem_Hash_Table;
+	struct CefT_Mem_Hash_Cell	*next;
+} CefT_Mem_Hash_Cell;
 
-
-typedef struct CefT_Hash {
-	
-	uint32_t 				seed;
-	CefT_Mem_Hash_Table**	tbl;
+typedef struct CefT_Mem_Hash {
+	CefT_Mem_Hash_Cell**	tbl;
 	uint32_t 				tabl_max;
 	uint32_t 				elem_max;
 	uint32_t 				elem_num;
@@ -131,6 +128,8 @@ static int 						mem_thread_f = 0;
 static CsmgrdT_Content_Entry* 	mem_proc_cob_buff[MemC_Max_Buff]		= {0};
 static int 						mem_proc_cob_buff_idx[MemC_Max_Buff] 	= {0};
 static CsmgrT_Stat_Handle 		csmgr_stat_hdl;
+
+static pthread_mutex_t 			mem_cs_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /****************************************************************************************
  Static Function Declaration
@@ -249,7 +248,6 @@ cef_mem_hash_tbl_create (
 );
 static uint32_t
 cef_mem_hash_number_create (
-	uint32_t hash,
 	const unsigned char* key,
 	uint32_t klen
 );
@@ -405,15 +403,17 @@ mem_cob_process_thread (
 	
 	while (mem_thread_f) {
 		for (i = 0 ; i < MemC_Max_Buff ; i++) {
-		if (pthread_mutex_trylock(&mem_comn_buff_mutex[i]) != 0) {
-			continue;
-		}
+			if (pthread_mutex_trylock(&mem_comn_buff_mutex[i]) != 0) {
+				continue;
+			}
 			if (mem_proc_cob_buff_idx[i] > 0) {
 #ifdef CefC_Debug
 				csmgrd_dbg_write (CefC_Dbg_Fine, 
 					"cob put thread starts to write %d cobs\n", mem_proc_cob_buff_idx[i]);
 #endif // CefC_Debug
+				pthread_mutex_lock (&mem_cs_mutex);
 				mem_cache_cob_write (&mem_proc_cob_buff[i][0], mem_proc_cob_buff_idx[i]);
+				pthread_mutex_unlock (&mem_cs_mutex);
 				mem_proc_cob_buff_idx[i] = 0;
 #ifdef CefC_Debug
 				csmgrd_dbg_write (CefC_Dbg_Fine, 
@@ -486,7 +486,7 @@ mem_cs_store (
 	
 	/* Updates the content information 			*/
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	csmgrd_stat_cob_update (csmgr_stat_hdl, entry->name, entry->name_len, 
 		entry->chnk_num, entry->pay_len, entry->expiry, nowt, entry->node);
@@ -553,7 +553,18 @@ mem_cs_destroy (
 		return;
 	}
 	if (mem_hash_tbl) {
-		free (mem_hash_tbl->tbl[0]);
+		for (i = 0 ; i < mem_hash_tbl->tabl_max ; i++) {
+			CefT_Mem_Hash_Cell* cp;
+			CefT_Mem_Hash_Cell* wcp;
+			cp = mem_hash_tbl->tbl[i];
+			while (cp != NULL) {
+				wcp = cp->next;
+				free (cp->elem);
+				free(cp);
+				cp = wcp;
+			}
+		}
+		free (mem_hash_tbl->tbl);
 		free (mem_hash_tbl);
 	}
 	
@@ -580,41 +591,50 @@ mem_cs_expire_check (
 	void
 ) {
 	CsmgrdT_Content_Mem_Entry* entry = NULL;
+	CsmgrdT_Content_Mem_Entry* entry1 = NULL;
 	uint64_t 	nowt;
 	struct timeval tv;
 	int n;
 	unsigned char trg_key[65535];
 	int trg_key_len;
 	
-	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+	if (pthread_mutex_trylock(&mem_cs_mutex) != 0) {
+		return;
+	}
 	
-	for (n = 0 ; n < mem_hash_tbl->tabl_max ; n++) {
-		if (mem_hash_tbl->tbl[0][n].klen == 0 || mem_hash_tbl->tbl[0][n].klen == -1) {
+	gettimeofday (&tv, NULL);
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
+
+	for (n = 0 ; n < mem_hash_tbl->tabl_max ; n++) { 
+		if (mem_hash_tbl->tbl[n] == NULL) {
 			continue;
 		}
-		entry = mem_hash_tbl->tbl[0][n].elem;
-		
-		if ((entry->cache_time < nowt) ||
-			((entry->expiry != 0) && (entry->expiry < nowt))) {
-			
-			if (hdl->algo_apis.erase) {
-				trg_key_len = csmgrd_key_create_by_Mem_Entry (entry, trg_key);
-				(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
+		{
+			CefT_Mem_Hash_Cell* cp;
+			CefT_Mem_Hash_Cell* wcp;
+			cp = mem_hash_tbl->tbl[n];
+			for (; cp != NULL; cp = wcp) {
+				entry = cp->elem;
+				wcp = cp->next;
+				if ((entry->cache_time < nowt) ||
+					((entry->expiry != 0) && (entry->expiry < nowt))) {
+					/* Removes the expiry cache entry 		*/
+					trg_key_len = csmgrd_key_create_by_Mem_Entry (entry, trg_key);
+					entry1 = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
+					if (hdl->algo_apis.erase) {
+						(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
+					}
+					csmgrd_stat_cob_remove (
+						csmgr_stat_hdl, entry->name, entry->name_len, 
+						entry->chnk_num, entry->pay_len);
+					free (entry1->msg);
+					free (entry1->name);
+					free (entry1);
+				}
 			}
-			csmgrd_stat_cob_remove (
-				csmgr_stat_hdl, entry->name, entry->name_len, 
-				entry->chnk_num, entry->pay_len);
-			
-			free (entry->msg);
-			free (entry->name);
-			free (entry);
-			mem_hash_tbl->tbl[0][n].hash = 0;
-			mem_hash_tbl->tbl[0][n].klen = -1;  /* set used info. */
-			mem_hash_tbl->tbl[0][n].elem = NULL;
-			mem_hash_tbl->elem_num--;
 		}
 	}
+	pthread_mutex_unlock (&mem_cs_mutex);
 	
 	return;
 }
@@ -644,7 +664,7 @@ mem_cache_item_get (
 	if (entry) {
 		
 		gettimeofday (&tv, NULL);
-		nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+		nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 		
 		if (((entry->expiry == 0) || (nowt < entry->expiry)) &&
 			(nowt < entry->cache_time)) {
@@ -660,7 +680,9 @@ mem_cache_item_get (
 			/* Send Cob to cefnetd */
 			csmgrd_plugin_cob_msg_send (sock, entry->msg, entry->msg_len);
 			return (CefC_Csmgr_Cob_Exist);
- 		} else {
+ 		}
+		else {
+			pthread_mutex_lock (&mem_cs_mutex);
 			/* Removes the expiry cache entry 		*/
 			entry = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
 			
@@ -675,6 +697,7 @@ mem_cache_item_get (
 			free (entry->msg);
 			free (entry->name);
 			free (entry);
+			pthread_mutex_unlock (&mem_cs_mutex);
 		}
 	}
 	
@@ -766,7 +789,7 @@ mem_cache_cob_write (
 	struct timeval tv;
 	
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	while (index < cob_num) {
 		
@@ -774,6 +797,12 @@ mem_cache_cob_write (
 			index++;
 			continue;
 		}
+
+		if(cobs[index].expiry < nowt){
+			index++;
+			continue;
+		}
+
 		if (hdl->algo_apis.insert) {
 			trg_key_len = csmgrd_key_create (&cobs[index], trg_key);
 			entry = cef_mem_hash_tbl_item_get (trg_key, trg_key_len);
@@ -958,7 +987,7 @@ static int							/* The return value is negative if an error occurs	*/
 mem_change_cap (
 	uint64_t cap								/* New capacity to set					*/
 ) {
-	int i, n;
+	int n;
 	
 	if (cap > 819200) {
 		/* Too large */
@@ -981,11 +1010,17 @@ mem_change_cap (
 	
 	/* Destroy table */
 	for (n = 0 ; n < mem_hash_tbl->tabl_max ; n++) {
-		if (mem_hash_tbl->tbl[0][n].klen != 0 && mem_hash_tbl->tbl[0][n].klen != -1) {
-			free (mem_hash_tbl->tbl[0][n].elem);
+		CefT_Mem_Hash_Cell* cp;
+		CefT_Mem_Hash_Cell* wcp;
+		cp = mem_hash_tbl->tbl[n];
+		while (cp != NULL) {
+			wcp = cp->next;
+			free (cp->elem);
+			free(cp);
+			cp = wcp;
 		}
 	}
-	free (mem_hash_tbl->tbl[0]);
+	free (mem_hash_tbl->tbl);
 	free (mem_hash_tbl);
 	
 	/* Create table */
@@ -1006,39 +1041,44 @@ mem_cache_set_lifetime (
 	uint16_t name_len,							/* Content name length					*/
 	uint64_t lifetime							/* Content Lifetime						*/
 ) {
-	CsmgrdT_Content_Entry* entry = NULL;
+	CsmgrdT_Content_Mem_Entry* entry = NULL;
 	uint64_t nowt;
 	struct timeval tv;
 	uint64_t new_life;
-	int i, n;
+	int n;
 	
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
-	new_life = nowt + lifetime * 1000000;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
+	new_life = nowt + lifetime * 1000000llu;
 	
 	/* Updtes the content information */
 	csmgrd_stat_content_lifetime_update (csmgr_stat_hdl, name, name_len, new_life);
 	
 	/* Check the cache entry information */
 	for (n = 0 ; n < mem_hash_tbl->tabl_max ; n++) {
-		if (mem_hash_tbl->tbl[0][n].klen == 0 || mem_hash_tbl->tbl[0][n].klen == -1) {
+		if (mem_hash_tbl->tbl[n] == NULL) {
 			continue;
 		}
-		entry = mem_hash_tbl->tbl[0][n].elem;
-		
-		if (((entry->expiry == 0) || (nowt < entry->expiry)) &&
-			(nowt < entry->cache_time)) {
-			
-			if (memcmp (name, entry->name, name_len)) {
-				continue;
-			}
-			
-			if ((entry->expiry == 0) || (new_life < entry->expiry)) {
-				entry->expiry = new_life;
-			}
-			
-			if (new_life < entry->cache_time) {
-				entry->cache_time = new_life;
+		{
+			CefT_Mem_Hash_Cell* cp;
+			cp = mem_hash_tbl->tbl[n];
+			for (; cp != NULL; cp = cp->next) {
+				entry = cp->elem;
+				if (((entry->expiry == 0) || (nowt < entry->expiry)) &&
+					(nowt < entry->cache_time)) {
+					
+					if (memcmp (name, entry->name, name_len)) {
+						continue;
+					}
+					
+					if ((entry->expiry == 0) || (new_life < entry->expiry)) {
+						entry->expiry = new_life;
+					}
+					
+					if (new_life < entry->cache_time) {
+						entry->cache_time = new_life;
+					}
+				}
 			}
 		}
 	}
@@ -1084,18 +1124,16 @@ cef_mem_hash_tbl_create (
 	}
 	memset (ht, 0, sizeof (CefT_Mem_Hash));
 	
-	ht->tbl = (CefT_Mem_Hash_Table**) malloc (sizeof (CefT_Mem_Hash_Table*));
+	ht->tbl = (CefT_Mem_Hash_Cell**) malloc (sizeof (CefT_Mem_Hash_Cell*) * table_size * MEM_TABLE_MAX);
 	
-	ht->tbl[0] = (CefT_Mem_Hash_Table*) malloc (sizeof (CefT_Mem_Hash_Table) * table_size * MEM_TABLE_MAX);
-	if (ht->tbl[0]  == NULL) {
+	if (ht->tbl  == NULL) {
 		free (ht->tbl);
 		free (ht);
 		return (NULL);
 	}
-	memset (ht->tbl[0], 0, sizeof (CefT_Mem_Hash_Table) * table_size * MEM_TABLE_MAX);
+	memset (ht->tbl, 0, sizeof (CefT_Mem_Hash_Cell*) * table_size * MEM_TABLE_MAX);
 	
 	srand ((unsigned) time (NULL));
-	ht->seed = (uint32_t)(rand () + 1);
 	ht->elem_max = table_size;
 	ht->tabl_max = table_size * MEM_TABLE_MAX;
 	mem_tabl_max = ht->tabl_max;
@@ -1113,50 +1151,50 @@ cef_mem_hash_tbl_item_set (
 	CefT_Mem_Hash* ht = (CefT_Mem_Hash*) mem_hash_tbl;
 	uint32_t hash = 0;
 	uint32_t y;
-	uint32_t i;
-	int      find_f = 0;
-	
-	if ((klen > MemC_Max_KLen) || (ht == NULL)) {
-		return (-1);
-	}
+	CefT_Mem_Hash_Cell* cp;
+	CefT_Mem_Hash_Cell* wcp;
+
 	old_elem = NULL;
 
-	hash = cef_mem_hash_number_create (ht->seed, key, klen);
+	hash = cef_mem_hash_number_create (key, klen);
 	y = hash % ht->tabl_max;
-	
-	if (ht->tbl[0][y].klen != 0 && ht->tbl[0][y].klen != -1) {
-		for (i = y+1 ; i < ht->tabl_max ; i++) {
-			if (ht->tbl[0][i].klen == 0 || ht->tbl[0][i].klen == -1) {
-				y = i;
-				find_f = 1;
-				break;
-			}
-		}
-		if(find_f == 0){
-			for (i = 0 ; i < y ; i++) {
-				if (ht->tbl[0][i].klen == 0 || ht->tbl[0][i].klen == -1) {
-					y = i;
-					find_f = 1;
-					break;
-				}
-			}
-		}
-		if(find_f == 0){
-			old_elem = ht->tbl[0][y].elem;
-		}
-	} else {
-		if (ht->elem_num >= ht->elem_max) {
-			ht->elem_num = ht->elem_max;
+
+	if(ht->tbl[y] == NULL){
+		ht->tbl[y] = (CefT_Mem_Hash_Cell* )calloc(1, sizeof(CefT_Mem_Hash_Cell));
+		if (ht->tbl[y] == NULL) {
 			return (-1);
 		}
+		cp = ht->tbl[y];
+		cp->elem = elem;
+		cp->klen = klen;
+		memcpy (cp->key, key, klen);
+		ht->elem_num++;
+		return (1);
+	} else {
+		/* exist check & replace */
+		for (cp = ht->tbl[y]; cp != NULL; cp = cp->next) {
+			if((cp->klen == klen) &&
+			   (memcmp (cp->key, key, klen) == 0)){
+				old_elem = cp->elem;
+				cp->elem = elem;
+				return (1);
+		   }
+		}
+		/* insert */
+		wcp = ht->tbl[y];
+		ht->tbl[y] = (CefT_Mem_Hash_Cell* )calloc(1, sizeof(CefT_Mem_Hash_Cell));
+		if (ht->tbl[y] == NULL) {
+			return (-1);
+		}
+		cp = ht->tbl[y];
+		cp->next = wcp;
+		cp->elem = elem;
+		cp->klen = klen;
+		memcpy (cp->key, key, klen);
+		
+		ht->elem_num++;
+		return (1);
 	}
-	ht->elem_num++;
-	ht->tbl[0][y].hash = hash;
-	ht->tbl[0][y].elem = elem;
-	ht->tbl[0][y].klen = klen;
-	memcpy (ht->tbl[0][y].key, key, klen);
-	
-	return (1);
 }
 
 static CsmgrdT_Content_Mem_Entry* 
@@ -1167,42 +1205,22 @@ cef_mem_hash_tbl_item_get (
 	CefT_Mem_Hash* ht = (CefT_Mem_Hash*) mem_hash_tbl;
 	uint32_t hash = 0;
 	uint32_t y;
-	uint32_t i;
-	
+	CefT_Mem_Hash_Cell* cp;
+
 	if ((klen > MemC_Max_KLen) || (ht == NULL)) {
 		return (NULL);
 	}
-	hash = cef_mem_hash_number_create (ht->seed, key, klen);
-
+	hash = cef_mem_hash_number_create (key, klen);
 	y = hash % ht->tabl_max;
-	
-	if (ht->tbl[0][y].hash == hash) {
-		if ((ht->tbl[0][y].klen == klen) && 
-			(memcmp (key, ht->tbl[0][y].key, klen) == 0)) {
-			return (ht->tbl[0][y].elem);
-		}
-	}
-	
-	for (i = y+1 ; i < ht->tabl_max ; i++) {
-		if (ht->tbl[0][i].klen == 0){
-			break;
-		}
-		if (ht->tbl[0][i].hash == hash) {
-			if ((ht->tbl[0][i].klen == klen) && 
-				(memcmp (key, ht->tbl[0][i].key, klen) == 0)) {
-				return (ht->tbl[0][i].elem);
-			}
-		}
-	}
-	for (i = 0 ; i < y ; i++) {
-		if (ht->tbl[0][i].klen == 0){
-			break;
-		}
-		if (ht->tbl[0][i].hash == hash) {
-			if ((ht->tbl[0][i].klen == klen) && 
-				(memcmp (key, ht->tbl[0][i].key, klen) == 0)) {
-				return (ht->tbl[0][i].elem);
-			}
+
+	cp = ht->tbl[y];
+	if(cp == NULL){
+		return (NULL);
+	} 
+	for (; cp != NULL; cp = cp->next) {
+		if((cp->klen == klen) &&
+		   (memcmp (cp->key, key, klen) == 0)){
+		   	return (cp->elem);
 		}
 	}
 	
@@ -1217,51 +1235,40 @@ cef_mem_hash_tbl_item_remove (
 	CefT_Mem_Hash* ht = (CefT_Mem_Hash*) mem_hash_tbl;
 	uint32_t hash = 0;
 	uint32_t y;
-	uint32_t i;
+	CsmgrdT_Content_Mem_Entry* ret_elem;
+	CefT_Mem_Hash_Cell* cp;
+	CefT_Mem_Hash_Cell* wcp;
 	
 	if ((klen > MemC_Max_KLen) || (ht == NULL)) {
 		return (NULL);
 	}
 	
-	hash = cef_mem_hash_number_create (ht->seed, key, klen);
+	hash = cef_mem_hash_number_create (key, klen);
 	y = hash % ht->tabl_max;
 	
-	if (ht->tbl[0][y].hash == hash) {
-		if ((ht->tbl[0][y].klen == klen) && 
-			(memcmp (key, ht->tbl[0][y].key, klen) == 0)) {
-			
-			ht->tbl[0][y].hash = 0;
-			ht->tbl[0][y].klen = -1; /* set used info. */
+	cp = ht->tbl[y];
+	if(cp == NULL){
+		return (NULL);
+	}
+	if (cp != NULL) {
+		if((cp->klen == klen) &&
+		   (memcmp (cp->key, key, klen) == 0)){
+		   	ht->tbl[y] = cp->next;
 			ht->elem_num--;
-			return (ht->tbl[0][y].elem);
-		}
-	}
-	
-	for (i = y+1 ; i < ht->tabl_max ; i++) {
-		if(ht->tbl[0][i].klen == 0){
-			return (NULL);
-		}
-		if (ht->tbl[0][i].hash == hash) {
-			if ((ht->tbl[0][i].klen == klen) && 
-				(memcmp (key, ht->tbl[0][i].key, klen) == 0)) {
-				ht->tbl[0][i].hash = 0;
-				ht->tbl[0][i].klen =  -1; /* set used info. */
-				ht->elem_num--;
-				return (ht->tbl[0][i].elem);
-			}
-		}
-	}
-	for (i = 0 ; i < y ; i++) {
-		if(ht->tbl[0][i].klen == 0){
-			return (NULL);
-		}
-		if (ht->tbl[0][i].hash == hash) {
-			if ((ht->tbl[0][i].klen == klen) && 
-				(memcmp (key, ht->tbl[0][i].key, klen) == 0)) {
-				ht->tbl[0][i].hash = 0;
-				ht->tbl[0][i].klen =  -1; /* set used info. */
-				ht->elem_num--;
-				return (ht->tbl[0][i].elem);
+		   	ret_elem = cp->elem;
+		   	free(cp);
+		   	return (ret_elem);
+		} else {
+			for (; cp->next != NULL; cp = cp->next) {
+				if((cp->next->klen == klen) &&
+				   (memcmp (cp->next->key, key, klen) == 0)){
+				   	wcp = cp->next;
+				   	cp->next = cp->next->next;
+					ht->elem_num--;
+				   	ret_elem = wcp->elem;
+		   			free(wcp);
+		   			return (ret_elem);
+				}
 			}
 		}
 	}
@@ -1271,10 +1278,10 @@ cef_mem_hash_tbl_item_remove (
 
 static uint32_t
 cef_mem_hash_number_create (
-	uint32_t hash,
 	const unsigned char* key,
 	uint32_t klen
 ) {
+	uint32_t hash;
 	unsigned char out[MD5_DIGEST_LENGTH];
 	
 	MD5 (key, klen, out);

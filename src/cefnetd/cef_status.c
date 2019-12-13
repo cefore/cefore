@@ -160,13 +160,13 @@ cef_status_stats_output (
 	sprintf (work_str, 
 			"Version    : %x\n"
 			"Port       : %u\n"
-			"Rx Frames  : "FMTU64"\n"
-			"Tx Frames  : "FMTU64"\n"
+			"Rx Frames  : %llu\n"
+			"Tx Frames  : %llu\n"
 			"Cache Mode : %s\n",
 			CefC_Version,
 			hdl->port_num,
-			hdl->stat_recv_frames,
-			hdl->stat_send_frames,
+			(unsigned long long)hdl->stat_recv_frames,
+			(unsigned long long)hdl->stat_send_frames,
 			cache_type);
 	
 #ifdef CefC_Ccore

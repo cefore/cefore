@@ -28,8 +28,9 @@
 #
 
 Usage(){
-	echo "cefoute add uri (tcp|udp) host [-d config_file_dir] [-p port_num]" >&2
-	echo "cefoute del uri host [-d config_file_dir] [-p port_num]" >&2
+	echo "cefroute add uri (tcp|udp) host [-d config_file_dir] [-p port_num]" >&2
+	echo "cefroute del uri (tcp|udp) host [-d config_file_dir] [-p port_num]" >&2
+	echo "cefroute enable uri (tcp|udp) host [-d config_file_dir] [-p port_num]" >&2
 	exit 1
 }
 

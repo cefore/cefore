@@ -316,7 +316,7 @@ print_usage (
 	void
 ) {
 	fprintf (stderr, "\nUsage: cefgetchunk\n\n");
-	fprintf (stderr, "  cefgetchunk uri -c chunk_number\n\n");
+	fprintf (stderr, "  cefgetchunk uri -c chunk_number [-d config_file_dir] [-p port_num]\n\n");
 	fprintf (stderr, "  uri          Specify the URI.\n");
 	fprintf (stderr, "  chunk_num    Specify the chunk number.\n\n");
 }

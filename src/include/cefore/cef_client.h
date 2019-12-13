@@ -63,6 +63,7 @@
 
 #define CefC_App_Reg				0x01
 #define CefC_App_DeReg				0x02
+#define CefC_App_RegPrefix			0x03		/* for prefix match 					*/
 
 #define CefC_Unset_Port 			0
 #define CefC_Unset_Id 				NULL
@@ -245,6 +246,16 @@ cef_client_cefinfo_input (
 ----------------------------------------------------------------------------------------*/
 void
 cef_client_name_reg (
+	CefT_Client_Handle fhdl, 					/* client handle						*/
+	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
+	const unsigned char* name,					/* Name (not URI)						*/
+	uint16_t name_len							/* length of the Name					*/
+);
+/*--------------------------------------------------------------------------------------
+	Register/Deregister the specified Name of the Application (accept prefix match of Name)
+----------------------------------------------------------------------------------------*/
+void
+cef_client_prefix_reg (
 	CefT_Client_Handle fhdl, 					/* client handle						*/
 	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
 	const unsigned char* name,					/* Name (not URI)						*/

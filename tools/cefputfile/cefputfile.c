@@ -54,6 +54,9 @@
  ****************************************************************************************/
 
 #define CefC_Putfile_Max 					512000
+#define CefC_RateMbps_Max				 	32.0
+#define CefC_RateMbps_Min				 	0.001	/* 1Kbps */
+
 
 /****************************************************************************************
  Structures Declaration
@@ -106,6 +109,7 @@ int main (
 	static struct timeval now_t;
 	uint64_t next_tus;
 	uint64_t now_tus;
+	uint64_t now_tus2;
 	uint64_t now_ms;
 	char*	work_arg;
 	int 	i;
@@ -118,6 +122,9 @@ int main (
 	uint32_t 		work_buff_idx = 0;
 	int 			cob_len;
 	unsigned char 	cob_buff[CefC_Max_Length];
+	
+	int int_rate;
+	long sending_time_us;
 	
 	/***** flags 		*****/
 	int uri_f 		= 0;
@@ -134,7 +141,7 @@ int main (
 	/***** parameters 	*****/
 	uint16_t cache_time 	= 300;
 	uint64_t expiry 		= 3600;
-	int rate 				= 5;
+	double rate 			= 5.0;
 	int block_size 			= 1024;
 	
 	/*------------------------------------------
@@ -184,10 +191,17 @@ int main (
 				return (-1);
 			}
 			work_arg = argv[i + 1];
-			rate = atoi (work_arg);
-			if ((rate < 1) || (rate > 200)) {
-				rate = 1;
+			rate = atof (work_arg);
+			if (rate < CefC_RateMbps_Min) {
+				rate = CefC_RateMbps_Min;
 			}
+			if (rate > CefC_RateMbps_Max) {
+				rate = CefC_RateMbps_Max;
+			}
+			
+			int_rate = (int)(rate * 1000.0);
+			rate = (double)int_rate / 1000.0;
+			
 			rate_f++;
 			i++;
 		} else if (strcmp (work_arg, "-b") == 0) {
@@ -468,7 +482,7 @@ int main (
 	app_running_f = 1;
 	fprintf (stdout, "[cefputfile] URI         = %s\n", uri);
 	fprintf (stdout, "[cefputfile] File        = %s\n", filename);
-	fprintf (stdout, "[cefputfile] Rate        = %d Mbps\n", rate);
+	fprintf (stdout, "[cefputfile] Rate        = %.3f Mbps\n", rate);
 	fprintf (stdout, "[cefputfile] Block Size  = %d Bytes\n", block_size);
 	fprintf (stdout, "[cefputfile] Cache Time  = %d sec\n", cache_time);
 	fprintf (stdout, "[cefputfile] Expiration  = "FMTU64" sec\n", expiry);
@@ -476,16 +490,15 @@ int main (
 	/*------------------------------------------
 		Calculates the interval
 	--------------------------------------------*/
-//	interval = (double)((double) rate * 1000000.0) / (double)(block_size * 8);
-	interval = (double)((double) rate * 1000000.0) / (double)(CefC_Putfile_Max * 8);
+	interval = (rate * 1000000.0) / (double)(block_size * 8);
 	interval_us = (long)((1.0 / interval) * 1000000.0);
-	
+	sending_time_us = (long)(((double)(block_size * 8) / (rate * 1000000.0)) * 1000000.0);
 	
 	/*------------------------------------------
 		Main Loop
 	--------------------------------------------*/
 	gettimeofday (&start_t, NULL);
-	next_tus = start_t.tv_sec * 1000000 + start_t.tv_usec + interval_us;
+	next_tus = start_t.tv_sec * 1000000llu + start_t.tv_usec + interval_us;
 	work_buff = (unsigned char*) malloc (sizeof (unsigned char) * CefC_Putfile_Max);
 	
 	fprintf (stdout, "[cefputfile] Start creating Content Objects\n");
@@ -496,7 +509,7 @@ int main (
 		}
 		cob_len = 0;
 		
-		while (work_buff_idx < CefC_Putfile_Max) {
+		while (work_buff_idx < 1) {
 			
 			res = fread (buff, sizeof (unsigned char), block_size, fp);
 			cob_len = 0;
@@ -526,12 +539,15 @@ int main (
 			}
 		}
 		gettimeofday (&now_t, NULL);
-		now_tus = now_t.tv_sec * 1000000 + now_t.tv_usec;
+		now_tus = now_t.tv_sec * 1000000llu + now_t.tv_usec;
 		
 		if (next_tus > now_tus) {
 			usleep ((useconds_t)(next_tus - now_tus));
 		}
-		next_tus = now_tus + interval_us;
+		gettimeofday (&now_t, NULL);
+		now_tus2 = now_t.tv_sec * 1000000llu + now_t.tv_usec;
+		
+		next_tus = now_tus + interval_us + sending_time_us + (next_tus - now_tus2);
 		
 		if (work_buff_idx > 0) {
 			cef_client_message_input (fhdl, work_buff, work_buff_idx);
@@ -567,7 +583,7 @@ print_usage (
 	
 	fprintf (stdout, "\nUsage: \n");
 	fprintf (stdout, "  cefputfile uri -f path [-r rate] [-b block_size] [-e expiry] "
-					 "[-t cache_time] [-v valid_algo]\n\n");
+					 "[-t cache_time] [-v valid_algo] [-d config_file_dir] [-p port_num] \n\n");
 	fprintf (stdout, 
 		" valid_algo   Specify the validation algorithm (crc32 or sha256)\n\n");
 }
@@ -577,11 +593,13 @@ post_process (
 	void
 ) {
 	uint64_t diff_t;
+	double diff_t_dbl = 0.0;
+	double thrpt = 0.0;
 	uint64_t send_bits;
 	
 	if (stat_send_frames) {
-		diff_t = ((end_t.tv_sec - start_t.tv_sec) * 1000000
-							+ (end_t.tv_usec - start_t.tv_usec)) / 1000000;
+		diff_t = ((end_t.tv_sec - start_t.tv_sec) * 1000000llu
+							+ (end_t.tv_usec - start_t.tv_usec));
 	} else {
 		diff_t = 0;
 	}
@@ -593,10 +611,14 @@ post_process (
 	fprintf (stdout, "[cefputfile] Terminate\n");
 	fprintf (stdout, "[cefputfile] Tx Frames = "FMTU64"\n", stat_send_frames);
 	fprintf (stdout, "[cefputfile] Tx Bytes  = "FMTU64"\n", stat_send_bytes);
-	fprintf (stdout, "[cefputfile] Duration  = "FMTU64"\n", diff_t);
 	if (diff_t > 0) {
+		diff_t_dbl = (double)diff_t / 1000000.0;
+		fprintf (stdout, "[cefgetfile] Duration  = %.3f sec\n", diff_t_dbl + 0.0009);
 		send_bits = stat_send_bytes * 8;
-		fprintf (stdout, "[cefputfile] Thorghput = "FMTU64"\n", send_bits / diff_t);
+		thrpt = (double)(send_bits) / diff_t_dbl;
+		fprintf (stdout, "[cefputfile] Thorghput = %d bps\n", (int)thrpt);
+	} else {
+		fprintf (stdout, "[cefgetfile] Duration  = 0.000 sec\n");
 	}
 	
 	exit (0);

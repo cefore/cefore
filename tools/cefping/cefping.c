@@ -337,7 +337,7 @@ cp_usage_output (
 	}
 	
 	fprintf (stdout, 	"Usage: cefping prefix [-r responder]"
-						"[-h hop_limit][-w wait_time]\n");
+						"[-h hop_limit][-w wait_time][-d config_file_dir][-p port_num]\n");
 	
 	return;
 }

@@ -92,6 +92,15 @@ cef_hash_tbl_item_set (
 	uint32_t klen,
 	void* elem
 );
+int
+cef_hash_tbl_item_set_for_app (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen,
+	uint8_t opt,
+	void* elem
+);
+
 uint32_t
 cef_hash_tbl_hashv_get (
 	CefT_Hash_Handle handle,
@@ -105,6 +114,13 @@ cef_hash_tbl_item_get (
 	const unsigned char* key,
 	uint32_t klen
 );
+void*
+cef_hash_tbl_item_get_for_app (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen
+);
+
 void*
 cef_hash_tbl_item_remove (
 	CefT_Hash_Handle handle,
@@ -163,6 +179,34 @@ cef_hash_tbl_item_set_prg (
 );
 void* 
 cef_hash_tbl_item_get_prg (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen
+);
+
+CefT_Hash_Handle
+cef_lhash_tbl_create (
+	uint32_t table_size
+);
+void
+cef_lhash_tbl_destroy (
+	CefT_Hash_Handle handle
+);
+int
+cef_lhash_tbl_item_set (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen,
+	void* elem
+);
+void*
+cef_lhash_tbl_item_get (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen
+);
+void*
+cef_lhash_tbl_item_remove (
 	CefT_Hash_Handle handle,
 	const unsigned char* key,
 	uint32_t klen

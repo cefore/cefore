@@ -75,12 +75,12 @@ static void* crlib_lookup_table_encode_val(int idx);
 static int crlib_lookup_table_decode_val(void* val);
 
 void crlib_lookup_table_init(int capacity) {
-    lookup_table = cef_hash_tbl_create(capacity);
+    lookup_table = cef_lhash_tbl_create(capacity);
     count = 0;
 }
 
 void crlib_lookup_table_destroy() {
-    cef_hash_tbl_destroy(lookup_table);
+    cef_lhash_tbl_destroy(lookup_table);
     count = 0;
 }
 
@@ -93,28 +93,28 @@ static int crlib_lookup_table_decode_val(void* val) {
 }
 
 int crlib_lookup_table_search(const unsigned char* key, int key_len) {
-    void* val = cef_hash_tbl_item_get(lookup_table, key, key_len);
+    void* val = cef_lhash_tbl_item_get(lookup_table, key, key_len);
     return crlib_lookup_table_decode_val(val);    
 }
 
 void crlib_lookup_table_add(const unsigned char* key, int key_len, int idx) {
-    cef_hash_tbl_item_set(
+    cef_lhash_tbl_item_set(
         lookup_table, key, key_len, crlib_lookup_table_encode_val(idx));  
     count++;
 }
 
 void* crlib_lookup_table_search_v(const unsigned char* key, int key_len) {
-    void* val = cef_hash_tbl_item_get(lookup_table, key, key_len);
+    void* val = cef_lhash_tbl_item_get(lookup_table, key, key_len);
     return val;
 }
 
 void crlib_lookup_table_add_v(const unsigned char* key, int key_len, void* value) {
-    cef_hash_tbl_item_set(lookup_table, key, key_len, value);
+    cef_lhash_tbl_item_set(lookup_table, key, key_len, value);
     count++;
 }
 
 void crlib_lookup_table_remove(const unsigned char* key, int key_len) {
-    cef_hash_tbl_item_remove(lookup_table, key, key_len);
+    cef_lhash_tbl_item_remove(lookup_table, key, key_len);
     count--;
 }
 

@@ -259,11 +259,21 @@ cef_csmgr_con_entry_create (
 	/* Get payload length */
 	memcpy (&value16, &buff[index], CefC_S_Length);
 	entry->pay_len = ntohs (value16);
+
+	if(entry->pay_len > len){
+		return(-1);
+	}
 	index += CefC_S_Length;
 	
 	/* Get cob message */
 	memcpy (&value16, &buff[index], CefC_S_Length);
 	entry->msg_len = ntohs (value16);
+	if(entry->pay_len > entry->msg_len){
+		return(-1);
+	}
+	if(entry->msg_len > len){
+		return(-1);
+	}
 	index += CefC_S_Length;
 	memcpy (entry->msg, &buff[index], entry->msg_len);
 	index += entry->msg_len;
@@ -271,6 +281,9 @@ cef_csmgr_con_entry_create (
 	/* Get cob name */
 	memcpy (&value16, &buff[index], CefC_S_Length);
 	entry->name_len = ntohs (value16);
+	if(entry->name_len > entry->msg_len){
+		return(-1);
+	}
 	index += CefC_S_Length;
 	memcpy (entry->name, &buff[index], entry->name_len);
 	index += entry->name_len;

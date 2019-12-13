@@ -451,13 +451,13 @@ cef_plugin_log_write (
 	const char* log
 ) {
 	struct timeval t;
-	uint64_t tus;
+	unsigned long long tus;
 	
 	if (log_level & plugin_log_lv) {
 		gettimeofday (&t, NULL);
-		tus = t.tv_sec * 1000000 + t.tv_usec;
+		tus = t.tv_sec * 1000000llu + t.tv_usec;
 		
-		fprintf (plugin_log_fp, "["FMTU64"][%s] %s\n", tus, plugin, log);
+		fprintf (plugin_log_fp, "[%llu][%s] %s\n", tus, plugin, log);
 	}
 	
 	return;

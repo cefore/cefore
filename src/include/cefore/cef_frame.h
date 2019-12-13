@@ -239,6 +239,7 @@
 
 #define CefC_T_OPT_APP_REG			0x1001
 #define CefC_T_OPT_APP_DEREG		0x1002
+#define CefC_T_OPT_APP_REG_P		0x1003		/* Accept prefix match of Name			*/
 
 /*----- TLVs for use in the CefC_T_OPT_MSGHASH TLV -----*/
 #define CefC_T_OPT_MH_INVALID		0x0000		/* Invalid								*/
@@ -306,13 +307,16 @@
 struct cef_app_frame {
 	uint32_t        version;
 	uint32_t        type;
-	uint64_t        actual_data_len;
+	uint64_t        actual_data_len;	/* version~payload_len							*/
+										/* + name_len + payload_len + length of trailer	*/
+										/*	length of trailer: sizeof(MagicNo)			*/
 	unsigned char*  name;
 	uint16_t        name_len;
 	uint32_t        chunk_num;
 	unsigned char*  payload;
 	uint16_t        payload_len;
-	unsigned char   data_entity[CefC_Max_Length];
+	unsigned char   data_entity[CefC_Max_Length];	/* Variable length data(name,payload)	*/
+													/* and trailer are stored.				*/
 } __attribute__((__packed__));
 
 struct cef_app_hdr {

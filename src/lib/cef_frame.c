@@ -102,10 +102,10 @@
 /****************************************************************************************
  State Variables
  ****************************************************************************************/
-static char cefprefix1[] = {"cef:/"};
-static char cefprefix2[] = {"cef://"};
-static size_t cefprefix1_len = sizeof (cefprefix1) - 1; /* without NULL */
-static size_t cefprefix2_len = sizeof (cefprefix2) - 1; /* without NULL */
+static char ccnprefix1[] = {"ccn:/"};
+static char ccnprefix2[] = {"ccn://"};
+static size_t ccnprefix1_len = sizeof (ccnprefix1) - 1; /* without NULL */
+static size_t ccnprefix2_len = sizeof (ccnprefix2) - 1; /* without NULL */
 
 /*------------------------------------------------------------------
 	the Link Message template
@@ -171,6 +171,7 @@ static uint16_t ftvh_number 		= CefC_T_OPT_NUMBER;
 static uint16_t ftvh_piggyback 		= CefC_T_OPT_PIGGYBACK;
 static uint16_t ftvh_app_reg 		= CefC_T_OPT_APP_REG;
 static uint16_t ftvh_app_dereg 		= CefC_T_OPT_APP_DEREG;
+static uint16_t ftvh_app_reg_p		= CefC_T_OPT_APP_REG_P;
 static uint16_t ftvh_transport 		= CefC_T_OPT_TRANSPORT;
 static uint16_t ftvh_efi 			= CefC_T_OPT_EFI;
 static uint16_t ftvh_iur 			= CefC_T_OPT_IUR;
@@ -237,6 +238,7 @@ static uint16_t ftvn_number;
 static uint16_t ftvn_piggyback;
 static uint16_t ftvn_app_reg;
 static uint16_t ftvn_app_dereg;
+static uint16_t ftvn_app_reg_p;
 static uint16_t ftvn_transport;
 static uint16_t ftvn_efi;
 static uint16_t ftvn_iur;
@@ -621,6 +623,7 @@ cef_frame_init (
 	ftvn_piggyback 		= htons (ftvh_piggyback);
 	ftvn_app_reg 		= htons (ftvh_app_reg);
 	ftvn_app_dereg 		= htons (ftvh_app_dereg);
+	ftvn_app_reg_p 		= htons (ftvh_app_reg_p);
 	ftvn_symbolic 		= htons (ftvh_symbolic);
 	ftvn_transport 		= htons (ftvh_transport);
 	ftvn_efi 			= htons (ftvh_efi);
@@ -868,15 +871,15 @@ cef_frame_conversion_uri_to_name (
 	char protocol[1024];
 	uint16_t name_len, prot_len, n;
 
-	strcpy (protocol, "cef");
+	strcpy (protocol, "ccn");
 
 	/* Parses the prefix of Name 	*/
-	if (memcmp (cefprefix2, ruri, cefprefix2_len) == 0) {
-		/* prefix is "cef://" 		*/
-		curi = ruri + cefprefix2_len;
-	} else if (memcmp (cefprefix1, ruri, cefprefix1_len) == 0) {
-		/* prefix is "cef:/" 		*/
-		curi = ruri + cefprefix1_len;
+	if (memcmp (ccnprefix2, ruri, ccnprefix2_len) == 0) {
+		/* prefix is "ccn://" 		*/
+		curi = ruri + ccnprefix2_len;
+	} else if (memcmp (ccnprefix1, ruri, ccnprefix1_len) == 0) {
+		/* prefix is "ccn:/" 		*/
+		curi = ruri + ccnprefix1_len;
 	} else {
 		/* prefix is "xxxxx:/" or "xxxxx://" or none */
 		curi = ruri;
@@ -898,7 +901,7 @@ cef_frame_conversion_uri_to_name (
 			} else {
 				curi = ruri + 1;
 			}
-			strcpy (protocol, "cef");
+			strcpy (protocol, "ccn");
 		} else {
 			if (curi[prot_len + 1] != '/') {
 				return (-1);
@@ -919,12 +922,18 @@ cef_frame_conversion_uri_to_name (
 	}
 
 	while (*curi) {
-		if ((*curi < 0x2c) ||
-			((*curi > 0x2d) && (*curi < 0x2f)) ||
+		if((*curi < 0x30) ||							/* NOT 0~9,A~Z,a~z */
 			((*curi > 0x39) && (*curi < 0x41)) ||
 			((*curi > 0x5a) && (*curi < 0x61)) ||
 			(*curi > 0x7a)) {
-			return (-1);
+			
+			if(*curi != 0x2d &&							/* - */
+				*curi != 0x2e &&						/* . */
+				*curi != 0x2f &&						/* / */
+				*curi != 0x5f &&						/* _ */
+				*curi != 0x7e) {						/* ~ */
+				return(-1);
+			}
 		}
 		ruri = curi + 1;
 
@@ -1566,7 +1575,7 @@ cef_frame_cefinfo_req_add_stamp (
 	/* Add a time stamp on the end of the option header 	*/
 	value64_tlv.type 	= ftvn_trace_rpt;
 	value64_tlv.length 	= htons (id_len + ftvh_8byte);
-	value64_tlv.value 	= cef_client_htonb (t.tv_sec * 1000000 + t.tv_usec);
+	value64_tlv.value 	= cef_client_htonb (t.tv_sec * 1000000llu + t.tv_usec);
 	memcpy (&buff[header_len], &value64_tlv, sizeof (struct value64_tlv));
 	index = header_len + CefC_S_TLF + ftvh_8byte;
 
@@ -1806,6 +1815,13 @@ cef_frame_interest_opt_header_create (
 		}
 		case CefC_T_OPT_APP_DEREG: {
 			fld_thdr.type 	= ftvn_app_dereg;
+			fld_thdr.length = 0x0000;
+			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+			index += CefC_S_TLF;
+			break;
+		}
+		case CefC_T_OPT_APP_REG_P: {
+			fld_thdr.type 	= ftvn_app_reg_p;
 			fld_thdr.length = 0x0000;
 			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
 			index += CefC_S_TLF;
@@ -2370,6 +2386,8 @@ cef_frame_opheader_user_tlv_parse (
 					poh->app_reg_f = CefC_App_Reg;
 				} else if (sub_type == CefC_T_OPT_APP_DEREG) {
 					poh->app_reg_f = CefC_App_DeReg;
+				} else if (sub_type == CefC_T_OPT_APP_REG_P) {
+					poh->app_reg_f = CefC_App_RegPrefix;
 				} else if (sub_type == CefC_T_OPT_INNOVATIVE) {
 					poh->bitmap_f = offset + index;
 					memcpy (poh->bitmap, &value[index], CefC_S_Innovate);
@@ -2454,6 +2472,7 @@ cef_frame_message_name_tlv_parse (
 	uint16_t index = 0;
 	uint16_t name_len = 0;
 	uint32_t* v32p;
+	uint16_t chnk_num_index = 0;
 
 	/* Parses Name 					*/
 	while (index < length) {
@@ -2470,7 +2489,8 @@ cef_frame_message_name_tlv_parse (
 			case CefC_T_CHUNK: {
 				pm->chnk_num = *((uint32_t*) &value[index]);
 				pm->chnk_num = ntohl (pm->chnk_num);
-				pm->chnk_num_f = index - CefC_S_TLF;
+				pm->chnk_num_f = 1;
+				chnk_num_index = index - CefC_S_TLF;
 				break;
 			}
 			case CefC_T_NONCE: {
@@ -2517,7 +2537,7 @@ cef_frame_message_name_tlv_parse (
 
 	if (pm->chnk_num_f) {
 		memcpy (&(pm->name[name_len]),
-			&value[pm->chnk_num_f], CefC_S_TLF + CefC_S_ChunkNum);
+			&value[chnk_num_index], CefC_S_TLF + CefC_S_ChunkNum);
 		pm->name_len += CefC_S_TLF + CefC_S_ChunkNum;
 	}
 
@@ -2755,18 +2775,23 @@ cef_frame_conversion_name_to_uri (
 		x += CefC_S_TLF;
 
 		for (i = 0 ; i < seg_len ; i++) {
-			if ((name[x + i] < 0x2c) ||
-				((name[x + i] > 0x2d) && (name[x + i] < 0x2f)) ||
-				((name[x + i] > 0x39) && (name[x + i] < 0x41)) ||
-				((name[x + i] > 0x5a) && (name[x + i] < 0x61)) ||
-				(name[x + i] > 0x7a)) {
-
-				sprintf (work, "%02X", name[x + i]);
-				strcpy (&uri[uri_len], work);
-				uri_len += strlen (work);
-			} else {
+			if(((name[x + i] >= 0x30) && (name[x + i] <= 0x39)) ||		/* 0~9 */
+				((name[x + i] >= 0x41) && (name[x + i] <= 0x5a)) ||		/* A~Z */
+				((name[x + i] >= 0x61) && (name[x + i] <= 0x7a))) {		/* a~z */
+				
 				uri[uri_len] = name[x + i];
 				uri_len++;
+			} else if ((name[x + i] == 0x2d) ||						/* - */
+					(name[x + i] == 0x2e) ||						/* . */
+					(name[x + i] == 0x2f) ||						/* / */
+					(name[x + i] == 0x5f) ||						/* _ */
+					(name[x + i] == 0x7e)) {						/* ~ */
+				uri[uri_len] = name[x + i];
+				uri_len++;
+			} else {
+				sprintf (work, "%02x", name[x + i]);
+				strcpy (&uri[uri_len], work);
+				uri_len += strlen (work);
 			}
 		}
 		uri[uri_len] = '/';

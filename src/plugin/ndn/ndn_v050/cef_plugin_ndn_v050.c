@@ -542,6 +542,10 @@ cef_plugin_ndn_cefint (
 		face = face->next;
 		sock_entry = (CefT_Ndn_Sock*) cef_hash_tbl_item_get_from_index (
 											sock_tbl, ndn_faces[face->faceid].index);
+		if (sock_entry == NULL) {
+			continue;
+		}
+		
 		sendto (ndn->listen_fd, ndn_msg, ndn_idx
 			, 0, sock_entry->ai_addr, sock_entry->ai_addrlen);
 	}
@@ -728,6 +732,10 @@ cef_plugin_ndn_cefcob (
 		face = face->next;
 		sock_entry = (CefT_Ndn_Sock*) cef_hash_tbl_item_get_from_index (
 											sock_tbl, ndn_faces[face->faceid].index);
+		if (sock_entry == NULL) {
+			continue;
+		}
+		
 		sendto (ndn->listen_fd, ndn_msg, ndn_idx
 			, 0, sock_entry->ai_addr, sock_entry->ai_addrlen);
 	}

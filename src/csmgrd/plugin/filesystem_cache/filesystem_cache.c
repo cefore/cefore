@@ -51,6 +51,8 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <sys/mman.h>
+#include <pthread.h>
 
 #include "filesystem_cache.h"
 #include <cefore/cef_client.h>
@@ -83,8 +85,10 @@
  State Variables
  ****************************************************************************************/
 static FscT_Cache_Handle* hdl = NULL;						/* FileSystemCache Handle	*/
-static FscT_File_Element* file_area = NULL;					/* File Element				*/
-
+static FscT_File_Element* file_put_area = NULL;					/* File Element				*/
+static FscT_File_Element* file_get_area = NULL;					/* File Element				*/
+static CsmgrdT_Content_Entry* cobs_arr = NULL;
+int fsc_compare_name(const void *a, const void *b);
 
 static char csmgr_conf_dir[PATH_MAX] = {"/usr/local/cefore"};
 
@@ -97,6 +101,7 @@ static int 						fsc_proc_cob_buff_idx[FscC_Max_Buff] 	= {0};
 static CsmgrT_Stat_Handle 		csmgr_stat_hdl;
 static uint64_t*				fsc_tx_cob_map[CsmgrT_Stat_Max];
 static uint64_t*				fsc_tx_cob_time[CsmgrT_Stat_Max];
+static pthread_mutex_t 			fsc_cs_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 /****************************************************************************************
@@ -321,13 +326,22 @@ fsc_cs_create (
 		"Creation the cache directory (%s) ... OK\n", hdl->fsc_cache_path);
 	
 	/* Initialize FscT_File_Element 	*/
-	if (file_area != NULL) {
-		free (file_area);
-		file_area = NULL;
+	if (file_put_area != NULL) {
+		free (file_put_area);
+		file_put_area = NULL;
 	}
-	file_area = (FscT_File_Element*) malloc (FscC_File_Area);
-	if (file_area == NULL) {
-		csmgrd_log_write (CefC_Log_Error, "Failed to get memory required for startup.\n");
+	file_put_area = (FscT_File_Element*) malloc (FscC_File_Area);
+	if (file_put_area == NULL) {
+		csmgrd_log_write (CefC_Log_Error, "Failed to get memory required for startup.(for file_put_area)\n");
+		return (-1);
+	}
+	if (file_get_area != NULL) {
+		free (file_get_area);
+		file_get_area = NULL;
+	}
+	file_get_area = (FscT_File_Element*) malloc (FscC_File_Area);
+	if (file_get_area == NULL) {
+		csmgrd_log_write (CefC_Log_Error, "Failed to get memory required for startup.(for file_get_area)\n");
 		return (-1);
 	}
 	csmgrd_log_write (CefC_Log_Info, "Creation the file area ... OK\n");
@@ -425,7 +439,9 @@ fsc_cob_process_thread (
 				csmgrd_dbg_write (CefC_Dbg_Fine, 
 					"cob put thread starts to write %d cobs\n", fsc_proc_cob_buff_idx[i]);
 #endif // CefC_Debug
+				pthread_mutex_lock (&fsc_cs_mutex);
 				fsc_cache_cob_write (&fsc_proc_cob_buff[i][0], fsc_proc_cob_buff_idx[i]);
+				pthread_mutex_unlock (&fsc_cs_mutex);
 				fsc_proc_cob_buff_idx[i] = 0;
 #ifdef CefC_Debug
 				csmgrd_dbg_write (CefC_Dbg_Fine, 
@@ -439,6 +455,29 @@ fsc_cob_process_thread (
 	pthread_exit (NULL);
 	
 	return ((void*) NULL);
+}
+/*--------------------------------------------------------------------------------------
+	function for sort cobs
+----------------------------------------------------------------------------------------*/
+int
+fsc_compare_name(const void *a, const void *b) {
+	int len;
+	int ret;
+	if(cobs_arr[*(int *)a].name_len > cobs_arr[*(int *)b].name_len){
+		len = cobs_arr[*(int *)a].name_len;
+	} else {
+		len = cobs_arr[*(int *)b].name_len;
+	}
+	ret = memcmp(cobs_arr[*(int *)a].name, cobs_arr[*(int *)b].name, len);
+	if(ret == 0){
+		if(cobs_arr[*(int *)a].chnk_num > cobs_arr[*(int *)b].chnk_num)
+			ret = 1;
+		else if(cobs_arr[*(int *)a].chnk_num < cobs_arr[*(int *)b].chnk_num)
+			ret = -1;
+		else
+			ret = 0;
+	}
+	return(ret);
 }
 /*--------------------------------------------------------------------------------------
 	writes the cobs to memry cache
@@ -464,23 +503,40 @@ fsc_cache_cob_write (
 	char			file_path[PATH_MAX];
 	char			cont_path[PATH_MAX];
 	
-	FILE* 			fp = NULL;
-	size_t 			ret_bytes;
+	FILE* 			fpp = NULL;
+	int 			fd = -1;
 	
 	uint64_t 		mask;
 	uint16_t 		x;
 	
+	int*			indxs = NULL;
+	int				cnt = 0;
+	
+	long			page_size, map_size;
+	FscT_File_Element*		mmp_file_put_area = NULL;
+	
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	if (hdl->cache_cobs >= hdl->cache_cob_max) {
 		return (0);
 	}
 	
+	indxs = (int*)malloc(sizeof(int) * cob_num);
+	cobs_arr = (CsmgrdT_Content_Entry*)malloc(sizeof(CsmgrdT_Content_Entry) * cob_num);
 	while (index < cob_num) {
+		indxs[index] = index;
+		cobs_arr[index] = cobs[index];
+		index++;
+	}
+	qsort(indxs, cob_num, sizeof(int), fsc_compare_name);
+	index = 0;
+	
+	while (cnt < cob_num) {
 		
+		index = indxs[cnt];
 		if(cobs[index].chnk_num > CsmgrT_Stat_Seq_Max) {
-			index++;
+			cnt++;
 			continue;
 		}
 		/* Update the directory to write the received cob 		*/
@@ -537,14 +593,16 @@ fsc_cache_cob_write (
 		
 		if (work_page_index != prev_page_index) {
 			
-			if (fp) {
+			if (fd != -1) {
 #ifdef CefC_Debug
 				csmgrd_dbg_write (CefC_Dbg_Finer, 
 					"cob put thread writes the page: %s\n", cont_path);
 #endif // CefC_Debug
-				fwrite (file_area, FscC_File_Area, 1, fp);
-				fclose (fp);
-				fp = NULL;
+				msync(mmp_file_put_area, map_size, MS_SYNC);
+//				msync(mmp_file_put_area, map_size, MS_ASYNC);
+				close (fd);
+				munmap(mmp_file_put_area, map_size);
+				fd = -1;
 			}
 			
 			prev_page_index = work_page_index;
@@ -554,27 +612,22 @@ fsc_cache_cob_write (
 			csmgrd_dbg_write (CefC_Dbg_Finer, 
 				"cob put thread selects the content page: %s\n", file_path);
 #endif // CefC_Debug
-			fp = fopen (file_path, "rb");
-			if (fp) {
-				ret_bytes = fread (file_area, FscC_File_Area, 1, fp);
-				fclose (fp);
-				fp = NULL;
-				if (ret_bytes < 1) {
-					goto NextCob;
-				}
-				fp = fopen (file_path, "wb");
-				if (!fp) {
-					csmgrd_log_write (CefC_Log_Error, 
-						"Failed to open the cache file (%s)\n", file_path);
-					goto NextCob;
-				}
+			fd = open (file_path, O_RDWR);
+
+			page_size = getpagesize();
+			map_size = (FscC_File_Area / page_size + 1) * page_size;
+
+			if (fd != -1) {
+				mmp_file_put_area = (FscT_File_Element*)mmap(NULL, map_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 			} else {
-				fp = fopen (file_path, "wb");
-				if (fp) {
-					memset (file_area, 0, FscC_File_Area);
-					fwrite (file_area, FscC_File_Area, 1, fp);
-					fclose (fp);
-					fp = fopen (file_path, "wb");
+				fpp = fopen (file_path, "wb");
+				if (fpp) {
+					memset (file_put_area, 0, FscC_File_Area);
+					fwrite (file_put_area, FscC_File_Area, 1, fpp);
+					fclose(fpp);
+					
+					fd = open (file_path, O_RDWR|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+					mmp_file_put_area = (FscT_File_Element*)mmap(NULL, map_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 				} else {
 					csmgrd_log_write (CefC_Log_Error, 
 						"Failed to open the cache file (%s)\n", file_path);
@@ -591,10 +644,10 @@ fsc_cache_cob_write (
 		
 		/* Write to memory 							*/
 		work_pos_index = cobs[index].chnk_num % FscC_Page_Cob_Num;
-		memcpy (file_area[work_pos_index].msg, cobs[index].msg, cobs[index].msg_len);
-		file_area[work_pos_index].msg_len 	= cobs[index].msg_len;
-		file_area[work_pos_index].chnk_num 	= cobs[index].chnk_num;
-		file_area[work_pos_index].pay_len 	= cobs[index].pay_len;
+		memcpy (mmp_file_put_area[work_pos_index].msg, cobs[index].msg, cobs[index].msg_len);
+		mmp_file_put_area[work_pos_index].msg_len 	= cobs[index].msg_len;
+		mmp_file_put_area[work_pos_index].chnk_num 	= cobs[index].chnk_num;
+		mmp_file_put_area[work_pos_index].pay_len 	= cobs[index].pay_len;
 		
 		if (hdl->algo_apis.insert) {
 			(*(hdl->algo_apis.insert))(&cobs[index]);
@@ -606,16 +659,21 @@ fsc_cache_cob_write (
 			break;
 		}
 NextCob:
-		index++;
+		cnt++;
 	}
 	
-	if (fp) {
+	if (fd != -1) {
 #ifdef CefC_Debug
 		csmgrd_dbg_write (CefC_Dbg_Finer, 
 			"cob put thread writes the page: %s\n", cont_path);
 #endif // CefC_Debug
-		fwrite (file_area, FscC_File_Area, 1, fp);
-		fclose (fp);
+		msync(mmp_file_put_area, map_size, MS_SYNC);
+//		msync(mmp_file_put_area, map_size, MS_ASYNC);
+		close (fd);
+		munmap(mmp_file_put_area, map_size);
+	}
+	if (cobs_arr != NULL) {
+		free (cobs_arr);
 	}
 	
 	return (0);
@@ -845,6 +903,9 @@ fsc_cs_expire_check (
 	int 			trg_key_len=0;
 	int 			name_len;
 	
+	if (pthread_mutex_trylock(&fsc_cs_mutex) != 0) {
+		return;
+	}
 	do {
 		rcd = csmgrd_stat_expired_content_info_get (csmgr_stat_hdl, &index);
 		
@@ -894,6 +955,7 @@ LOOP_END:;
 		csmgrd_stat_content_info_delete (csmgr_stat_hdl, rcd->name, rcd->name_len);
 		
 	} while (rcd);
+	pthread_mutex_unlock (&fsc_cs_mutex);
 	
 	return;
 }
@@ -1022,9 +1084,13 @@ fsc_cs_destroy (
 	}
 	
 	/* Destroy FscT_File_Element */
-	if (file_area != NULL) {
-		free (file_area);
-		file_area = NULL;
+	if (file_put_area != NULL) {
+		free (file_put_area);
+		file_put_area = NULL;
+	}
+	if (file_get_area != NULL) {
+		free (file_get_area);
+		file_get_area = NULL;
 	}
 	
 	/* Check handle */
@@ -1065,14 +1131,15 @@ fsc_cache_item_get (
 	uint16_t 	x;
 	
 	char		file_path[PATH_MAX];
+	static char		red_file_path[PATH_MAX] = {0};
+	
 	
 	int 		page_index;
 	int 		pos_index;
-	FILE* 		fp = NULL;
+	int 		fd = -1;
 	
 	int 		i;
 	int 		tx_cnt = 0;
-	size_t 		ret_bytes;
 	int			resend_1cob_f = 0;
 	
 	unsigned char 	trg_key[CsmgrdC_Key_Max];
@@ -1081,13 +1148,18 @@ fsc_cache_item_get (
 	uint64_t nowt;
 	struct timeval tv;
 	
+	long				page_size, map_size;
+	FscT_File_Element*	mmp_file_get_area = NULL;
+	
 #ifdef CefC_Debug
 	csmgrd_dbg_write (CefC_Dbg_Finest, "Incoming Interest : seqno = %u\n", seqno);
 #endif // CefC_Debug
+	pthread_mutex_lock (&fsc_cs_mutex);
 	/* Obtain the information of the specified content 		*/
 	rcd = csmgrd_stat_content_info_access (csmgr_stat_hdl, key, key_size);
 	
 	if (!rcd) {
+		pthread_mutex_unlock (&fsc_cs_mutex);
 		return (CefC_Csmgr_Cob_NotExist);
 	}
 	if (rcd->expire_f) {
@@ -1097,6 +1169,7 @@ fsc_cache_item_get (
 #endif // CefC_Debug
 		fsc_recursive_dir_clear (file_path);
 		csmgrd_stat_content_info_delete (csmgr_stat_hdl, key, key_size);
+		pthread_mutex_unlock (&fsc_cs_mutex);
 		return (CefC_Csmgr_Cob_NotExist);
 	}
 	
@@ -1114,13 +1187,14 @@ fsc_cache_item_get (
 		if (hdl->algo_apis.miss) {
 			(*(hdl->algo_apis.miss))(trg_key, trg_key_len);
 		}
+		pthread_mutex_unlock (&fsc_cs_mutex);
 		return (CefC_Csmgr_Cob_NotExist);
 	}
 	if (hdl->algo_apis.hit) {
 		(*(hdl->algo_apis.hit))(trg_key, trg_key_len);
 	}
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	if (nowt > fsc_tx_cob_time[rcd->index][x]) {
 		fsc_tx_cob_map[rcd->index][x] = 0;
@@ -1138,29 +1212,45 @@ fsc_cache_item_get (
 	page_index = (int)(seqno / FscC_Page_Cob_Num);
 	sprintf (file_path, "%s/%d/%d", hdl->fsc_cache_path, (int) rcd->index, page_index);
 	
-	fp = fopen (file_path, "rb");
-	if (!fp) {
-		csmgrd_log_write (CefC_Log_Error, 
-			"Failed to open the cache file (%s)\n", file_path);
-		goto ItemGetPost;
-	}
-	ret_bytes = fread (file_area, FscC_File_Area, 1, fp);
-	if (ret_bytes < 1) {
-		goto ItemGetPost;
+	if(strcmp(red_file_path, file_path) != 0){
+		strcpy(red_file_path, file_path);
+	
+		fd = open (file_path, O_RDWR);
+		if (fd == -1) {
+			csmgrd_log_write (CefC_Log_Error, 
+				"Failed to open the cache file (%s)\n", file_path);
+			goto ItemGetPost;
+		}
+		
+		page_size = getpagesize();
+		map_size = (FscC_File_Area / page_size + 1) * page_size;
+		mmp_file_get_area = (FscT_File_Element*)mmap(NULL, map_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+		memcpy(file_get_area, mmp_file_get_area, FscC_File_Area);
+
+	} else {
+		fd = -1;
 	}
 	
 	/* Send the cobs 		*/
 	pos_index = (int)(seqno % FscC_Page_Cob_Num);
 #ifdef CefC_Debug
 	csmgrd_dbg_write (CefC_Dbg_Finest, 
-		"send seqno = %u (%d bytes)\n", seqno, file_area[pos_index].msg_len);
+		"send seqno = %u (%d bytes)\n", seqno, file_get_area[pos_index].msg_len);
 #endif // CefC_Debug
+	if (seqno == 0) {
+		csmgrd_stat_access_count_update (
+			csmgr_stat_hdl, key, key_size);
+	}
+	
+	/* Send Cob to cefnetd */
 	csmgrd_plugin_cob_msg_send (
-		sock, file_area[pos_index].msg, file_area[pos_index].msg_len);
+		sock, file_get_area[pos_index].msg, file_get_area[pos_index].msg_len);
 	if(resend_1cob_f == 1){
-		if (fp) {
-			fclose (fp);
+		if (fd != -1) {
+			close (fd);
+			munmap(mmp_file_get_area, map_size);
 		}
+		pthread_mutex_unlock (&fsc_cs_mutex);
 		return (CefC_Csmgr_Cob_Exist);
 	}
 	tx_cnt++;
@@ -1191,10 +1281,10 @@ fsc_cache_item_get (
 			fsc_tx_cob_map[rcd->index][x] |= mask;
 #ifdef CefC_Debug
 			csmgrd_dbg_write (CefC_Dbg_Finest, 
-				"send seqno = %u (%d bytes)\n", seqno, file_area[i].msg_len);
+				"send seqno = %u (%d bytes)\n", seqno, file_get_area[i].msg_len);
 #endif // CefC_Debug
 			csmgrd_plugin_cob_msg_send (
-				sock, file_area[i].msg, file_area[i].msg_len);
+				sock, file_get_area[i].msg, file_get_area[i].msg_len);
 			tx_cnt++;
 			seqno++;
 		} else {
@@ -1203,10 +1293,11 @@ fsc_cache_item_get (
 	}
 	
 ItemGetPost:
-	if (fp) {
-		fclose (fp);
+	if (fd != -1) {
+		close (fd);
+		munmap(mmp_file_get_area, map_size);
 	}
-	
+	pthread_mutex_unlock (&fsc_cs_mutex);
 	return (CefC_Csmgr_Cob_Exist);
 }
 /*--------------------------------------------------------------------------------------
@@ -1320,7 +1411,7 @@ fsc_cs_ac_cnt_inc (
 		
 		if (chunk_num == 0) {
 			csmgrd_stat_access_count_update (
-				csmgr_stat_hdl, &key[0], key_size - index);
+				csmgr_stat_hdl, &key[0], index);
 		}
 	}
 	
@@ -1375,8 +1466,8 @@ fsc_content_lifetime_set (
 	uint64_t new_life;
 	
 	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
-	new_life = nowt + lifetime * 1000000;
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
+	new_life = nowt + lifetime * 1000000llu;
 	
 	/* Updtes the content information */
 	csmgrd_stat_content_lifetime_update (csmgr_stat_hdl, name, name_len, new_life);
