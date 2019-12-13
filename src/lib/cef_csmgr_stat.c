@@ -611,6 +611,7 @@ csmgrd_stat_content_info_delete (
 	if (rcd) {
 		tbl->cached_con_num--;
 		memset (rcd, 0, sizeof (CsmgrT_Stat));
+		rcd->name_len = 0xFFFF;
 	}
 	return;
 }
@@ -656,6 +657,7 @@ csmgrd_stat_content_lookup (
 ) {
 	uint32_t hash;
 	uint32_t i, n;
+	int find_f = 0;
 	
 	if (create_f) {
 		*create_f = 0;
@@ -675,7 +677,7 @@ csmgrd_stat_content_lookup (
 		}
 	}
 	
-	if (tbl->rcds[i]->hash == 0) {
+	if (tbl->rcds[i]->name_len == 0 || tbl->rcds[i]->name_len == 0xFFFF) {
 		memset (tbl->rcds[i], 0, sizeof (CsmgrT_Stat));
 		tbl->rcds[i]->hash 		= hash;
 		tbl->rcds[i]->index 	= (uint16_t) i;
@@ -689,30 +691,38 @@ csmgrd_stat_content_lookup (
 	}
 	
 	for (n = i + 1 ; n < CsmgrT_Stat_Max ; n++) {
+		if (tbl->rcds[i]->name_len == 0) {
+			find_f = 1;
+			break;
+		}
 		if ((tbl->rcds[n]->name_len == name_len) && 
 			(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
 			return (tbl->rcds[n]);
 		}
 	}
-	for (n = 0 ; n < i ; n++) {
-		if ((tbl->rcds[n]->name_len == name_len) && 
-			(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
-			return (tbl->rcds[n]);
+	if (find_f == 0) {
+		for (n = 0 ; n < i ; n++) {
+			if (tbl->rcds[i]->name_len == 0) {
+				find_f = 1;
+				break;
+			}
+			if ((tbl->rcds[n]->name_len == name_len) && 
+				(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
+				return (tbl->rcds[n]);
+			}
 		}
 	}
 	
-	for (i = 0 ; i < CsmgrT_Stat_Max ; i++) {
-		if (tbl->rcds[i]->hash == 0) {
-			memset (tbl->rcds[i], 0, sizeof (CsmgrT_Stat));
-			tbl->rcds[i]->hash 		= hash;
-			tbl->rcds[i]->name_len 	= name_len;
-			memcpy (tbl->rcds[i]->name, name, name_len);
-			
-			if (create_f) {
-				*create_f = 1;
-			}
-			return (tbl->rcds[i]);
+	if (find_f == 1) {
+		memset (tbl->rcds[n], 0, sizeof (CsmgrT_Stat));
+		tbl->rcds[n]->hash 		= hash;
+		tbl->rcds[n]->name_len 	= name_len;
+		memcpy (tbl->rcds[n]->name, name, name_len);
+		
+		if (create_f) {
+			*create_f = 1;
 		}
+		return (tbl->rcds[n]);
 	}
 	
 	return (NULL);
@@ -741,12 +751,20 @@ csmgrd_stat_content_search (
 		}
 	}
 	for (n = i + 1 ; n < CsmgrT_Stat_Max ; n++) {
+		if (tbl->rcds[n]->name_len == 0) {
+			return (NULL);
+		}
+		
 		if ((tbl->rcds[n]->name_len == name_len) && 
 			(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
 			return (tbl->rcds[n]);
 		}
 	}
 	for (n = 0 ; n < i ; n++) {
+		if (tbl->rcds[n]->name_len == 0) {
+			return (NULL);
+		}
+		
 		if ((tbl->rcds[n]->name_len == name_len) && 
 			(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
 			return (tbl->rcds[n]);

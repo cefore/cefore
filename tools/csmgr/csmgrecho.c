@@ -241,6 +241,8 @@ main (
 	len = recv (fds[0].fd, buff, CefC_Csmgr_Stat_Mtu, 0);
 	if (len > 0) {
 		/* receive message	*/
+		cef_csmgr_buffer_init ();
+		
 		len = csmgr_frame_get (buff, len, frame, &frame_size, &type);
 		if (frame_size > 0) {
 			if (type != CefC_Csmgr_Msg_Type_Echo) {

@@ -303,15 +303,16 @@
 /*--------------------------------------------------------------*/
 /* Headers														*/
 /*--------------------------------------------------------------*/
-
 struct cef_app_frame {
-	uint32_t		version;
-	uint32_t		type;
-	unsigned char 	name[CefC_Max_Length];
-	uint16_t 		name_len;
-	uint32_t		chunk_num;
-	unsigned char 	payload[CefC_Max_Msg_Size];
-	uint16_t 		payload_len;
+	uint32_t        version;
+	uint32_t        type;
+	uint64_t        actual_data_len;
+	unsigned char*  name;
+	uint16_t        name_len;
+	uint32_t        chunk_num;
+	unsigned char*  payload;
+	uint16_t        payload_len;
+	unsigned char   data_entity[CefC_Max_Length];
 } __attribute__((__packed__));
 
 struct cef_app_hdr {

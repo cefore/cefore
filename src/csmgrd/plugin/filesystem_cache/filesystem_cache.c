@@ -473,12 +473,16 @@ fsc_cache_cob_write (
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000 + tv.tv_usec;
 	
-	if (hdl->cache_cobs > hdl->cache_cob_max) {
+	if (hdl->cache_cobs >= hdl->cache_cob_max) {
 		return (0);
 	}
 	
 	while (index < cob_num) {
 		
+		if(cobs[index].chnk_num > CsmgrT_Stat_Seq_Max) {
+			index++;
+			continue;
+		}
 		/* Update the directory to write the received cob 		*/
 		if ((cobs[index].name_len != name_len) ||
 			(memcmp (cobs[index].name, name, cobs[index].name_len))) {
@@ -598,6 +602,9 @@ fsc_cache_cob_write (
 			hdl->cache_cobs++;
 		}
 		
+		if (hdl->cache_cobs >= hdl->cache_cob_max) {
+			break;
+		}
 NextCob:
 		index++;
 	}
@@ -830,6 +837,13 @@ fsc_cs_expire_check (
 	int 			index = 0;
 	CsmgrT_Stat* 	rcd = NULL;
 	char			file_path[PATH_MAX];
+	uint32_t 		i, n;
+	uint64_t 		mask;
+//	int 			cob_cnt=0;
+	uint32_t 		chnk_num, net_chnk_num;
+	unsigned char 	trg_key[65535];
+	int 			trg_key_len=0;
+	int 			name_len;
 	
 	do {
 		rcd = csmgrd_stat_expired_content_info_get (csmgr_stat_hdl, &index);
@@ -840,6 +854,43 @@ fsc_cs_expire_check (
 		
 		sprintf (file_path, "%s/%d", hdl->fsc_cache_path, (int) rcd->index);
 		fsc_recursive_dir_clear (file_path);
+
+
+		if (hdl->algo_apis.erase) {
+			for (i = 0 ; i < CsmgrT_Map_Max ; i++) {
+				if (rcd->cob_map[i]) {
+					mask = 0x0000000000000001;
+					for (n = 0 ; n < 64 ; n++) {
+						if (!rcd->cob_num) {
+							goto LOOP_END;
+						}
+						if (rcd->cob_map[i] & mask) {
+							name_len = rcd->name_len;
+							memcpy (&trg_key[0], rcd->name, name_len);
+							trg_key[name_len] 		= 0x00;
+							trg_key[name_len + 1] 	= 0x10;
+							trg_key[name_len + 2] 	= 0x00;
+							trg_key[name_len + 3] 	= 0x04;
+							chnk_num = (i * 64 + n);
+							net_chnk_num = htonl (chnk_num);
+							memcpy (&trg_key[name_len + 4], &net_chnk_num, sizeof (uint32_t));
+							trg_key_len = name_len + 4 + sizeof (uint32_t);
+
+							(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
+
+							csmgrd_stat_cob_remove (
+								csmgr_stat_hdl, rcd->name, name_len, chnk_num, 0);
+							
+							hdl->cache_cobs--;
+							
+						}
+						mask <<= 1;
+					}
+				}
+			}
+		}
+LOOP_END:;
+
 		csmgrd_stat_content_info_delete (csmgr_stat_hdl, rcd->name, rcd->name_len);
 		
 	} while (rcd);
@@ -947,13 +998,13 @@ fsc_cs_destroy (
 ) {
 	int i = 0;
 	void* status;
-
+	
 	/* Destory the threads 		*/
 	if (fsc_rcv_thread_f) {
 		fsc_rcv_thread_f = 0;
 		pthread_join (fsc_rcv_thread, &status);
 	}
-	
+
 	/* Destroy the common work buffer 		*/
 	for (i = 0 ; i < FscC_Max_Buff ; i++) {
 		if (fsc_proc_cob_buff[i]) {
@@ -1022,6 +1073,7 @@ fsc_cache_item_get (
 	int 		i;
 	int 		tx_cnt = 0;
 	size_t 		ret_bytes;
+	int			resend_1cob_f = 0;
 	
 	unsigned char 	trg_key[CsmgrdC_Key_Max];
 	int 			trg_key_len;
@@ -1079,7 +1131,7 @@ fsc_cache_item_get (
 #ifdef CefC_Debug
 		csmgrd_dbg_write (CefC_Dbg_Finest, "seqno = %u is already fowarded\n", seqno);
 #endif // CefC_Debug
-		return (CefC_Csmgr_Cob_Exist);
+		resend_1cob_f = 1;
 	}
 	
 	/* Open the file that specified cob is cached 		*/
@@ -1105,6 +1157,12 @@ fsc_cache_item_get (
 #endif // CefC_Debug
 	csmgrd_plugin_cob_msg_send (
 		sock, file_area[pos_index].msg, file_area[pos_index].msg_len);
+	if(resend_1cob_f == 1){
+		if (fp) {
+			fclose (fp);
+		}
+		return (CefC_Csmgr_Cob_Exist);
+	}
 	tx_cnt++;
 	seqno++;
 	fsc_tx_cob_time[rcd->index][x] = nowt + FscC_Map_Reset_Time;
@@ -1170,7 +1228,9 @@ fsc_cache_item_puts (
 	
 	for (i = 0 ; i < FscC_Max_Buff ; i++) {
 		
-		pthread_mutex_lock (&fsc_comn_buff_mutex[i]);
+		if (pthread_mutex_trylock(&fsc_comn_buff_mutex[i]) != 0) {
+			continue;
+		}
 		
 		if (fsc_proc_cob_buff_idx[i] == 0) {
 #ifdef CefC_Debug
@@ -1198,7 +1258,6 @@ fsc_cache_item_puts (
 			}
 		}
 		pthread_mutex_unlock (&fsc_comn_buff_mutex[i]);
-		usleep (100000);
 		
 		if (index >= msg_len) {
 			break;

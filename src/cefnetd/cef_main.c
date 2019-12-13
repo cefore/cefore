@@ -122,6 +122,9 @@ int main (
 		exit (1);
 	}
 	
+	/* Set signal */
+	signal(SIGPIPE, SIG_IGN);
+
 	/* Launches cefnetd 			*/
 	cef_node_run ();
 	

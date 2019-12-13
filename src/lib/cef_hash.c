@@ -35,6 +35,8 @@
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
+#include <openssl/md5.h>
+
 #include <cefore/cef_hash.h>
 
 /****************************************************************************************
@@ -44,9 +46,6 @@
 #define CefC_Cleanup_Wmin	 		16
 #define CefC_Cleanup_Smin	 		0
 #define CefC_Cleanup_Smax	 		4
-
-static const uint32_t CEF_OFFSET_BASIS_32 = 2166136261U;
-static const uint32_t CEF_PRIME_32 = 16777619U;
 
 /****************************************************************************************
  Structures Declaration
@@ -182,8 +181,7 @@ cef_hash_tbl_item_set (
 
 	hash = cef_hash_number_create (ht->seed, key, klen);
 	index = hash % ht->elem_max;
-
-	if (ht->tbl[index].hash == 0) {
+	if (ht->tbl[index].klen == 0 || ht->tbl[index].klen == -1) {
 		ht->tbl[index].hash = hash;
 		ht->tbl[index].elem = elem;
 		ht->tbl[index].klen = klen;
@@ -192,14 +190,8 @@ cef_hash_tbl_item_set (
 		return (index);
 	}
 
-	if ((ht->tbl[index].hash == hash) &&
-		(ht->tbl[index].klen == klen)) {
-
-		ht->tbl[index].elem = elem;
-		return (index);
-	}
 	for (i = index + 1 ; i < ht->elem_max ; i++) {
-		if (ht->tbl[i].hash == 0) {
+		if (ht->tbl[i].klen == 0 || ht->tbl[i].klen == -1) {
 			ht->tbl[i].hash = hash;
 			ht->tbl[i].elem = elem;
 			ht->tbl[i].klen = klen;
@@ -208,14 +200,16 @@ cef_hash_tbl_item_set (
 			return (i);
 		}
 		if ((ht->tbl[i].hash == hash) &&
-			(ht->tbl[i].klen == klen)) {
+			(ht->tbl[i].klen == klen) &&
+			(memcmp(ht->tbl[i].key, key, klen) == 0)) {
 			ht->tbl[i].elem = elem;
+			
 			return (i);
 		}
 	}
 
 	for (i = 0 ; i < index ; i++) {
-		if (ht->tbl[i].hash == 0) {
+		if (ht->tbl[i].klen == 0 || ht->tbl[i].klen == -1) {
 			ht->tbl[i].hash = hash;
 			ht->tbl[i].elem = elem;
 			ht->tbl[i].klen = klen;
@@ -224,7 +218,8 @@ cef_hash_tbl_item_set (
 			return (i);
 		}
 		if ((ht->tbl[i].hash == hash) &&
-			(ht->tbl[i].klen == klen)) {
+			(ht->tbl[i].klen == klen) &&
+			(memcmp(ht->tbl[i].key, key, klen) == 0)) {
 			ht->tbl[i].elem = elem;
 			return (i);
 		}
@@ -250,7 +245,7 @@ cef_hash_tbl_item_set_prg (
 	hash = cef_hash_number_create (ht->seed, key, klen);
 	index = hash % ht->elem_max;
 	
-	if (ht->tbl[index].hash) {
+	if (ht->tbl[index].klen != 0 && ht->tbl[index].klen != -1) {
 		old_elem = ht->tbl[index].elem;
 	}
 	ht->tbl[index].hash = hash;
@@ -321,20 +316,29 @@ cef_hash_tbl_item_get (
 	index = hash % ht->elem_max;
 
 	if ((ht->tbl[index].hash == hash) &&
-		(ht->tbl[index].klen == klen)) {
+		(ht->tbl[index].klen == klen) &&
+		(memcmp(ht->tbl[index].key, key, klen) == 0)) {
 		return ((void*) ht->tbl[index].elem);
 	}
 
 	for (i = index + 1 ; i < ht->elem_max ; i++) {
+		if(ht->tbl[i].klen == 0){
+			return ((void*) NULL);
+		}
 		if ((ht->tbl[i].hash == hash) &&
-			(ht->tbl[i].klen == klen)) {
+			(ht->tbl[i].klen == klen) &&
+			(memcmp(ht->tbl[i].key, key, klen) == 0)) {
 			return ((void*) ht->tbl[i].elem);
 		}
 	}
 
 	for (i = 0 ; i < index ; i++) {
+		if(ht->tbl[i].klen == 0){
+			return ((void*) NULL);
+		}
 		if ((ht->tbl[i].hash == hash) &&
-			(ht->tbl[i].klen == klen)) {
+			(ht->tbl[i].klen == klen) &&
+			(memcmp(ht->tbl[i].key, key, klen) == 0)) {
 			return ((void*) ht->tbl[i].elem);
 		}
 	}
@@ -375,16 +379,20 @@ cef_hash_tbl_item_remove (
 	index = hash % ht->elem_max;
 
 	if ((ht->tbl[index].hash == hash) &&
-		(ht->tbl[index].klen == klen)) {
+		(ht->tbl[index].klen == klen) &&
+		(memcmp(ht->tbl[index].key, key, klen) == 0)) {
 		ht->tbl[index].hash = 0;
+		ht->tbl[index].klen = -1;
 		ht->elem_num--;
 		return ((void*) ht->tbl[index].elem);
 	}
 
 	for (i = index + 1 ; i < ht->elem_max ; i++) {
 		if ((ht->tbl[i].hash == hash) &&
-			(ht->tbl[i].klen == klen)) {
+			(ht->tbl[i].klen == klen) &&
+			(memcmp(ht->tbl[i].key, key, klen) == 0)) {
 			ht->tbl[i].hash = 0;
+			ht->tbl[i].klen = -1;
 			ht->elem_num--;
 			return ((void*) ht->tbl[i].elem);
 		}
@@ -392,8 +400,10 @@ cef_hash_tbl_item_remove (
 
 	for (i = 0 ; i < index ; i++) {
 		if ((ht->tbl[i].hash == hash) &&
-			(ht->tbl[i].klen == klen)) {
+			(ht->tbl[i].klen == klen) &&
+			(memcmp(ht->tbl[i].key, key, klen) == 0)) {
 			ht->tbl[i].hash = 0;
+			ht->tbl[i].klen = -1;
 			ht->elem_num--;
 			return ((void*) ht->tbl[i].elem);
 		}
@@ -415,7 +425,7 @@ cef_hash_tbl_item_check_from_index (
 	}
 
 	for (i = *index ; i < ht->elem_max ; i++) {
-		if (ht->tbl[i].hash) {
+		if (ht->tbl[i].klen != 0 && ht->tbl[i].klen != -1){
 			*index = i;
 			return ((void*) ht->tbl[i].elem);
 		}
@@ -435,8 +445,9 @@ cef_hash_tbl_item_remove_from_index (
 		return ((void*) NULL);
 	}
 
-	if (ht->tbl[index].hash) {
+	if (ht->tbl[index].klen != 0 && ht->tbl[index].klen != -1) {
 		ht->tbl[index].hash = 0;
+		ht->tbl[index].klen = -1;
 		ht->elem_num--;
 		return ((void*) ht->tbl[index].elem);
 	}
@@ -464,14 +475,14 @@ cef_hash_tbl_elem_get (
 	}
 
 	for (i = *index ; i < ht->elem_max ; i++) {
-		if (ht->tbl[i].hash) {
+		if (ht->tbl[i].klen != 0 && ht->tbl[i].klen != -1) {
 			*index = i;
 			return ((void*) ht->tbl[i].elem);
 		}
 	}
 
 	for (i = 0 ; i < *index ; i++) {
-		if (ht->tbl[i].hash) {
+		if (ht->tbl[i].klen != 0 && ht->tbl[i].klen != -1) {
 			*index = i;
 			return ((void*) ht->tbl[i].elem);
 		}
@@ -519,7 +530,7 @@ cef_hash_tbl_item_check (
 	}
 	
 	for (i = 0 ; i < ht->elem_max ; i++) {
-		if (ht->tbl[i].hash) {
+		if (ht->tbl[i].klen == klen) {
 			if (memcmp (key, ht->tbl[i].key, klen) == 0) {
 				return ((void*) ht->tbl[i].elem);
 			}
@@ -541,11 +552,9 @@ cef_hash_tbl_item_check_exact (
 	}
 	
 	for (i = 0 ; i < ht->elem_max ; i++) {
-		if (ht->tbl[i].hash) {
-			if ((ht->tbl[i].klen == klen) && 
-				(memcmp (key, ht->tbl[i].key, klen) == 0)) {
-				return (1);
-			}
+		if ((ht->tbl[i].klen == klen) && 
+			(memcmp (key, ht->tbl[i].key, klen) == 0)) {
+			return (1);
 		}
 	}
 	return (-1);
@@ -572,13 +581,11 @@ cef_hash_number_create (
 		hash = hash * 33 + p[i];
 	}
 #endif
-	size_t i;
+	unsigned char out[MD5_DIGEST_LENGTH];
 	
-	hash = CEF_OFFSET_BASIS_32;
-	for (i = 0 ; i < klen ; i++) {
-	    hash = (CEF_PRIME_32 * hash) ^ (key[i]);
-	}
-	
+	MD5 (key, klen, out);
+	memcpy (&hash, &out[12], sizeof (uint32_t));
+
 	return (hash);
 }
 
@@ -605,7 +612,7 @@ cef_hash_cleanup (
 	}
 	
 	for (i = 0 ; i < ht->elem_max ; i++) {
-		if (ht->tbl[i].hash == 0) {
+		if (ht->tbl[i].klen == 0 || ht->tbl[i].klen == -1) {
 			continue;
 		}
 		hash = cef_hash_number_create (
@@ -620,22 +627,28 @@ cef_hash_cleanup (
 			
 			if (n == index) {
 				ht->tbl[i].hash = 0;
+				ht->tbl[i].klen = -1;
 				break;
 			} else if (i == index) {
 				ht->tbl[n].hash = 0;
+				ht->tbl[n].klen = -1;
 			} else if (i < index) {
 				if (i < n) {
 					ht->tbl[n].hash = 0;
-				} else {
+					ht->tbl[n].klen = -1;
+			} else {
 					ht->tbl[i].hash = 0;
+					ht->tbl[i].klen = -1;
 					break;
 				}
 			} else {
 				if ((n > index) && (i > n)) {
 					ht->tbl[i].hash = 0;
+					ht->tbl[i].klen = -1;
 					break;
 				} else {
 					ht->tbl[n].hash = 0;
+					ht->tbl[n].klen = -1;
 				}
 			}
 		}

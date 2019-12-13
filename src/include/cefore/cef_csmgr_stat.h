@@ -58,13 +58,12 @@
  Macros
  ****************************************************************************************/
 
-#define CsmgrT_Stat_Seq_Max 			262143
-
 #define CsmgrT_Name_Max					65536
 #define CsmgrT_Stat_Max					8192
 #define CsmgrT_Map_Max					4096
 #define CsmgrC_Invalid	 				0
 
+#define CsmgrT_Stat_Seq_Max 			(CsmgrT_Map_Max * 64 - 1)
 
 /****************************************************************************************
  Structure Declarations

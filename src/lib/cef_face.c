@@ -1218,7 +1218,10 @@ cef_face_object_send (
 				pm->name, pm->name_len, pm->payload, pm->payload_len, pm->chnk_num);
 		
 		if (res > 0) {
-			send (entry->sock, &app_frame, sizeof (struct cef_app_frame), 0);
+			uint32_t magic_no = CefC_App_Magic_No;
+			memcpy((void *)&app_frame.data_entity[app_frame.name_len+app_frame.payload_len]
+				, (const void *)&magic_no, sizeof(magic_no));
+			send (entry->sock, &app_frame, app_frame.actual_data_len + sizeof(magic_no), 0);
 		}
 	} else {
 		if (face_tbl[faceid].protocol != CefC_Face_Type_Tcp) {
@@ -1261,7 +1264,10 @@ cef_face_object_send_iflocal (
 				name, name_len, payload, payload_len, chnk_num);
 		
 		if (res > 0) {
-			send (entry->sock, &app_frame, sizeof (struct cef_app_frame), 0);
+			uint32_t magic_no = CefC_App_Magic_No;
+			memcpy((void *)&app_frame.data_entity[app_frame.name_len+app_frame.payload_len]
+				, (const void *)&magic_no, sizeof(magic_no));
+			send (entry->sock, &app_frame, app_frame.actual_data_len + sizeof(magic_no), 0);
 		}
 	} else {
 		res = 0;
@@ -1291,9 +1297,11 @@ cef_face_app_sdu_create (
 	app_frame->payload_len 	= payload_len;
 	app_frame->chunk_num 	= chnk_num;
 	
-	memcpy (app_frame->name, name, name_len);
-	memcpy (app_frame->payload, payload, payload_len);
-	
+    memcpy (&(app_frame->data_entity[0]), name, name_len);
+	memcpy (&(app_frame->data_entity[name_len]), payload, payload_len);
+	app_frame->actual_data_len = sizeof(struct cef_app_frame)
+	                             - sizeof(app_frame->data_entity)
+	                             + name_len + payload_len;
 	return (1);
 }
 /*--------------------------------------------------------------------------------------

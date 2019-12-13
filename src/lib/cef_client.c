@@ -724,47 +724,11 @@ cef_client_payload_get (
 	unsigned char* frame, 						/* variable to write one message 		*/
 	int* frame_size 							/* length of one message 				*/
 ) {
-	struct cef_app_frame* app_frame;
-	int i = 0;
+	struct cef_app_frame  app_frame;
 	int new_len = 0;
-	
-	if (buff_len < sizeof (struct cef_app_frame)) {
-		return (buff_len);
-	}
-	
-	app_frame = (struct cef_app_frame*) &buff[i];
-	
-	if ((app_frame->version != CefC_App_Version) || 
-		(app_frame->type != CefC_App_Type_Internal)) {
-		
-		while (i < buff_len) {
-			i++;
-			app_frame = (struct cef_app_frame*) &buff[i];
-			
-			if ((app_frame->version != CefC_App_Version) ||
-				(app_frame->type != CefC_App_Type_Internal)) {
-				continue;
-			}
-			break;
-		}
-		if  (i == buff_len) {
-			return (0);
-		}
-	}
-	
-	if (buff_len - i < sizeof (struct cef_app_frame)) {
-		new_len = buff_len - i;
-	} else {
-		new_len = buff_len - sizeof (struct cef_app_frame);
-		memcpy (frame, app_frame->payload, app_frame->payload_len);
-		i += sizeof (struct cef_app_frame);
-	}
-	
-	if (new_len > 0) {
-		memcpy (&work_buff[0], &buff[i], new_len);
-		memcpy (&buff[0], &work_buff[0], new_len);
-	}
-	
+
+	new_len = cef_client_payload_get_with_info (buff, buff_len, &app_frame);
+	memcpy (frame, app_frame.payload, app_frame.payload_len);
 	return (new_len);
 }
 
@@ -780,56 +744,46 @@ cef_client_payload_get_with_info (
 	struct cef_app_frame* wrk_frame;
 	int i = 0;
 	int new_len = 0;
+	uint32_t magic_no = CefC_App_Magic_No;
+
 	
 	/* Check if the frame is complete 	*/
 	memset (app_frame, 0, sizeof (struct cef_app_frame));
-	
-//	fprintf (stderr, "# [1] %d bytes (%d)\n"
-//		, buff_len, (int) sizeof (struct cef_app_frame));
-	
-	if (buff_len < sizeof (struct cef_app_frame)) {
-//		fprintf (stderr, "# [2] %d bytes\n", buff_len);
-		return (buff_len);
-	}
-	
+
 	/* Seek the head of message 		*/
-	wrk_frame = (struct cef_app_frame*) &buff[i];
-	
-	if ((wrk_frame->version != CefC_App_Version) || 
-		(wrk_frame->type != CefC_App_Type_Internal)) {
-		
-		while (i < buff_len) {
-			i++;
-			wrk_frame = (struct cef_app_frame*) &buff[i];
-			
-			if ((app_frame->version != CefC_App_Version) ||
-				(app_frame->type != CefC_App_Type_Internal)) {
-				continue;
-			}
+	while (1){
+		if((i + sizeof(struct cef_app_frame) - sizeof(wrk_frame->data_entity)) > buff_len){
+			new_len = buff_len - i;
 			break;
 		}
-		if  (i == buff_len) {
-//			fprintf (stderr, "# [3] 0 bytes\n");
-			return (0);
+		wrk_frame = (struct cef_app_frame*) &buff[i];
+		if ((wrk_frame->version == CefC_App_Version) && 
+			(wrk_frame->type == CefC_App_Type_Internal)) {
+			if( i + wrk_frame->actual_data_len + sizeof(magic_no) > buff_len){
+				new_len = buff_len - i;
+				break;
+			}
+			if(memcmp(  (const void *)&magic_no
+				      , (const void *)&(wrk_frame->data_entity[wrk_frame->name_len+wrk_frame->payload_len])
+					  , sizeof(magic_no)) == 0){
+				memcpy (app_frame, wrk_frame, wrk_frame->actual_data_len);
+				app_frame->name = &(app_frame->data_entity[0]);
+				app_frame->payload = &(app_frame->data_entity[app_frame->name_len]);
+				new_len = buff_len - wrk_frame->actual_data_len + sizeof(magic_no);
+				break;
+			} else {
+				i++;
+				continue;
+			}
+		} else {
+			i++;
+			continue;
 		}
 	}
-	
-	if (buff_len - i < sizeof (struct cef_app_frame)) {
-//		fprintf (stderr, "# [4] %d bytes\n", new_len);
-		new_len = buff_len - i;
-	} else {
-		new_len = buff_len - sizeof (struct cef_app_frame);
-		memcpy (app_frame, &buff[i], sizeof (struct cef_app_frame));
-		i += sizeof (struct cef_app_frame);
-//		fprintf (stderr, "# [5] %d bytes\n", new_len);
-	}
-	
-	if (new_len > 0) {
-//		fprintf (stderr, "# [6] %d \n", i);
-		memcpy (&work_buff[0], &buff[i], new_len);
+	if (new_len !=  buff_len) {
+		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
 		memcpy (&buff[0], &work_buff[0], new_len);
 	}
-	
 	return (new_len);
 }
 

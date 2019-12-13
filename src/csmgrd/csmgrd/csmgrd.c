@@ -768,6 +768,9 @@ csmgrd_event_dispatch (
 		cef_log_write (CefC_Log_Error, "sig_num(%d) is invalid.\n", SIGTERM);
 		csmgrd_running_f = 0;
 	}
+
+	signal(SIGPIPE, SIG_IGN);
+
 	cef_log_write (CefC_Log_Info, "Running\n");
 	
 	if (pthread_create (&thread, NULL, csmgrd_msg_process_thread, hdl) == -1) {

@@ -1,7 +1,7 @@
 # Cefore  
 ## About Cefore
 ---
-Cefore is a software platform that enables CCN-like communications. Cefore consists of (1) "cefnetd" daemon, which implements the CCN's basic function such as CCN Interest/Data handling, and FIB and Pending Interest Table (PIT) management, (2) "csmgrd" daemon, which implements Content Store, (3) arbitrary plugin library implementations that extend cefnetd's or csmgrd's functionalities, and (4) network tools/commands and sample applications. Cefore can run on top of Ubuntu, Raspbian Jessie, MacOS, and Android.   
+Cefore is a software platform that enables CCN-like communications. Cefore consists of (1) "cefnetd" daemon, which implements the CCN's basic function such as CCN Interest/Data handling, and FIB and Pending Interest Table (PIT) management, (2) "csmgrd" daemon, which implements Content Store, (3) arbitrary plugin library implementations that extend cefnetd's or csmgrd's functionalities, and (4) network tools/commands and sample applications. Cefore can run on top of Ubuntu, Raspbian Jessie, macOS, and Android.   
 
 ## License
 ---  
@@ -26,7 +26,7 @@ Firstly, the prerequisite libraries for Cefore installation should be installed.
 
 #### Decompression of Cefore archive
 Decompress the Cefore's archive "cefore-x.x.x.tar.gz" to an arbitrary directory. When you decompress it, "cefore-x.x.x" directory will be created. After extracting, please move to "cefore-x.x.x" directory.
-> *tar xfvz cefore-x.x.x.tar.gz*  
+> *unzip cefore-x.x.x.zip*  
 > *cd cefore-x.x.x*
 
 #### Build
@@ -76,8 +76,19 @@ PC1 cefnetd.fib
 PC2 cefnetd.fib  
 > *ccn:/example udp 10.0.1.3*
 
-If you want to set up FIB manually after cefnetd's startup, it is also possible to set up FIB with the cefroute utility, for example,  
+If you want to set up FIB manually after cefnetd's startup, it is also possible to set up FIB with the cefroute utility, such as,  
 > *cefroute add ccn:/example udp 10.0.1.2*
+
+### Tune kernel parameters
+Before starting cefnetd, it is recommended to tune the several kernel parameters (for Linux and Raspbian) as follows.
+> *sudo sysctl -w net.core.rmem_default=10000000*
+> *sudo sysctl -w net.core.wmem_default=10000000*
+> *sudo sysctl -w net.core.rmem_max=10000000*
+> *sudo sysctl -w net.core.wmem_max=10000000*
+
+For macOS, the following commands tune the kernel parameters to run cefnetd.
+> *sudo sysctl -w net.local.stream.sendspace=2000000*
+> *sudo sysctl -w net.local.stream.recvspace=2000000*
 
 ### Start cefnetd
 Enter cefnetdstart at the terminal on each node to start cefnetd. Then enter cefstatus at the terminal to confirm whether it is running.  
