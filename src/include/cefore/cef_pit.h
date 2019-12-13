@@ -210,6 +210,7 @@ cef_pit_entry_free (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_Pit_Entry* entry 					/* PIT entry 								*/
 );
+#if 0 
 /*--------------------------------------------------------------------------------------
 	Searches a PIT entry matching the specified Name for Cefore-Router
 ----------------------------------------------------------------------------------------*/
@@ -219,6 +220,7 @@ cefrt_pit_entry_search (
 	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
 	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
 );
+#endif 
 /*--------------------------------------------------------------------------------------
 	Cleanups PIT entry which expires the lifetime
 ----------------------------------------------------------------------------------------*/

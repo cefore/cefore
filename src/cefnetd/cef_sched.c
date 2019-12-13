@@ -114,7 +114,7 @@ cefnetd_interest_forward (
 			cef_face_frame_send_forced (
 				faceids[i], msg, payload_len + header_len);
 		} else {
-			cef_fib_faceid_remove (hdl->fib, fe, faceids[i]);
+//			cef_fib_faceid_remove (hdl->fib, fe, faceids[i]);
 		}
 	}
 	

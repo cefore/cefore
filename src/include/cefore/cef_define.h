@@ -79,7 +79,7 @@
 #endif // CefC_Android
 
 /*************** Version 		****************/
-#define CefC_Version					0xF0
+#define CefC_Version					0x01
 
 /*************** User Directry 	****************/
 #define CefC_CEFORE_DIR					"CEFORE_DIR"

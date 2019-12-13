@@ -37,6 +37,8 @@
  ****************************************************************************************/
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
+#include <string.h>
 
 #include <cefore/cef_frame.h>
 #include <cefore/cef_fib.h>
@@ -142,6 +144,7 @@ cef_fib_init (
 ){
 	/* Reads the FIB configuration file 	*/
 	cef_fib_config_file_read (fib);
+	cef_fib_faceid_cleanup (fib);
 	return (0);
 }
 /*--------------------------------------------------------------------------------------
@@ -241,19 +244,18 @@ cef_fib_forward_faceid_select (
 	while (face->next) {
 		face = face->next;
 		face_type = cef_face_type_get (face->faceid);
+		
 		if (incoming_face_type == face_type) {
 			faceids[i] = face->faceid;
 			i++;
 		}
 	}
-	
 	if (i == 0) {
 		face = &(entry->faces);
 		while (face->next) {
 			face = face->next;
 			faceids[i] = face->faceid;
 			i++;
-			break;
 		}
 	}
 #ifdef CefC_Debug
@@ -520,6 +522,122 @@ cef_fib_config_file_read (
 }
 
 /*--------------------------------------------------------------------------------------
+	Check FIB ip address
+----------------------------------------------------------------------------------------*/
+int
+cef_fib_check_addr(const char *addr) {
+	int rc = 1;	// correct:1 error:0
+	int error_status = 0; // 0:general 1: interface name
+	int i, cnt;
+	int is_link_local;
+	int percent_pos;
+	char *char_ptr;
+	char *percent_ptr;
+	int bracket_pos;
+	char *bracket_ptr;
+	static char link_addr_head[7] = "fe80::";
+	int link_addr_num = 6;
+	if (addr[0] == '[') {
+		if (strchr(&addr[1],'[')) {
+			cef_log_write (CefC_Log_Error, 
+				"Invalid ip address format:%s\n", addr);
+			return 0;
+		}
+		cnt = 0;
+		char_ptr = strchr(&addr[0],':');
+		if (char_ptr) {
+			cnt++;
+			char_ptr = strchr(++char_ptr,':');
+			if (char_ptr) {
+				cnt++;
+			}
+		}
+		if (cnt < 2) {
+			cef_log_write (CefC_Log_Error, 
+				"Invalid ip address format:%s\n", addr);
+			return 0;			
+		}
+		/* ipv6 */
+		percent_ptr = strchr(&addr[0],'%');
+		if (percent_ptr) {
+			percent_pos = percent_ptr - addr + 1;
+			bracket_ptr = strchr(&addr[percent_pos],']');
+			if (bracket_ptr) {
+				bracket_pos = bracket_ptr - percent_ptr + percent_pos -1;
+				// check invalid charactor 
+				for (i = percent_pos ; i < bracket_pos; i++) {
+					if (!isprint(addr[i]) || isspace(addr[i])) {
+						rc = 0;
+						break;
+					}
+				}
+				if (rc) {
+					// check double bracket(])
+					if (strchr((bracket_ptr + 1),']'))
+					{
+						rc = 0;
+					}
+				}
+			}
+			else {
+				rc = 0;
+			}
+		}
+		else {
+			is_link_local = 1;
+			for (i = 0; i < link_addr_num ; i++) {
+				if (link_addr_head[i] != tolower(addr[i + 1])) {
+					is_link_local = 0;
+					break;
+				}
+			}
+			if (is_link_local) {
+				error_status = 1;
+				rc = 0;
+			}
+			if (rc) {
+				bracket_ptr = strchr(&addr[0],']');
+				if (!bracket_ptr) {
+					rc = 0;
+				}
+				else {
+					char_ptr = strchr(bracket_ptr + 1, ']');
+					if (char_ptr) {
+						rc = 0;
+					}
+				}
+			}
+		}
+		if (rc) {
+			++bracket_ptr;
+			if (*bracket_ptr != '\0' && *bracket_ptr != ':')
+			{
+				rc = 0;
+			}
+		}
+	}
+	else {
+		if (strchr(&addr[0],']')) {
+			rc = 0;
+		}
+	}
+	if (!rc)
+	{
+		if (!error_status)
+		{
+			cef_log_write (CefC_Log_Error, 
+				"Invalid ip address format:%s\n", addr);
+		}
+		else
+		{
+			cef_log_write (CefC_Log_Error, 
+				"Interface name is not specified in link local IPv6:%s\n", addr);
+		}
+	}
+	return rc;
+}
+	
+/*--------------------------------------------------------------------------------------
 	Remove a FIB entry from FIB
 ----------------------------------------------------------------------------------------*/
 int
@@ -654,6 +772,9 @@ cef_fib_trim_line_string (
 	wp = strtok (NULL, " \t");
 	if (wp) {
 		strcpy (prot, wp);
+		if (strcmp(prot, "tcp") != 0 && strcmp(prot, "udp") != 0) {
+			return (0);
+		}
 	} else {
 		return (0);
 	}
@@ -664,8 +785,10 @@ cef_fib_trim_line_string (
 		wp = strtok (NULL, " \t");
 		
 		if (wp) {
-			strcpy (addr[addr_num], wp);
-			addr_num++;
+			if (cef_fib_check_addr(wp)) {
+				strcpy (addr[addr_num], wp);
+				addr_num++;
+			}
 		}
 		
 		if (addr_num == CefC_Fib_Addr_Max) {
@@ -757,6 +880,9 @@ cef_fib_route_msg_read (
 		host[host_len] = 0x00;
 		index += host_len;
 		
+		if (!cef_fib_check_addr(host)) {
+			continue;
+		}
 		if (op == CefC_Fib_Route_Ope_Add) {
 			res = cef_fib_route_add (fib, prot, host, uri, type);
 		} else if (op == CefC_Fib_Route_Ope_Del) {
@@ -925,6 +1051,34 @@ cef_fib_route_del (
 				"%s (%s) is not registered in the Face Table\n", 
 				host, prot_str[prot]);
 		}
+{		
+		uint32_t index = 0;
+		CefT_Fib_Entry* check_fib_entry;
+		CefT_Fib_Face* current;
+		int	 existed_face = 0;
+		
+		do {
+			check_fib_entry = (CefT_Fib_Entry*) cef_hash_tbl_item_check_from_index (fib, &index);
+			if (check_fib_entry != NULL && fib_entry != check_fib_entry) {
+				current = &(check_fib_entry->faces);
+				while (current->next) {
+					current = current->next;
+					if(faceid == current->faceid) {
+						existed_face = 1;
+						break;
+					}
+				}
+				if (existed_face) {
+					break;
+				}
+			}
+			index++;
+		} while (check_fib_entry);
+		
+		if (!existed_face) {
+			cef_face_close (faceid);
+		}
+}
 	}
 	
 	/* check fib entry */

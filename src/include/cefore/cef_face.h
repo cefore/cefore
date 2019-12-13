@@ -109,6 +109,7 @@ typedef struct {
 	uint8_t 		local_f;
 	uint8_t 		protocol;
 	uint32_t 		seqnum;
+	int 			ifindex;
 } CefT_Face;
 
 /********** Neighbor Management				**********/
@@ -150,14 +151,18 @@ cef_face_init (
 ----------------------------------------------------------------------------------------*/
 int											/* Returns a negative value if it fails 	*/
 cef_face_udp_listen_face_create (
-	uint16_t 		port_num				/* Port Number that cefnetd listens			*/
+	uint16_t 		port_num,				/* Port Number that cefnetd listens			*/
+	int*			res_v4,
+	int*			res_v6
 );
 /*--------------------------------------------------------------------------------------
 	Creates the listening TCP socket with the specified port
 ----------------------------------------------------------------------------------------*/
 int											/* Returns a negative value if it fails 	*/
 cef_face_tcp_listen_face_create (
-	uint16_t 		port_num				/* Port Number that cefnetd listens			*/
+	uint16_t 		port_num,				/* Port Number that cefnetd listens			*/
+	int*			res_v4,
+	int*			res_v6
 );
 /*--------------------------------------------------------------------------------------
 	Creates the listening UDP socket for NDN with the specified port

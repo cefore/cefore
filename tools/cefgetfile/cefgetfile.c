@@ -86,6 +86,8 @@ static struct timeval start_t;
 static struct timeval end_t;
 CefT_Client_Handle fhdl;
 FILE* fp = NULL;
+int rcv_ng_f = 0;
+
 
 /****************************************************************************************
  Static Function Declaration
@@ -660,11 +662,13 @@ int main (
 					}
 					if (i != pipeline) {
 						fprintf (stdout, "[cefgetfile] Incomplete\n");
+						rcv_ng_f = 1;
 					} else {
 						if (stat_recv_frames) {
 							fprintf (stdout, "[cefgetfile] Complete\n");
 						} else {
 							fprintf (stdout, "[cefgetfile] Incomplete\n");
+							rcv_ng_f = 1;
 						}
 					}
 					break;
@@ -700,6 +704,9 @@ int main (
 	}
 	
 	fclose (fp);
+	if (rcv_ng_f) {
+		remove(fpath);
+	}
 	post_process ();
 	
 	exit (0);
@@ -747,23 +754,28 @@ post_process (
 	
 	fprintf (stdout, "[cefgetfile] Terminate\n");
 	fprintf (stdout, "[cefgetfile] Rx Frames = "FMTU64"\n", stat_recv_frames);
-	fprintf (stdout, "[cefgetfile] Rx Bytes  = "FMTU64"\n", stat_recv_bytes);
-	if (diff_t > 0) {
-		diff_t_dbl = (double)diff_t / 1000000.0;
-		fprintf (stdout, "[cefgetfile] Duration  = %.3f sec\n", diff_t_dbl + 0.0009);
-		recv_bits = stat_recv_bytes * 8;
-		thrpt = (double)(recv_bits) / diff_t_dbl;
-		fprintf (stdout, "[cefgetfile] Throughput = %d bps\n", (int)thrpt);
+	if (rcv_ng_f) {
+		fprintf (stdout, "[cefgetfile] Received frame ... NG\n");
+		fprintf (stdout, "[cefgetfile] Could not receive anything\n");
 	} else {
-		fprintf (stdout, "[cefgetfile] Duration  = 0.000 sec\n");
-	}
-	if (stat_recv_frames > 0) {
-		jitter_ave = stat_jitter_sum / stat_recv_frames;
-
-		fprintf (stdout, "[cefgetfile] Jitter (Ave) = "FMTU64" us\n", jitter_ave);
-		fprintf (stdout, "[cefgetfile] Jitter (Max) = "FMTU64" us\n", stat_jitter_max);
-		fprintf (stdout, "[cefgetfile] Jitter (Var) = "FMTU64" us\n"
-			, (stat_jitter_sq_sum / stat_recv_frames) - (jitter_ave * jitter_ave));
+		fprintf (stdout, "[cefgetfile] Rx Bytes  = "FMTU64"\n", stat_recv_bytes);
+		if (diff_t > 0) {
+			diff_t_dbl = (double)diff_t / 1000000.0;
+			fprintf (stdout, "[cefgetfile] Duration  = %.3f sec\n", diff_t_dbl + 0.0009);
+			recv_bits = stat_recv_bytes * 8;
+			thrpt = (double)(recv_bits) / diff_t_dbl;
+			fprintf (stdout, "[cefgetfile] Throughput = %d bps\n", (int)thrpt);
+		} else {
+			fprintf (stdout, "[cefgetfile] Duration  = 0.000 sec\n");
+		}
+		if (stat_recv_frames > 0) {
+			jitter_ave = stat_jitter_sum / stat_recv_frames;
+	
+			fprintf (stdout, "[cefgetfile] Jitter (Ave) = "FMTU64" us\n", jitter_ave);
+			fprintf (stdout, "[cefgetfile] Jitter (Max) = "FMTU64" us\n", stat_jitter_max);
+			fprintf (stdout, "[cefgetfile] Jitter (Var) = "FMTU64" us\n"
+				, (stat_jitter_sq_sum / stat_recv_frames) - (jitter_ave * jitter_ave));
+		}
 	}
 }
 static void

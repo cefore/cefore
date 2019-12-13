@@ -200,4 +200,13 @@ cef_fib_info_get (
 	int name_len, 
 	int partial_match_f
 );
+/*--------------------------------------------------------------------------------------
+	Check FIB ip address
+----------------------------------------------------------------------------------------*/
+int
+cef_fib_check_addr(
+	const char *addr						// Ip address
+);
+
+
 #endif // __CEF_FIB_HEADER__

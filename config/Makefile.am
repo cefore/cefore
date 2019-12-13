@@ -27,8 +27,8 @@
 # SUCH DAMAGE.
 #
 
-EXTRA_DIST=cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def cefnetd.key.def default-private-key.pem default-public-key.pem ccore-public-key.pem
-CEF_CONF=cefnetd.conf cefnetd.fib csmgrd.conf plugin.conf cefnetd.key default-private-key default-public-key ccore-public-key
+EXTRA_DIST=cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def cefnetd.key.def default-private-key.pem default-public-key.pem
+CEF_CONF=cefnetd.conf cefnetd.fib csmgrd.conf plugin.conf cefnetd.key default-private-key default-public-key
 INSTALLDIR=$(CEFORE_DIR_PATH)/cefore
 
 default all: $(CEF_CONF)
@@ -81,13 +81,6 @@ default-private-key: default-private-key.pem
 		echo "***" You may need to rerun ./configure in the src directory. >&2; \
 	fi
 
-ccore-public-key: ccore-public-key.pem
-	@if [ -f $(@:=.pem) ]; then \
-		cat $(@:=.pem) >> $@; \
-		chmod 644 $@; \
-	else \
-		echo "***" You may need to rerun ./configure in the src directory. >&2; \
-	fi
 
 default-public-key: default-public-key.pem
 	@if [ -f $(@:=.pem) ]; then \
@@ -122,9 +115,6 @@ install:
 	fi
 	@if [ ! -f $(INSTALLDIR)/default-private-key ]; then \
 		cp -p default-private-key $(INSTALLDIR)/default-private-key; \
-	fi
-	@if [ ! -f $(INSTALLDIR)/ccore-public-key ]; then \
-		cp -p ccore-public-key $(INSTALLDIR)/ccore-public-key; \
 	fi
 
 uninstall:

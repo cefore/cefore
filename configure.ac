@@ -5,7 +5,7 @@ dnl
 dnl  project setting
 dnl
 AC_PREREQ([2.69])
-AC_INIT([cefore], [0.7.2a], [])
+AC_INIT([cefore], [0.7.3], [])
 AC_CONFIG_AUX_DIR(autotools)
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])

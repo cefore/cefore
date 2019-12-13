@@ -151,9 +151,9 @@ main (
 			return (-1);
 		}
 	}
-#ifdef CefC_Debug
-	cef_dbg_init ("csmgrecho", (char*)NULL, 0);
-#endif // CefC_Debug
+//#ifdef CefC_Debug
+//	cef_dbg_init ("csmgrecho", file_path, 0);
+//#endif // CefC_Debug
 	
 	/* check port flag */
 	if (port_f == 0) {

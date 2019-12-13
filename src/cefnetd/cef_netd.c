@@ -35,8 +35,15 @@
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
+#ifdef __APPLE__
+#define __APPLE_USE_RFC_3542
+#endif //__APPLE
 #include "cef_netd.h"
 #include "cef_status.h"
+#ifdef __APPLE__
+#include <sys/socket.h>
+#include <netinet/in.h>
+#endif //__APPLE
 
 
 /****************************************************************************************
@@ -1147,7 +1154,9 @@ cefnetd_event_dispatch (
 		
 		/* Receives the frame(s) from local process 		*/
 		cefnetd_input_from_local_process (hdl);
-		
+		cef_face_update_listen_faces (
+				hdl->inudpfds, hdl->inudpfaces, &hdl->inudpfdc, 
+				hdl->intcpfds, hdl->intcpfaces, &hdl->intcpfdc);
 		/* Receives the frame(s) from the listen port 		*/
 		fdnum = cefnetd_poll_socket_prepare (hdl, fds, fd_type, faceids);
 		res = poll (fds, fdnum, 1);
@@ -1167,6 +1176,7 @@ cefnetd_event_dispatch (
 #endif // __APPLE__
 					if (fd_type[i] < CefC_Connection_Type_Csm) {
 						cef_face_close (faceids[i]);
+						cef_fib_faceid_cleanup (hdl->fib);
 					}
 				}
 				
@@ -1954,22 +1964,85 @@ cefnetd_udp_input_process (
 	size_t recv_len;
 	int peer_faceid;
 	struct addrinfo sas;
+	struct addrinfo *sas_p;
 	socklen_t sas_len = (socklen_t) sizeof (struct addrinfo);
 	unsigned char buff[CefC_Max_Length];
 
+	sas_p = &sas;
+	
 	/* Receives the message(s) from the specified FD */
 	memset (buff, 0, CefC_Max_Length);
 	recv_len
 		= recvfrom (fd, buff, CefC_Max_Length, 0, (struct sockaddr*) &sas, &sas_len);
-
+	
 	// TBD: process for the special message
 
 	/* Looks up the peer Face-ID 		*/
 	protocol = cef_face_get_protocol_from_fd (fd);
-	peer_faceid = cef_face_lookup_peer_faceid (&sas, sas_len, protocol);
+	peer_faceid = cef_face_lookup_peer_faceid (sas_p/*&sas*/, sas_len, protocol);
 	if (peer_faceid < 0) {
 		return (-1);
 	}
+#ifdef __APPLE__
+	{
+		CefT_Face*	face;
+		int			ifindex;
+		int			rc;
+
+		struct sockaddr_storage ss;
+		socklen_t sslen = sizeof(ss);
+
+		if ((rc = getsockname(fd, (struct sockaddr *)&ss, &sslen)) < 0){
+			return (-1);
+		}
+		if (((struct sockaddr *)&ss)->sa_family == AF_INET6) {
+			face = cef_face_get_face_from_faceid (peer_faceid);
+			if (face->ifindex == -1) {
+				CefT_Hash_Handle* sock_tbl;
+				CefT_Sock* sock;
+				struct in6_pktinfo pinfo;
+				char dst_addr[256];
+				sock_tbl = cef_face_return_sock_table ();
+				sock = (CefT_Sock*) cef_hash_tbl_item_get_from_index (*sock_tbl, face->index);
+
+				{/* get ifindex */
+					char	*ifname_p;
+					char	name[128];
+					int		result;
+					result = getnameinfo ((struct sockaddr*) sas_p, sas_len, 
+											name, sizeof (name), 0, 0, NI_NUMERICHOST);
+					if (result != 0) {
+						cef_log_write (CefC_Log_Error, "%s (getnameinfo:%s)\n", __func__, gai_strerror(result));
+						return (-1);
+					}
+					ifname_p = strchr(name, '%');
+					if(ifname_p == NULL){
+						cef_log_write (CefC_Log_Error, "%s IPv6 UDP recive error\n", __func__);
+						return (-1);
+					}
+					ifindex = if_nametoindex(ifname_p+1);
+					if (ifindex == 0) {
+						cef_log_write (CefC_Log_Error, "%s if_nametoindex(%s) error: %s\n", 
+										__func__, ifname_p, strerror(errno));
+						return (-1);
+					 }
+				}
+				face->ifindex = ifindex;
+				if(face->ifindex != -1){
+					getnameinfo (sock->ai_addr, sock->ai_addrlen, dst_addr, sizeof(dst_addr),
+									NULL, 0, NI_NUMERICHOST);
+					if(strncmp(dst_addr, "fe80::", 6) == 0) { /* IPv6 linklocal address */
+						pinfo.ipi6_addr = in6addr_any;
+						pinfo.ipi6_ifindex = face->ifindex;
+						if(setsockopt(sock->sock, IPPROTO_IPV6, IPV6_PKTINFO, &pinfo, sizeof(struct in6_pktinfo)) == -1){
+							return(-1);
+						}
+					}
+				}
+			}
+		}
+	}
+#endif
 
 	/* Handles the received CEFORE message 	*/
 	cefnetd_input_message_process (hdl, faceid, peer_faceid, buff, (int) recv_len);
@@ -5359,6 +5432,8 @@ cefnetd_faces_init (
 	CefT_Netd_Handle* hdl					/* cefnetd handle							*/
 ) {
 	int res;
+	int res_v4 = -1;
+	int res_v6 = -1;
 
 	/* Initialize the face module 		*/
 	res = cef_face_init (hdl->node_type);
@@ -5368,7 +5443,7 @@ cefnetd_faces_init (
 	}
 	
 	/* Creates listening face 			*/
-	res = cef_face_udp_listen_face_create (hdl->port_num);
+	res = cef_face_udp_listen_face_create (hdl->port_num, &res_v4, &res_v6);
 	if (res < 0) {
 #ifdef CefC_Android
 		/* Process for Android next running	*/
@@ -5378,12 +5453,20 @@ cefnetd_faces_init (
 		return (-1);
 	}
 	/* Prepares file descriptors to listen 		*/
-	hdl->inudpfaces[hdl->inudpfdc] = (uint16_t) res;
-	hdl->inudpfds[hdl->inudpfdc].fd = cef_face_get_fd_from_faceid ((uint16_t) res);
-	hdl->inudpfds[hdl->inudpfdc].events = POLLIN | POLLERR;
-	hdl->inudpfdc++;
+	if (res_v4 > 0) {
+		hdl->inudpfaces[hdl->inudpfdc] = (uint16_t) res_v4;
+		hdl->inudpfds[hdl->inudpfdc].fd = cef_face_get_fd_from_faceid ((uint16_t) res_v4);
+		hdl->inudpfds[hdl->inudpfdc].events = POLLIN | POLLERR;
+		hdl->inudpfdc++;
+	}
+	if (res_v6 > 0) {
+		hdl->inudpfaces[hdl->inudpfdc] = (uint16_t) res_v6;
+		hdl->inudpfds[hdl->inudpfdc].fd = cef_face_get_fd_from_faceid ((uint16_t) res_v6);
+		hdl->inudpfds[hdl->inudpfdc].events = POLLIN | POLLERR;
+		hdl->inudpfdc++;
+	}
 
-	res = cef_face_tcp_listen_face_create (hdl->port_num);
+	res = cef_face_tcp_listen_face_create (hdl->port_num, &res_v4, &res_v6);
 	if (res < 0) {
 #ifdef CefC_Android
 		/* Process for Android next running	*/

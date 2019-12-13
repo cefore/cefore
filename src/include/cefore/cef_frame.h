@@ -677,7 +677,7 @@ typedef struct {
 	uint16_t		name_len;					/* Length of Name 						*/
 	uint16_t		chnk_num_f;					/* Offset of Chunk Number 				*/
 	uint32_t		chnk_num;					/* Chunk Number 						*/
-	
+	uint16_t		chunk_len;					/* Length of Chunk Number 				*/
 	uint64_t		nonce;						/* Nonce 								*/
 	
 	uint16_t 		symbolic_code_f;			/* Symbolic Code 						*/

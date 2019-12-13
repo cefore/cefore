@@ -135,6 +135,8 @@ int main (
 	Ceft_RxWnd* 	rxwnd_head;
 	Ceft_RxWnd* 	rxwnd_tail;
 	
+	int backup_fd;
+	
 	/***** flags 		*****/
 	int pipeline_f 		= 0;
 	int max_seq_f 		= 0;
@@ -327,6 +329,9 @@ int main (
 	/*---------------------------------------------------------------------------
 		Inits the Cefore APIs
 	-----------------------------------------------------------------------------*/
+	backup_fd = dup (1);
+	dup2(2, 1);
+	
 	cef_frame_init ();
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
@@ -354,7 +359,7 @@ int main (
 		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_type);
 		
 		if (params.alg.valid_type == CefC_T_ALG_INVALID) {
-			fprintf (stdout, "ERROR: -v has the invalid parameter %s\n", valid_type);
+			fprintf (stderr, "ERROR: -v has the invalid parameter %s\n", valid_type);
 			exit (1);
 		}
 	}
@@ -445,6 +450,7 @@ int main (
 	/*---------------------------------------------------------------------------
 		Main loop
 	-----------------------------------------------------------------------------*/
+	dup2(backup_fd, 1);
 	while (app_running_f) {
 		if (SIG_ERR == signal (SIGINT, sigcatch)) {
 			break;
@@ -611,14 +617,14 @@ print_usage (
 	fprintf (stderr, "  uri               Specify the URI.\n");
 	fprintf (stderr, "  -o                Specify this option, if you require the content\n"
 	                 "                    that the owner is caching\n");
-	fprintf (stdout, "  chunks            Specify the number of chunk that you want to obtain\n");
-	fprintf (stdout, 
+	fprintf (stderr, "  chunks            Specify the number of chunk that you want to obtain\n");
+	fprintf (stderr, 
 		"  valid_algo        Specify the validation algorithm (crc32 or sha256)\n");
-	fprintf (stdout, 
+	fprintf (stderr, 
 		"  config_file_dir   Configure file directory\n");
-	fprintf (stdout, 
+	fprintf (stderr, 
 		"  port_num          Port Number\n");
-	fprintf (stdout, 
+	fprintf (stderr, 
 		"  -z sg             Send Long Life Intereset\n\n");
 }
 
@@ -648,7 +654,7 @@ post_process (
 	fprintf (stderr, "[cefgetstream] Rx Bytes  = "FMTU64"\n", stat_recv_bytes);
 	if (diff_t > 0) {
 		diff_t_dbl = (double)diff_t / 1000000.0;
-		fprintf (stdout, "[cefgetstream] Duration  = %.3f sec\n", diff_t_dbl + 0.0009);
+		fprintf (stderr, "[cefgetstream] Duration  = %.3f sec\n", diff_t_dbl + 0.0009);
 		recv_bits = stat_recv_bytes * 8;
 		thrpt = (double)(recv_bits) / diff_t_dbl;
 		fprintf (stderr, "[cefgetstream] Throughput = %d bps\n", (int)thrpt);

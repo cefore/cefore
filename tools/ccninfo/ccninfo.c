@@ -165,6 +165,7 @@ int main (
 	
 	/* Sets default values that are not zero to parameters		*/
 	params.wait_time = CefC_Default_LifetimeSec;
+	params.wait_time = 4;
 	params.hop_limit = 32;
 	
 	/*----------------------------------------------------------------
@@ -296,16 +297,17 @@ ct_results_output (
 ) {
 	CefT_Parsed_Message 	pm;
 	CefT_Parsed_Opheader 	poh;
-	int res, i, n, x;
+	int res, i;
 	uint16_t 	ret_code;
 	uint16_t 	index;
 	uint16_t 	end_pld;
 	uint16_t 	offset;
-	uint16_t 	fd_type, fd_len, rp_type, cs_type, seg_len;
+	uint16_t 	fd_type, fd_len, rp_type, cs_type;
 	uint16_t 	id_len;
 	uint16_t 	gw_cnt;
 	
 	unsigned char name[2048];
+	unsigned char uri_str[2048];
 	char 		gw_ids[32][256];
 	uint16_t	gw_len[32];
 	uint64_t	gw_stp[32];
@@ -516,34 +518,8 @@ ct_results_output (
 		fprintf (stderr, "%2d %c%c "
 			, i, con_type[rp_type], cache_type[cs_type]);
 		
-		fprintf (stderr, "%s:/", protocol);
-		n = 0;
-		
-		while (n < fd_len) {
-			tlv_hdr = (struct tlv_hdr*) &name[n];
-			seg_len = ntohs (tlv_hdr->length);
-			n += CefC_S_TLF;
-			
-			for (x = 0 ; x < seg_len ; x++) {
-				if(((name[n + x] >= 0x30) && (name[n + x] <= 0x39)) ||		/* 0~9 */
-					((name[n + x] >= 0x41) && (name[n + x] <= 0x5a)) ||		/* A~Z */
-					((name[n + x] >= 0x61) && (name[n + x] <= 0x7a))) {		/* a~z */
-					
-					fprintf (stderr, "%c", name[n + x]);
-				} else if ((name[n + x] == 0x2d) ||						/* - */
-						(name[n + x] == 0x2e) ||						/* . */
-						(name[n + x] == 0x2f) ||						/* / */
-						(name[n + x] == 0x5f) ||						/* _ */
-						(name[n + x] == 0x7e)) {						/* ~ */
-					fprintf (stderr, "%c", name[n + x]);
-				} else {
-					fprintf (stderr, "%02x", name[n + x]);
-				}
-
-			}
-			fprintf (stderr, "/");
-			n += seg_len;
-		}
+		cef_frame_conversion_name_to_uri (name, fd_len, (char *)uri_str);
+		fprintf (stderr, "%s", uri_str);
 		
 		fprintf (stderr, "\t%7u KB %7u %5u   "
 			, rep_blk.cont_size, rep_blk.cont_cnt, rep_blk.rcv_int);
@@ -570,7 +546,7 @@ ct_usage_output (
 	const char* msg									/* Supplementary information 		*/
 ) {
 	fprintf (stderr, 	"Usage:cefinfo name_prefix [-P] [-n] [-o] [-r hop_count]"
-						" [-s skip_hop] [-d config_file_dir] [-w wait_time]\n");
+						" [-s skip_hop] [-d config_file_dir]\n");
 	
 	if (msg) {
 		fprintf (stderr, "%s\n", msg);

@@ -977,7 +977,9 @@ cef_frame_interest_create (
 ) {
 	struct fixed_hdr fix_hdr;
 	struct tlv_hdr fld_thdr;
+#if 0	/*+++++ VLI +++++*/
 	struct value32_tlv value32_fld;
+#endif	/*----- VLI -----*/
 	struct value32x2_tlv value32x2_fld;
 	struct value64_tlv value64_fld;
 	uint16_t opt_header_len;
@@ -1011,11 +1013,32 @@ cef_frame_interest_create (
 
 	/* Sets chunk number	*/
 	if (tlvs->chunk_num_f) {
-		value32_fld.type   = ftvn_chunk;
-		value32_fld.length = flvn_chunknum;
-		value32_fld.value  = htonl (tlvs->chunk_num);
-		memcpy (&buff[index], &value32_fld, sizeof (struct value32_tlv));
-		index += CefC_S_TLF + CefC_S_ChunkNum;
+		uint16_t chunk_len;
+		uint16_t chunk_len_ns;
+		uint64_t value;
+		char buffer[128];
+	 	int  i = 0;
+	 	int mustContinue = 0;
+		
+		value = tlvs->chunk_num;
+		memset(buffer, 0, sizeof(buffer));
+		for (int byte = 7; byte >= 0; byte--) {
+			uint8_t b = (value >> (byte * 8)) & 0xFF;
+			if (b != 0 || byte == 0 || mustContinue) {
+				buffer[i] = b;
+				i++;
+				mustContinue = 1;
+			}
+		}
+		chunk_len = i;
+
+		memcpy (&buff[index], &ftvn_chunk, sizeof(CefC_S_Type));
+		index += CefC_S_Type;
+		chunk_len_ns = htons(chunk_len);
+		memcpy (&buff[index], &chunk_len_ns, sizeof(CefC_S_Length));
+		index += CefC_S_Length;
+		memcpy (&buff[index], buffer, chunk_len);
+		index += chunk_len;
 	}
 
 	/* Sets Nonce			*/
@@ -1153,7 +1176,6 @@ cef_frame_object_create (
 ) {
 	struct fixed_hdr fix_hdr;
 	struct tlv_hdr fld_thdr;
-	struct value32_tlv value32_fld;
 	struct value64_tlv value64_fld;
 	uint16_t opt_header_len;
 	uint16_t payload_len;
@@ -1193,11 +1215,32 @@ cef_frame_object_create (
 
 	/* Sets ChunkNumber		*/
 	if (tlvs->chnk_num_f) {
-		value32_fld.type   = ftvn_chunk;
-		value32_fld.length = flvn_chunknum;
-		value32_fld.value  = htonl (tlvs->chnk_num);
-		memcpy (&buff[index], &value32_fld, sizeof (struct value32_tlv));
-		index += CefC_S_TLF + CefC_S_ChunkNum;
+		uint16_t chunk_len;
+		uint16_t chunk_len_ns;
+		uint64_t value;
+		char buffer[128];
+	 	int  i = 0;
+	 	int mustContinue = 0;
+		
+		value = tlvs->chnk_num;
+		memset(buffer, 0, sizeof(buffer));
+		for (int byte = 7; byte >= 0; byte--) {
+			uint8_t b = (value >> (byte * 8)) & 0xFF;
+			if (b != 0 || byte == 0 || mustContinue) {
+				buffer[i] = b;
+				i++;
+				mustContinue = 1;
+			}
+		}
+		chunk_len = i;
+
+		memcpy (&buff[index], &ftvn_chunk, sizeof(CefC_S_Type));
+		index += CefC_S_Type;
+		chunk_len_ns = htons(chunk_len);
+		memcpy (&buff[index], &chunk_len_ns, sizeof(CefC_S_Length));
+		index += CefC_S_Length;
+		memcpy (&buff[index], buffer, chunk_len);
+		index += chunk_len;
 	}
 
 	/* Sets Meta			*/
@@ -2471,8 +2514,8 @@ cef_frame_message_name_tlv_parse (
 	uint16_t sub_length;
 	uint16_t index = 0;
 	uint16_t name_len = 0;
+	uint16_t chunk_len = 0;
 	uint32_t* v32p;
-	uint16_t chnk_num_index = 0;
 
 	/* Parses Name 					*/
 	while (index < length) {
@@ -2487,10 +2530,12 @@ cef_frame_message_name_tlv_parse (
 				break;
 			}
 			case CefC_T_CHUNK: {
-				pm->chnk_num = *((uint32_t*) &value[index]);
-				pm->chnk_num = ntohl (pm->chnk_num);
+				pm->chnk_num = 0;
+		    	for (int i = 0; i < sub_length; i++) {
+					pm->chnk_num = (pm->chnk_num << 8) | value[index+i];
+		    	}
 				pm->chnk_num_f = 1;
-				chnk_num_index = index - CefC_S_TLF;
+				chunk_len = sub_length;
 				break;
 			}
 			case CefC_T_NONCE: {
@@ -2533,12 +2578,26 @@ cef_frame_message_name_tlv_parse (
 	/* Recordss Name 				*/
 	pm->name_f = offset;
 	pm->name_len = name_len;
+	pm->chunk_len = chunk_len;
 	memcpy (pm->name, value, name_len);
 
 	if (pm->chnk_num_f) {
-		memcpy (&(pm->name[name_len]),
-			&value[chnk_num_index], CefC_S_TLF + CefC_S_ChunkNum);
-		pm->name_len += CefC_S_TLF + CefC_S_ChunkNum;
+
+		{
+			uint32_t chank_num_wk;
+			uint16_t chunk_len_wk;
+			int		 indx;
+			chank_num_wk = htonl(pm->chnk_num);
+			chunk_len_wk = htons(CefC_S_ChunkNum);
+
+			indx = 0;
+			memcpy (&(pm->name[name_len+indx]), &ftvn_chunk, sizeof(CefC_S_Type));
+			indx += CefC_S_Type;
+			memcpy (&(pm->name[name_len+indx]), &chunk_len_wk, sizeof(CefC_S_Length));
+			indx += CefC_S_Length;
+			memcpy (&(pm->name[name_len+indx]), &chank_num_wk, sizeof(CefC_S_ChunkNum));
+			pm->name_len += (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
+		}
 	}
 
 	return (1);
@@ -2800,6 +2859,11 @@ cef_frame_conversion_name_to_uri (
 		x += seg_len;
 	}
 	uri[uri_len] = 0x00;
+	/* delete last '/' */
+	if(uri[uri_len-1] == '/'){
+		uri[uri_len-1] = 0x00;
+		uri_len--;
+	}
 
 	return (uri_len);
 }
@@ -2839,6 +2903,12 @@ cef_frame_conversion_name_to_string (
 		uri_len += sec_len + 1;
 	}
 	uri_p[uri_len] = 0x00;
+
+	/* delete last '/' */
+	if(uri[uri_len-2] != ':' && uri[uri_len-1] == '/'){
+		uri[uri_len-1] = 0x00;
+		uri_len--;
+	}
 
 	return (uri_len);
 }

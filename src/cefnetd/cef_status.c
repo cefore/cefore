@@ -307,10 +307,18 @@ cef_status_face_output (
 			index++;
 			continue;
 		}
-		sprintf (
-			face_info + face_info_index,
-			 "address = %s:%d (%s)%s", node, sock->port_num, prot_str[sock->protocol], 
-			 (cef_face_check_active (sock->faceid) < 1) ? " # down" : "");
+		if (sock->ai_family == AF_INET6) {
+			sprintf (
+				face_info + face_info_index,
+				 "address = [%s]:%d (%s)%s", node, sock->port_num, prot_str[sock->protocol], 
+				 (cef_face_check_active (sock->faceid) < 1) ? " # down" : "");
+		}
+		else {
+			sprintf (
+				face_info + face_info_index,
+				 "address = %s:%d (%s)%s", node, sock->port_num, prot_str[sock->protocol], 
+				 (cef_face_check_active (sock->faceid) < 1) ? " # down" : "");
+		}
 		
 		sprintf (work_str, "%s%s\n", work_str, face_info);
 		index++;
@@ -437,8 +445,10 @@ cef_status_pit_output (
 				}
 				case CefC_T_CHUNK: {
 					chunknum_f = 1;
-					memcpy (&chunk_num, &entry->key[name_index], CefC_S_ChunkNum);
-					chunk_num = ntohl (chunk_num);
+					chunk_num = 0;
+		    		for (int j = 0; j < sub_length; j++) {
+						chunk_num = (chunk_num << 8) | entry->key[name_index+j];
+		    		} 	
 					break;
 				}
 				default: {
