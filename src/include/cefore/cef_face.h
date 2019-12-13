@@ -57,6 +57,7 @@
 
 #include <cefore/cef_hash.h>
 #include <cefore/cef_define.h>
+#include <cefore/cef_frame.h>
 
 /****************************************************************************************
  Macros
@@ -74,6 +75,9 @@
 
 #define CefC_Faceid_ListenNdnv4		8
 #define CefC_Faceid_ListenNdnv6		9
+
+#define CefC_Faceid_ListenBabel		10
+
 
 /********** FD for UNIX domain socket 		**********/
 #ifndef CefC_Android
@@ -112,6 +116,17 @@ typedef struct {
 	uint16_t 			faceid;
 	uint64_t 			rtt;
 } CefT_Rtts;
+
+/****** Entry of Socket Table 			*****/
+typedef struct {
+	struct sockaddr* ai_addr;
+	socklen_t ai_addrlen;
+	int 	ai_family;
+	int 	sock;								/* File descriptor 						*/
+	int 	faceid;								/* Assigned Face-ID 					*/
+	int 	port_num;							/* Number of port 						*/
+	uint8_t protocol;
+} CefT_Sock;
 
 /****************************************************************************************
  Global Variables
@@ -166,6 +181,13 @@ cef_face_local_face_create (
 	int sk_type
 );
 /*--------------------------------------------------------------------------------------
+	Creates the local face for babeld that uses UNIX domain socket
+----------------------------------------------------------------------------------------*/
+int											/* Returns a negative value if it fails 	*/
+cef_face_babel_face_create (
+	int sk_type
+);
+/*--------------------------------------------------------------------------------------
 	Closes all faces
 ----------------------------------------------------------------------------------------*/
 void
@@ -180,6 +202,13 @@ cef_face_check_active (
 	int faceid								/* Face-ID									*/
 );
 /*--------------------------------------------------------------------------------------
+	Checks the specified Face is close or not
+----------------------------------------------------------------------------------------*/
+int										/* Returns the value less than 1 if it fails 	*/
+cef_face_check_close (
+	int faceid								/* Face-ID									*/
+);
+/*--------------------------------------------------------------------------------------
 	Obtains the Face structure from the specified Face-ID
 ----------------------------------------------------------------------------------------*/
 uint32_t 
@@ -190,10 +219,13 @@ cef_face_get_seqnum_from_faceid (
 	Updates the listen faces with TCP
 ----------------------------------------------------------------------------------------*/
 int											/* number of the listen face with TCP 		*/
-cef_face_update_tcp_faces (
-	struct pollfd* intcpfds, 
+cef_face_update_listen_faces (
+	struct pollfd* inudpfds,
+	uint16_t* inudpfaces, 
+	uint8_t* inudpfdc, 
+	struct pollfd* intcpfds,
 	uint16_t* intcpfaces, 
-	uint8_t intcpfdc
+	uint8_t* intcpfdc
 );
 /*--------------------------------------------------------------------------------------
 	Converts the specified Face-ID into the corresponding file descriptor
@@ -258,6 +290,13 @@ cef_face_close (
 	int faceid								/* Face-ID									*/
 );
 /*--------------------------------------------------------------------------------------
+	Half-closes the specified Face
+----------------------------------------------------------------------------------------*/
+int											/* Returns a negative value if it fails 	*/
+cef_face_down (
+	int faceid								/* Face-ID									*/
+);
+/*--------------------------------------------------------------------------------------
 	Sends a Content Object via the specified Face
 ----------------------------------------------------------------------------------------*/
 int											/* Returns a negative value if it fails 	*/
@@ -265,9 +304,7 @@ cef_face_object_send (
 	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
 	unsigned char* 	msg, 					/* a message to send						*/
 	size_t			msg_len,				/* length of the message to send 			*/
-	unsigned char* 	payload, 				/* a message to send						*/
-	size_t			payload_len,			/* length of the message to send 			*/
-	uint32_t		chnk_num				/* Chunk Number 							*/
+	CefT_Parsed_Message* pm 				/* Parsed message 							*/
 );
 /*--------------------------------------------------------------------------------------
 	Sends a Content Object if the specified is local Face
@@ -275,6 +312,8 @@ cef_face_object_send (
 int											/* Returns a negative value if it fails 	*/
 cef_face_object_send_iflocal (
 	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
+	unsigned char* 	name, 
+	uint16_t 		name_len, 
 	unsigned char* 	payload, 				/* a message to send						*/
 	size_t			payload_len,			/* length of the message to send 			*/
 	uint32_t		chnk_num				/* Chunk Number 							*/
@@ -315,5 +354,27 @@ int										/* Face-ID that is not used				*/
 cef_face_get_protocol_from_fd (
 	int fd
 );
-
+/*--------------------------------------------------------------------------------------
+	Obtains the neighbor information
+----------------------------------------------------------------------------------------*/
+int 
+cef_face_neighbor_info_get (
+	char* info_buff
+);
+/*--------------------------------------------------------------------------------------
+	Obtains the node id of the specified face
+----------------------------------------------------------------------------------------*/
+int 
+cef_face_node_id_get (
+	uint16_t faceid, 
+	unsigned char* node_id
+);
+/*--------------------------------------------------------------------------------------
+	Obtains the face information
+----------------------------------------------------------------------------------------*/
+int 
+cef_face_info_get (
+	char* face_info, 
+	uint16_t faceid
+);
 #endif // __CEF_FACE_HEADER__

@@ -30,8 +30,8 @@
 EXTRA_DIST=cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh
 SCRIPTSRC=cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh
 CEF_UTIL=cefnetdstart cefnetdstop cefstatus cefroute
-INSTALLDIR=@bindir@
 SH=/bin/sh
+INSTALLDIR=$(CEFORE_DIR_PATH)/bin
 
 # check csmgrd 
 if CSMGR_ENABLE
@@ -39,6 +39,7 @@ EXTRA_DIST+=csmgrdstart.sh csmgrdstop.sh
 SCRIPTSRC+=csmgrdstart.sh csmgrdstop.sh
 CEF_UTIL+=csmgrdstart csmgrdstop
 endif # CSMGR_ENABLE
+
 
 default all: $(CEF_UTIL)
 
@@ -97,6 +98,7 @@ csmgrdstop: csmgrdstop.sh
 		echo "***" You may need to rerun ./configure in the src directory. >&2; \
 	fi
 endif # CSMGR_ENABLE
+
 
 install:
 	for i in $(CEF_UTIL) ""; do test -z "$$i" || install $$i $(INSTALLDIR); done

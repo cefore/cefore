@@ -56,10 +56,22 @@
 #LOG_LEVEL=0
 
 #
-# Public key name
-# The default is cefnetd dose not use the public key.
+# cefnetd controller
+# The default is cefnetd dose not use the controller.
 #
-#PUBLIC_KEY=
+#CONTROLLER_ID=127.0.0.1
+#CONTROLLER_PORT_NUM=9458
+#CONTROLLER_KEY=/usr/local/cefore/ccore-public-key.pem
+
+#
+# cefbabeld
+# The default is cefnetd dose not use cefbabeld.
+#  0 : Unuse
+#  1 : Use
+#USE_CEFBABEL=0
+# Protocol used to construct routes
+#  udp, tcp or both
+#CEFBABEL_ROUTE=both
 
 #
 # Neighbour Discovery
@@ -67,3 +79,10 @@
 #NBR_SIZE=1
 #NBR_INTERVAL=10000
 #NBR_THRESH=3
+
+#
+# Serial Logging
+#
+#SER_LOG_ENABLE=0
+#SER_LOG_SIZE=65535
+#SER_LOG_DIR=/path/to/file.csv

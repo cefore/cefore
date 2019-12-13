@@ -45,6 +45,9 @@
 
 #include <cefore/cef_client.h>
 #include <cefore/cef_plugin.h>
+#ifdef CefC_Android
+#include <cefore/cef_android.h>
+#endif // CefC_Android
 
 /****************************************************************************************
  Macros
@@ -76,7 +79,7 @@ static FILE* plugin_log_fp = NULL;
 static void 
 cef_plugin_line_trim (
 	const char* p1, 								/* line to trim 					*/
-	char* p2										/* trimed line 						*/
+	char* p2										/* trimmed line 					*/
 );
 /*--------------------------------------------------------------------------------------
 	Inserts the data to the tail of list
@@ -225,7 +228,7 @@ cef_plugin_tag_get (
 }
 
 /*--------------------------------------------------------------------------------------
-	Gets values of specified tag and paramter
+	Gets values of specified tag and parameter
 ----------------------------------------------------------------------------------------*/
 CefT_List* 											/* listed parameters 				*/
 cef_plugin_parameter_value_get (
@@ -277,7 +280,7 @@ cef_plugin_config_read (
 	cef_client_config_dir_get (ws);
 #else // CefC_Android
 	/* Android local cache storage is data/data/package_name/	*/
-	sprintf (ws, "data/data/icn.app.cefore/.cefore");
+	cef_android_conf_path_get (ws);
 #endif // CefC_Android
 	
 	if (mkdir (ws, 0777) != 0) {
@@ -413,7 +416,7 @@ cef_plugin_list_insert (
 static void 
 cef_plugin_line_trim (
 	const char* p1, 								/* line to trim 					*/
-	char* p2										/* trimed line 						*/
+	char* p2										/* trimmed line 					*/
 ) {
 	
 	while (*p1) {

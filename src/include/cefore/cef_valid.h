@@ -47,7 +47,6 @@
  Structure Declarations
  ****************************************************************************************/
 
-
 /****************************************************************************************
  Global Variables
  ****************************************************************************************/
@@ -57,14 +56,44 @@
  ****************************************************************************************/
 
 int
+cef_valid_init (
+	const char* conf_path
+);
+int
+cef_valid_type_get (
+	const char* type
+);
+uint32_t 
+cef_valid_crc32_calc (
+	const unsigned char* buf, 
+	size_t len
+);
+int
 cef_valid_get_pubkey (
 	const unsigned char* msg, 
 	unsigned char* key 
 );
+int 
+cef_valid_keyid_create (
+	unsigned char* name, 
+	int name_len, 
+	unsigned char* pubkey, 
+	unsigned char* keyid
+);
 int
-cef_valid_read_pubkey (
-	const char* conf_path, 
-	unsigned char* key
+cef_valid_dosign (
+	const unsigned char* msg, 
+	uint16_t msg_len, 
+	const unsigned char* name, 
+	int name_len, 
+	unsigned char* sign, 
+	unsigned int* sign_len
+);
+int 								/* If the return value is 0 the code is equal, 		*/
+									/* otherwise the code is different. 				*/
+cef_valid_msg_verify (
+	const unsigned char* msg, 
+	int msg_len
 );
 
 #endif // __CEF_VALID_HEADER__

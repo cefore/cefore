@@ -62,6 +62,7 @@ typedef struct {
 	unsigned char 	key[CsmgrdC_Key_Max];	/* key of content entry 					*/
 	int 			key_len;				/* length of key 							*/
     int             freq;
+    int             track;
 } LfuT_Entry;
 
 /****************************************************************************************
@@ -80,6 +81,7 @@ static void (*remove_api)(unsigned char*, int);
 static int              max_freq;         /* position of hand                         */
 static CefT_Rngque*     rings[LfuC_Max_Frequency];
 static int              counts[LfuC_Max_Frequency];
+static CefT_Mp_Handle   lfu_mp;
 
 static int              cache_count;        /* number of cache entries                  */
 
@@ -90,6 +92,7 @@ static int              cache_count;        /* number of cache entries          
 static void lfu_store_entry(CsmgrdT_Content_Entry* entry);
 static void lfu_remove_entry(LfuT_Entry* entry, int is_removed);
 static int  lfu_get_min_freq_ring_having_entry();
+static int  lfu_is_already_cached(CsmgrdT_Content_Entry* entry);
 
 
 /****************************************************************************************
@@ -129,6 +132,7 @@ init (
     crlib_lookup_table_init(capacity);
     
 	/* Creates the memory pool 				*/
+    lfu_mp = cef_mpool_init("LfuEntry", sizeof(LfuT_Entry), capacity);
     for (i = 0; i < LfuC_Max_Frequency; i++) {
         rings[i] = cef_rngque_create(capacity);
         counts[i] = 0;
@@ -149,6 +153,9 @@ destroy (
 	cache_cap 		= 0;
 	store_api 		= NULL;
 	remove_api 		= NULL;
+	if (lfu_mp) {
+		cef_mpool_destroy (lfu_mp);
+	}
     crlib_lookup_table_destroy();
 }
 
@@ -160,13 +167,26 @@ insert (
 	CsmgrdT_Content_Entry* entry			/* content entry 							*/
 ) {
     int removing_freq;
+    if (lfu_is_already_cached(entry)) {
+        fprintf(stderr, "[LFU LIB] insert: ERROR: specified entry is already cached.\n");
+        return;
+    }
     if (cache_count >= cache_cap) {
         LfuT_Entry* victim_entry;
-        do {
+        while (1) {
             removing_freq = lfu_get_min_freq_ring_having_entry();
             victim_entry = (LfuT_Entry*)cef_rngque_pop(rings[removing_freq]);
-        } while (removing_freq != victim_entry->freq);
+            {
+                fprintf(stderr, "[LFU LIB] %s:  FREQ:%d=%d, ", __func__, victim_entry->freq, removing_freq); 
+                crlib_force_print_name(victim_entry->key, victim_entry->key_len); 
+                fprintf (stderr, "\n"); 
+            }
+            victim_entry->track--;
+            if (removing_freq == victim_entry->freq) break;
+            if (victim_entry->track <= 0) cef_mpool_free(lfu_mp, victim_entry);
+        }
         lfu_remove_entry(victim_entry, 0);
+        if (victim_entry->track <= 0) cef_mpool_free(lfu_mp, victim_entry);
     }
     lfu_store_entry(entry);
 }
@@ -176,7 +196,8 @@ insert (
 ----------------------------------------------------------------------------------------*/
 void
 erase (
-	unsigned char* key, 					/* key of content entry removed from cache 	*/
+	unsigned char* key, 				
+    	/* key of content entry removed from cache 	*/
 											/* table									*/
 	int key_len								/* length of the key 						*/
 ) {
@@ -208,6 +229,7 @@ hit (
     proFreq = entry->freq + 1;
     cef_rngque_push(rings[proFreq], entry);
     entry->freq = proFreq;
+    entry->track++;
     counts[preFreq]--;
     counts[proFreq]++;
     if (proFreq > max_freq) max_freq = proFreq;
@@ -249,13 +271,11 @@ static void lfu_store_entry(
     
     key_len = csmgrd_name_chunknum_concatenate (
                     entry->name, entry->name_len, entry->chnk_num, key);
-    rsentry = (LfuT_Entry*) calloc (1, sizeof (LfuT_Entry));
-    if (rsentry == NULL) {
-        return;
-    }
+    rsentry = (LfuT_Entry*)cef_mpool_alloc(lfu_mp);
     rsentry->key_len = key_len;
     memcpy(rsentry->key, key, key_len);
     rsentry->freq = 0;
+    rsentry->track = 1;
     cef_rngque_push(rings[0], rsentry);
     counts[0]++;
     cache_count++;
@@ -281,5 +301,15 @@ static int lfu_get_min_freq_ring_having_entry() {
         if (freq > max_freq) return -1;
     }
     return freq;
+}
+
+static int lfu_is_already_cached(CsmgrdT_Content_Entry* entry) {
+    unsigned char 	key[CsmgrdC_Key_Max];
+    int 			key_len;
+    
+    key_len = csmgrd_name_chunknum_concatenate (
+                    entry->name, entry->name_len, entry->chnk_num, key);
+    LfuT_Entry* tmpentry = (LfuT_Entry*) crlib_lookup_table_search_v(key, key_len);
+    return tmpentry != NULL;
 }
 

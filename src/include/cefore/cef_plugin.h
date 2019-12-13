@@ -127,7 +127,7 @@ typedef struct plugin_param {
 	struct plugin_param* 	next;				/* pointer to next parameter 			*/
 } CefT_Plugin_Param;
 
-/***** store the parameteres of one tag 	*****/
+/***** store the parameters of one tag 	*****/
 typedef struct plugin_tag {
 	
 	char 					tag[33];			/* name of tag 							*/
@@ -150,7 +150,7 @@ typedef struct {
 													/* value field in hop-by-hop option */
 													/* header relating to this plugin	*/
 													/* valiant 							*/
-	uint16_t 				ophdr_len;				/* lengh of ophder value field 		*/
+	uint16_t 				ophdr_len;				/* length of ophder value field 	*/
 	unsigned char			msg[CefC_Max_Msg_Size]; 
 													/* message 							*/
 	uint16_t 				msg_len;				/* length of the message 			*/
@@ -329,7 +329,7 @@ cef_plugin_destroy (
 	CefT_Plugin_Handle* plgin_hdl					/* plugin handle 					*/
 );
 /*--------------------------------------------------------------------------------------
-	Gets values of specified tag and paramter
+	Gets values of specified tag and parameters
 ----------------------------------------------------------------------------------------*/
 CefT_List* 											/* listed parameters 				*/
 cef_plugin_parameter_value_get (

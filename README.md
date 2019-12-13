@@ -34,8 +34,8 @@ Run configure command. The following options can be specified for the configurat
 | Options | Descriptions |
 |:--|:--|
 | --enable-csmgr | Install csmgr daemon. |
-| --enable-conping | Install conping tool. |
-| --enable-contrace | Install contrace tool. |
+| --enable-cefping | Install cefping tool. |
+| --enable-cefinfo | Install cefinfo tool. |
 | --enable-ndn | Install NDN plugin function. |
 | --enable-samptp | Enable the sample transport plugin. |
 
@@ -48,8 +48,8 @@ If you change the environment variable CEFORE_DIR, please execute autoconf and a
 If you are building with minimum configuration, run configure without specifying any options.  
 > *./configure*  
 
-To enable conping and csmgr, run configure as follows.  
-> *./configure --enable-option1 --enable-option2*  
+To enable cefping and csmgr, run configure as follows.  
+> *./configure --enable-cefping --enable-csmgr*  
 
 After configure completes successfully, run make and install.  
 > *make*  
@@ -65,19 +65,19 @@ Cefore experiments can be done in a small-scale network as shown in the followin
 <PC1 (consumer):10.0.1.1>===<PC2 (router):10.0.1.2>===<PC3 (publicher):10.0.1.3>  
 
 ### Prepare the configuration file
-Prepare the configuration files. If you start cefnetd (by entering "cefnetdstart" command on the terminal) without any configuration file, the three default configuration files (cefnetd.conf, cefnetd.fib, and plugin.conf) will be created. If you build csmgrd as well, the default csmgrd.conf will be also created. These created configuration files are all with comment (# at the beginning of each line), and in this state, all parameters will set as the default. Delete the leftmost # character of the parameter and change the value if you want to change the default value. At least you may want to configure some cefnetd's parameters in cefore.conf, such as USE_CACHE and CSMGR_NODE, and configure csmgrd's parameters in csmgrd.conf if Content Store is used. In order to enable the CS function at PC3 (router), you usually need to configure CACHE_TYPE and ALLOW_NODE in its csmgrd.conf.
+Prepare the configuration files. If you start cefnetd (by entering "cefnetdstart" command on the terminal) without any configuration file, the three default configuration files (cefnetd.conf, cefnetd.fib, and plugin.conf) will be created. If you build csmgrd as well, the default csmgrd.conf will be also created. These created configuration files are all with comment (# at the beginning of each line), and in this state, all parameters will set as the default. Delete the leftmost # character of the parameter and change the value if you want to change the default value. At least you may want to configure some cefnetd's parameters in cefnetd.conf, such as USE_CACHE and CSMGR_NODE, and configure csmgrd's parameters in csmgrd.conf if Content Store is used. In order to enable the CS function at PC3 (router), you usually need to configure CACHE_TYPE and ALLOW_NODE in its csmgrd.conf.
 
 ### Route setting
 Before starting cefnetd, set up its FIB by creating the FIB configuration file (cefnetd.fib). The following examples are two cefnetd.fib files to set up PC1's FIB and PC2's FIB, respectively. Since PC3 does not send Interest to any node, PC3's FIB is not needed.
 
 PC1 cefnetd.fib  
-> *cefore:/example udp 10.0.1.2*
+> *ccn:/example udp 10.0.1.2*
 
 PC2 cefnetd.fib  
-> *cefore:/example udp 10.0.1.3*
+> *ccn:/example udp 10.0.1.3*
 
 If you want to set up FIB manually after cefnetd's startup, it is also possible to set up FIB with the cefroute utility, for example,  
-> *cefroute add cefore:/example udp 10.0.1.2*
+> *cefroute add ccn:/example udp 10.0.1.2*
 
 ### Start cefnetd
 Enter cefnetdstart at the terminal on each node to start cefnetd. Then enter cefstatus at the terminal to confirm whether it is running.  
@@ -92,10 +92,10 @@ Enter csmgrd (with "&" for background) at the terminal on PC3 and start csmgrd. 
 > *csmgrd*
 
 ### Cache file at PC3 (publisher)
-Cache a file in the PC3's content store. Enter cefputfile at PC3 terminal. The following is an example of the content with the URI of cefore:/example/file and the file to be cached as in.txt. 
-> *cefputfile cefore:/example/file -f in.txt*
+Cache a file in the PC3's content store. Enter cefputfile at PC3 terminal. The following is an example of the content with the URI of ccn:/example/file and the file to be cached as in.txt. 
+> *cefputfile ccn:/example/file -f in.txt*
 
 ### Retrieve data from the cache with PC1 (publisher)
-Confirm the content cached on PC3 at PC1. Enter cefgetfile at the terminal on PC1. The following is an example to retrieve the content whose URI is cefore:/example/file (same as the URI used for caching on PC 3).  
+Confirm the content cached on PC3 at PC1. Enter cefgetfile at the terminal on PC1. The following is an example to retrieve the content whose URI is ccn:/example/file (same as the URI used for caching on PC 3).  
 
-> *cefgetfile cefore:/example/file out.txt*
+> *cefgetfile ccn:/example/file out.txt*

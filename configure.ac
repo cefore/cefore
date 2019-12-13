@@ -5,7 +5,7 @@ dnl
 dnl  project setting
 dnl
 AC_PREREQ([2.69])
-AC_INIT([cefore], [0.6.2], [])
+AC_INIT([cefore], [0.7.0], [])
 AC_CONFIG_AUX_DIR(autotools)
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
@@ -56,6 +56,7 @@ else
 fi
 AC_SUBST(CEFORE_DIR_PATH)
 
+echo "#define CEFORE_VERSION \"Cefore version $VERSION\"" > src/cefnetd/version.h
 
 # Checks for header files(OpenSSL).
 dnl
@@ -107,24 +108,24 @@ AC_ARG_ENABLE(
 AM_CONDITIONAL(FILESYSTEM_CACHE_DISABLE, test x"${disable_filesystem}" = xyes)
 
 dnl
-dnl  check conping
+dnl  check cefping
 dnl
-AC_ARG_ENABLE(conping,
-  AS_HELP_STRING([--enable-conping], [content ping tool (default off)]),
-  [enable_conping=yes],
-  [enable_conping=no]
+AC_ARG_ENABLE(cefping,
+  AS_HELP_STRING([--enable-cefping], [content ping tool (default off)]),
+  [enable_cefping=yes],
+  [enable_cefping=no]
 )
-AM_CONDITIONAL(CONPING_ENABLE, test x"${enable_conping}" = xyes)
+AM_CONDITIONAL(CEFPING_ENABLE, test x"${enable_cefping}" = xyes)
 
 dnl
-dnl  check contrace
+dnl  check cefinfo
 dnl
-AC_ARG_ENABLE(contrace,
-  AS_HELP_STRING([--enable-contrace], [content trace tool (default off)]),
-  [enable_contrace=yes],
-  [enable_contrace=no]
+AC_ARG_ENABLE(cefinfo,
+  AS_HELP_STRING([--enable-cefinfo], [content trace tool (default off)]),
+  [enable_cefinfo=yes],
+  [enable_cefinfo=no]
 )
-AM_CONDITIONAL(CONTRACE_ENABLE, test x"${enable_contrace}" = xyes)
+AM_CONDITIONAL(CEFINFO_ENABLE, test x"${enable_cefinfo}" = xyes)
 
 dnl
 dnl  check samptp
@@ -188,22 +189,22 @@ AM_COND_IF(
 ])
 
 dnl
-dnl  check conping
+dnl  check cefping
 dnl
 AM_COND_IF(
-  [CONPING_ENABLE],
+  [CEFPING_ENABLE],
   [AC_CONFIG_FILES([
-    tools/conping/Makefile
+    tools/cefping/Makefile
   ])
 ])
 
 dnl
-dnl  check contrace
+dnl  check cefinfo
 dnl
 AM_COND_IF(
-  [CONTRACE_ENABLE],
+  [CEFINFO_ENABLE],
   [AC_CONFIG_FILES([
-    tools/contrace/Makefile
+    tools/ccninfo/Makefile
   ])
 ])
 

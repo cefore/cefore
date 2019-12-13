@@ -30,15 +30,15 @@
 # load sub directry
 SUBDIRS=cefgetstream cefputstream cefgetfile cefputfile cefgetchunk
 
-# check conping
-if CONPING_ENABLE
-SUBDIRS+=conping
-endif # CONPING_ENABLE
+# check cefping
+if CEFPING_ENABLE
+SUBDIRS+=cefping
+endif # CEFPING_ENABLE
 
-# check contrace
-if CONTRACE_ENABLE
-SUBDIRS+=contrace
-endif # CONTRACE_ENABLE
+# check ccninfo
+if CEFINFO_ENABLE
+SUBDIRS+=ccninfo
+endif # CEFINFO_ENABLE
 
 # check csmgr
 if CSMGR_ENABLE

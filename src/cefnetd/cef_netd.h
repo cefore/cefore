@@ -67,9 +67,19 @@
 #include <cefore/cef_valid.h>
 #include <cefore/cef_log.h>
 
-#ifdef CefC_Contrace
-#include <cefore/cef_contrace.h>
-#endif // CefC_Contrace
+#ifdef CefC_Ccore
+#include <ccore/ccore_common.h>
+#include <ccore/ccore_define.h>
+#include <ccore/ccore_frame.h>
+#include <ccore/ccore_valid.h>
+#endif // CefC_Ccore
+
+#ifdef CefC_Cefinfo
+#include <cefore/cef_cefinfo.h>
+#endif // CefC_Cefinfo
+#ifdef CefC_Ser_Log
+#include <cefore/cef_ser_log.h>
+#endif // CefC_Ser_Log
 
 /****************************************************************************************
  Macros
@@ -87,7 +97,13 @@
 #define CefC_Ctrl_Status_Len		strlen(CefC_Ctrl_Status)
 #define CefC_Ctrl_Route				"ROUTE"
 #define CefC_Ctrl_Route_Len			strlen(CefC_Ctrl_Route)
+#define CefC_Ctrl_Babel				"BABEL"
+#define CefC_Ctrl_Babel_Len			strlen(CefC_Ctrl_Babel)
 #define CefC_Ctrl_User_Len			256
+#ifdef CefC_Ser_Log
+#define CefC_Ctrl_Ser_Log			"SERLOG"
+#define CefC_Ctrl_Ser_Log_Len		strlen(CefC_Ctrl_Route)
+#endif // CefC_Ser_Log
 #define CefC_App_Conn_Num			64
 #define CefC_Cmd_Num_Max			256
 #define CefC_Cmd_Len_Max			1024
@@ -191,7 +207,7 @@ typedef struct {
 	uint16_t			cmd_len[CefC_Cmd_Num_Max];
 	unsigned char		cmd[CefC_Cmd_Num_Max][CefC_Cmd_Len_Max];
 
-	/********** Local Stockets		***********/
+	/********** Local Sockets		***********/
 	int 				app_fds[CefC_App_Conn_Num];
 	int 				app_faces[CefC_App_Conn_Num];
 	int 				app_steps[CefC_App_Conn_Num];
@@ -209,7 +225,7 @@ typedef struct {
 
 	/********** Content Store		***********/
 	CefT_Cs_Stat*		cs_stat;				/* Status of Content Store				*/
-#ifdef CefC_ContentStore
+#if (defined CefC_ContentStore) || (defined CefC_Dtc)
 	double				send_rate;				/* send content rate					*/
 	uint64_t			send_next;				/* Send content next					*/
 #endif // CefC_ContentStore
@@ -231,6 +247,22 @@ typedef struct {
 	
 	/********** Plugin 				***********/
 	CefT_Plugin_Handle 	plugin_hdl;
+	
+#ifdef CefC_Ccore
+	/********** Controller 			***********/
+	CcoreT_Rt_Handle* 	rt_hdl;
+#endif
+	
+	/********** Babel 				***********/
+	int 				babel_use_f;
+	int 				babel_sock;
+	int 				babel_face;
+	int 				babel_route;
+
+#ifdef CefC_Dtc
+	/********** Cefore-DTC 			***********/
+	uint64_t			dtc_resnd_t;
+#endif // CefC_Dtc
 	
 } CefT_Netd_Handle;
 

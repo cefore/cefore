@@ -79,18 +79,7 @@ main (
 static void
 output_result (
 	unsigned char* frame,
-	int frame_size,
-	uint8_t uri_f,
-	char* uri
-);
-/*--------------------------------------------------------------------------------------
-	Output Cache information
-----------------------------------------------------------------------------------------*/
-static void
-output_cache_result (
-	unsigned char* frame,
-	int frame_size,
-	char* uri
+	int frame_size
 );
 /*--------------------------------------------------------------------------------------
 	Output Usage
@@ -114,6 +103,7 @@ main (
 	int frame_size;
 	unsigned char buff[CefC_Csmgr_Stat_Mtu] = {0};
 	uint16_t value16;
+	int name_len;
 	struct pollfd fds[1];
 	unsigned char frame[CefC_Csmgr_Stat_Mtu] = {0};
 	char uri[1024] = {0};
@@ -215,7 +205,8 @@ main (
 		fprintf (stderr, "ERROR : connect to csmgrd\n");
 		return (0);
 	}
-
+	cef_frame_init ();
+	
 	/* Create Upload Request message	*/
 	/* set header	*/
 	buff[CefC_O_Fix_Ver]  = CefC_Version;
@@ -227,20 +218,26 @@ main (
 	memcpy (buff + index, &uri_value, sizeof (uint8_t));
 	index += sizeof (uint8_t);
 	if (uri_value) {
-		if (cef_frame_conversion_uri_to_name (uri, tmp_name) < 0) {
-			/* header is not cef:/	*/
+		name_len = cef_frame_conversion_uri_to_name (uri, tmp_name);
+		if (name_len < 0) {
 			fprintf (stderr, "ERROR : URI is Invalid (%s)\n", uri);
 		}
-		res = strlen (uri);
-		if (uri[res - 1] != '/') {
-			strcat (uri, "/");
+		if (name_len == 4) { /* uri is ccn:/ */
+			name_len = 0;
 		}
+	} else {
+		name_len = 0;
 	}
-
+	
+	if (name_len > 0) {
+		memcpy (buff + index, &tmp_name, name_len);
+		index += (uint16_t) name_len;
+	}
+	
 	/* set Length	*/
 	value16 = htons (index);
 	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
-
+	
 	/* send message	*/
 	res = cef_csmgr_send_msg (tcp_sock, buff, index);
 	if (res < 0) {
@@ -282,27 +279,32 @@ main (
 
 	len = recv (fds[0].fd, buff, CefC_Csmgr_Stat_Mtu, 0);
 	if (len > 0) {
+		cef_csmgr_buffer_init ();
+		
 		/* receive message	*/
 		len = csmgr_frame_get (buff, len, frame, &frame_size, &type);
 		if (frame_size > 0) {
 			if (type != CefC_Csmgr_Msg_Type_Status) {
 				fprintf (stderr, "ERROR : Response type is not status\n");
 				close (tcp_sock);
+				cef_csmgr_buffer_destroy ();
 				return (-1);
 			}
-			output_result (frame, frame_size, uri_value, uri);
+			output_result (frame, frame_size);
 		} else {
 			fprintf (stderr, "ERROR : Response message is Invalid\n");
+			cef_csmgr_buffer_destroy ();
 			close (tcp_sock);
 			return (-1);
 		}
 	} else {
 		/* closed socket	*/
 		fprintf (stderr, "ERROR : Receive message error (%s)\n", strerror (errno));
+		cef_csmgr_buffer_destroy ();
 		close (tcp_sock);
 		return (-1);
 	}
-
+	cef_csmgr_buffer_destroy ();
 	close (tcp_sock);
 
 	return (0);
@@ -313,193 +315,64 @@ main (
 static void
 output_result (
 	unsigned char* frame,
-	int frame_size,
-	uint8_t uri_f,
-	char* uri
+	int frame_size
 ) {
-	// struct CefT_Cs_Mgrd_Stat mgr_stat;
-	char stat[CefC_Max_Length] = {0};
-	char rply[CefC_Max_Length] = {0};
-	uint16_t stat_len = 0;
-	uint16_t rply_len = 0;
-	uint16_t cache_len = 0;
-	uint8_t type;
+	struct CefT_Csmgr_Status_Hdr stat_hdr;
+	struct CefT_Csmgr_Status_Rep stat_rep;
+	unsigned char name[65535];
+	char get_uri[65535];
 	uint16_t index = 0;
-	uint16_t value16;
-
-	/* get status */
-	type = frame[index];
-	if (type != CefC_Csmgr_Stat_Msg_Type_Status) {
-		fprintf (stderr, "Receive invalid type (%d)\n", type);
-		return;
+	int con_no = 0;
+	
+	if (frame_size < sizeof (struct CefT_Csmgr_Status_Hdr)) {
+		fprintf (stderr, "Received the invalid response\n");
 	}
-	index++;
-	memcpy (&value16, frame + index, sizeof (uint16_t));
-	rply_len = ntohs (value16);
-	index += sizeof (uint16_t);
-	memcpy (rply, frame + index, rply_len);
-	index += rply_len;
-
-	fprintf (stderr, "\n");
-	fprintf (stderr, "%s\n", rply);
-
-	/* get status */
-	type = frame[index];
-	if (type != CefC_Csmgr_Stat_Msg_Type_Status) {
-		fprintf (stderr, "Receive invalid type (%d)\n", type);
-		return;
-	}
-	index++;
-	memcpy (&value16, frame + index, sizeof (uint16_t));
-	stat_len = ntohs (value16);
-	index += sizeof (uint16_t);
-	memcpy (stat, frame + index, stat_len);
-	index += stat_len;
-
-	/* output status */
-	fprintf (stderr, "\n");
-	fprintf (stderr, "%s\n", stat);
-
-	if (uri_f) {
-		if ((frame_size - index) > 0) {
-			/* get cache information */
-			type = frame[index];
-			if (type != CefC_Csmgr_Stat_Msg_Type_Cache) {
-				fprintf (stderr, "Receive invalid type\n");
-				return;
-			}
-			index++;
-			memcpy (&value16, frame + index, sizeof (uint16_t));
-			cache_len = ntohs (value16);
-			index += sizeof (cache_len);
-			output_cache_result (frame + index, cache_len, uri);
-			index += cache_len;
-		}
-	}
-
-	return;
-}
-/*--------------------------------------------------------------------------------------
-	Output Cache information
-----------------------------------------------------------------------------------------*/
-static void
-output_cache_result (
-	unsigned char* frame,
-	int frame_size,
-	char* uri
-) {
-	CefT_Csmgrd_Stat_Cache cinfo;
-
-	uint8_t fld_type;
-	uint16_t fld_length;
-	uint8_t name_length;
-	uint32_t name_num;
-	char name[265];
-	char uri_prot[1024] = {0};
-	int uri_prot_len = 0;
-	char name_prot[1024] = {0};
-	int name_prot_len = 0;
-	int i, j;
-	int opt_name_len;
-	int index = 1;
-	uint16_t value16;
-	uint32_t value32;
-	uint64_t value64;
-
-	size_t fst 	= sizeof (fld_type);
-	size_t fsl	= sizeof (fld_length);
-	size_t fstl = fst + fsl;
-	size_t fsn	= sizeof (uint8_t);
-	unsigned char* pread = frame;
-
-	/* check field type 	*/
-	memcpy (&fld_type, pread, fst);
-	if (fld_type != CefC_Csmgr_Stat_Type_Cache) {
-#ifdef CTD_DEBUG
-		fprintf (stderr, "[debug] fld_type error(%d)\n", fld_type);/* debug */
-#endif // CTD_DEBUG
-		return;
-	}
-
-	/* search for the cache status that a title fits name_prefix option */
-
-	memcpy (&value16, pread + fst, fsl);
-	fld_length = ntohs (value16);
-	memcpy (&value32, pread + fstl, sizeof (uint32_t));
-	name_num = ntohl (value32);
-#ifdef CTD_DEBUG
-	fprintf (stderr, "[debug]    length=%d, cache num=%u\n", fld_length, name_num);
-#endif // CTD_DEBUG
-	if (fld_length != frame_size) {
-		return;
-	}
-
-	/* get uri and uri length */
-	opt_name_len = (int) strlen (uri);
-	/* get protocol */
-	for (i = 0; i < opt_name_len - 1; i++) {
-		if ((uri[i] == ':') && uri[i + 1] == '/') {
-			memcpy (uri_prot, uri, i + 2);
+	memcpy (&stat_hdr, &frame[0], sizeof (struct CefT_Csmgr_Status_Hdr));
+	stat_hdr.node_num 	= ntohs (stat_hdr.node_num);
+	stat_hdr.con_num 	= ntohs (stat_hdr.con_num);
+	
+	fprintf (stderr, "*****   Connection Status Report   *****\n");
+	fprintf (stderr, "All Connection Num             : %d\n\n", stat_hdr.node_num);
+	
+	fprintf (stderr, "*****   Cache Status Report        *****\n");
+	fprintf (stderr, "Number of Cached Contents      : %d\n\n", stat_hdr.con_num);
+	index += sizeof (struct CefT_Csmgr_Status_Hdr);
+	
+	while (index < frame_size) {
+		if (frame_size - index < sizeof (struct CefT_Csmgr_Status_Rep)) {
 			break;
 		}
-	}
-	uri_prot_len = (int)strlen (uri_prot);
-	pread = frame + fstl + sizeof (uint32_t);
-	for (i = 0 ; i < name_num ; i++) {
-		memcpy (&value64, pread, sizeof (uint64_t));
-		cinfo.size = cef_client_ntohb (value64);
-		pread += sizeof (uint64_t);
-
-		memcpy (&value32, pread, sizeof (uint32_t));
-		cinfo.freshness_sec = (int) ntohl (value32);
-		pread += sizeof (uint32_t);
-
-		memcpy (&value32, pread, sizeof (uint32_t));
-		cinfo.access_cnt = ntohl (value32);
-		pread += sizeof (uint32_t);
-
-		memcpy (&value32, pread, sizeof (uint32_t));
-		cinfo.elapsed_time = ntohl (value32);
-		pread += sizeof (uint32_t);
-
-		/* get content name */
-		memcpy (&name_length, pread, fsn);
-		memcpy (name, pread + fsn, name_length);
-		/* get protocol */
-		for (j = 0; j < name_length - 1; j++) {
-			if ((name[j] == ':') && name[j + 1] == '/') {
-				memcpy (name_prot, name, j + 2);
-				break;
-			}
+		memcpy (&stat_rep, &frame[index], sizeof (struct CefT_Csmgr_Status_Rep));
+		stat_rep.con_size 		= cef_client_ntohb (stat_rep.con_size);
+		stat_rep.access 		= cef_client_ntohb (stat_rep.access);
+		stat_rep.freshness 		= cef_client_ntohb (stat_rep.freshness);
+		stat_rep.elapsed_time 	= cef_client_ntohb (stat_rep.elapsed_time);
+		stat_rep.name_len 		= ntohs (stat_rep.name_len);
+		index += sizeof (struct CefT_Csmgr_Status_Rep);
+		
+		if (frame_size - index < stat_rep.name_len) {
+			break;
 		}
-		name_prot_len = (int) strlen (name_prot);
-
-		pread += fsn + name_length;
-		name[name_length] = 0;
-		/* check name length */
-		if ((opt_name_len - uri_prot_len) > (name_length - name_prot_len)) {
-			continue;
-		}
-
-		/* check name */
-		if (!memcmp (
-				&name[name_prot_len], &uri[uri_prot_len], opt_name_len - uri_prot_len)) {
-			/* output cache information */
-			fprintf (stderr, "[%d]\n", index);
-			fprintf (stderr, "  Content Name : %s%s\n", uri_prot, &name[name_prot_len]);
-			fprintf (stderr, "  Content Size : "FMTU64"Bytes\n", cinfo.size);
-			fprintf (stderr, "  Access Count : %u\n", cinfo.access_cnt);
-			if (cinfo.freshness_sec) {
-				fprintf (stderr, "  Freshness    : %d Sec\n", cinfo.freshness_sec);
+		memcpy (name, &frame[index], stat_rep.name_len);
+		index += stat_rep.name_len;
+		
+		if (stat_rep.name_len > 0) {
+			cef_frame_conversion_name_to_uri (name, stat_rep.name_len, get_uri);
+			fprintf (stderr, "[%d]\n", con_no);
+			fprintf (stderr, "  Content Name : %s\n", get_uri);
+			fprintf (stderr, "  Content Size : "FMTU64" Bytes\n", stat_rep.con_size);
+			fprintf (stderr, "  Access Count : "FMTU64"\n", stat_rep.access);
+			if (stat_rep.freshness) {
+				fprintf (stderr, "  Freshness    : "FMTU64" Sec\n", stat_rep.freshness);
 			} else {
 				fprintf (stderr, "  Freshness    : Permanent\n");
 			}
-			fprintf (stderr, "  Elapsed Time : %u Sec\n", cinfo.elapsed_time);
+			fprintf (stderr, "  Elapsed Time : "FMTU64" Sec\n", stat_rep.elapsed_time);
 			fprintf (stderr, "\n");
-			index++;
+			con_no++;
 		}
 	}
-
+	
 	return;
 }
 /*--------------------------------------------------------------------------------------

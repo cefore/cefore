@@ -144,10 +144,7 @@ cefnetd_object_forward (
 		if (cef_face_check_active (faceids[i]) > 0) {
 			seqnum = cef_face_get_seqnum_from_faceid (faceids[i]);
 			cef_frame_seqence_update (msg, seqnum);
-			
-			cef_face_object_send (faceids[i], msg, payload_len + header_len, 
-				pm->payload, pm->payload_len, pm->chnk_num);
-			
+			cef_face_object_send (faceids[i], msg, payload_len + header_len, pm);
 			hdl->stat_send_frames++;
 		} else {
 			cef_pit_down_faceid_remove (pe, faceids[i]);

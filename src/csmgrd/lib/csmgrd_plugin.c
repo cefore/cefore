@@ -43,6 +43,7 @@
 #include <time.h>
 #include <limits.h>
 
+#include <cefore/cef_client.h>
 #include <csmgrd/csmgrd_plugin.h>
 
 /****************************************************************************************
@@ -219,6 +220,82 @@ csmgrd_name_chunknum_concatenate (
 	return (name_len + 4 + sizeof (uint32_t));
 }
 
+/*--------------------------------------------------------------------------------------
+	Creates the content entry
+----------------------------------------------------------------------------------------*/
+int 
+cef_csmgr_con_entry_create (
+	unsigned char* buff,						/* receive message						*/
+	int buff_len,								/* message length						*/
+	CsmgrdT_Content_Entry* entry
+) {
+	uint16_t index, len;
+	uint16_t value16;
+	uint32_t value32;
+	uint64_t value64;
+	
+	/* check message size */
+	if (buff_len <= CefC_Csmgr_Msg_HeaderLen) {
+		return (-1);
+	}
+	
+	/* check header */
+	if ((buff[CefC_O_Fix_Ver]  != CefC_Version) ||
+		(buff[CefC_O_Fix_Type] >= CefC_Csmgr_Msg_Type_Num) ||
+		(buff[CefC_O_Fix_Type] == CefC_Csmgr_Msg_Type_Invalid)) {
+		return (-1);
+	}
+	memcpy (&value16, &buff[CefC_O_Length], CefC_S_Length);
+	len = ntohs (value16);
+	
+	/* check message length */
+	if ((len <= CefC_Csmgr_Msg_HeaderLen) || 
+		(len > CefC_Max_Msg_Size * 2) || 
+		(len > buff_len)) {
+		return (-1);
+	}
+	index = CefC_Csmgr_Msg_HeaderLen;
+	
+	/* Get payload length */
+	memcpy (&value16, &buff[index], CefC_S_Length);
+	entry->pay_len = ntohs (value16);
+	index += CefC_S_Length;
+	
+	/* Get cob message */
+	memcpy (&value16, &buff[index], CefC_S_Length);
+	entry->msg_len = ntohs (value16);
+	index += CefC_S_Length;
+	memcpy (entry->msg, &buff[index], entry->msg_len);
+	index += entry->msg_len;
+	
+	/* Get cob name */
+	memcpy (&value16, &buff[index], CefC_S_Length);
+	entry->name_len = ntohs (value16);
+	index += CefC_S_Length;
+	memcpy (entry->name, &buff[index], entry->name_len);
+	index += entry->name_len;
+	
+	/* Get chunk num */
+	memcpy (&value32, &buff[index], CefC_S_ChunkNum);
+	entry->chnk_num = ntohl (value32);
+	index += CefC_S_ChunkNum;
+	
+	/* Get cache time */
+	memcpy (&value64, &buff[index], CefC_S_Cachetime);
+	entry->cache_time = cef_client_ntohb (value64);
+	index += CefC_S_Cachetime;
+	
+	/* get expiry */
+	memcpy (&value64, &buff[index], CefC_S_Expiry);
+	entry->expiry = cef_client_ntohb (value64);
+	index += CefC_S_Expiry;
+	
+	/* get address */
+	memcpy (&entry->node, &buff[index], sizeof (struct in_addr));
+	index += sizeof (struct in_addr);
+	
+	return ((int) index);
+}
 void
 csmgrd_log_init (
 	const char* proc_name

@@ -66,6 +66,9 @@
 #ifdef CefC_Debug
 static char 	pit_dbg_msg[2048];
 #endif // CefC_Debug
+#ifdef CefC_Dtc
+CefT_Dtc_Pit_List* dtc_pit = NULL;
+#endif // CefC_Dtc
 
 
 /****************************************************************************************
@@ -204,7 +207,7 @@ cef_pit_entry_search (
 		{
 			int dbg_x;
 			
-			sprintf (pit_dbg_msg, "[pit] Exact mached to the entry [");
+			sprintf (pit_dbg_msg, "[pit] Exact matched to the entry [");
 			for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
 				sprintf (pit_dbg_msg, "%s %02X", pit_dbg_msg, entry->key[dbg_x]);
 			}
@@ -226,7 +229,7 @@ cef_pit_entry_search (
 					int dbg_x;
 					
 					if (entry) {
-						sprintf (pit_dbg_msg, "[pit] Partial mached to the entry [");
+						sprintf (pit_dbg_msg, "[pit] Partial matched to the entry [");
 						for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
 							sprintf (pit_dbg_msg, 
 								"%s %02X", pit_dbg_msg, entry->key[dbg_x]);
@@ -339,7 +342,15 @@ cef_pit_entry_down_face_update (
 	
 	/* Updates Interest Lifetime of this PIT entry 		*/
 	if (poh->lifetime_f) {
+#ifdef CefC_Dtc
+		if (pm->app_comp == CefC_T_APP_DTC) {
+			extent_us = (uint64_t)poh->lifetime * 1000000;
+		} else {
+			extent_us = poh->lifetime * 1000;
+		}
+#else // CefC_Dtc
 		extent_us = poh->lifetime * 1000;
+#endif // CefC_Dtc
 	} else {
 		extent_us = CefC_Default_LifetimeUs;
 	}
@@ -350,7 +361,7 @@ cef_pit_entry_down_face_update (
 	cef_dbg_write (CefC_Dbg_Finest, "[pit] Lifetime = "FMTU64"\n", extent_us / 1000);
 #endif // CefC_Debug
 	
-	/* Checks the advertized lifetime to upstream 		*/
+	/* Checks the advertised lifetime to upstream 		*/
 	if (face->lifetime_us > entry->drp_lifetime_us) {
 		forward_interest_f = 1;
 		entry->drp_lifetime_us = face->lifetime_us + 1000000;
@@ -429,9 +440,9 @@ cef_pit_entry_free (
 	CefT_Pit_Entry* entry 					/* PIT entry 								*/
 ) {
 	CefT_Up_Faces* upface_next;
-	CefT_Up_Faces* upface = &(entry->upfaces);
+	CefT_Up_Faces* upface = entry->upfaces.next;
 	CefT_Down_Faces* dnface_next;
-	CefT_Down_Faces* dnface = &(entry->dnfaces);
+	CefT_Down_Faces* dnface = entry->dnfaces.next;
 
 	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_remove (pit, entry->key, entry->klen);
 
@@ -447,27 +458,30 @@ cef_pit_entry_free (
 	}
 #endif // CefC_Debug
 	
-	while (upface->next) {
-		upface = upface->next;
+	while (upface) {
 		upface_next = upface->next;
 		free (upface);
-		upface->next = upface_next;
+		upface = upface_next;
 	}
-
-	while (dnface->next) {
-		dnface = dnface->next;
+	
+	while (dnface) {
 		dnface_next = dnface->next;
 		free (dnface);
-		dnface->next = dnface_next;
+		dnface = dnface_next;
 	}
-
-	dnface = &(entry->clean_dnfaces);
-	while (dnface->next) {
-		dnface = dnface->next;
+	
+	dnface = entry->clean_dnfaces.next;
+	while (dnface) {
 		dnface_next = dnface->next;
 		free (dnface);
-		dnface->next = dnface_next;
+		dnface = dnface_next;
 	}
+
+#if CefC_Dtc
+	if (entry->dtc_f) {
+		cef_pit_dtc_entry_delete (&entry->dtc_entry);
+	}
+#endif // CefC_Dtc
 
 	free (entry);
 
@@ -722,3 +736,153 @@ cefrt_pit_cleanup (
 	cef_pit_entry_free (pit, entry);
 	return (NULL);
 }
+#ifdef CefC_Dtc
+/*--------------------------------------------------------------------------------------
+	Create Cefore-DTC PIT List
+----------------------------------------------------------------------------------------*/
+int
+cef_pit_dtc_init (
+	void
+) {
+	if (dtc_pit) {
+		free (dtc_pit);
+		dtc_pit = NULL;
+	}
+	dtc_pit = (CefT_Dtc_Pit_List*)malloc (sizeof (CefT_Dtc_Pit_List));
+	if (dtc_pit) {
+		dtc_pit->top = NULL;
+		dtc_pit->end = NULL;
+		dtc_pit->work = NULL;
+		return (0);
+	}
+	return (-1);
+}
+/*--------------------------------------------------------------------------------------
+	Destroy Cefore-DTC PIT List
+----------------------------------------------------------------------------------------*/
+void
+cef_pit_dtc_destroy (
+	void
+) {
+	CefT_Dtc_Pit_Entry* entry;
+	CefT_Dtc_Pit_Entry* next;
+	if (!dtc_pit) {
+		return;
+	}
+	entry = dtc_pit->top;
+	while (entry) {
+		next = entry->next;
+		free (entry);
+		entry = next;
+	}
+	free (dtc_pit);
+	dtc_pit = NULL;
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Create Cefore-DTC PIT Entry
+----------------------------------------------------------------------------------------*/
+CefT_Dtc_Pit_Entry*
+cef_pit_dtc_entry_create (
+	unsigned char* msg,
+	uint16_t msg_len
+) {
+	CefT_Dtc_Pit_Entry* entry;
+	entry = (CefT_Dtc_Pit_Entry*)malloc (sizeof (CefT_Dtc_Pit_Entry));
+	if (entry) {
+		entry->prev = NULL;
+		entry->next = NULL;
+		entry->msg_len = msg_len;
+		memcpy (entry->msg, msg, msg_len);
+	} else {
+		cef_log_write (CefC_Log_Warn, "Cannot allocate memory (DTC PIT entry)");
+	}
+	return (entry);
+}
+/*--------------------------------------------------------------------------------------
+	Delete Cefore-DTC PIT Entry
+----------------------------------------------------------------------------------------*/
+int
+cef_pit_dtc_entry_delete (
+	CefT_Dtc_Pit_Entry** entry_p
+) {
+	CefT_Dtc_Pit_Entry* entry = *entry_p;
+	/* Delete entry */
+	if (dtc_pit->top == dtc_pit->end) {
+		/* Entry is last one */
+		dtc_pit->top = NULL;
+		dtc_pit->end = NULL;
+	} else if (dtc_pit->top == entry) {
+		/* The entry is the top of the dtc_pit */
+		dtc_pit->top = entry->next;
+		dtc_pit->top->prev = NULL;
+	} else if (dtc_pit->end == entry) {
+		/* The entry is the end of the dtc_pit */
+		dtc_pit->end = entry->prev;
+		dtc_pit->end->next = NULL;
+	} else {
+		/* Other */
+		entry->prev->next = entry->next;
+		entry->next->prev = entry->prev;
+	}
+	/* Move working entry */
+	if (dtc_pit->work == entry) {
+		if (dtc_pit->work->next) {
+			dtc_pit->work = dtc_pit->work->next;
+		} else {
+			dtc_pit->work = dtc_pit->top;
+		}
+	}
+	free (entry);
+	*entry_p = NULL;
+	return (0);
+}
+/*--------------------------------------------------------------------------------------
+	Insert Cefore-DTC PIT Entry
+----------------------------------------------------------------------------------------*/
+void
+cef_pit_dtc_entry_insert (
+	CefT_Dtc_Pit_Entry* entry
+) {
+	if (entry == NULL) {
+		return;
+	}
+	if (dtc_pit->end) {
+		/* DTC-PIT has some entry */
+		entry->prev = dtc_pit->end;
+		dtc_pit->end->next = entry;
+		dtc_pit->end = entry;
+	} else if (dtc_pit->top) {
+		/* DTC-PIT has single entry */
+		entry->prev = dtc_pit->top;
+		dtc_pit->top->next = entry;
+		dtc_pit->end = entry;
+	} else {
+		/* DTC-PIT has no entry */
+		dtc_pit->top = entry;
+		dtc_pit->end = entry;
+		dtc_pit->work = entry;
+	}
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Read Current Cefore-DTC PIT Entry
+----------------------------------------------------------------------------------------*/
+CefT_Dtc_Pit_Entry*
+cef_pit_dtc_entry_read (
+	void
+) {
+	if (dtc_pit->work == NULL) {
+		/* DTC Entry is empty */
+		return (NULL);
+	}
+	/* Move next */
+	if (dtc_pit->work->next) {
+		dtc_pit->work = dtc_pit->work->next;
+	} else {
+		/* The entry is the end of the dtc_pit */
+		dtc_pit->work = dtc_pit->top;
+	}
+	return (dtc_pit->work);
+}
+#endif // CefC_Dtc

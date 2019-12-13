@@ -31,7 +31,7 @@ AM_CPPFLAGS = -I$(top_srcdir)/src/include
 
 bin_PROGRAMS=cefgetstream
 cefgetstream_LDFLAGS=-L$(top_srcdir)/src/lib/
-cefgetstream_LDADD=-lcefore
+cefgetstream_LDADD=-lcefore -lssl -lcrypto
 cefgetstream_CFLAGS=$(AM_CPPFLAGS)
 cefgetstream_SOURCES=cefgetstream.c
 

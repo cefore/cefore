@@ -267,6 +267,8 @@ static void fifo_remove_entry(
 }
 
 static void fifo_move_entry(int from_index, int to_index) {
+    if (from_index == to_index) return;
+    
     FifoT_Entry *from_entry = &cache_entry_list[from_index];
     FifoT_Entry *to_entry = &cache_entry_list[to_index];
     

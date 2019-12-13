@@ -9,6 +9,12 @@
 #PORT_NUM=9799
 
 #
+# Socket ID used by csmgrd and cefnetd.
+# This value is the string type, not the integer type.
+#
+#LOCAL_SOCK_ID=0
+
+#
 # Type of CS space used by csmgrd.
 #  filesystem : UNIX filesystem
 #  memory     : Memory

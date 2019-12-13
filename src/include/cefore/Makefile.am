@@ -28,9 +28,11 @@
 # 
 
 # specify the include file
-CEF_HEADER=cef_client.h cef_csmgr.h cef_contrace.h \
+CEF_HEADER=cef_client.h cef_csmgr.h cef_csmgr_stat.h cef_cefinfo.h \
 	cef_define.h cef_face.h cef_fib.h cef_frame.h cef_hash.h cef_mpool.h \
 	cef_pit.h cef_log.h cef_print.h cef_rngque.h cef_plugin.h cef_plugin_com.h cef_valid.h
 
-includedir=@includedir@/cefore
+
+includedir=$(CEFORE_DIR_PATH)/include/cefore
 include_HEADERS=$(CEF_HEADER)
+

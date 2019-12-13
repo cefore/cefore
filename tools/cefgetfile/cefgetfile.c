@@ -108,13 +108,10 @@ int main (
 	char** argv
 ) {
 	int res;
-	int frame_size;
 	int pipeline = 4;
 	int index = 0;
 	char uri[1024];
 	char fpath[1024];
-	unsigned char buff[CefC_Max_Length];
-	unsigned char frame[CefC_Max_Length];
 	CefT_Interest_TLVs params;
 	struct timeval t;
 	uint64_t dif_time;
@@ -131,10 +128,15 @@ int main (
 	char 	conf_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
 	
+	char valid_type[1024];
+	
 	Ceft_RxWnd* 	rxwnd;
 	Ceft_RxWnd* 	rxwnd_prev;
 	Ceft_RxWnd* 	rxwnd_head;
 	Ceft_RxWnd* 	rxwnd_tail;
+	
+	struct cef_app_frame app_frame;
+	unsigned char* buff;
 	
 	/***** flags 		*****/
 	int pipeline_f 		= 0;
@@ -145,7 +147,7 @@ int main (
 	int from_pub_f 		= 0;
 	int dir_path_f 		= 0;
 	int port_num_f 		= 0;
-	int key_path_f 		= 0;
+	int valid_f 		= 0;
 	
 	/***** state variavles 	*****/
 	uint32_t 	sv_max_seq 		= UINT_MAX - 1;
@@ -156,6 +158,9 @@ int main (
 	/*---------------------------------------------------------------------------
 		Obtains parameters
 	-----------------------------------------------------------------------------*/
+	uri[0] 			= 0;
+	valid_type[0] 	= 0;
+	
 	fprintf (stdout, "[cefgetfile] Start\n");
 	fprintf (stdout, "[cefgetfile] Parsing parameters ... ");
 	
@@ -253,13 +258,6 @@ int main (
 			sv_max_seq--;
 			max_seq_f++;
 			i++;
-		} else if (strcmp (work_arg, "-k") == 0) {
-			if (key_path_f) {
-				fprintf (stderr, "ERROR: [-k] is duplicated.\n");
-				print_usage ();
-				return (-1);
-			}
-			key_path_f++;
 		} else if (strcmp (work_arg, "-z") == 0) {
 			if (nsg_flag) {
 				fprintf (stdout, "ERROR: [-z] is duplicated.\n");
@@ -286,6 +284,21 @@ int main (
 				return (-1);
 			}
 			from_pub_f++;
+		} else if (strcmp (work_arg, "-v") == 0) {
+			if (valid_f) {
+				fprintf (stderr, "ERROR: [-v] is duplicated.\n");
+				print_usage ();
+				return (-1);
+			}
+			if (i + 1 == argc) {
+				fprintf (stderr, "ERROR: [-v] has no parameter.\n");
+				print_usage ();
+				return (-1);
+			}
+			work_arg = argv[i + 1];
+			strcpy (valid_type, work_arg);
+			valid_f++;
+			i++;
 		} else if (strcmp (work_arg, "-h") == 0) {
 			print_usage ();
 			exit (1);
@@ -294,7 +307,8 @@ int main (
 			work_arg = argv[i];
 			
 			if (work_arg[0] == '-') {
-				fprintf (stdout, "ERROR: unknown option is specified.\n");
+				fprintf (stdout, 
+					"ERROR: unknown option (%s) is specified.\n", work_arg);
 				print_usage ();
 				return (-1);
 			}
@@ -323,9 +337,38 @@ int main (
 		exit (1);
 	}
 	if (file_f == 0) {
-		fprintf (stdout, "ERROR: [-f] is not specified.\n");
-		print_usage ();
-		exit (1);
+		/* Use the last string in the URL */
+		res = strlen (uri);
+		if (res >= 1204) {
+			fprintf (stdout, "ERROR: uri is too long.\n");
+			print_usage ();
+			return (-1);
+		}
+		if (uri[res - 1] == '/') {
+			/* Ignore last '/' */
+			res -= 2;
+		}
+		while (res > 0) {
+			res--;
+			if (uri[res] == '/') {
+				res++;
+				break;
+			}
+		}
+		if (res <= 0) {
+			fprintf (stdout, "ERROR: File name is not specified.\n");
+			print_usage ();
+			exit (1);
+		}
+		i = 0;
+		while (1) {
+			if ((uri[res + i] == '\0') || (uri[res + i] == '/')) {
+				break;
+			}
+			i++;
+		}
+		strncpy (fpath, uri + res, i);
+		fpath[i] = '\0';
 	}
 	if (pipeline > sv_max_seq + 1) {
 		pipeline = sv_max_seq + 1;
@@ -361,6 +404,23 @@ int main (
 	}
 	params.name_len = res;
 	fprintf (stdout, "OK\n");
+	
+	/*------------------------------------------
+		Set Validation Alglithm
+	--------------------------------------------*/
+	if (valid_f == 1) {
+		cef_valid_init (conf_path);
+		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_type);
+		
+		if (params.alg.valid_type == CefC_T_ALG_INVALID) {
+			fprintf (stdout, "ERROR: -v has the invalid parameter %s\n", valid_type);
+			exit (1);
+		}
+	}
+	
+	/*------------------------------------------
+		Connects to CEFORE
+	--------------------------------------------*/
 	fprintf (stdout, "[cefgetfile] Connect to cefnetd ... ");
 	fhdl = cef_client_connect ();
 	if (fhdl < 1) {
@@ -368,21 +428,6 @@ int main (
 		exit (1);
 	}
 	fprintf (stdout, "OK\n");
-	
-	/*------------------------------------------
-		Checks Validation 
-	--------------------------------------------*/
-	if (key_path_f) {
-		params.alg.pubkey_len = cef_valid_read_pubkey (conf_path, params.alg.pubkey);
-		
-		if (params.alg.pubkey_len > 0) {
-			fprintf (stdout, "[cefgetfile] Read the public key ... OK\n");
-		} else {
-			fprintf (stdout, "[cefgetfile] Read the public key ... NG\n");
-			fclose (fp);
-			exit (1);
-		}
-	}
 	
 	/*---------------------------------------------------------------------------
 		Sets Interest parameters
@@ -453,6 +498,8 @@ int main (
 		}
 		end_t.tv_sec = t.tv_sec;
 	}
+	memset (&app_frame, 0, sizeof (struct cef_app_frame));
+	buff = (unsigned char*) malloc (sizeof (unsigned char) * CefC_AppBuff_Size);
 	
 	/*---------------------------------------------------------------------------
 		Main loop
@@ -473,10 +520,11 @@ int main (
 		}
 		
 		/* Reads the message from cefnetd			*/
-		res = cef_client_read (fhdl, &buff[index], CefC_Max_Length - index);
+		res = cef_client_read (fhdl, &buff[index], CefC_AppBuff_Size - index);
 		
 		if (res > 0) {
 			res += index;
+//			fprintf (stderr, "# recv = %d bytes (%d)\n", res, index);
 			
 			/* Updates the jitter 		*/
 			if (stat_recv_frames < 1) {
@@ -501,28 +549,25 @@ int main (
 			
 			/* Incomming message process 		*/
 			do {
-				if (nsg_flag) {
-					res = cef_client_payload_get (buff, res, frame, &frame_size);
-				} else {
-					res = cef_client_payload_get_with_chnk_num (
-									buff, res, frame, &frame_size, &chnk_num);
-				}
+				res = cef_client_payload_get_with_info (buff, res, &app_frame);
 				
-				if (frame_size > 0) {
+				if (app_frame.version == CefC_App_Version) {
 					
 					if (nsg_flag) {
 						stat_recv_frames++;
-						stat_recv_bytes += frame_size;
-						fwrite (frame, sizeof (unsigned char), frame_size, fp);
+						stat_recv_bytes += app_frame.payload_len;
+						fwrite (app_frame.payload, 
+							sizeof (unsigned char), app_frame.payload_len, fp);
 					} else {
-						
 						/* Inserts the received frame to the buffer 	*/
-						if ((chnk_num < rxwnd_head->seq) || 
-							(chnk_num > rxwnd_tail->seq)) {
+						if ((app_frame.chunk_num < rxwnd_head->seq) || 
+							(app_frame.chunk_num > rxwnd_tail->seq)) {
 							continue;
 						}
+//						fprintf (stderr, "@ %u: %d\n", 
+//							app_frame.chunk_num, app_frame.payload_len);
 						
-						diff_seq = chnk_num - rxwnd_head->seq;
+						diff_seq = app_frame.chunk_num - rxwnd_head->seq;
 						rxwnd = rxwnd_head;
 						
 						for (i = 0 ; i < diff_seq ; i++) {
@@ -530,8 +575,9 @@ int main (
 						}
 						
 						if (rxwnd->flag != 1) {
-							memcpy (rxwnd->buff, frame, frame_size);
-							rxwnd->frame_size = frame_size;
+							memcpy (
+								rxwnd->buff, app_frame.payload, app_frame.payload_len);
+							rxwnd->frame_size = app_frame.payload_len;
 							rxwnd->flag = 1;
 						}
 						
@@ -545,7 +591,7 @@ int main (
 								break;
 							}
 							stat_recv_frames++;
-							stat_recv_bytes += frame_size;
+							stat_recv_bytes += app_frame.payload_len;
 							
 							fwrite (rxwnd->buff, 
 								sizeof (unsigned char), rxwnd->frame_size, fp);
@@ -577,8 +623,10 @@ int main (
 							}
 						}
 					}
+				} else {
+					break;
 				}
-			} while ((frame_size > 0) && (res > 0));
+			} while (res > 0);
 			
 			if (res > 0) {
 				index = res;
@@ -621,12 +669,14 @@ print_usage (
 ) {
 	
 	fprintf (stdout, "\nUsage: cefgetfile\n\n");
-	fprintf (stdout, "  cefgetfile uri -f file [-o] [-m chunks]\n\n");
+	fprintf (stdout, "  cefgetfile uri -f file [-o] [-m chunks] [-v valid_algo]\n\n");
 	fprintf (stdout, "  uri     Specify the URI.\n");
 	fprintf (stdout, "  file    Specify the file name of output. \n");
 	fprintf (stdout, "  -o      Specify this option, if you require the content\n"
 	                 "          that the owner is caching\n");
-	fprintf (stdout, " chunks   Specify the number of chunk that you want to obtain\n\n");
+	fprintf (stdout, " chunks   Specify the number of chunk that you want to obtain\n");
+	fprintf (stdout, 
+		" valid_algo   Specify the validation algorithm (crc32 or sha256)\n\n");
 }
 
 static void

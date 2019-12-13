@@ -47,12 +47,16 @@
 #else // CefC_MACOS
 #include <machine/endian.h>
 #endif // CefC_MACOS
+#ifdef CefC_Android
+#include <cefore/cef_android.h>
+#endif // CefC_Android
 
 #include <cefore/cef_frame.h>
 #include <cefore/cef_client.h>
 #include <cefore/cef_print.h>
 #include <cefore/cef_log.h>
 #include <cefore/cef_plugin.h>
+#include <cefore/cef_valid.h>
 
 /****************************************************************************************
  Macros
@@ -130,6 +134,7 @@ static uint16_t ftvh_1byte			= 1;
 static uint16_t ftvh_2byte			= 2;
 static uint16_t ftvh_4byte			= 4;
 static uint16_t ftvh_8byte			= 8;
+static uint16_t ftvh_32byte			= 32;
 
 /***** for Cefore Message 				*****/
 static uint16_t ftvh_pktype_int 	= CefC_T_INTEREST;
@@ -171,6 +176,12 @@ static uint16_t ftvh_efi 			= CefC_T_OPT_EFI;
 static uint16_t ftvh_iur 			= CefC_T_OPT_IUR;
 
 /***** for Validation Algorithm 		*****/
+static uint16_t ftvh_crc32 			= CefC_T_CRC32C;
+static uint16_t ftvh_hmac_sha256 	= CefC_T_HMAC_SHA256;
+static uint16_t ftvh_rsa_sha256 	= CefC_T_RSA_SHA256;
+static uint16_t ftvh_ecs_256 		= CefC_T_EC_SECP_256K1;
+static uint16_t ftvh_ecs_384 		= CefC_T_EC_SECP_384R1;
+
 static uint16_t ftvh_keyid 			= CefC_T_KEYID;
 static uint16_t ftvh_pubkeyloc		= CefC_T_PUBLICKEYLOC;
 static uint16_t ftvh_pubkey 		= CefC_T_PUBLICKEY;
@@ -189,6 +200,7 @@ static uint16_t ftvn_1byte;
 static uint16_t ftvn_2byte;
 static uint16_t ftvn_4byte;
 static uint16_t ftvn_8byte;
+static uint16_t ftvn_32byte;
 
 /***** for Cefore Message 				*****/
 static uint16_t ftvn_pktype_int;
@@ -230,6 +242,13 @@ static uint16_t ftvn_efi;
 static uint16_t ftvn_iur;
 
 /***** for Validation Algorithm 		*****/
+
+static uint16_t ftvn_crc32;
+static uint16_t ftvn_hmac_sha256;
+static uint16_t ftvn_rsa_sha256;
+static uint16_t ftvn_ecs_256;
+static uint16_t ftvn_ecs_384;
+
 static uint16_t ftvn_keyid;
 static uint16_t ftvn_pubkeyloc;
 static uint16_t ftvn_pubkey;
@@ -402,17 +421,17 @@ cef_frame_opheader_msghash_tlv_parse (
 	uint16_t offset							/* Offset from the top of message 			*/
 );
 /*--------------------------------------------------------------------------------------
-	Parses a Conping TLV in an Option Header
+	Parses a Cefping TLV in an Option Header
 ----------------------------------------------------------------------------------------*/
 static int									/* No care now								*/
-cef_frame_opheader_conping_tlv_parse (
+cef_frame_opheader_cefping_tlv_parse (
 	CefT_Parsed_Opheader* poh, 				/* Structure to set parsed Option Header	*/
 	uint16_t length, 						/* Length of this TLV						*/
 	unsigned char* value,					/* Value of this TLV						*/
 	uint16_t offset							/* Offset from the top of message 			*/
 );
 /*--------------------------------------------------------------------------------------
-	Parses a Contrace Request Block in an Option Header
+	Parses a Cefinfo Request Block in an Option Header
 ----------------------------------------------------------------------------------------*/
 static int									/* No care now								*/
 cef_frame_opheader_trace_req_tlv_parse (
@@ -422,7 +441,7 @@ cef_frame_opheader_trace_req_tlv_parse (
 	uint16_t offset							/* Offset from the top of message 			*/
 );
 /*--------------------------------------------------------------------------------------
-	Parses a Contrace Report Block in an Option Header
+	Parses a Cefinfo Report Block in an Option Header
 ----------------------------------------------------------------------------------------*/
 static int									/* No care now								*/
 cef_frame_opheader_trace_rep_tlv_parse (
@@ -449,7 +468,7 @@ static int									/* No care now								*/
 	cef_frame_opheader_invalid_tlv_parse,
 	cef_frame_opheader_trace_req_tlv_parse,
 	cef_frame_opheader_trace_rep_tlv_parse,
-	cef_frame_opheader_conping_tlv_parse
+	cef_frame_opheader_cefping_tlv_parse
 };
 /*--------------------------------------------------------------------------------------
 	Parses a User Specific TLV in an Option Header
@@ -479,33 +498,46 @@ cef_frame_object_opt_header_create (
 	unsigned char* buff, 					/* buffer to set a message					*/
 	CefT_Object_TLVs* tlvs					/* Parameters to set Content Object			*/
 );
-#ifdef CefC_Conping
+#ifdef CefC_Cefping
 /*--------------------------------------------------------------------------------------
-	Creates the Option Header of Conping Request
+	Creates the Option Header of Cefping Request
 ----------------------------------------------------------------------------------------*/
 static uint16_t								/* Length of Option Header					*/
 cef_frame_conpig_req_opt_header_create (
 	unsigned char* buff, 					/* buffer to set a message					*/
-	CefT_Ping_TLVs* tlvs					/* Parameters to set Conping Request		*/
+	CefT_Ping_TLVs* tlvs					/* Parameters to set Cefping Request		*/
 );
-#endif // CefC_Conping
+#endif // CefC_Cefping
 
-#ifdef CefC_Contrace
+#ifdef CefC_Cefinfo
 /*--------------------------------------------------------------------------------------
-	Creates the Option Header of Contrace Request
+	Creates the Option Header of Cefinfo Request
 ----------------------------------------------------------------------------------------*/
 static uint16_t								/* Length of Option Header					*/
-cef_frame_contrace_req_opt_header_create (
+cef_frame_cefinfo_req_opt_header_create (
 	unsigned char* buff, 					/* buffer to set a message					*/
-	CefT_Trace_TLVs* tlvs					/* Parameters to set Contrace Request		*/
+	CefT_Trace_TLVs* tlvs					/* Parameters to set Cefinfo Request		*/
 );
-#endif // CefC_Contrace
+#endif // CefC_Cefinfo
 /*--------------------------------------------------------------------------------------
 	Creates the Validation Algorithm TLV
 ----------------------------------------------------------------------------------------*/
 static uint16_t								/* Length of Option Header					*/
 cef_frame_validation_alg_tlv_create (
 	unsigned char* buff, 					/* buffer to set a message					*/
+	CefT_Valid_Alg_TLVs* tlvs,				/* Parameters to set Interest 				*/
+	unsigned char* name, 
+	int name_len
+);
+/*--------------------------------------------------------------------------------------
+	Creates the Validation Payload TLV
+----------------------------------------------------------------------------------------*/
+static uint16_t								/* Length of Option Header					*/
+cef_frame_validation_pld_tlv_create (
+	unsigned char* buff, 					/* buffer to set a message					*/
+	uint16_t buff_len, 
+	unsigned char* name, 
+	int name_len, 
 	CefT_Valid_Alg_TLVs* tlvs				/* Parameters to set Interest 				*/
 );
 /*--------------------------------------------------------------------------------------
@@ -522,7 +554,18 @@ static int 									/* Length of the default Name				*/
 cef_frame_default_name_get (
 	unsigned char* buff 					/* buffer to set a message					*/
 );
-
+#ifdef CefC_Ser_Log
+/*--------------------------------------------------------------------------------------
+	Parses a ORG TLV in a CEFORE message
+----------------------------------------------------------------------------------------*/
+static int									/* No care now								*/
+cef_frame_message_user_tlv_parse (
+	CefT_Parsed_Message* pm, 				/* Structure to set parsed CEFORE message	*/
+	uint16_t length, 						/* Length of this TLV						*/
+	unsigned char* value,					/* Value of this TLV						*/
+	uint16_t offset							/* Offset from the top of message 			*/
+);
+#endif // CefC_Ser_Log
 
 // static void
 // cef_frame_tlv_print (
@@ -544,7 +587,8 @@ cef_frame_init (
 	ftvn_2byte 		= htons (ftvh_2byte);
 	ftvn_4byte 		= htons (ftvh_4byte);
 	ftvn_8byte 		= htons (ftvh_8byte);
-
+	ftvn_32byte 	= htons (ftvh_32byte);
+	
 	ftvn_pktype_int 	= htons (ftvh_pktype_int);
 	ftvn_pktype_obj 	= htons (ftvh_pktype_obj);
 	ftvn_valid_alg 		= htons (ftvh_valid_alg);
@@ -581,6 +625,12 @@ cef_frame_init (
 	ftvn_transport 		= htons (ftvh_transport);
 	ftvn_efi 			= htons (ftvh_efi);
 	ftvn_iur 			= htons (ftvh_iur);
+
+	ftvn_crc32 			= htons (ftvh_crc32);
+	ftvn_hmac_sha256 	= htons (ftvh_hmac_sha256);
+	ftvn_rsa_sha256 	= htons (ftvh_rsa_sha256);
+	ftvn_ecs_256 		= htons (ftvh_ecs_256);
+	ftvn_ecs_384 		= htons (ftvh_ecs_384);
 
 	ftvn_keyid 			= htons (ftvh_keyid);
 	ftvn_pubkeyloc 		= htons (ftvh_pubkeyloc);
@@ -690,6 +740,14 @@ cef_frame_message_parse (
 			if (res < 0) {
 				return (-1);
 			}
+#ifdef CefC_Ser_Log
+		} else if (type == CefC_T_OPT_ORG) {
+			res = cef_frame_message_user_tlv_parse (
+						pm, length, &wmp[CefC_O_Value], offset);
+			if (res < 0) {
+				return (-1);
+			}
+#endif // CefC_Ser_Log
 		}
 		wmp += CefC_S_TLF + length;
 		offset += CefC_S_TLF + length;
@@ -706,67 +764,91 @@ cef_frame_message_parse (
 			return (-1);
 		}
 	}
-#ifdef CefC_Conping
+#ifdef CefC_Cefping
 	if (target_type == CefC_PT_PING_REP) {
 		pm->ping_retcode = msg[CefC_O_Fix_Ping_RetCode];
 	}
-#endif // CefC_Conping
+#endif // CefC_Cefping
 
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
 	Parses a payload form the specified message
 ----------------------------------------------------------------------------------------*/
-uint16_t 									/* length of the payload					*/
+void 
 cef_frame_payload_parse (
-	unsigned char* msg, 					/* the message to parse						*/
-	uint16_t* offset 						/* offset of payalod 						*/
+	unsigned char* msg, 
+	uint16_t msg_len, 
+	uint16_t* name_offset, 
+	uint16_t* name_len, 
+	uint16_t* payload_offset, 
+	uint16_t* payload_len
 ) {
-	unsigned char* smp;
-	unsigned char* emp;
-	unsigned char* wmp;
-
-	uint16_t 	header_len;
-	uint16_t 	cefmsg_len;
-	uint16_t 	payload_len = 0;
-	uint16_t 	length;
-	uint16_t 	type;
-
-	struct fixed_hdr* fixhdr;
+	struct fixed_hdr* fhp;
 	struct tlv_hdr* thdr;
-
-	/*----------------------------------------------------------------------*/
-	/* Obtains length of header, packet and cefore message 					*/
-	/*----------------------------------------------------------------------*/
-	*offset = 0;
-	fixhdr = (struct fixed_hdr*) msg;
-	header_len = fixhdr->hdr_len;
-	smp = msg + header_len;
-
-	memcpy (&length, &smp[CefC_O_Length], CefC_S_Length);
-	cefmsg_len = ntohs (length);
-
-	/*----------------------------------------------------------------------*/
-	/* Parses the payload  													*/
-	/*----------------------------------------------------------------------*/
-	wmp = smp + CefC_S_Length + CefC_S_Length;
-	emp = wmp + cefmsg_len;
-
-	while (wmp < emp) {
-		thdr = (struct tlv_hdr*) &wmp[CefC_O_Type];
+	uint16_t index;
+	uint16_t x;
+	uint16_t pkt_len;
+	uint16_t length;
+	uint16_t type;
+	
+	*name_offset 	= 0;
+	*name_len 		= 0;
+	*payload_offset = 0;
+	*payload_len 	= 0;
+	
+	/* check the header and packet length 		*/
+	fhp = (struct fixed_hdr*) &msg[0];
+	pkt_len = ntohs (fhp->pkt_len);
+	
+	if (pkt_len != msg_len) {
+		fprintf (stderr, "###### %d (%d)\n", pkt_len, msg_len);
+		return;
+	}
+	index = fhp->hdr_len + CefC_S_TLF;
+	
+	/* check the name		*/
+	thdr   = (struct tlv_hdr*) &msg[index];
+	type   = ntohs (thdr->type);
+	length = ntohs (thdr->length);
+	
+	if (type != CefC_T_NAME) {
+		fprintf (stderr, "###### NAME\n");
+		return;
+	}
+	*name_offset = index + CefC_S_TLF;
+	*name_len    = length;
+	
+	x = index + CefC_S_TLF;
+	index += CefC_S_TLF + length;
+	
+	while (x < msg_len) {
+		thdr   = (struct tlv_hdr*) &msg[x];
 		type   = ntohs (thdr->type);
 		length = ntohs (thdr->length);
-
+		
+		if (type != CefC_T_NAMESEGMENT) {
+			*name_len -= (index - x);
+			break;
+		}
+		x += CefC_S_TLF + length;
+	}
+	
+	while (index < msg_len) {
+		thdr = (struct tlv_hdr*) &msg[index];
+		type   = ntohs (thdr->type);
+		length = ntohs (thdr->length);
+		
 		if (type != CefC_T_PAYLOAD) {
-			wmp += CefC_S_TLF + length;
+			index += CefC_S_TLF + length;
 			continue;
 		}
-		payload_len = length;
-		*offset = (wmp + CefC_S_TLF) - msg;
+		*payload_offset = index + CefC_S_TLF;
+		*payload_len 	= length;
 		break;
 	}
-
-	return (payload_len);
+	
+	return;
 }
 /*--------------------------------------------------------------------------------------
 	Converts the URI to Name
@@ -891,7 +973,6 @@ cef_frame_interest_create (
 	struct value64_tlv value64_fld;
 	uint16_t opt_header_len;
 	uint16_t payload_len;
-	uint16_t valid_alg_len;
 	uint16_t index = 0;
 	uint16_t rec_index;
 
@@ -980,6 +1061,40 @@ cef_frame_interest_create (
 		index += CefC_S_TLF + tlvs->cob_len;
 	}
 
+#ifdef CefC_Android
+	/*=========================================
+		ORG TLV (only Android)
+	===========================================*/
+	/*
+		+---------------+---------------+---------------+---------------+
+		|             T_ORG             |              11               |
+		+---------------+---------------+---------------+---------------+
+		|     PEN[0]    |     PEN[1]    |     PEN[2]    |   T_SER_LOG   /
+		+---------------+---------------+---------------+---------------+
+		/               |               4               |    CRC32      /
+		+---------------+-------------------------------+---------------+
+		/                                               |
+		+-----------------------------------------------+
+	*/
+	/* Insert T_ORG Field. IANA Private Enterprise Numbers is 51564. */
+	fld_thdr.type = ftvn_org;
+	fld_thdr.length = htons (11);
+	memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+	index += CefC_S_TLF;
+	/* Insert 564 */
+	buff[index] = 5;
+	buff[index + 1] = 6;
+	buff[index + 2] = 4;
+	index += 3;
+	/* Original field (Serial Log) */
+	value32_fld.type = htons (CefC_T_SER_LOG);
+	value32_fld.length = ftvn_4byte;
+	/* Value is Android sirial num (CRC32) */
+	value32_fld.value = htonl (cef_android_serial_num_get ());
+	memcpy (&buff[index], &value32_fld, sizeof (struct value32_tlv));
+	index += sizeof (struct value32_tlv);
+#endif // CefC_Android
+
 	/*=========================================
 		CEFORE message header
 	===========================================*/
@@ -993,8 +1108,15 @@ cef_frame_interest_create (
 	/*----------------------------------------------------------*/
 	/* Validations	 											*/
 	/*----------------------------------------------------------*/
-	valid_alg_len = cef_frame_validation_alg_tlv_create (&buff[index], &tlvs->alg);
-	index += valid_alg_len;
+	rec_index = index;
+	index += cef_frame_validation_alg_tlv_create (
+					&buff[index], &tlvs->alg, tlvs->name, tlvs->name_len);
+	if (rec_index != index) {
+		index += cef_frame_validation_pld_tlv_create (
+			&buff[CefC_S_Fix_Header + opt_header_len], 
+			index - (CefC_S_Fix_Header + opt_header_len), 
+			tlvs->name, tlvs->name_len, &tlvs->alg);
+	}
 	
 	/*----------------------------------------------------------*/
 	/* Fixed Header												*/
@@ -1026,7 +1148,6 @@ cef_frame_object_create (
 	struct value64_tlv value64_fld;
 	uint16_t opt_header_len;
 	uint16_t payload_len;
-	uint16_t valid_alg_len;
 	uint16_t index = 0;
 	uint16_t rec_index;
 
@@ -1112,8 +1233,15 @@ cef_frame_object_create (
 	/*----------------------------------------------------------*/
 	/* Validations	 											*/
 	/*----------------------------------------------------------*/
-	valid_alg_len = cef_frame_validation_alg_tlv_create (&buff[index], &tlvs->alg);
-	index += valid_alg_len;
+	rec_index = index;
+	index += cef_frame_validation_alg_tlv_create (
+					&buff[index], &tlvs->alg, tlvs->name, tlvs->name_len);
+	if (rec_index != index) {
+		index += cef_frame_validation_pld_tlv_create (
+			&buff[CefC_S_Fix_Header + opt_header_len], 
+			index - (CefC_S_Fix_Header + opt_header_len), 
+			tlvs->name, tlvs->name_len, &tlvs->alg);
+	}
 	
 	/*----------------------------------------------------------*/
 	/* Frame Header 											*/
@@ -1131,14 +1259,14 @@ cef_frame_object_create (
 	return (index);
 }
 /*--------------------------------------------------------------------------------------
-	Creates the Conping Request from the specified Parameters
+	Creates the Cefping Request from the specified Parameters
 ----------------------------------------------------------------------------------------*/
-int 										/* Length of Conping message 				*/
-cef_frame_conping_req_create (
-	unsigned char* buff, 					/* buffer to set Conping Request			*/
-	CefT_Ping_TLVs* tlvs					/* Parameters to set Conping Request 		*/
+int 										/* Length of Cefping message 				*/
+cef_frame_cefping_req_create (
+	unsigned char* buff, 					/* buffer to set Cefping Request			*/
+	CefT_Ping_TLVs* tlvs					/* Parameters to set Cefping Request 		*/
 ) {
-#ifdef CefC_Conping
+#ifdef CefC_Cefping
 	struct fixed_hdr fix_hdr;
 	struct tlv_hdr fld_thdr;
 	uint16_t opt_header_len;
@@ -1153,7 +1281,7 @@ cef_frame_conping_req_create (
 		+---------------+---------------+---------------+---------------+
 		|           T_PING_REQ          |            Length             |
 		+---------------+---------------+---------------+---------------+
-		|                      Responder Identifer                      /
+		|                      Responder Identifier                      /
 		+---------------+---------------+---------------+---------------+
 		|            T_PING             |            Length             |
 		+---------------+---------------+---------------+---------------+
@@ -1212,24 +1340,24 @@ cef_frame_conping_req_create (
 	memcpy (buff, &fix_hdr, sizeof (struct fixed_hdr));
 
 	return (index);
-#else // CefC_Conping
+#else // CefC_Cefping
 	return (0);
-#endif // CefC_Conping
+#endif // CefC_Cefping
 }
 
 /*--------------------------------------------------------------------------------------
-	Creates the Conping Replay from the specified Parameters
+	Creates the Cefping Replay from the specified Parameters
 ----------------------------------------------------------------------------------------*/
-int 										/* Length of Conping message 				*/
-cef_frame_conping_rep_create (
-	unsigned char* buff, 					/* buffer to set Conping Request			*/
+int 										/* Length of Cefping message 				*/
+cef_frame_cefping_rep_create (
+	unsigned char* buff, 					/* buffer to set Cefping Request			*/
 	uint8_t ret_code,
 	unsigned char* responder_id,
 	uint16_t id_len,
 	unsigned char* name,
 	uint16_t name_len
 ) {
-#ifdef CefC_Conping
+#ifdef CefC_Cefping
 	struct fixed_hdr fix_hdr;
 	struct tlv_hdr fld_thdr;
 	uint16_t msg_len;
@@ -1249,15 +1377,15 @@ cef_frame_conping_rep_create (
 		+---------------+---------------+---------------+---------------+
 		|           T_PAYLOAD           |            Length             |
 		+---------------+---------------+---------------+---------------+
-		|                      Responder Identifer                      /
+		|                      Responder Identifier                      /
 		+---------------+---------------+---------------+---------------+
-							figure: Conping Reply
+							figure: Cefping Reply
 	*/
 
 	/*----------------------------------------------------------*/
 	/* Option Header 											*/
 	/*----------------------------------------------------------*/
-	/* Conping Replay has no option header 		*/
+	/* Cefping Replay has no option header 		*/
 	index = CefC_S_Fix_Header;
 
 	/*----------------------------------------------------------*/
@@ -1307,20 +1435,20 @@ cef_frame_conping_rep_create (
 	memcpy (buff, &fix_hdr, sizeof (struct fixed_hdr));
 
 	return (index);
-#else // CefC_Conping
+#else // CefC_Cefping
 	return (0);
-#endif // CefC_Conping
+#endif // CefC_Cefping
 }
 
 /*--------------------------------------------------------------------------------------
-	Creates the Contrace Request from the specified Parameters
+	Creates the Cefinfo Request from the specified Parameters
 ----------------------------------------------------------------------------------------*/
-int 										/* Length of Contrace message 				*/
-cef_frame_contrace_req_create (
-	unsigned char* buff, 					/* buffer to set Contrace Request			*/
-	CefT_Trace_TLVs* tlvs					/* Parameters to set Contrace Request 		*/
+int 										/* Length of Cefinfo message 				*/
+cef_frame_cefinfo_req_create (
+	unsigned char* buff, 					/* buffer to set Cefinfo Request			*/
+	CefT_Trace_TLVs* tlvs					/* Parameters to set Cefinfo Request 		*/
 ) {
-#ifdef CefC_Contrace
+#ifdef CefC_Cefinfo
 	uint16_t opt_header_len;
 	uint16_t index = 0;
 	struct fixed_hdr fix_hdr;
@@ -1347,14 +1475,14 @@ cef_frame_contrace_req_create (
 		+---------------+---------------+---------------+---------------+
 		/ Optional CCNx ValidationPayload TLV (ValidationAlg required)  /
 		+---------------+---------------+---------------+---------------+
-							figure: Contrace Request
+							figure: Cefinfo Request
 	*/
 
 	/*----------------------------------------------------------*/
 	/* Option Header 											*/
 	/*----------------------------------------------------------*/
 	/* Constructs the option header */
-	opt_header_len = cef_frame_contrace_req_opt_header_create (
+	opt_header_len = cef_frame_cefinfo_req_opt_header_create (
 											&buff[CefC_S_Fix_Header], tlvs);
 	index = CefC_S_Fix_Header + opt_header_len;
 
@@ -1399,22 +1527,22 @@ cef_frame_contrace_req_create (
 	memcpy (buff, &fix_hdr, sizeof (struct fixed_hdr));
 
 	return (index);
-#else // CefC_Contrace
+#else // CefC_Cefinfo
 	return (0);
-#endif // CefC_Contrace
+#endif // CefC_Cefinfo
 }
 /*--------------------------------------------------------------------------------------
-	Adds a time stamp on Contrace Request
+	Adds a time stamp on Cefinfo Request
 ----------------------------------------------------------------------------------------*/
-int 										/* Length of Contrace message 				*/
-cef_frame_contrace_req_add_stamp (
-	unsigned char* buff, 					/* Contrace Request							*/
+int 										/* Length of Cefinfo message 				*/
+cef_frame_cefinfo_req_add_stamp (
+	unsigned char* buff, 					/* Cefinfo Request							*/
 	uint16_t msg_len,
 	unsigned char* node_id, 				/* Node ID 									*/
 	uint16_t id_len, 						/* length of Node ID 						*/
 	struct timeval t 						/* current time in UNIX-time(us) 			*/
 ) {
-#ifdef CefC_Contrace
+#ifdef CefC_Cefinfo
 	unsigned char work[CefC_Max_Length];
 	uint8_t header_len;
 	uint16_t index;
@@ -1431,7 +1559,7 @@ cef_frame_contrace_req_add_stamp (
 		+---------------+---------------+---------------+---------------+
 							figure: Report Block
 	*/
-	/* Copy the payload of Contrace Request 	*/
+	/* Copy the payload of Cefinfo Request 	*/
 	header_len = buff[CefC_O_Fix_HeaderLength];
 	memcpy (work, &buff[header_len], msg_len - header_len);
 
@@ -1456,9 +1584,9 @@ cef_frame_contrace_req_add_stamp (
 	fix_hdr->hdr_len = header_len;
 
 	return (index);
-#else // CefC_Contrace
+#else // CefC_Cefinfo
 	return (0);
-#endif // CefC_Contrace
+#endif // CefC_Cefinfo
 }
 
 /*--------------------------------------------------------------------------------------
@@ -1783,19 +1911,19 @@ cef_frame_object_opt_header_create (
 
 	return ((uint16_t) index);
 }
-#ifdef CefC_Conping
+#ifdef CefC_Cefping
 /*--------------------------------------------------------------------------------------
-	Creates the Option Header of Conping Request
+	Creates the Option Header of Cefping Request
 ----------------------------------------------------------------------------------------*/
 static uint16_t								/* Length of Option Header					*/
 cef_frame_conpig_req_opt_header_create (
 	unsigned char* buff, 					/* buffer to set a message					*/
-	CefT_Ping_TLVs* tlvs					/* Parameters to set Conping Request		*/
+	CefT_Ping_TLVs* tlvs					/* Parameters to set Cefping Request		*/
 ) {
 	unsigned int index = 0;
 	struct tlv_hdr fld_thdr;
 
-	/* Sets Responder Identifer		*/
+	/* Sets Responder Identifier		*/
 	if (tlvs->opt.responder_f > 0) {
 		fld_thdr.type 	= ftvn_ping_req;
 		fld_thdr.length = htons (tlvs->opt.responder_f);
@@ -1815,16 +1943,16 @@ cef_frame_conpig_req_opt_header_create (
 
 	return ((uint16_t) index);
 }
-#endif // CefC_Conping
+#endif // CefC_Cefping
 
-#ifdef CefC_Contrace
+#ifdef CefC_Cefinfo
 /*--------------------------------------------------------------------------------------
-	Creates the Option Header of Contrace Request
+	Creates the Option Header of Cefinfo Request
 ----------------------------------------------------------------------------------------*/
 static uint16_t								/* Length of Option Header					*/
-cef_frame_contrace_req_opt_header_create (
+cef_frame_cefinfo_req_opt_header_create (
 	unsigned char* buff, 					/* buffer to set a message					*/
-	CefT_Trace_TLVs* tlvs					/* Parameters to set Contrace Request		*/
+	CefT_Trace_TLVs* tlvs					/* Parameters to set Cefinfo Request		*/
 ) {
 	uint16_t index = 0;
 	struct tlv_hdr fld_thdr;
@@ -1866,51 +1994,92 @@ cef_frame_contrace_req_opt_header_create (
 
 	return (index);
 }
-#endif // CefC_Contrace
+#endif // CefC_Cefinfo
 /*--------------------------------------------------------------------------------------
 	Creates the Validation Algorithm TLV
 ----------------------------------------------------------------------------------------*/
 static uint16_t								/* Length of Option Header					*/
 cef_frame_validation_alg_tlv_create (
 	unsigned char* buff, 					/* buffer to set a message					*/
-	CefT_Valid_Alg_TLVs* tlvs				/* Parameters to set Interest 				*/
+	CefT_Valid_Alg_TLVs* tlvs,				/* Parameters to set Interest 				*/
+	unsigned char* name, 
+	int name_len
 ) {
-	int set_valid_tlv_f 	= 0;
 	unsigned int index 		= 0;
 	unsigned int value_len 	= 0;
 	struct tlv_hdr fld_thdr;
+	unsigned char keyid[32];
+	uint16_t 		pubkey_len;
+	unsigned char 	pubkey[CefC_Max_Length];
 	
-	/* Check to set Validation TLV or not	*/
-	if (tlvs->valid_type != CefC_T_ALG_INVALID) {
-		set_valid_tlv_f = 1;
-	} else {
-		if (tlvs->pubkey_len > 0) {
-			set_valid_tlv_f = 1;
-		}
-	}
-	if (set_valid_tlv_f == 0) {
-		return (0);
-	}
-	index += CefC_S_TLF;
-	
-	if (tlvs->valid_type != CefC_T_ALG_INVALID) {
+	if (tlvs->hop_by_hop_f) {
+		/* HOP-BY-HOP */
+	} else if (tlvs->valid_type == CefC_T_CRC32C) {
 		index += CefC_S_TLF;
-	}
-	
-	if (tlvs->pubkey_len > 0) {
-		fld_thdr.type 	= ftvn_pubkey;
-		fld_thdr.length = htons (tlvs->pubkey_len);
+		
+		fld_thdr.type 	= ftvn_crc32;
+		fld_thdr.length = 0;
 		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
-		memcpy (&buff[index + CefC_S_TLF], tlvs->pubkey, tlvs->pubkey_len);
-		index += CefC_S_TLF + tlvs->pubkey_len;
-		value_len += CefC_S_TLF + tlvs->pubkey_len;
-	}
-	
-	if (tlvs->valid_type != CefC_T_ALG_INVALID) {
-		fld_thdr.type 	= htons (tlvs->valid_type);
-		fld_thdr.length = htons (value_len);
-		memcpy (&buff[CefC_S_TLF], &fld_thdr, sizeof (struct tlv_hdr));
+		index += CefC_S_TLF;
 		value_len += CefC_S_TLF;
+		
+	} else if (tlvs->valid_type == CefC_T_RSA_SHA256) {
+		
+		pubkey_len = (uint16_t) cef_valid_keyid_create (name, name_len, pubkey, keyid);
+		if (pubkey_len == 0) {
+			return (0);
+		}
+		index += CefC_S_TLF;
+		
+		fld_thdr.type 	= ftvn_rsa_sha256;
+		fld_thdr.length = htons (40 + pubkey_len);
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		index += CefC_S_TLF;
+		
+		fld_thdr.type 	= ftvn_keyid;
+		fld_thdr.length = ftvn_32byte;
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		index += CefC_S_TLF;
+		
+		memcpy (&buff[index], keyid, 32);
+		index += 32;
+		
+		fld_thdr.type 	= ftvn_pubkey;
+		fld_thdr.length = htons (pubkey_len);
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		memcpy (&buff[index + CefC_S_TLF], pubkey, pubkey_len);
+		index += CefC_S_TLF + pubkey_len;
+		
+		value_len += 44 + pubkey_len;
+		
+	} else if (tlvs->valid_type == CefC_T_KEY_CHECK) {
+		
+		pubkey_len = (uint16_t) cef_valid_keyid_create (name, name_len, pubkey, keyid);
+		if (pubkey_len == 0) {
+			return (0);
+		}
+		index += CefC_S_TLF;
+		
+		fld_thdr.type 	= ftvn_rsa_sha256;
+		fld_thdr.length = htons (40 + pubkey_len);
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		index += CefC_S_TLF;
+		
+		fld_thdr.type 	= ftvn_keyid;
+		fld_thdr.length = ftvn_32byte;
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		index += CefC_S_TLF;
+		
+		memcpy (&buff[index], keyid, 32);
+		index += 32;
+		
+		fld_thdr.type 	= ftvn_pubkey;
+		fld_thdr.length = htons (pubkey_len);
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		memcpy (&buff[index + CefC_S_TLF], pubkey, pubkey_len);
+		index += CefC_S_TLF + pubkey_len;
+		
+		value_len += 44 + pubkey_len;
 	}
 	
 	if (value_len > 0) {
@@ -1919,6 +2088,54 @@ cef_frame_validation_alg_tlv_create (
 		memcpy (&buff[0], &fld_thdr, sizeof (struct tlv_hdr));
 	}
 	
+	return ((uint16_t) index);
+}
+
+/*--------------------------------------------------------------------------------------
+	Creates the Validation Payload TLV
+----------------------------------------------------------------------------------------*/
+static uint16_t								/* Length of Option Header					*/
+cef_frame_validation_pld_tlv_create (
+	unsigned char* buff, 					/* buffer to set a message					*/
+	uint16_t buff_len, 
+	unsigned char* name, 
+	int name_len, 
+	CefT_Valid_Alg_TLVs* tlvs				/* Parameters to set Interest 				*/
+) {
+	unsigned int index = 0;
+	uint32_t crc_code;
+	struct tlv_hdr fld_thdr;
+	struct value32_tlv v32_thdr;
+	unsigned char sign[256];
+	unsigned int sign_len;
+	int res;
+	
+	if (tlvs->hop_by_hop_f) {
+		/* HOP-BY-HOP */
+	} else if (tlvs->valid_type == CefC_T_CRC32C) {
+		crc_code = cef_valid_crc32_calc (buff, buff_len);
+		v32_thdr.type 	= ftvn_valid_pld;
+		v32_thdr.length = ftvn_4byte;
+		v32_thdr.value  = htonl (crc_code);
+		memcpy (&buff[buff_len], &v32_thdr, sizeof (struct value32_tlv));
+		index = sizeof (struct value32_tlv);
+		
+	} else if (tlvs->valid_type == CefC_T_RSA_SHA256) {
+		
+		res = cef_valid_dosign (buff, buff_len, name, name_len, sign, &sign_len);
+		
+		if (res == 1) {
+			if (sign_len > 256) {
+				sign_len = 256;
+			}
+			fld_thdr.type 	= ftvn_valid_pld;
+			fld_thdr.length = htons (sign_len);
+			memcpy (&buff[buff_len], &fld_thdr, sizeof (struct tlv_hdr));
+			memcpy (&buff[buff_len + CefC_S_TLF], sign, sign_len);
+			
+			index += CefC_S_TLF + sign_len;
+		}
+	}
 	return ((uint16_t) index);
 }
 
@@ -2059,23 +2276,23 @@ cef_frame_opheader_msghash_tlv_parse (
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
-	Parses a Conping TLV in an Option Header
+	Parses a Cefping TLV in an Option Header
 ----------------------------------------------------------------------------------------*/
 static int									/* No care now								*/
-cef_frame_opheader_conping_tlv_parse (
+cef_frame_opheader_cefping_tlv_parse (
 	CefT_Parsed_Opheader* poh, 				/* Structure to set parsed Option Header	*/
 	uint16_t length, 						/* Length of this TLV						*/
 	unsigned char* value,					/* Value of this TLV						*/
 	uint16_t offset							/* Offset from the top of message 			*/
 ) {
-#ifdef CefC_Conping
+#ifdef CefC_Cefping
 	poh->responder_f = length;
 	memcpy (poh->responder_id, value, length);
-#endif // CefC_Conping
+#endif // CefC_Cefping
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
-	Parses a Contrace Request Block in an Option Header
+	Parses a Cefinfo Request Block in an Option Header
 ----------------------------------------------------------------------------------------*/
 static int									/* No care now								*/
 cef_frame_opheader_trace_req_tlv_parse (
@@ -2084,7 +2301,7 @@ cef_frame_opheader_trace_req_tlv_parse (
 	unsigned char* value,					/* Value of this TLV						*/
 	uint16_t offset							/* Offset from the top of message 			*/
 ) {
-#ifdef CefC_Contrace
+#ifdef CefC_Cefinfo
 	struct trace_req_block* req_blk;
 
 	req_blk = (struct trace_req_block*) value;
@@ -2096,11 +2313,11 @@ cef_frame_opheader_trace_req_tlv_parse (
 	poh->trace_flag  = ntohs (req_blk->flag);
 	poh->skip_hop_offset = offset + CefC_S_TLF + 1;
 
-#endif // CefC_Contrace
+#endif // CefC_Cefinfo
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
-	Parses a Contrace Report Block in an Option Header
+	Parses a Cefinfo Report Block in an Option Header
 ----------------------------------------------------------------------------------------*/
 static int									/* No care now								*/
 cef_frame_opheader_trace_rep_tlv_parse (
@@ -2109,12 +2326,12 @@ cef_frame_opheader_trace_rep_tlv_parse (
 	unsigned char* value,					/* Value of this TLV						*/
 	uint16_t offset							/* Offset from the top of message 			*/
 ) {
-#ifdef CefC_Contrace
+#ifdef CefC_Cefinfo
 	if (poh->rpt_block_offset) {
 		return (1);
 	}
 	poh->rpt_block_offset = offset;
-#endif // CefC_Contrace
+#endif // CefC_Cefinfo
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -2523,8 +2740,8 @@ cef_frame_conversion_name_to_uri (
 	unsigned char def_name[CefC_Max_Length];
 	int def_name_len;
 
-	strcpy (uri, "cefore:/");
-	uri_len = strlen ("cefore:/");
+	strcpy (uri, "ccn:/");
+	uri_len = strlen ("ccn:/");
 
 	/* Check default name */
 	def_name_len = cef_frame_default_name_get (def_name);
@@ -2600,3 +2817,29 @@ cef_frame_conversion_name_to_string (
 
 	return (uri_len);
 }
+#ifdef CefC_Ser_Log
+/*--------------------------------------------------------------------------------------
+	Parses a ORG TLV in a CEFORE message
+----------------------------------------------------------------------------------------*/
+static int									/* No care now								*/
+cef_frame_message_user_tlv_parse (
+	CefT_Parsed_Message* pm, 				/* Structure to set parsed CEFORE message	*/
+	uint16_t length, 						/* Length of this TLV						*/
+	unsigned char* value,					/* Value of this TLV						*/
+	uint16_t offset							/* Offset from the top of message 			*/
+) {
+	if (length < 4) {
+		return (-1);
+	}
+
+	/* Get IANA Private Enterprise Numbers */
+	pm->org.pen[0] = value[0];
+	pm->org.pen[1] = value[1];
+	pm->org.pen[2] = value[2];
+	/* Get Length */
+	pm->org.length = (uint16_t)(length - 3);
+	/* Get Message header */
+	pm->org.offset = value + 3;
+	return (1);
+}
+#endif // CefC_Ser_Log

@@ -69,10 +69,11 @@
 
 typedef struct {
 
-	/********** Content Store Information	***********/
+	/********** Content Store Parameters	***********/
 	uint32_t		interval;					/* Interval that to check cache			*/
 	char			cs_mod_name[CsmgrdC_Max_Plugin_Name_Len]; /* CS plugin name			*/
 	uint16_t 		port_num;					/* PORT_NUM in csmgrd.conf 				*/
+	char 			local_sock_id[1024];
 	
 } CsmgrT_Config_Param;
 
@@ -101,10 +102,15 @@ typedef struct {
 	socklen_t 			ai_addrlen;
 	int 				tcp_fds[CsmgrdC_Max_Sock_Num];
 	int 				tcp_index[CsmgrdC_Max_Sock_Num];
-	unsigned char 		tcp_buff[CsmgrdC_Max_Sock_Num][CefC_Max_Length];
+	unsigned char* 		tcp_buff[CsmgrdC_Max_Sock_Num];
 	char				peer_id_str[CsmgrdC_Max_Sock_Num][NI_MAXHOST];
 	char				peer_sv_str[CsmgrdC_Max_Sock_Num][NI_MAXSERV];
 	int 				peer_num;
+	
+	/********** Local listen socket 	***********/
+	int 				local_listen_fd;
+	char 				local_sock_name[1024];
+	int					local_peer_sock;
 	
 	/********** load functions			***********/
 	CsmgrdT_Plugin_Interface* cs_mod_int;		/* plugin interface						*/

@@ -31,7 +31,7 @@ AM_CPPFLAGS = -I$(top_srcdir)/src/include
 
 bin_PROGRAMS=cefputfile
 cefputfile_LDFLAGS=-L$(top_srcdir)/src/lib/
-cefputfile_LDADD=-lcefore
+cefputfile_LDADD=-lcefore -lssl -lcrypto
 cefputfile_CFLAGS=$(AM_CPPFLAGS)
 cefputfile_SOURCES=cefputfile.c
 

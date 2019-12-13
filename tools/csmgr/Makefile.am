@@ -34,7 +34,7 @@ csmgrstatus_LDFLAGS=-L$(top_srcdir)/src/lib/
 if LINUX
 csmgrstatus_LDFLAGS+=-pthread -lpthread
 endif # LINUX
-csmgrstatus_LDADD=-lcefore
+csmgrstatus_LDADD=-lcefore -lssl -lcrypto
 csmgrstatus_CFLAGS=$(AM_CFLAGS)
 csmgrstatus_SOURCES=csmgrstatus.c
 
@@ -48,7 +48,7 @@ csmgrecho_LDFLAGS=-L$(top_srcdir)/src/lib/
 if LINUX
 csmgrecho_LDFLAGS+=-pthread -lpthread
 endif # LINUX
-csmgrecho_LDADD=-lcefore
+csmgrecho_LDADD=-lcefore -lssl -lcrypto
 csmgrecho_CFLAGS=$(AM_CFLAGS)
 csmgrecho_SOURCES=csmgrecho.c
 

@@ -31,7 +31,7 @@ AM_CPPFLAGS = -I$(top_srcdir)/src/include
 
 bin_PROGRAMS=cefgetchunk
 cefgetchunk_LDFLAGS=-L$(top_srcdir)/src/lib/
-cefgetchunk_LDADD=-lcefore
+cefgetchunk_LDADD=-lcefore -lssl -lcrypto
 cefgetchunk_CFLAGS=$(AM_CPPFLAGS)
 cefgetchunk_SOURCES=cefgetchunk.c
 

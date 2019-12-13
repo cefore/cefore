@@ -43,11 +43,12 @@
 #include <string.h>
 
 #include <csmgrd/csmgrd_plugin.h>
-
+#include "cache_replace_lib.h"
 
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+
 
 
 /****************************************************************************************
@@ -55,15 +56,13 @@
  ****************************************************************************************/
 
 /***** structure for listing content entries *****/
-typedef struct _LruT_Entry {
-
-	struct _LruT_Entry* 	next;			/* pointer to next entry 					*/
-	struct _LruT_Entry* 	prev;			/* pointer to previous entry 				*/
-
+typedef struct _LrufT_Entry {
 	unsigned char 	key[CsmgrdC_Key_Max];	/* key of content entry 					*/
 	int 			key_len;				/* length of key 							*/
-
-} LruT_Entry;
+    int             valid;
+    int             next;
+    int             prev;
+} LrufT_Entry;
 
 /****************************************************************************************
  State Variables
@@ -78,25 +77,19 @@ static int cache_cap = 0;					/* Maximum number of entries that can be 	*/
 static int (*store_api)(CsmgrdT_Content_Entry*);
 static void (*remove_api)(unsigned char*, int);
 
-static int				lru_entry_num;		/* number of entries listed 				*/
-static LruT_Entry* 		lru_head = NULL;	/* pointer to entry at the top of the list	*/
-static LruT_Entry* 		lru_tail = NULL;	/* pointer to entry at the tail of the list	*/
-
+static int              lru_index, mru_index;
+static int              cache_count;        /* number of cache entries                  */
+static LrufT_Entry*     cache_entry_list;   /* list for cache entry                     */
+static int*             empty_entry_list;   /* list for empty cache entry               */
 
 /****************************************************************************************
  Static Function Declaration
  ****************************************************************************************/
 
-/*--------------------------------------------------------------------------------------
-	Updates the LRU list
-----------------------------------------------------------------------------------------*/
-static void
-lru_list_update (
-	int index,								/* index of the hash table which content 	*/
-											/* entry is cached							*/
-	const unsigned char* key, 				/* key of the cached content entry 			*/
-	int key_len								/* length of key 							*/
-);
+static void lru_store_entry(CsmgrdT_Content_Entry* entry, int index);
+static void lru_remove_entry(int index, int is_removed);
+static void lru_set_mru(int new_mru_idx);
+static void lru_relink_neighbors_of(int hole_idx);
 
 /****************************************************************************************
  ****************************************************************************************/
@@ -112,15 +105,9 @@ init (
 	int (*store)(CsmgrdT_Content_Entry*), 	/* store a content entry API 				*/
 	void (*remove)(unsigned char*, int)		/* remove a content entry API 				*/
 ) {
-
-	/* Inits variables 						*/
-	lru_entry_num 	= 0;
-	lru_head 		= NULL;
-	lru_tail 		= NULL;
-	cache_cap 		= 0;
-	store_api 		= NULL;
-	remove_api 		= NULL;
-
+    int i;
+    cache_count = 0;
+    
 	/* Records the capacity of cache		*/
 	if (capacity < 1) {
 		fprintf (stderr, "[LRU LIB] Invalid Cacacity\n");
@@ -135,7 +122,22 @@ init (
 	}
 	store_api 	= store;
 	remove_api 	= remove;
-
+    
+	/* Creates the memory pool 				*/
+    cache_entry_list = (LrufT_Entry*) calloc(cache_cap, sizeof(LrufT_Entry));
+    empty_entry_list = (int*) calloc(cache_cap, sizeof(int));
+    memset(cache_entry_list, 0, sizeof(LrufT_Entry) * cache_cap);
+    for (i = 0; i < cache_cap; i++) {
+        empty_entry_list[i] = i;
+        cache_entry_list[i].next = -1;
+        cache_entry_list[i].prev = -1;
+    }
+    lru_index = -1;
+    mru_index = -1;
+    
+    /* Creates lookup table */
+    crlib_lookup_table_init(capacity);
+    
 	return (0);
 }
 
@@ -146,14 +148,15 @@ void
 destroy (
 	void
 ) {
-
-	/* Inits variables 				*/
-	lru_entry_num 	= 0;
+    cache_count = 0;
 	cache_cap 		= 0;
 	store_api 		= NULL;
 	remove_api 		= NULL;
-
-	return;
+    free(cache_entry_list);
+    free(empty_entry_list);
+    lru_index = -1;
+    mru_index = -1;
+    crlib_lookup_table_destroy();
 }
 
 /*--------------------------------------------------------------------------------------
@@ -163,84 +166,10 @@ void
 insert (
 	CsmgrdT_Content_Entry* entry			/* content entry 							*/
 ) {
-	int index;
-	LruT_Entry* lru_work;
-	unsigned char 	trg_key[CsmgrdC_Key_Max];
-	int 			trg_key_len;
-
-	/* Creates the key 		*/
-	trg_key_len = csmgrd_name_chunknum_concatenate (
-					entry->name, entry->name_len, entry->chnk_num, trg_key);
-
-	/* Stores the entry and updates the list 	*/
-	index = (*store_api)(entry);
-
-	if (index > -1) {
-#ifdef CefC_Debug_Lru
-		{
-			int i;
-			
-			fprintf (stderr, "# insert\n");
-			
-			for (i = 0 ; i < trg_key_len ; i++) {
-				fprintf (stderr, "%02X ", trg_key[i]);
-			}
-			fprintf (stderr, "\n");
-		}
-#endif // CefC_Debug_Lru
-		lru_list_update (index, trg_key, trg_key_len);
-		return;
-	}
-	
-#ifdef CefC_Debug_Lru
-	{
-		int i;
-		
-		fprintf (stderr, "# remove\n");
-		
-		for (i = 0 ; i < lru_tail->key_len ; i++) {
-			fprintf (stderr, "%02X ", lru_tail->key[i]);
-		}
-		fprintf (stderr, "\n");
-	}
-#endif // CefC_Debug_Lru
-	
-	/* Removes the tail entry from the cache 	*/
-	(*remove_api)(lru_tail->key, lru_tail->key_len);
-	
-	/* Updates the list 		*/
-	lru_work = lru_tail;
-	if ((memcmp (lru_head->key, lru_work->key, lru_head->key_len) == 0) &&
-		(lru_head->key_len == lru_work->key_len)) {
-		lru_head = NULL;
-		lru_tail = NULL;
-	} else {
-		lru_work->prev->next = NULL;
-		lru_tail = lru_work->prev;
-	}
-	
-	free (lru_work);
-	lru_entry_num--;
-	
-#ifdef CefC_Debug_Lru
-	{
-		int i;
-		
-		fprintf (stderr, "# insert\n");
-		
-		for (i = 0 ; i < trg_key_len ; i++) {
-			fprintf (stderr, "%02X ", trg_key[i]);
-		}
-		fprintf (stderr, "\n");
-	}
-#endif // CefC_Debug_Lru
-	/* Stores the entry and updates the list 	*/
-	index = (*store_api)(entry);
-	if (index > -1) {
-		lru_list_update (index, trg_key, trg_key_len);
-	}
-
-	return;
+    if (cache_count >= cache_cap) {
+    	lru_remove_entry(lru_index, 0);
+    }
+	lru_store_entry(entry, empty_entry_list[cache_count]);
 }
 
 /*--------------------------------------------------------------------------------------
@@ -252,44 +181,12 @@ erase (
 											/* table									*/
 	int key_len								/* length of the key 						*/
 ) {
-	LruT_Entry* lru_work = lru_head;
-	
-	/* Deletes the entry of the specified key from the list 	*/
-	while (lru_work) {
-
-		if ((memcmp (key, lru_work->key, key_len) == 0) &&
-			(key_len == lru_work->key_len)) {
-
-			if (lru_work->next == NULL) {
-				lru_tail = lru_work->prev;
-			} else {
-				lru_work->next->prev = lru_work->prev;
-			}
-			
-			if (lru_work->prev == NULL) {
-				lru_head = lru_work->next;
-			} else {
-				lru_work->prev->next = lru_work->next;
-			}
-#ifdef CefC_Debug_Lru
-			{
-				int i;
-				
-				fprintf (stderr, "# erace\n");
-				
-				for (i = 0 ; i < lru_work->key_len ; i++) {
-					fprintf (stderr, "%02X ", lru_work->key[i]);
-				}
-				fprintf (stderr, "\n\n");
-			}
-#endif // CefC_Debug_Lru
-			free (lru_work);
-			return;
-		}
-		lru_work = lru_work->next;
-	}
-
-	return;
+    int index = crlib_lookup_table_search(key, key_len);
+    if (index < 0) {
+        fprintf(stderr, "[LRU LIB] failed to erace\n");
+        return;
+    }
+    lru_remove_entry(index, 1);
 }
 
 /*--------------------------------------------------------------------------------------
@@ -301,67 +198,13 @@ hit (
 											/* cache table 								*/
 	int key_len								/* length of the key 						*/
 ) {
-	LruT_Entry* lru_work;
-	
-	if (lru_head) {
-		if ((memcmp (lru_head->key, key, key_len) == 0) &&
-			(lru_head->key_len == key_len)) {
-#ifdef CefC_Debug_Lru
-			{
-				int i;
-				
-				fprintf (stderr, "# hit\n");
-				
-				for (i = 0 ; i < lru_head->key_len ; i++) {
-					fprintf (stderr, "%02X ", lru_head->key[i]);
-				}
-				fprintf (stderr, "\n");
-			}
-#endif // CefC_Debug_Lru
-			return;
-		}
-	} else {
-		return;
-	}
-	lru_work = lru_head->next;
-
-	/* Moves the entry of the specified key to the top of the list 	*/
-	while (lru_work) {
-		if ((memcmp (lru_work->key, key, key_len)) ||
-			(lru_work->key_len != key_len)) {
-			lru_work = lru_work->next;
-		} else {
-
-			if (lru_work->next == NULL) {
-				lru_tail = lru_work->prev;
-			}
-			lru_work->prev->next = lru_work->next;
-
-			if (lru_work->next) {
-				lru_work->next->prev = lru_work->prev;
-			}
-
-			lru_work->next = lru_head;
-			lru_head->prev = lru_work;
-			lru_head = lru_work;
-			lru_work->prev = NULL;
-#ifdef CefC_Debug_Lru
-			{
-				int i;
-				
-				fprintf (stderr, "# hit\n");
-				
-				for (i = 0 ; i < lru_head->key_len ; i++) {
-					fprintf (stderr, "%02X ", lru_head->key[i]);
-				}
-				fprintf (stderr, "\n");
-			}
-#endif // CefC_Debug_Lru
-			return;
-		}
-	}
-
-	return;
+    int index = crlib_lookup_table_search(key, key_len);
+    if (index < 0) {
+        fprintf(stderr, "[LRU LIB] invalid hit\n");
+        return;
+    }
+    lru_relink_neighbors_of(index);
+    lru_set_mru(index);
 }
 
 /*--------------------------------------------------------------------------------------
@@ -373,19 +216,7 @@ miss (
 											/* in the cache table						*/
 	int key_len								/* length of the key 						*/
 ) {
-	// TODO
-#ifdef CefC_Debug_Lru
-	{
-		int i;
-		
-		fprintf (stderr, "# miss\n");
-		
-		for (i = 0 ; i < key_len ; i++) {
-			fprintf (stderr, "%02X ", key[i]);
-		}
-		fprintf (stderr, "\n");
-	}
-#endif // CefC_Debug_Lru
+    // NOTHING TO DO
 	return;
 }
 
@@ -400,71 +231,68 @@ status (
 	return;
 }
 
+
 /*--------------------------------------------------------------------------------------
-	Update the LRU list
+	Static Functions
 ----------------------------------------------------------------------------------------*/
-static void
-lru_list_update (
-	int index,								/* index of the hash table which content 	*/
-											/* entry is cached							*/
-	const unsigned char* key, 				/* key of the cached content entry 			*/
-	int key_len								/* length of key 							*/
+static void lru_store_entry(
+	CsmgrdT_Content_Entry* entry,
+    int index
 ) {
+    unsigned char 	key[CsmgrdC_Key_Max];
+    int 			key_len;
+    LrufT_Entry*    rsentry;
+    
+    key_len = csmgrd_name_chunknum_concatenate (
+                    entry->name, entry->name_len, entry->chnk_num, key);
+    rsentry = &cache_entry_list[index];
+    rsentry->key_len = key_len;
+    memcpy(rsentry->key, key, key_len);
+    lru_set_mru(index);
+    crlib_lookup_table_add(rsentry->key, rsentry->key_len, index);
+    (*store_api)(entry);
+    cache_count++;
+}
 
-	LruT_Entry* lru_work;
+static void lru_remove_entry(
+    int index,
+    int is_removed
+) {
+    LrufT_Entry* rsentry;
+    lru_relink_neighbors_of(index);
+    rsentry = &cache_entry_list[index];
+    crlib_lookup_table_remove(rsentry->key, rsentry->key_len);
+    if (!is_removed) (*remove_api)(rsentry->key, rsentry->key_len);
+    memset(rsentry, 0, sizeof(LrufT_Entry));
+    cache_count--;
+    empty_entry_list[cache_count] = index;
+}
 
-	if (lru_head) {
-		if ((memcmp (lru_head->key, key, key_len) == 0) &&
-			(lru_head->key_len == key_len)) {
-			return;
-		}
-		lru_work = lru_head->next;
-	} else {
-		lru_work = lru_head;
-	}
+static void lru_relink_neighbors_of(int hole_idx) {
+    /* [prev](.next)-> <-(.prev)[hole](.next)-> <-(.prev)[next] */
+    /* Re-link the next and previous entries of the hole entry (i.e., to be removed or replaced) */
+    int prev_idx = cache_entry_list[hole_idx].prev;
+    int next_idx = cache_entry_list[hole_idx].next;
+    if (hole_idx == mru_index) {
+        mru_index = next_idx;
+    } else {
+        cache_entry_list[prev_idx].next = next_idx;
+    }
+    if (hole_idx == lru_index) {
+        lru_index = prev_idx;
+    } else {
+        cache_entry_list[next_idx].prev = prev_idx;
+    }
+}
 
-	/* Moves the entry of the specified key to the top of the list 	*/
-	while (lru_work) {
-		if ((memcmp (lru_work->key, key, key_len)) ||
-			(lru_work->key_len != key_len)) {
-			lru_work = lru_work->next;
-		} else {
-			if (lru_work->next == NULL) {
-				lru_tail = lru_work->prev;
-			}
-			lru_work->prev->next = lru_work->next;
-
-			if (lru_work->next) {
-				lru_work->next->prev = lru_work->prev;
-			}
-
-			lru_work->next = lru_head;
-			lru_head->prev = lru_work;
-			lru_head = lru_work;
-			lru_work->prev = NULL;
-
-			return;
-		}
-	}
-
-	/* Creates the new entry and inserts to the top of the list		*/
-	lru_work = (LruT_Entry*) calloc (1, sizeof (LruT_Entry));
-	if (lru_work == NULL) {
-		return;
-	}
-	lru_work->prev = NULL;
-	if (lru_head) {
-		lru_head->prev = lru_work;
-	}
-	lru_work->next 	= lru_head;
-	lru_head = lru_work;
-	lru_entry_num++;
-
-	if (lru_work->next == NULL) {
-		lru_tail = lru_work;
-	}
-	lru_work->key_len = key_len;
-	memcpy (lru_work->key, key, key_len);
-
-	return;
+static void lru_set_mru(int new_mru_idx) {
+    int old_mru_idx = mru_index;
+    cache_entry_list[new_mru_idx].prev = -1;
+    cache_entry_list[new_mru_idx].next = old_mru_idx;
+    mru_index = new_mru_idx;
+    if (old_mru_idx >= 0) {
+        cache_entry_list[old_mru_idx].prev = new_mru_idx;
+    } else { // add as the first entry
+        lru_index = new_mru_idx;
+    }
 }

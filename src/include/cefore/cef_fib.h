@@ -54,6 +54,11 @@
 #define CefC_Fib_Route_Pro_TCP			0x01
 #define CefC_Fib_Route_Pro_UDP			0x02
 
+#define CefC_Fib_Entry_Dynamic			0x01
+#define CefC_Fib_Entry_Static			0x02
+#define CefC_Fib_Entry_Ctrl				0x04
+
+
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
@@ -63,6 +68,7 @@ typedef struct CefT_Fib_Face {
 	
 	int 	faceid;							/* Face-ID 									*/
 	struct CefT_Fib_Face* 	next;			/* Pointer to next Face Information 		*/
+	int 	type;							/* CefC_Fib_Entry_XXX 						*/
 	
 } CefT_Fib_Face;
 
@@ -124,11 +130,22 @@ cef_fib_forward_faceid_select (
 /*--------------------------------------------------------------------------------------
 	Receive the FIB route message
 ----------------------------------------------------------------------------------------*/
-void
+int 
 cef_fib_route_msg_read (
 	CefT_Hash_Handle fib,					/* FIB										*/
 	unsigned char* msg, 					/* the received message(s)					*/
-	int msg_size							/* size of received message(s)				*/
+	int msg_size,							/* size of received message(s)				*/
+	uint8_t type,							/* CefC_Fib_Entry_XXX						*/
+	int* rc 								/* 0x01=New Entry, 0x02=Free Entry 			*/
+);
+/*--------------------------------------------------------------------------------------
+	Obtain the Name from the received route message
+----------------------------------------------------------------------------------------*/
+int 
+cef_fib_name_get_from_route_msg (
+	unsigned char* msg, 					/* the received message(s)					*/
+	int msg_size, 
+	unsigned char* name
 );
 /*--------------------------------------------------------------------------------------
 	Removes the specified Faceid from the specified FIB entry
@@ -157,7 +174,7 @@ cef_fib_entry_lookup (
 	uint16_t name_len						/* Length of Key							*/
 );
 /*--------------------------------------------------------------------------------------
-	Remove a FIB entory from FIB
+	Remove a FIB entry from FIB
 ----------------------------------------------------------------------------------------*/
 int
 cef_fib_entry_destroy (
@@ -170,8 +187,17 @@ cef_fib_entry_destroy (
 ----------------------------------------------------------------------------------------*/
 void
 cef_fib_faceid_cleanup (
-	CefT_Hash_Handle fib,					/* FIB										*/
-	uint16_t faceid
+	CefT_Hash_Handle fib
 );
-
+/*--------------------------------------------------------------------------------------
+	Obtains the FIB information
+----------------------------------------------------------------------------------------*/
+int 
+cef_fib_info_get (
+	CefT_Hash_Handle* fib, 
+	char* info_buff, 
+	const unsigned char* name, 
+	int name_len, 
+	int partial_match_f
+);
 #endif // __CEF_FIB_HEADER__

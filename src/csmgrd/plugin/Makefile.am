@@ -45,10 +45,21 @@ noinst_LTLIBRARIES =
 # set csmgrd plugin cflags
 CSMGRD_PLUGIN_CFLAGS = $(AM_CFLAGS)
 
+# set csmgrd plugin ldadd
+CSMGRD_PLUGIN_LIBADD =
+
 # check debug build
 if CEFDBG_ENABLE
-CSMGRD_PLUGIN_CFLAGS+=-DCefC_Debug
+CSMGRD_PLUGIN_CFLAGS+=-DCefC_Debug -g
 endif # CEFDBG_ENABLE
+# check cefinfo
+if CEFINFO_ENABLE
+CSMGRD_PLUGIN_CFLAGS+=-DCefC_Cefinfo
+endif # CEFINFO_ENABLE
+# check cefping
+if CEFPING_ENABLE
+CSMGRD_PLUGIN_CFLAGS+=-DCefC_Cefping
+endif # CEFPING_ENABLE
 
 # lib csmgrd plugins library
 lib_LTLIBRARIES = libcsmgrd_plugin.la
@@ -59,33 +70,17 @@ libcsmgrd_plugin_la_LIBADD =
 # check mem cache
 noinst_LTLIBRARIES += libmem_cache.la
 libmem_cache_la_CFLAGS  = $(CSMGRD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
-# check contrace
-if CONTRACE_ENABLE
-libmem_cache_la_CFLAGS += -DCefC_Contrace
-endif # CONTRACE_ENABLE
-# check conping
-if CONPING_ENABLE
-libmem_cache_la_CFLAGS += -DCefC_Conping
-endif # CONPING_ENABLE
 libmem_cache_la_SOURCES = mem_cache/mem_cache.c mem_cache/mem_cache.h
 libmem_cache_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)
-libcsmgrd_plugin_la_LIBADD += libmem_cache.la
+libcsmgrd_plugin_la_LIBADD += $(CSMGRD_PLUGIN_LIBADD) libmem_cache.la
 
 # check filesystem
 if !FILESYSTEM_CACHE_DISABLE
 noinst_LTLIBRARIES += libfilesystem_cache.la
 libfilesystem_cache_la_CFLAGS  = $(CSMGRD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
-# check contrace
-if CONTRACE_ENABLE
-libfilesystem_cache_la_CFLAGS += -DCefC_Contrace
-endif # CONTRACE_ENABLE
-# check conping
-if CONPING_ENABLE
-libfilesystem_cache_la_CFLAGS += -DCefC_Conping
-endif # CONPING_ENABLE
 libfilesystem_cache_la_SOURCES = filesystem_cache/filesystem_cache.c filesystem_cache/filesystem_cache.h
 libfilesystem_cache_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)
-libcsmgrd_plugin_la_LIBADD += libfilesystem_cache.la
+libcsmgrd_plugin_la_LIBADD += $(CSMGRD_PLUGIN_LIBADD) libfilesystem_cache.la
 endif
 
 

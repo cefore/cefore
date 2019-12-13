@@ -39,6 +39,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#ifdef CefC_Android
+#include <inttypes.h>
+#endif // CefC_Android
 
 /****************************************************************************************
  Macros
@@ -62,8 +65,12 @@
 
 #else // __APPLE__
 
+#ifdef CefC_Android
+#define FMTU64 		"%"PRIu64
+#else // CefC_Android
 #define FMTU64 		"%lu"
 #define FMTLINT 	"%03ld"
+#endif // CefC_Android
 
 #endif // __APPLE__
 
@@ -96,12 +103,19 @@
 #define CefC_ParamName_PitSize			"PIT_SIZE"
 #define CefC_ParamName_FibSize			"FIB_SIZE"
 #define CefC_ParamName_LocalSockId		"LOCAL_SOCK_ID"
-#define CefC_ParamName_PubKey			"PUBLIC_KEY"
+#define CefC_ParamName_PrvKey			"PRIVATE_KEY"
 #define CefC_ParamName_NbrSize			"NBR_SIZE"
 #define CefC_ParamName_NbrMngInterval	"NBR_INTERVAL"
 #define CefC_ParamName_NbrMngThread 	"NBR_THRESH"
 #define CefC_ParamName_FwdRate 			"FWD_RATE"
 #define CefC_ParamName_Sktype			"SOCK_TYPE"
+#define CefC_ParamName_Babel			"USE_CEFBABEL"
+#define CefC_ParamName_Babel_Route		"CEFBABEL_ROUTE"
+#ifdef CefC_Ser_Log
+#define CefC_ParamName_Log_Size			"SER_LOG_SIZE"
+#define CefC_ParamName_Log_Enable		"SER_LOG_ENABLE"
+#define CefC_ParamName_Log_Dir			"SER_LOG_DIR"
+#endif // CefC_Ser_Log
 
 /*************** Default Values ***************/
 #define CefC_Default_PortNum			9896

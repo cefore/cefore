@@ -68,7 +68,6 @@ static int              count;              /* the number of entries in lookup t
 /****************************************************************************************
  ****************************************************************************************/
 
-
 /*--------------------------------------------------------------------------------------
 	Functions for Lookup Table
 ----------------------------------------------------------------------------------------*/
@@ -229,7 +228,8 @@ void crlib_force_print_name(const unsigned char* name, uint16_t len) {
 	char buf[4096];
 	char *cur = buf;
 	memset(buf, 0, len + 10);
-    sprintf(cur, "[cefore:"); cur += 8;
+    sprintf(cur, "[ccn:"); cur += 5;
+    if (len > 2) {
 	i = 3;
 	while (i < len) {
 		*cur = '/'; cur++;
@@ -240,7 +240,10 @@ void crlib_force_print_name(const unsigned char* name, uint16_t len) {
 		i += clen + 3;
 	}
     uint32_t chunknum = htonl (*((uint32_t*)(name + len - 4)));
-    sprintf(cur - 5, "][%d]", chunknum);
+        sprintf(cur - 4, "][%d]", chunknum);
+    } else {
+        sprintf(cur, "%s]", name);
+    }
     fprintf(stderr, "%s", buf);
 }
 
@@ -252,7 +255,7 @@ void crlib_force_print_entry(CsmgrdT_Content_Entry* entry) {
 	char buf[4096];
 	char *cur = buf;
 	memset(buf, 0, len + 10);
-    sprintf(cur, "[cefore:"); cur += 8;
+    sprintf(cur, "[%8d][ccn:", len); cur += 15;
 	i = 3;
 	while (i < len) {
 		*cur = '/'; cur++;
@@ -271,7 +274,8 @@ void crlib_force_print_name_wl(const unsigned char* name, uint16_t len) {
 	char buf[4096];
 	char *cur = buf;
 	memset(buf, 0, len + 10);
-    sprintf(cur, "[%05d][cefore:", len); cur += 15;
+    sprintf(cur, "[%05d][ccn:", len); cur += 12;
+    if (len > 2) {
 	i = 3;
 	while (i < len) {
 		clen = *(name + i); i++;
@@ -282,8 +286,42 @@ void crlib_force_print_name_wl(const unsigned char* name, uint16_t len) {
 		i += clen + 3;
 	}
     uint32_t chunknum = htonl (*((uint32_t*)(name + len - 4)));
-    sprintf(cur - 5, "][%d]", chunknum);
+        sprintf(cur - 4, "][%d]", chunknum);
+    } else {
+        sprintf(cur, "%s]", name);
+    }
     fprintf(stderr, "%s", buf);
 }
+
+#ifdef EmuC_Log
+static char time_str[64];
+
+static void emu_timestamp() {
+	struct timeval t;
+    gettimeofday (&t, NULL);
+    sprintf(time_str, "%ld.%06u", t.tv_sec, (unsigned)t.tv_usec);
+}
+
+static void emu_force_print_name(const unsigned char* name, uint16_t len, const char* hm_status) {
+    int i, j, clen;
+	char buf[4096];
+	char *cur = buf;
+	memset(buf, 0, len + 10);
+    sprintf(cur, "[ccn:"); cur += 5;
+	i = 3;
+	while (i < len) {
+		*cur = '/'; cur++;
+		clen = *(name + i); i++;
+		for (j = 0; j < clen; j++) {
+			*cur = *(name + i + j); cur++;
+		}
+		i += clen + 3;
+	}
+    uint32_t chunknum = htonl (*((uint32_t*)(name + len - 4)));
+    sprintf(cur - 5, "][%d]", chunknum);
+    emu_timestamp();
+    fprintf(stderr, "!___EMULOG_time:%s___EMULOG_hm:%s___EMULOG_name:%s\n", time_str, hm_status, buf);
+}
+#endif
 
 

@@ -40,31 +40,31 @@ CSMGRD_CFLAGS=$(AM_CFLAGS)
 
 # check debug build
 if CEFDBG_ENABLE
-CSMGRD_CFLAGS+=-DCefC_Debug
+CSMGRD_CFLAGS+=-DCefC_Debug -g
 endif # CEFDBG_ENABLE
 
-# check contrace
-if CONTRACE_ENABLE
-CSMGRD_CFLAGS += -DCefC_Contrace
-endif # CONTRACE_ENABLE
+# check cefinfo
+if CEFINFO_ENABLE
+CSMGRD_CFLAGS += -DCefC_Cefinfo
+endif # CEFINFO_ENABLE
 
-# check conping
-if CONPING_ENABLE
-CSMGRD_CFLAGS += -DCefC_Conping
-endif # CONPING_ENABLE
+# check cefping
+if CEFPING_ENABLE
+CSMGRD_CFLAGS += -DCefC_Cefping
+endif # CEFPING_ENABLE
 
 # set bin programs
 bin_PROGRAMS=$(CSMGRD_BIN_PROGRAM)
 
 # set csmgrd option
 csmgrd_LDFLAGS = $(AM_LDFLAGS)
-csmgrd_LDADD = -lcefore -ldl -lcsmgrd_plugin -lpthread
+csmgrd_LDADD = -lcefore -ldl -lcsmgrd_plugin -lpthread -lssl -lcrypto
 csmgrd_CFLAGS = $(CSMGRD_CFLAGS) -Wall -O2 -fPIC
 csmgrd_SOURCES = csmgrd.c csmgrd.h
 
 # set csmgrctrl option
 csmgrctrl_LDFLAGS = $(AM_LDFLAGS)
-csmgrctrl_LDADD = -lcefore -lcsmgrd_plugin -lpthread
+csmgrctrl_LDADD = -lcefore -lcsmgrd_plugin -lpthread -lssl -lcrypto
 csmgrctrl_CFLAGS = $(CSMGRD_CFLAGS) -Wall -O2 -fPIC
 csmgrctrl_SOURCES = csmgrctrl.c
 

@@ -82,10 +82,6 @@ typedef struct {
 	CefT_Mp_Handle	 mem_cache_cob_mp;			/* for cob entry						*/
 	CefT_Hash_Handle mem_cache_table;			/* Memory Cache Table					*/
 	
-	/********** content table 	***********/
-	CefT_Hash_Handle mem_con_table;				/* Memory Content Table					*/
-	CefT_Mp_Handle	 mem_con_table_mp;			/* for Memory Content Table				*/
-	
 	/********** cache algorithm library **********/
 	void* 			algo_lib;					/* records to the loaded library 		*/
 	CsmgrdT_Lib_Interface algo_apis;

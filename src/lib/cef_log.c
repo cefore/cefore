@@ -47,6 +47,10 @@
 #include <cefore/cef_define.h>
 #include <cefore/cef_log.h>
 
+#ifdef CefC_Android
+#include <android/log.h>
+#endif // CefC_Android
+
 /****************************************************************************************
  Macros
  ****************************************************************************************/
@@ -115,17 +119,22 @@ cef_log_write (
 	...												/* parameters						*/
 ) {
 	va_list arg;
+#ifndef CefC_Android
 	char 		time_str[64];
 	struct tm* 	timeptr;
 	time_t 		timer;
 	struct timeval t;
+#endif // CefC_Android
 	
 	assert (level <= CefC_Log_Critical);
 	assert (log_porc[0] != 0x00);
 	
 	if (level > log_lv) {
 		va_start (arg, fmt);
-		
+#ifdef CefC_Android
+		__android_log_vprint(
+			level + ANDROID_LOG_INFO - CefC_Log_Info, log_porc, fmt, arg);
+#else // CefC_Android
 		timer 	= time (NULL);
 		timeptr = localtime (&timer);
 		strftime (time_str, 64, "%Y-%m-%d %H:%M:%S", timeptr);
@@ -134,7 +143,7 @@ cef_log_write (
 		fprintf (stdout, "%s."FMTLINT" [%s] %s: "
 			, time_str, t.tv_usec / 1000, log_porc, log_lv_str[level]);
 		vfprintf (stdout, fmt, arg);
-		
+#endif // CefC_Android
 		va_end (arg);
 	}
 }
@@ -222,17 +231,20 @@ cef_dbg_write (
 	...												/* parameters						*/
 ) {
 	va_list arg;
+#ifndef CefC_Android
 	char 		time_str[64];
 	struct tm* 	timeptr;
 	time_t 		timer;
 	struct timeval t;
-	
+#endif // CefC_Android
 	assert (level >= CefC_Dbg_Fine && level <= CefC_Dbg_Finest);
 	assert (dbg_proc[0] != 0x00);
 	
 	if (level < dbg_lv) {
 		va_start (arg, fmt);
-		
+#ifdef CefC_Android
+		__android_log_vprint(ANDROID_LOG_DEBUG, dbg_proc, fmt, arg);
+#else // CefC_Android
 		timer 	= time (NULL);
 		timeptr = localtime (&timer);
 		strftime (time_str, 64, "%Y-%m-%d %H:%M:%S", timeptr);
@@ -241,7 +253,7 @@ cef_dbg_write (
 		fprintf (stdout, 
 			"%s."FMTLINT" [%s] DEBUG: ", time_str, t.tv_usec / 1000, dbg_proc);
 		vfprintf (stdout, fmt, arg);
-		
+#endif // CefC_Android
 		va_end (arg);
 	}
 }

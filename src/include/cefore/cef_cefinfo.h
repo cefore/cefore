@@ -27,54 +27,58 @@
  * SUCH DAMAGE.
  */
 /*
- * cef_print.h
+ * cef_cefinfo.h
  */
 
-#ifndef __CEF_PRINT_HEADER__
-#define __CEF_PRINT_HEADER__
+#ifndef __CEFINFO_HEADER__
+#define __CEFINFO_HEADER__
 
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
-#include <stdlib.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <arpa/inet.h>
 
-#ifdef CefC_Android
-#include <android/log.h>
-#define TAG "ndk"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__);
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__);
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__);
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__);
-#endif // CefC_Android
+#include <cefore/cef_csmgr.h>
+#include <cefore/cef_define.h>
+#include <cefore/cef_fib.h>
+#include <cefore/cef_hash.h>
+
+
 
 /****************************************************************************************
  Macros
  ****************************************************************************************/
 
+#define CefstatC_MaxUri		128
+
+
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
 
+/*------------------------------------------------------------------*/
+/* for cache information field										*/
+/*------------------------------------------------------------------*/
+typedef struct {
+	size_t size;									/* total size of a content			*/
+	int cob_num;									/* number of Cob constituting a 	*/
+													/* content							*/
+	struct in_addr upaddr;							/* IP address of first arrival		*/
+	unsigned int freshness_sec;						/* length of time until content is	*/
+													/* expired							*/
+	unsigned int access_cnt;						/* access-count of ContentObject	*/
+	unsigned int elapsed_time;						/* elapsed time after content was	*/
+													/* stored							*/
+	u_int32_t min_seq_num;							/* sequence number					*/
+	u_int32_t max_seq_num;							/* sequence number					*/
+	
+} CefstatT_Cache;
 
-/****************************************************************************************
- Global Variables
- ****************************************************************************************/
 
 /****************************************************************************************
  Function Declarations
  ****************************************************************************************/
 
-void
-cef_print (
-	const char* fmt, 								/* output format					*/
-	...												/* parameters						*/
-);
-void
-cef_buff_print (
-	const unsigned char* buff, 
-	uint16_t len
-);
-#endif // __CEF_PRINT_HEADER__
 
+#endif // __CEFINFO_HEADER__

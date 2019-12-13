@@ -28,6 +28,7 @@
 # 
 
 AM_CFLAGS=-I$(top_srcdir)/src/include -Wall -O2 -fPIC
+AM_LDFLAGS=-lssl -lcrypto
 AM_CSOURCES=cef_hash.c cef_client.c cef_fib.c cef_pit.c cef_face.c cef_frame.c \
 	cef_log.c cef_print.c cef_mpool.c cef_rngque.c cef_valid.c
 
@@ -39,19 +40,22 @@ endif # CEFDBG_ENABLE
 # check csmgr
 if CSMGR_ENABLE
 AM_CFLAGS+=-DCefC_ContentStore
-AM_CSOURCES+=cef_csmgr.c
+AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c
 endif
 
-# check conping
-if CONPING_ENABLE
-AM_CFLAGS+=-DCefC_Conping
-endif # CONPING_ENABLE
+# check cefping
+if CEFPING_ENABLE
+AM_CFLAGS+=-DCefC_Cefping
+endif # CEFPING_ENABLE
 
-# check contrace
-if CONTRACE_ENABLE
-AM_CFLAGS+=-DCefC_Contrace
-endif # CONTRACE_ENABLE
+# check cefinfo
+if CEFINFO_ENABLE
+AM_CFLAGS+=-DCefC_Cefinfo
+endif # CEFINFO_ENABLE
 
 lib_LIBRARIES=libcefore.a
 libcefore_a_CFLAGS=$(AM_CFLAGS)
 libcefore_a_SOURCES=$(AM_CSOURCES)
+
+libdir=$(CEFORE_DIR_PATH)/lib
+

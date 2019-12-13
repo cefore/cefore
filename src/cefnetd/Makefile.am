@@ -42,15 +42,15 @@ if CSMGR_ENABLE
 CEF_NETD_CFLAGS+=-DCefC_ContentStore
 endif # CSMGR_ENABLE
 
-# check contrace
-if CONTRACE_ENABLE
-CEF_NETD_CFLAGS+=-DCefC_Contrace
-endif # CONTRACE_ENABLE
+# check cefinfo
+if CEFINFO_ENABLE
+CEF_NETD_CFLAGS+=-DCefC_Cefinfo
+endif # CEFINFO_ENABLE
 
-# check conping
-if CONPING_ENABLE
-CEF_NETD_CFLAGS+=-DCefC_Conping
-endif # CONPING_ENABLE
+# check cefping
+if CEFPING_ENABLE
+CEF_NETD_CFLAGS+=-DCefC_Cefping
+endif # CEFPING_ENABLE
 
 # check NDN Plugin
 if NDNPLUGIN_ENABLE
@@ -65,12 +65,7 @@ cefnetd_LDFLAGS=-L$(top_srcdir)/src/lib/ -L$(top_srcdir)/src/plugin/ -lpthread
 if LINUX
 cefnetd_LDFLAGS+=-pthread
 endif # LINUX
-cefnetd_LDADD=-lcefore -lcef_plugin
-
-# check NDN Plugin
-if NDNPLUGIN_ENABLE
-cefnetd_LDADD+=-lcrypto
-endif # NDNPLUGIN_ENABLE
+cefnetd_LDADD=-lcef_plugin -lcefore -lssl -lcrypto
 
 cefnetd_CFLAGS=$(CEF_NETD_CFLAGS)
 cefnetd_SOURCES=cef_main.c cef_node.c cef_sched.c cef_netd.c cef_status.c cef_netd.h cef_status.h
@@ -78,7 +73,7 @@ cefnetd_SOURCES=cef_main.c cef_node.c cef_sched.c cef_netd.c cef_status.c cef_ne
 
 # set cefctrl option
 cefctrl_LDFLAGS=-L$(top_srcdir)/src/lib/
-cefctrl_LDADD=-lcefore
+cefctrl_LDADD=-lcefore -lssl -lcrypto
 cefctrl_CFLAGS=$(AM_CFLAGS)
 cefctrl_SOURCES=cef_ctrl.c cef_netd.h
 
@@ -86,6 +81,7 @@ cefctrl_SOURCES=cef_ctrl.c cef_netd.h
 if CEFDBG_ENABLE
 cefctrl_CFLAGS+=-DCefC_Debug
 endif # CEFDBG_ENABLE
+
 
 DESTDIR=$(CEFORE_DIR_PATH)
 bindir=sbin

@@ -39,6 +39,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <sys/time.h>
 
 #include <cefore/cef_define.h>
 
@@ -49,7 +50,7 @@
 /*------------------------------------------------------------------*/
 /* Maximum Sizes													*/
 /*------------------------------------------------------------------*/
-#define CefC_Max_Msg_Size			8192		/* Maximum Messaga Size (8 Kbytes) 		*/
+#define CefC_Max_Msg_Size			8192		/* Maximum Message Size (8 Kbytes) 		*/
 #define CefC_Max_Header_Size 		255			/* Maximum Header Size 					*/
 #define CefC_Max_Node_Id 			16
 #define CefC_Max_Stamp_Num 			20
@@ -103,10 +104,14 @@
 #define CefC_PT_INTEREST			0x00		/* Interest								*/
 #define CefC_PT_OBJECT				0x01		/* Content Object						*/
 #define CefC_PT_INTRETURN			0x02		/* Interest Return						*/
-#define CefC_PT_TRACE_REQ			0x03		/* Contrace Request						*/
-#define CefC_PT_TRACE_REP			0x04		/* Contrace Replay						*/
-#define CefC_PT_PING_REQ			0x05		/* Conping Request						*/
-#define CefC_PT_PING_REP			0x06		/* Conping Replay						*/
+#define CefC_PT_TRACE_REQ			0x03		/* Cefinfo Request						*/
+#define CefC_PT_TRACE_REP			0x04		/* Cefinfo Replay						*/
+#define CefC_PT_PING_REQ			0x05		/* Cefping Request						*/
+#define CefC_PT_PING_REP			0x06		/* Cefping Replay						*/
+
+#define CefC_PT_CTRL				0x10
+#define CefC_PT_BABEL				0x11
+
 
 /*------------------------------------------------------------------*/
 /* Top-Level Type													*/
@@ -116,8 +121,8 @@
 #define CefC_T_OBJECT				0x0002		/* Content Object						*/
 #define CefC_T_VALIDATION_ALG		0x0003		/* Validation Algorithm					*/
 #define CefC_T_VALIDATION_PAYLOAD	0x0004		/* Validation Payload 					*/
-#define CefC_T_TRACE				0x0005		/* Contrace 							*/
-#define CefC_T_PING					0x0006		/* Conping 								*/
+#define CefC_T_TRACE				0x0005		/* Cefinfo 							*/
+#define CefC_T_PING					0x0006		/* Cefping 								*/
 #define CefC_T_TOP_TLV_NUM			0x0007
 
 /*------------------------------------------------------------------*/
@@ -140,6 +145,9 @@
 #define CefC_T_TRACE_FUNCTION		0x0004		/* Reply (function) Block				*/
 #define CefC_T_TRACE_ON_CSMGRD		0x8000		/* Content is on csmgrd					*/
 
+/*----- Organization-Specific TLVs -----*/
+#define CefC_T_SER_LOG				0x1001		/* Serial Logging						*/
+
 /*------------------------------------------------------------------*/
 /* Name Segment Type												*/
 /*------------------------------------------------------------------*/
@@ -159,6 +167,7 @@
 #define CefC_T_APP_MESH				0x1401		/* Mesh Application 					*/
 #define CefC_T_APP_FROM_PUB			0x1402		/* Require to get the content from the 	*/
 												/* publisher							*/
+#define CefC_T_APP_DTC				0x1403		/* Android DTC Application			 	*/
 
 /*----- Chunk Metadata Name Component 	-----*/
 #define CefC_T_ENDChunk				0x0019		/* EndChunkNumber						*/
@@ -182,6 +191,7 @@
 #define CefC_T_RSA_SHA256			0x0005
 #define CefC_T_EC_SECP_256K1		0x0006
 #define CefC_T_EC_SECP_384R1		0x0007
+#define CefC_T_KEY_CHECK			0x1001
 
 /*------------------------------------------------------------------*/
 /* Validation Dependent Data Type Registry							*/
@@ -196,6 +206,8 @@
 #define CefC_T_KEYLINK				0x0014
 #define CefC_T_SIGTIME				0x0015
 
+#define CefC_T_CERT_FORWARDER		0x1001
+
 /*------------------------------------------------------------------*/
 /* Hop-by-Hop Type													*/
 /*------------------------------------------------------------------*/
@@ -204,14 +216,14 @@
 #define CefC_T_OPT_INTLIFE			0x0001		/* Interest Lifetime 					*/
 #define CefC_T_OPT_CACHETIME		0x0002		/* Recommended Cache Time (RCT) 		*/
 #define CefC_T_OPT_MSGHASH			0x0003		/* Message Hash							*/
-#define CefC_T_OPT_TRACE_REQ		0x0008		/* Contrace Request Block				*/
-#define CefC_T_OPT_TRACE_RPT		0x0009		/* Contrace Report Block				*/
-#define CefC_T_OPT_PING_REQ			0x000A		/* Conping Request Block				*/
+#define CefC_T_OPT_TRACE_REQ		0x0008		/* Cefinfo Request Block				*/
+#define CefC_T_OPT_TRACE_RPT		0x0009		/* Cefinfo Report Block				*/
+#define CefC_T_OPT_PING_REQ			0x000A		/* Cefping Request Block				*/
 #define CefC_T_OPT_TLV_NUM			0x000B
 
 #define CefC_T_OPT_ORG				0x0FFF		/* Vendor Specific Information			*/
 #define CefC_T_OPT_SYMBOLIC			0x1001		/* Symbolic Interest					*/
-#define CefC_T_OPT_TRANSPORT		0x1002		/* Tranport Plugin Variant				*/
+#define CefC_T_OPT_TRANSPORT		0x1002		/* Transport Plugin Variant				*/
 #define CefC_T_OPT_EFI				0x1003		/* External Function Invocation			*/
 #define CefC_T_OPT_IUR				0x1004		/* Interest User Request				*/
 #define CefC_T_OPT_SEQNUM			0x1005		/* Sequence Number						*/
@@ -247,7 +259,7 @@
 #define CefC_Cmd_Link_Res			0x02		/* Link Response						*/
 
 /*------------------------------------------------------------------*/
-/* Return Code for Conping Replay 									*/
+/* Return Code for Cefping Replay 									*/
 /*------------------------------------------------------------------*/
 #define CefC_CpRc_Cache 			0x00
 #define CefC_CpRc_NoCache 			0x01
@@ -255,7 +267,7 @@
 #define CefC_CpRc_AdProhibit 		0x03
 
 /*------------------------------------------------------------------*/
-/* Option for Contrace Request 										*/
+/* Option for Cefinfo Request 										*/
 /*------------------------------------------------------------------*/
 
 /* Sets to Flag of Request Block 			*/
@@ -270,7 +282,7 @@
 #define CefC_CtSn_Cefore			0x02
 
 /*------------------------------------------------------------------*/
-/* Return Code for Contrace Replay 									*/
+/* Return Code for Cefinfo Replay 									*/
 /*------------------------------------------------------------------*/
 #define CefC_CtRc_NoError 			0x00
 #define CefC_CtRc_WrongIf 			0x01
@@ -291,6 +303,16 @@
 /*--------------------------------------------------------------*/
 /* Headers														*/
 /*--------------------------------------------------------------*/
+
+struct cef_app_frame {
+	uint32_t		version;
+	uint32_t		type;
+	unsigned char 	name[CefC_Max_Length];
+	uint16_t 		name_len;
+	uint32_t		chunk_num;
+	unsigned char 	payload[CefC_Max_Msg_Size];
+	uint16_t 		payload_len;
+} __attribute__((__packed__));
 
 struct cef_app_hdr {
 	uint32_t		ver;
@@ -390,13 +412,13 @@ typedef struct {
 	/***** Vendor Specific Information	*****/
 	// TBD
 	
-	/***** Conping						*****/
-	uint16_t			responder_f;			/* flag to set Responder Identifer 		*/
-												/* it is length of Responder Identifer 	*/
+	/***** Cefping						*****/
+	uint16_t			responder_f;		/* flag to set Responder Identifier 		*/
+											/* it is length of Responder Identifier 	*/
 	unsigned char   	responder_id[CefC_Max_Node_Id];
-												/* Responder Identifer 					*/
+												/* Responder Identifier 					*/
 	
-	/***** Contrace						*****/
+	/***** Cefinfo						*****/
 	uint16_t 			req_id;					/* Request ID of Request Block			*/
 	uint8_t 			skip_hop;				/* SkipHopCount of Request Block		*/
 	uint16_t 			trace_flag;				/* Flags of Request Block				*/
@@ -415,7 +437,7 @@ typedef struct {
 												/* T_NUMBER is automatically set.		*/
 	uint32_t 			bitmap[CefC_S_Bitmap];	/* bitmap is set to T_NUMBER 			*/
 	
-	/***** Tranport Plugin Variant		*****/
+	/***** Transport Plugin Variant		*****/
 	uint16_t 	tp_variant;							/* Transport Variant 				*/
 	uint8_t 	tp_length;							/* length of value field 			*/
 	unsigned char tp_value[CefC_Max_Header_Size];	/* value field 						*/
@@ -437,9 +459,9 @@ typedef struct {
 	uint16_t 			valid_type;				/* Validation Type 						*/
 												/* e.g. CefC_T_CRC32C 					*/
 	
-	/***** Public Key					*****/
-	uint16_t 			pubkey_len;
-	unsigned char 		pubkey[CefC_Max_Length];
+	/* HOP-BY-HOP */
+	/***** Hop-by-Hop Validation 		*****/
+	uint16_t 			hop_by_hop_f;
 	
 } CefT_Valid_Alg_TLVs;
 
@@ -517,7 +539,7 @@ typedef struct {
 } CefT_Object_TLVs;
 
 /*--------------------------------------------------------------*/
-/* Parameters to set Conping 									*/
+/* Parameters to set Cefping 									*/
 /*--------------------------------------------------------------*/
 typedef struct {
 
@@ -534,7 +556,7 @@ typedef struct {
 } CefT_Ping_TLVs;
 
 /*--------------------------------------------------------------*/
-/* Parameters to set Contrace 									*/
+/* Parameters to set Cefinfo 									*/
 /*--------------------------------------------------------------*/
 typedef struct {
 
@@ -549,6 +571,22 @@ typedef struct {
 	CefT_Option_TLVs 		opt;					/* Parameters to set Option Header 	*/
 
 } CefT_Trace_TLVs;
+
+#ifdef CefC_Ser_Log
+/*--------------------------------------------------------------*/
+/* Parameters to Organization-Specific Parameters 				*/
+/*--------------------------------------------------------------*/
+typedef struct CefT_Org_Params {
+
+	/***** IANA Private Enterprise Numbers	*****/
+	uint8_t 				pen[3];
+
+	/***** NAME TLV							*****/
+	unsigned char*			offset;					/* Vendor Specific Value offset		*/
+	uint16_t				length;					/* Length of value					*/
+
+} CefT_Org_Params;
+#endif // CefC_Ser_Log
 
 /*--------------------------------------------------------------*/
 /* Parsed Option Header 										*/
@@ -569,13 +607,13 @@ typedef struct {
 	/***** Vendor Specific Information	*****/
 	// TBD
 	
-	/***** Conping						*****/
-	uint16_t			responder_f;			/* flag to set Responder Identifer 		*/
-												/* it is length of Responder Identifer 	*/
+	/***** Cefping						*****/
+	uint16_t			responder_f;		/* flag to set Responder Identifier 		*/
+											/* it is length of Responder Identifier		*/
 	unsigned char   	responder_id[CefC_Max_Node_Id];
-												/* Responder Identifer 					*/
+												/* Responder Identifier 				*/
 	
-	/***** Contrace Request Block		*****/
+	/***** Cefinfo Request Block		*****/
 	uint16_t 			req_id;					/* Request ID of Request Block			*/
 	uint8_t 			skip_hop;				/* SkipHopCount of Request Block		*/
 	uint16_t 			skip_hop_offset;		/* Offset from the top of message 		*/
@@ -583,24 +621,24 @@ typedef struct {
 	uint8_t				timeout;				/* Timeout of Request Block				*/
 	uint8_t 			scheme_name;			/* SchemeName of Request Block			*/
 	
-	/***** Contrace Report Block		*****/
+	/***** Cefinfo Report Block		*****/
 	uint16_t 			rpt_block_offset;
 	
 	/***** Symbolic Interest			*****/
 	uint8_t 			longlife_f;				/* Long Life Interest 					*/
 	uint8_t				piggyback_f; 			/* Piggyback Interest 					*/
-	uint8_t 			app_reg_f;				/* App Registor 						*/
+	uint8_t 			app_reg_f;				/* App Register 						*/
 	uint16_t 			bitmap_f;
 	uint32_t 			bitmap[CefC_S_Bitmap];
 	uint16_t 			number_f;
 	uint32_t 			number;
 	
-	/***** Tranport Plugin Variant		*****/
+	/***** Transport Plugin Variant		*****/
 	uint16_t 			tp_variant;				/* Transport Variant 					*/
 	uint8_t 			tp_length;				/* length of value field 				*/
 	unsigned char tp_value[CefC_Max_Header_Size];	/* value field 						*/
 	
-	/***** Sequnce Number 				*****/
+	/***** Sequence Number 				*****/
 	uint32_t 			seqnum;
 	
 	/***** Symbolic Coder 				*****/
@@ -623,7 +661,7 @@ typedef struct {
 	
 	/***** Fixed Header 	*****/
 	uint8_t			hoplimit;					/* Hop Limit of Interest 				*/
-	uint8_t			ping_retcode;				/* Conping ReturnCode 					*/
+	uint8_t			ping_retcode;				/* Cefping ReturnCode 					*/
 	
 	/***** Cefore Message 	*****/
 	uint16_t 		pkt_type;					/* Top-Level Type 						*/
@@ -658,8 +696,13 @@ typedef struct {
 	uint64_t		expiry;						/* The time at which the Payload		*/
 												/* expires [unit: ms]					*/
 	
-	/***** Sequnce Number 				*****/
+	/***** Sequence Number 				*****/
 	uint32_t 		seqnum;
+
+#ifdef CefC_Ser_Log
+	/***** Organization-Specific Parameters	*****/
+	CefT_Org_Params org;
+#endif // CefC_Ser_Log
 	
 } CefT_Parsed_Message;
 
@@ -719,38 +762,38 @@ cef_frame_object_create (
 	CefT_Object_TLVs* tlvs					/* Parameters to set Content Object 		*/
 );
 /*--------------------------------------------------------------------------------------
-	Creates the Conping Request from the specified Parameters
+	Creates the Cefping Request from the specified Parameters
 ----------------------------------------------------------------------------------------*/
-int 										/* Length of Conping message 				*/
-cef_frame_conping_req_create (
-	unsigned char* buff, 					/* buffer to set Conping Request			*/
-	CefT_Ping_TLVs* tlvs					/* Parameters to set Conping Request 		*/
+int 										/* Length of Cefping message 				*/
+cef_frame_cefping_req_create (
+	unsigned char* buff, 					/* buffer to set Cefping Request			*/
+	CefT_Ping_TLVs* tlvs					/* Parameters to set Cefping Request 		*/
 );
 /*--------------------------------------------------------------------------------------
-	Creates the Contrace Request from the specified Parameters
+	Creates the Cefinfo Request from the specified Parameters
 ----------------------------------------------------------------------------------------*/
-int 										/* Length of Contrace message 				*/
-cef_frame_contrace_req_create (
-	unsigned char* buff, 					/* buffer to set Contrace Request			*/
-	CefT_Trace_TLVs* tlvs					/* Parameters to set Contrace Request 		*/
+int 										/* Length of Cefinfo message 				*/
+cef_frame_cefinfo_req_create (
+	unsigned char* buff, 					/* buffer to set Cefinfo Request			*/
+	CefT_Trace_TLVs* tlvs					/* Parameters to set Cefinfo Request 		*/
 );
 /*--------------------------------------------------------------------------------------
-	Adds a time stamp on Contrace Request
+	Adds a time stamp on Cefinfo Request
 ----------------------------------------------------------------------------------------*/
-int 										/* Length of Contrace message 				*/
-cef_frame_contrace_req_add_stamp (
-	unsigned char* buff, 					/* Contrace Request							*/
+int 										/* Length of Cefinfo message 				*/
+cef_frame_cefinfo_req_add_stamp (
+	unsigned char* buff, 					/* Cefinfo Request							*/
 	uint16_t msg_len, 
 	unsigned char* node_id, 				/* Node ID 									*/
 	uint16_t id_len, 						/* length of Node ID 						*/
 	struct timeval t 						/* current time in UNIX-time(us) 			*/
 );
 /*--------------------------------------------------------------------------------------
-	Creates the Conping Replay from the specified Parameters
+	Creates the Cefping Replay from the specified Parameters
 ----------------------------------------------------------------------------------------*/
-int 										/* Length of Conping message 				*/
-cef_frame_conping_rep_create (
-	unsigned char* buff, 					/* buffer to set Conping Request			*/
+int 										/* Length of Cefping message 				*/
+cef_frame_cefping_rep_create (
+	unsigned char* buff, 					/* buffer to set Cefping Request			*/
 	uint8_t ret_code, 
 	unsigned char* responder_id, 
 	uint16_t id_len, 
@@ -841,10 +884,14 @@ cef_frame_conversion_name_to_string (
 /*--------------------------------------------------------------------------------------
 	Parses a payload form the specified message
 ----------------------------------------------------------------------------------------*/
-uint16_t 									/* length of the payload					*/
+void 
 cef_frame_payload_parse (
-	unsigned char* msg, 					/* the message to parse						*/
-	uint16_t* offset 						/* offset of payalod 						*/
+	unsigned char* msg, 
+	uint16_t msg_len, 
+	uint16_t* name_offset, 
+	uint16_t* name_len, 
+	uint16_t* payload_offset, 
+	uint16_t* payload_len
 );
 
 #endif // __CEF_FRAME_HEADER__

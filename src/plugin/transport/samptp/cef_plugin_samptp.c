@@ -39,6 +39,7 @@
 #include <stdio.h>
 
 #include <cefore/cef_face.h>
+#include <cefore/cef_frame.h>
 #include <cefore/cef_plugin.h>
 
 /****************************************************************************************
@@ -115,16 +116,26 @@ cef_plugin_samptp_cob (
 	int idx = 0;
 	uint16_t faceids[CefC_Elem_Face_Num];
 	int i;
+	uint16_t name_len;
+	uint16_t name_off;
+	uint16_t pay_len;
+	uint16_t pay_off;
+	int res;
 	
 	/* Updates statistics 		*/
 	m_stat_int_rx++;
 	
 	/* Forwards the Object to app 			*/
 	for (i = 0 ; i < rx_elem->out_faceid_num ; i++) {
-		if (!cef_face_object_send_iflocal (
-			rx_elem->out_faceids[i], rx_elem->parsed_msg->payload,
-			rx_elem->parsed_msg->payload_len, rx_elem->parsed_msg->chnk_num)) {
-			
+		cef_frame_payload_parse (
+			rx_elem->msg, rx_elem->msg_len, &name_off, &name_len, &pay_off, &pay_len);
+		
+		res = cef_face_object_send_iflocal (
+			rx_elem->out_faceids[i], &rx_elem->msg[name_off], name_len, 
+			rx_elem->parsed_msg->payload,rx_elem->parsed_msg->payload_len, 
+			rx_elem->parsed_msg->chnk_num);
+		
+		if (res > 0) {
 			faceids[idx] = rx_elem->out_faceids[i];
 			idx++;
 		}

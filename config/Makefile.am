@@ -27,9 +27,9 @@
 # SUCH DAMAGE.
 #
 
-EXTRA_DIST=cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def
-CEF_CONF=cefnetd.conf cefnetd.fib csmgrd.conf plugin.conf
-INSTALLDIR=/usr/local/cefore
+EXTRA_DIST=cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def cefnetd.key.def default-private-key.pem default-public-key.pem ccore-public-key.pem
+CEF_CONF=cefnetd.conf cefnetd.fib csmgrd.conf plugin.conf cefnetd.key default-private-key default-public-key ccore-public-key
+INSTALLDIR=$(CEFORE_DIR_PATH)/cefore
 
 default all: $(CEF_CONF)
 
@@ -65,6 +65,37 @@ plugin.conf: plugin.conf.def
 		echo "***" You may need to rerun ./configure in the src directory. >&2; \
 	fi
 
+cefnetd.key: cefnetd.key.def
+	@if [ -f $(@:=.def) ]; then \
+		cat $(@:=.def) >> $@; \
+		chmod 644 $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+
+default-private-key: default-private-key.pem
+	@if [ -f $(@:=.pem) ]; then \
+		cat $(@:=.pem) >> $@; \
+		chmod 644 $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+
+ccore-public-key: ccore-public-key.pem
+	@if [ -f $(@:=.pem) ]; then \
+		cat $(@:=.pem) >> $@; \
+		chmod 644 $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+
+default-public-key: default-public-key.pem
+	@if [ -f $(@:=.pem) ]; then \
+		cat $(@:=.pem) >> $@; \
+		chmod 644 $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
 
 install:
 	@if [ ! -d $(INSTALLDIR) ]; then \
@@ -83,7 +114,19 @@ install:
 	@if [ ! -f $(INSTALLDIR)/plugin.conf ]; then \
 		cp -p plugin.conf $(INSTALLDIR)/plugin.conf; \
 	fi
-	
+	@if [ ! -f $(INSTALLDIR)/cefnetd.key ]; then \
+		cp -p cefnetd.key $(INSTALLDIR)/cefnetd.key; \
+	fi
+	@if [ ! -f $(INSTALLDIR)/default-public-key ]; then \
+		cp -p default-public-key $(INSTALLDIR)/default-public-key; \
+	fi
+	@if [ ! -f $(INSTALLDIR)/default-private-key ]; then \
+		cp -p default-private-key $(INSTALLDIR)/default-private-key; \
+	fi
+	@if [ ! -f $(INSTALLDIR)/ccore-public-key ]; then \
+		cp -p ccore-public-key $(INSTALLDIR)/ccore-public-key; \
+	fi
+
 uninstall:
 	for i in $(CEF_CONF) ""; do test -z "$$i" || rm -f $(INSTALLDIR)/$$i; done
 

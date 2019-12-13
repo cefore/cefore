@@ -29,15 +29,15 @@
 
 AM_CFLAGS=-I$(top_srcdir)/src/include
 
-bin_PROGRAMS=conping
-conping_LDFLAGS=-L$(top_srcdir)/src/lib/
-conping_LDADD=-lcefore
-conping_CFLAGS=$(AM_CFLAGS) -DCefC_Conping
-conping_SOURCES=conping.c
+bin_PROGRAMS=cefping
+cefping_LDFLAGS=-L$(top_srcdir)/src/lib/
+cefping_LDADD=-lcefore -lssl -lcrypto
+cefping_CFLAGS=$(AM_CFLAGS) -DCefC_Cefping
+cefping_SOURCES=cefping.c
 
 # check debug build
 if CEFDBG_ENABLE
-conping_CFLAGS+=-DCefC_Debug
+cefping_CFLAGS+=-DCefC_Debug
 endif # CEFDBG_ENABLE
 
 DESTDIR=$(CEFORE_DIR_PATH)

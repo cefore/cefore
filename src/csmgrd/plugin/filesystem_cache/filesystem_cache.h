@@ -51,6 +51,9 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+
+#define FscC_Page_Cob_Num				8192
+
 /*------------------------------------------------------------------*/
 /* Macros for file													*/
 /*------------------------------------------------------------------*/
@@ -77,7 +80,7 @@
 /*------------------------------------------------------------------*/
 /* Macros for cache queue status									*/
 /*------------------------------------------------------------------*/
-#define FscC_ItemPut_Que_Size			10000			/* PutQue Size					*/
+#define FscC_ItemPut_Que_Size			3072			/* PutQue Size					*/
 #define FscC_ItemPut_Time				1000000			/* Time that put item from que	*/
 
 /*------------------------------------------------------------------*/
@@ -94,7 +97,8 @@
 #define FscC_Bulk_Get_Same_Time			255			/* Num of get content at same time.	*/
 #define FscC_Bulk_Get_Send_Rate			16			/* Rate of send						*/
 
-#define FscC_Max_Child_Num				8			/* Num of child (fork process)		*/
+#define FscC_Max_Child_Num				32			/* Num of child (fork process)		*/
+#define FscC_Map_Reset_Time				50000		/* Reset Bitmap (50msec)			*/
 
 
 /****************************************************************************************
@@ -106,54 +110,12 @@ typedef struct {
 	/********** FileSystem Cache Information ***********/
 	char			fsc_root_path[CefC_Csmgr_File_Path_Length];
 												/* FileSystemCache root dir				*/
-	uint8_t			fsc_node_type;				/* FileSystemCache node type			*/
-												/* 0    : Individual use				*/
-												/* 1-24 : common use					*/
+	
 	/********** cache algorithm library **********/
 	char 			algo_name[1024];			/* algorithm to replece cache entries	*/
 	int 			cache_cob_max;
 
 } FscT_Config_Param;
-
-typedef struct {
-
-	/********** FileSystemCache Status ***********/
-	char			fsc_root_path[CefC_Csmgr_File_Path_Length];
-												/* FileSystemCache root dir				*/
-	char			fsc_csmng_file_name[CefC_Csmgr_File_Path_Length];
-												/* Csmng dir path						*/
-	uint8_t			fsc_node_type;				/* FileSystemCache node type			*/
-												/* 0    : Individual use				*/
-												/* 1-24 : common use					*/
-	uint32_t		interval;					/* Interval that to check cache			*/
-	uint32_t		fsc_id;						/* FileSystemCache ID					*/
-	// uint8_t			dup_cob;					/* Handling of Duplicate cob			*/
-
-	/********** ring queue ***********/
-	int				item_que_num;				/* Num of queue item					*/
-	CefT_Mp_Handle	item_put_que_mp;			/* for item_put_que 					*/
-	CefT_Rngque*	item_put_que;				/* TX ring buffer 						*/
-	uint64_t		item_put_time;
-
-	/********** memory cache ***********/
-	int				mem_cache_num;				/* Num of memory cache					*/
-	CefT_Mp_Handle	mem_cache_cob_mp;			/* for cob entry						*/
-	CefT_Mp_Handle	mem_cache_que_mp;			/* for mem_cache_que 					*/
-	CefT_Rngque*	mem_cache_que;				/* TX ring buffer 						*/
-	uint64_t		mem_expire_check;
-	int				mem_cache_table_num;		/* Num of memory cache table			*/
-	CefT_Hash_Handle mem_cache_table;			/* Memory Cache Table					*/
-	CefT_Mp_Handle	mem_cache_table_mp;			/* for Memory Cache Table				*/
-
-	/********** cache algorithm library **********/
-	void* 			algo_lib;					/* records to the loaded library 		*/
-	CsmgrdT_Lib_Interface algo_apis;
-	char 			algo_name[1024];			/* algorithm to replece cache entries	*/
-	uint32_t 		cache_cobs;
-	int 			cache_cob_max;
-	CefT_Mp_Handle	mem_rm_key;
-
-} FscT_Cache_Handle;
 
 typedef struct {
 
@@ -260,6 +222,46 @@ typedef struct {
 	int				sock;
 
 } FscT_Ch_Pid_List;
+
+typedef struct {
+
+	/********** FileSystemCache Status ***********/
+	char			fsc_root_path[CefC_Csmgr_File_Path_Length];
+	char			fsc_cache_path[CefC_Csmgr_File_Path_Length];
+												/* FileSystemCache root dir				*/
+	char			fsc_csmng_file_name[CefC_Csmgr_File_Path_Length];
+												/* Csmng dir path						*/
+	uint32_t		interval;					/* Interval that to check cache			*/
+	uint32_t		fsc_id;						/* FileSystemCache ID					*/
+	
+	FscT_Contentmng* contmng;					/* Content manager						*/
+	int contmng_id;								/* Content manager memory id			*/
+
+	/********** ring queue ***********/
+	int				item_que_num;				/* Num of queue item					*/
+	CefT_Mp_Handle	item_put_que_mp;			/* for item_put_que 					*/
+	CefT_Rngque*	item_put_que;				/* TX ring buffer 						*/
+	uint64_t		item_put_time;
+
+	/********** memory cache ***********/
+	int				mem_cache_num;				/* Num of memory cache					*/
+	CefT_Mp_Handle	mem_cache_cob_mp;			/* for cob entry						*/
+	CefT_Mp_Handle	mem_cache_que_mp;			/* for mem_cache_que 					*/
+	CefT_Rngque*	mem_cache_que;				/* TX ring buffer 						*/
+	uint64_t		mem_expire_check;
+	int				mem_cache_table_num;		/* Num of memory cache table			*/
+	CefT_Hash_Handle mem_cache_table;			/* Memory Cache Table					*/
+	CefT_Mp_Handle	mem_cache_table_mp;			/* for Memory Cache Table				*/
+
+	/********** cache algorithm library **********/
+	void* 			algo_lib;					/* records to the loaded library 		*/
+	CsmgrdT_Lib_Interface algo_apis;
+	char 			algo_name[1024];			/* algorithm to replece cache entries	*/
+	uint32_t 		cache_cobs;
+	int 			cache_cob_max;
+	CefT_Mp_Handle	mem_rm_key;
+
+} FscT_Cache_Handle;
 
 
 #endif // __CSMGRD_FILESYSTEM_CACHE_HEADER__

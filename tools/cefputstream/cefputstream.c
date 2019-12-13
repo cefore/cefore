@@ -99,7 +99,7 @@ int main (
 ) {
 	int res;
 	unsigned char buff[CefC_Max_Length];
-	CefT_Object_TLVs prames;
+	CefT_Object_TLVs params;
 	int seqnum = 0;
 	int opt;
 	char uri[1024];
@@ -117,6 +117,8 @@ int main (
 	char 	conf_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
 	
+	char valid_type[1024];
+	
 	/***** flags 		*****/
 	int uri_f 		= 0;
 	int rate_f 		= 0;
@@ -125,7 +127,7 @@ int main (
 	int cachet_f 	= 0;
 	int dir_path_f 	= 0;
 	int port_num_f 	= 0;
-	int key_path_f 	= 0;
+	int valid_f 	= 0;
 	
 	/***** parameters 	*****/
 	uint16_t cache_time 	= 0;
@@ -136,7 +138,9 @@ int main (
 	/*------------------------------------------
 		Checks specified options
 	--------------------------------------------*/
-	uri[0] = 0;
+	uri[0] 			= 0;
+	valid_type[0] 	= 0;
+	
 	fprintf (stderr, "[cefputstream] Start\n");
 	fprintf (stderr, "[cefputstream] Parsing parameters ... ");
 	
@@ -229,13 +233,21 @@ int main (
 			}
 			cachet_f++;
 			i++;
-		} else if (strcmp (work_arg, "-k") == 0) {
-			if (key_path_f) {
-				fprintf (stderr, "ERROR: [-k] is duplicated.\n");
+		} else if (strcmp (work_arg, "-v") == 0) {
+			if (valid_f) {
+				fprintf (stderr, "ERROR: [-v] is duplicated.\n");
 				print_usage ();
 				return (-1);
 			}
-			key_path_f++;
+			if (i + 1 == argc) {
+				fprintf (stderr, "ERROR: [-v] has no parameter.\n");
+				print_usage ();
+				return (-1);
+			}
+			work_arg = argv[i + 1];
+			strcpy (valid_type, work_arg);
+			valid_f++;
+			i++;
 		} else if (strcmp (work_arg, "-h") == 0) {
 			print_usage ();
 			exit (1);
@@ -309,7 +321,7 @@ int main (
 	/*------------------------------------------
 		Creates the name from URI
 	--------------------------------------------*/
-	memset (&prames, 0, sizeof (CefT_Object_TLVs));
+	memset (&params, 0, sizeof (CefT_Object_TLVs));
 	cef_frame_init ();
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
@@ -318,30 +330,14 @@ int main (
 	}
 	fprintf (stderr, "[cefputstream] Init Cefore Client package ... OK\n");
 	fprintf (stderr, "[cefputstream] Conversion from URI into Name ... ");
-	res = cef_frame_conversion_uri_to_name (uri, prames.name);
+	res = cef_frame_conversion_uri_to_name (uri, params.name);
 	if (res < 0) {
 		fprintf (stderr, "ERROR: Invalid URI is specified.\n");
 		exit (1);
 	}
-	prames.name_len 	= res;
-	prames.chnk_num_f 	= 1;
+	params.name_len 	= res;
+	params.chnk_num_f 	= 1;
 	fprintf (stderr, "OK\n");
-	
-	/*------------------------------------------
-		Checks Validation 
-	--------------------------------------------*/
-	if (key_path_f) {
-		prames.alg.pubkey_len = cef_valid_read_pubkey (conf_path, prames.alg.pubkey);
-		
-		if (prames.alg.pubkey_len > 0) {
-			fprintf (stderr, 
-				"[cefputstream] Read the public key ... OK\n");
-		} else {
-			fprintf (stderr, 
-				"[cefputstream] Read the public key ... NG\n");
-			exit (1);
-		}
-	}
 	
 	/*------------------------------------------
 		Sets Expiry Time and RCT
@@ -350,17 +346,30 @@ int main (
 	now_ms = now_t.tv_sec * 1000 + now_t.tv_usec / 1000;
 	
 	if (cache_time > 0) {
-		prames.opt.cachetime_f 	= 1;
-		prames.opt.cachetime 	= now_ms + cache_time * 1000;
+		params.opt.cachetime_f 	= 1;
+		params.opt.cachetime 	= now_ms + cache_time * 1000;
 	} else {
-		prames.opt.cachetime_f 	= 1;
-		prames.opt.cachetime 	= now_ms;
+		params.opt.cachetime_f 	= 1;
+		params.opt.cachetime 	= now_ms;
 	}
 	
 	if (expiry > 0) {
-		prames.expiry = now_ms + expiry * 1000;
+		params.expiry = now_ms + expiry * 1000;
 	} else {
-		prames.expiry = 0;
+		params.expiry = 0;
+	}
+	
+	/*------------------------------------------
+		Set Validation Alglithm
+	--------------------------------------------*/
+	if (valid_f == 1) {
+		cef_valid_init (conf_path);
+		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_type);
+		
+		if (params.alg.valid_type == CefC_T_ALG_INVALID) {
+			fprintf (stdout, "ERROR: -v has the invalid parameter %s\n", valid_type);
+			exit (1);
+		}
 	}
 	
 	/*------------------------------------------
@@ -425,10 +434,10 @@ int main (
 			res = read (0, buff, block_size);
 			
 			if (res > 0) {
-				memcpy (prames.payload, buff, res);
-				prames.payload_len = (uint16_t) res;
-				prames.chnk_num = seqnum;
-				cef_client_object_input (fhdl, &prames);
+				memcpy (params.payload, buff, res);
+				params.payload_len = (uint16_t) res;
+				params.chnk_num = seqnum;
+				cef_client_object_input (fhdl, &params);
 				stat_send_frames++;
 				stat_send_bytes += res;
 				seqnum++;

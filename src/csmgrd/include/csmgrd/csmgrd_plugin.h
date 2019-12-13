@@ -41,10 +41,14 @@
 #include <stdio.h>
 #include <limits.h>
 #include <netinet/in.h>
+
+
 #include <cefore/cef_csmgr.h>
-#ifdef CefC_Contrace
-#include <cefore/cef_contrace.h>
-#endif // CefC_Contrace
+#include <cefore/cef_csmgr_stat.h>
+
+#ifdef CefC_Cefinfo
+#include <cefore/cef_cefinfo.h>
+#endif // CefC_Cefinfo
 #include <cefore/cef_log.h>
 
 
@@ -52,13 +56,18 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+
 #define CsmgrdC_Max_Plugin_Name_Len 	64
 #define CsmgrdC_Key_Max 				1024
 
+#define CsmgrC_Buff_Size 				10000000
+#define CsmgrC_Buff_Max 				100000000
+#define CsmgrC_Buff_Num 				65536
 
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
+
 typedef struct {
 
 	/********** Receive Content Object		***********/
@@ -77,31 +86,31 @@ typedef struct {
 
 typedef struct CsmgrdT_Plugin_Interface {
 	/* Initialize process */
-	int (*init)(void);
+	int (*init)(CsmgrT_Stat_Handle);
+	
 	/* Destroy process */
 	void (*destroy)(void);
+	
 	/* Check expiry */
 	void (*expire_check)(void);
+	
 	/* Get Cob Entry */
 	int (*cache_item_get)(unsigned char*, uint16_t, uint32_t, int);
-	/* Put content */
-	int (*cache_item_put)(CsmgrdT_Content_Entry*);
-	/* Get status */
-	int (*status_get)(
-					char*, uint16_t*, uint8_t, char [CefC_Csmgr_Stat_MaxUri][265],
-					CefT_Csmgrd_Stat_Cache*, uint16_t*);
+	
+	/* Put contents */
+	int (*cache_item_puts)(unsigned char*, int);
+	
 	/* Increment access count */
 	void (*ac_cnt_inc)(unsigned char*, uint16_t, uint32_t);
-	/* Get all CobEntry in Content */
-	int (*cache_content_get)(unsigned char*, uint16_t, uint32_t, int);
-#ifdef CefC_Contrace
-	/* Get content information */
-	int (*cache_info_get)(
-					int*, char [CefstatC_MaxUri][265], CefstatT_Cache [CefstatC_MaxUri]);
-#endif // CefC_Contrace
-	/* Check exist content */
-	int (*content_exist_check) (unsigned char*, uint16_t);
-
+	
+#ifdef CefC_Ccore
+	/* Set cache capacity */
+	int (*cache_cap_set) (uint64_t);
+	
+	/* Set cache lifetime 	*/
+	int (*content_lifetime_set) (unsigned char*, uint16_t, uint64_t);
+#endif // CefC_Ccore
+	
 } CsmgrdT_Plugin_Interface;
 
 typedef struct CsmgrdT_Lib_Interface {
@@ -164,17 +173,15 @@ typedef struct CsmgrdT_Lib_Interface {
 /****************************************************************************************
  Function Declarations
  ****************************************************************************************/
-#define CSMGRD_SET_CALLBACKS( fc_init, fc_destroy, fc_expire_check, fc_cache_item_get, fc_cache_item_put, fc_status_get, fc_ac_cnt_inc ) \
+#define CSMGRD_SET_CALLBACKS( fc_init, fc_destroy, fc_expire_check, fc_cache_item_get, fc_cache_item_puts, fc_ac_cnt_inc ) \
 	do { \
 		cs_in->init = (fc_init); \
 		cs_in->destroy = (fc_destroy); \
 		cs_in->expire_check = (fc_expire_check); \
 		cs_in->cache_item_get = (fc_cache_item_get); \
-		cs_in->cache_item_put = (fc_cache_item_put); \
-		cs_in->status_get = (fc_status_get); \
+		cs_in->cache_item_puts = (fc_cache_item_puts); \
 		cs_in->ac_cnt_inc = (fc_ac_cnt_inc); \
 	} while(0)
-
 
 /*--------------------------------------------------------------------------------------
 	Function to Create Cob message
@@ -223,6 +230,16 @@ csmgrd_name_chunknum_concatenate (
 	uint16_t name_len,
 	uint32_t chunknum,
 	unsigned char* key
+);
+
+/*--------------------------------------------------------------------------------------
+	Creates the content entry
+----------------------------------------------------------------------------------------*/
+int 
+cef_csmgr_con_entry_create (
+	unsigned char* buff,						/* receive message						*/
+	int buff_len,								/* message length						*/
+	CsmgrdT_Content_Entry* entry
 );
 
 void

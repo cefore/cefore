@@ -49,15 +49,15 @@ libcsmgrd_lfu_la_LIBADD =
 noinst_LTLIBRARIES += libcef_lfu.la
 libcef_lfu_la_CFLAGS  = $(AM_CFLAGS) -Wall -O2 -fPIC
 
-# check contrace
-if CONTRACE_ENABLE
-libcef_lfu_la_CFLAGS += -DCefC_Contrace
-endif # CONTRACE_ENABLE
+# check cefinfo
+if CEFINFO_ENABLE
+libcef_lfu_la_CFLAGS += -DCefC_Cefinfo
+endif # CEFINFO_ENABLE
 
-# check conping
-if CONPING_ENABLE
-libcef_lfu_la_CFLAGS += -DCefC_Conping
-endif # CONPING_ENABLE
+# check cefping
+if CEFPING_ENABLE
+libcef_lfu_la_CFLAGS += -DCefC_Cefping
+endif # CEFPING_ENABLE
 
 libcef_lfu_la_SOURCES = lfu.c lfu.h cache_replace_lib.c cache_replace_lib.h
 libcef_lfu_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)

@@ -45,6 +45,9 @@
 #define CefC_Cleanup_Smin	 		0
 #define CefC_Cleanup_Smax	 		4
 
+static const uint32_t CEF_OFFSET_BASIS_32 = 2166136261U;
+static const uint32_t CEF_PRIME_32 = 16777619U;
+
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
@@ -557,6 +560,7 @@ cef_hash_number_create (
 	const unsigned char* key,
 	uint32_t klen
 ) {
+#if 0
 	int i;
 	char* p = (char*) key;
 
@@ -567,7 +571,14 @@ cef_hash_number_create (
 	for (i = 0 ; i < klen ; i++) {
 		hash = hash * 33 + p[i];
 	}
-
+#endif
+	size_t i;
+	
+	hash = CEF_OFFSET_BASIS_32;
+	for (i = 0 ; i < klen ; i++) {
+	    hash = (CEF_PRIME_32 * hash) ^ (key[i]);
+	}
+	
 	return (hash);
 }
 

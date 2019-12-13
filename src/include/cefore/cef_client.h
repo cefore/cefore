@@ -67,7 +67,11 @@
 #define CefC_Unset_Port 			0
 #define CefC_Unset_Id 				NULL
 
-
+#ifndef CefC_Android
+#define CefC_AppBuff_Size			10000000
+#else // CefC_Android
+#define CefC_AppBuff_Size			200000
+#endif // CefC_Android
 
 /****************************************************************************************
  Structure Declarations
@@ -106,6 +110,13 @@ cef_client_init (
 ----------------------------------------------------------------------------------------*/
 int 
 cef_client_local_sock_name_get (
+	char* local_sock_name
+);
+/*--------------------------------------------------------------------------------------
+	Gets the local socket name for cefbabeld
+----------------------------------------------------------------------------------------*/
+int 
+cef_client_babel_sock_name_get (
 	char* local_sock_name
 );
 /*--------------------------------------------------------------------------------------
@@ -194,6 +205,15 @@ cef_client_payload_get (
 	int* frame_size 							/* length of one message 				*/
 );
 /*--------------------------------------------------------------------------------------
+	Obtains one message from the buffer
+----------------------------------------------------------------------------------------*/
+int 											/* remaining length of buffer 			*/
+cef_client_payload_get_with_info (
+	unsigned char* buff, 
+	int buff_len, 
+	struct cef_app_frame* app_frame
+);
+/*--------------------------------------------------------------------------------------
 	Inputs the object to the cefnetd
 ----------------------------------------------------------------------------------------*/
 int												/* length of the created object 		*/
@@ -202,20 +222,20 @@ cef_client_object_input (
 	CefT_Object_TLVs* tlvs						/* parameters to create the object 		*/
 );
 /*--------------------------------------------------------------------------------------
-	Inputs the conping to the cefnetd
+	Inputs the cefping to the cefnetd
 ----------------------------------------------------------------------------------------*/
-int												/* length of the created conping 		*/
-cef_client_conping_input (
+int												/* length of the created cefping 		*/
+cef_client_cefping_input (
 	CefT_Client_Handle fhdl,					/* client handle 						*/
-	CefT_Ping_TLVs* tlvs						/* parameters to create the conping		*/
+	CefT_Ping_TLVs* tlvs						/* parameters to create the cefping		*/
 );
 /*--------------------------------------------------------------------------------------
-	Inputs the contrace request to the cefnetd
+	Inputs the cefinfo request to the cefnetd
 ----------------------------------------------------------------------------------------*/
-int												/* length of the created contrace 		*/
-cef_client_contrace_input (
+int												/* length of the created cefinfo 		*/
+cef_client_cefinfo_input (
 	CefT_Client_Handle fhdl,					/* client handle 						*/
-	CefT_Trace_TLVs* tlvs						/* parameters to create the contrace	*/
+	CefT_Trace_TLVs* tlvs						/* parameters to create the cefinfo	*/
 );
 /*--------------------------------------------------------------------------------------
 	Register/Deregister the specified Name of the Application
@@ -240,15 +260,6 @@ uint64_t
 cef_client_present_timeus_get (
 	void
 );
-int
-cef_client_payload_get_with_chnk_num (
-	unsigned char* buff,
-	int buff_len,
-	unsigned char* msg,
-	int* frame_size,
-	uint32_t* chnk_num
-);
-
 uint64_t
 cef_client_htonb (
 	uint64_t x

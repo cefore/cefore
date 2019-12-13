@@ -53,6 +53,8 @@
  Macros
  ****************************************************************************************/
 
+#define CefC_Putfile_Max 					512000
+
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
@@ -68,11 +70,6 @@ static struct timeval start_t;
 static struct timeval end_t;
 static uint64_t stat_send_frames = 0;
 static uint64_t stat_send_bytes = 0;
-
-static uint64_t stat_jitter_sum = 0;
-static uint64_t stat_jitter_sq_sum = 0;
-static uint64_t stat_jitter_max = 0;
-
 
 /****************************************************************************************
  Static Function Declaration
@@ -99,9 +96,10 @@ int main (
 ) {
 	int res;
 	unsigned char buff[CefC_Max_Length];
-	CefT_Object_TLVs prames;
+	CefT_Object_TLVs params;
 	int seqnum = 0;
 	char uri[1024];
+	
 	char filename[1024];
 	double interval;
 	long interval_us;
@@ -109,12 +107,17 @@ int main (
 	uint64_t next_tus;
 	uint64_t now_tus;
 	uint64_t now_ms;
-	uint64_t jitter;
 	char*	work_arg;
 	int 	i;
 	
 	char 	conf_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
+	char 	valid_type[1024];
+	
+	unsigned char* 	work_buff = NULL;
+	uint32_t 		work_buff_idx = 0;
+	int 			cob_len;
+	unsigned char 	cob_buff[CefC_Max_Length];
 	
 	/***** flags 		*****/
 	int uri_f 		= 0;
@@ -126,7 +129,7 @@ int main (
 	int nsg_f 		= 0;
 	int dir_path_f 	= 0;
 	int port_num_f 	= 0;
-	int key_path_f 	= 0;
+	int valid_f 	= 0;
 	
 	/***** parameters 	*****/
 	uint16_t cache_time 	= 300;
@@ -137,7 +140,9 @@ int main (
 	/*------------------------------------------
 		Checks specified options
 	--------------------------------------------*/
-	uri[0] = 0;
+	uri[0] 			= 0;
+	valid_type[0] 	= 0;
+	
 	fprintf (stdout, "[cefputfile] Start\n");
 	fprintf (stdout, "[cefputfile] Parsing parameters ... ");
 	
@@ -297,19 +302,28 @@ int main (
 			port_num = atoi (work_arg);
 			port_num_f++;
 			i++;
-		} else if (strcmp (work_arg, "-k") == 0) {
-			if (key_path_f) {
-				fprintf (stderr, "ERROR: [-k] is duplicated.\n");
+		} else if (strcmp (work_arg, "-v") == 0) {
+			if (valid_f) {
+				fprintf (stderr, "ERROR: [-v] is duplicated.\n");
 				print_usage ();
 				return (-1);
 			}
-			key_path_f++;
+			if (i + 1 == argc) {
+				fprintf (stderr, "ERROR: [-v] has no parameter.\n");
+				print_usage ();
+				return (-1);
+			}
+			work_arg = argv[i + 1];
+			strcpy (valid_type, work_arg);
+			valid_f++;
+			i++;
 		} else {
 			
 			work_arg = argv[i];
 			
 			if (work_arg[0] == '-') {
-				fprintf (stdout, "ERROR: unknown option is specified.\n");
+				fprintf (stdout, 
+					"ERROR: unknown option (%s) is specified.\n", work_arg);
 				print_usage ();
 				return (-1);
 			}
@@ -337,8 +351,38 @@ int main (
 		exit (1);
 	}
 	if (file_f == 0) {
-		fprintf (stdout, "ERROR: [-f] is not specified.\n");
-		exit (1);
+		/* Use the last string in the URL */
+		res = strlen (uri);
+		if (res >= 1204) {
+			fprintf (stdout, "ERROR: uri is too long.\n");
+			print_usage ();
+			return (-1);
+		}
+		if (uri[res - 1] == '/') {
+			/* Ignore last '/' */
+			res -= 2;
+		}
+		while (res > 0) {
+			res--;
+			if (uri[res] == '/') {
+				res++;
+				break;
+			}
+		}
+		if (res <= 0) {
+			fprintf (stdout, "ERROR: File name is not specified.\n");
+			print_usage ();
+			return (-1);
+		}
+		i = 0;
+		while (1) {
+			if ((uri[res + i] == '\0') || (uri[res + i] == '/')) {
+				break;
+			}
+			i++;
+		}
+		strncpy (filename, uri + res, i);
+		filename[i] = '\0';
 	}
 	if (nsg_f == 1) {
 		cache_time 	= 0;
@@ -352,7 +396,7 @@ int main (
 	/*------------------------------------------
 		Creates the name from URI
 	--------------------------------------------*/
-	memset (&prames, 0, sizeof (CefT_Object_TLVs));
+	memset (&params, 0, sizeof (CefT_Object_TLVs));
 	cef_frame_init ();
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
@@ -361,15 +405,15 @@ int main (
 	}
 	fprintf (stdout, "[cefputfile] Init Cefore Client package ... OK\n");
 	fprintf (stdout, "[cefputfile] Conversion from URI into Name ... ");
-	res = cef_frame_conversion_uri_to_name (uri, prames.name);
+	res = cef_frame_conversion_uri_to_name (uri, params.name);
 	if (res < 0) {
 		fprintf (stdout, "ERROR: Invalid URI is specified.\n");
 		exit (1);
 	}
 	fprintf (stdout, "OK\n");
 	
-	prames.name_len 	= res;
-	prames.chnk_num_f 	= 1;
+	params.name_len 	= res;
+	params.chnk_num_f 	= 1;
 	
 	/*------------------------------------------
 		Sets Expiry Time and RCT
@@ -377,13 +421,13 @@ int main (
 	gettimeofday (&now_t, NULL);
 	now_ms = now_t.tv_sec * 1000 + now_t.tv_usec / 1000;
 	
-	prames.opt.cachetime_f 	= 1;
-	prames.opt.cachetime 	= now_ms + cache_time * 1000;
+	params.opt.cachetime_f 	= 1;
+	params.opt.cachetime 	= now_ms + cache_time * 1000;
 	
 	if (expiry) {
-		prames.expiry = now_ms + expiry * 1000;
+		params.expiry = now_ms + expiry * 1000;
 	} else {
-		prames.expiry = now_ms + 3600000;
+		params.expiry = now_ms + 3600000;
 	}
 	
 	/*------------------------------------------
@@ -398,16 +442,14 @@ int main (
 	fprintf (stdout, "OK\n");
 	
 	/*------------------------------------------
-		Checks Validation 
+		Set Validation Alglithm
 	--------------------------------------------*/
-	if (key_path_f) {
-		prames.alg.pubkey_len = cef_valid_read_pubkey (conf_path, prames.alg.pubkey);
+	if (valid_f == 1) {
+		cef_valid_init (conf_path);
+		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_type);
 		
-		if (prames.alg.pubkey_len > 0) {
-			fprintf (stdout, "[cefputfile] Read the public key ... OK\n");
-		} else {
-			fprintf (stdout, "[cefputfile] Read the public key ... NG\n");
-			fclose (fp);
+		if (params.alg.valid_type == CefC_T_ALG_INVALID) {
+			fprintf (stdout, "ERROR: -v has the invalid parameter %s\n", valid_type);
 			exit (1);
 		}
 	}
@@ -434,16 +476,17 @@ int main (
 	/*------------------------------------------
 		Calculates the interval
 	--------------------------------------------*/
-	interval = (double)((double) rate * 1000000.0) / (double)(block_size * 8);
+//	interval = (double)((double) rate * 1000000.0) / (double)(block_size * 8);
+	interval = (double)((double) rate * 1000000.0) / (double)(CefC_Putfile_Max * 8);
 	interval_us = (long)((1.0 / interval) * 1000000.0);
-
+	
+	
 	/*------------------------------------------
 		Main Loop
 	--------------------------------------------*/
-	cef_client_name_reg (fhdl, CefC_App_Reg, prames.name, prames.name_len);
-	
 	gettimeofday (&start_t, NULL);
-	next_tus = start_t.tv_sec * 1000000 + start_t.tv_usec;
+	next_tus = start_t.tv_sec * 1000000 + start_t.tv_usec + interval_us;
+	work_buff = (unsigned char*) malloc (sizeof (unsigned char) * CefC_Putfile_Max);
 	
 	fprintf (stdout, "[cefputfile] Start creating Content Objects\n");
 	
@@ -451,42 +494,67 @@ int main (
 		if (SIG_ERR == signal (SIGINT, sigcatch)) {
 			break;
 		}
+		cob_len = 0;
+		
+		while (work_buff_idx < CefC_Putfile_Max) {
+			
+			res = fread (buff, sizeof (unsigned char), block_size, fp);
+			cob_len = 0;
+			
+			if (res > 0) {
+				memcpy (params.payload, buff, res);
+				params.payload_len = (uint16_t) res;
+				params.chnk_num = seqnum;
+				
+				cob_len = cef_frame_object_create (cob_buff, &params);
+				
+				if (work_buff_idx + cob_len <= CefC_Putfile_Max) {
+					memcpy (&work_buff[work_buff_idx], cob_buff, cob_len);
+					work_buff_idx += cob_len;
+					cob_len = 0;
+					
+					stat_send_frames++;
+					stat_send_bytes += res;
+					
+					seqnum++;
+				} else {
+					break;
+				}
+			} else {
+				app_running_f = 0;
+				break;
+			}
+		}
 		gettimeofday (&now_t, NULL);
 		now_tus = now_t.tv_sec * 1000000 + now_t.tv_usec;
 		
-		if (now_tus > next_tus) {
-			
-			if (stat_send_frames > 0) {
-				jitter = (now_t.tv_sec - end_t.tv_sec) * 1000000
-								+ (now_t.tv_usec - end_t.tv_usec);
-				
-				stat_jitter_sum    += jitter;
-				stat_jitter_sq_sum += jitter * jitter;
-				if (jitter > stat_jitter_max) {
-					stat_jitter_max = jitter;
-				}
-			}
-			
-			res = fread (buff, sizeof (unsigned char), block_size, fp);
-			
-			if (res > 0) {
-				memcpy (prames.payload, buff, res);
-				prames.payload_len = (uint16_t) res;
-				prames.chnk_num = seqnum;
-				cef_client_object_input (fhdl, &prames);
-				stat_send_frames++;
-				stat_send_bytes += res;
-				seqnum++;
-
-				gettimeofday (&end_t, NULL);
-			} else {
-				break;
-			}
-			next_tus = now_tus + interval_us;
+		if (next_tus > now_tus) {
+			usleep ((useconds_t)(next_tus - now_tus));
 		}
-		usleep ((useconds_t) interval_us);
+		next_tus = now_tus + interval_us;
+		
+		if (work_buff_idx > 0) {
+			cef_client_message_input (fhdl, work_buff, work_buff_idx);
+			work_buff_idx = 0;
+		} else {
+			break;
+		}
+		
+		if (cob_len > 0) {
+			memcpy (&work_buff[work_buff_idx], cob_buff, cob_len);
+			work_buff_idx += cob_len;
+			
+			stat_send_frames++;
+			stat_send_bytes += res;
+			
+			seqnum++;
+		}
 	}
+	gettimeofday (&end_t, NULL);
 	fclose (fp);
+	if (work_buff) {
+		free (work_buff);
+	}
 	
 	post_process ();
 	exit (0);
@@ -499,8 +567,9 @@ print_usage (
 	
 	fprintf (stdout, "\nUsage: \n");
 	fprintf (stdout, "  cefputfile uri -f path [-r rate] [-b block_size] [-e expiry] "
-					 "[-t cache_time]\n\n");
-	
+					 "[-t cache_time] [-v valid_algo]\n\n");
+	fprintf (stdout, 
+		" valid_algo   Specify the validation algorithm (crc32 or sha256)\n\n");
 }
 
 static void
@@ -509,7 +578,6 @@ post_process (
 ) {
 	uint64_t diff_t;
 	uint64_t send_bits;
-	uint64_t jitter_ave;
 	
 	if (stat_send_frames) {
 		diff_t = ((end_t.tv_sec - start_t.tv_sec) * 1000000
@@ -530,14 +598,7 @@ post_process (
 		send_bits = stat_send_bytes * 8;
 		fprintf (stdout, "[cefputfile] Thorghput = "FMTU64"\n", send_bits / diff_t);
 	}
-	if (stat_send_frames > 0) {
-		jitter_ave = stat_jitter_sum / stat_send_frames;
-
-		fprintf (stdout, "[cefputfile] Jitter (Ave) = "FMTU64" us\n", jitter_ave);
-		fprintf (stdout, "[cefputfile] Jitter (Max) = "FMTU64" us\n", stat_jitter_max);
-		fprintf (stdout, "[cefputfile] Jitter (Var) = "FMTU64" us\n"
-			, (stat_jitter_sq_sum / stat_send_frames) - (jitter_ave * jitter_ave));
-	}
+	
 	exit (0);
 }
 

@@ -37,6 +37,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <csmgrd/csmgrd_plugin.h>
 
 
 
@@ -125,4 +126,3 @@ void
 status (
 	void* arg								/* state information						*/
 );
-

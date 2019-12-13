@@ -42,6 +42,7 @@
 #include <sys/time.h>
 
 #include "cef_netd.h"
+#include "version.h"
 #include <cefore/cef_define.h>
 #include <cefore/cef_frame.h>
 #include <cefore/cef_client.h>
@@ -54,9 +55,13 @@
 #define CefC_Arg_Status				"status"
 #define CefC_Arg_Route				"route"
 #define CefC_Arg_Route_Ope_Add		"add"
-#define CefC_Arg_Route_Ope_del		"del"
+#define CefC_Arg_Route_Ope_Del		"del"
+#define CefC_Arg_Route_Ope_Enable	"enable"
 #define CefC_Arg_Route_Pro_TCP		"tcp"
 #define CefC_Arg_Route_Pro_UDP		"udp"
+#ifdef CefC_Ser_Log
+#define CefC_Arg_Ser_Log			"serlog"
+#endif // CefC_Ser_Log
 
 /****************************************************************************************
  Structures Declaration
@@ -99,9 +104,7 @@ int main (
 	int 	port_num = CefC_Unset_Port;
 	unsigned char rsp_msg[CefC_Max_Length];
 	
-#ifndef CefC_Android
 	char*	wp;
-#endif // CefC_Android
 	char launched_user_name[CefC_Ctrl_User_Len];
 	
 	/* Inits logging 		*/
@@ -140,6 +143,11 @@ int main (
 			port_num = atoi (argv[i + 1]);
 			port_num_f++;
 			i++;
+		} else if ( (strcmp (work_arg, "-v") == 0) || 
+					(strcmp (work_arg, "--version") == 0)) {
+			
+			fprintf (stdout, "%s\n", CEFORE_VERSION);
+			exit (1);
 		} else {
 			if (work_arg[0] == '-') {
 				cef_log_write (CefC_Log_Error, "unknown option is specified.\n");
@@ -163,17 +171,16 @@ int main (
 	
 	res = cef_client_init (port_num, file_path);
 	if (res < 0) {
-		cef_log_write (CefC_Log_Error, "Faild to init cliet package.\n");
+		cef_log_write (CefC_Log_Error, "Failed to init client package.\n");
 		exit (1);
 	}
 	
 	fhdl = cef_client_connect ();
 	if (fhdl < 1) {
-		cef_log_write (CefC_Log_Error, "Faild to connect to cefnetd.\n");
+		cef_log_write (CefC_Log_Error, "Failed to connect to cefnetd.\n");
 		exit (1);
 	}
 	
-#ifndef CefC_Android
 	/* Records the user which launched cefnetd 		*/
 	wp = getenv ("USER");
 	if (wp == NULL) {
@@ -183,10 +190,6 @@ int main (
 	}
 	memset (launched_user_name, 0, CefC_Ctrl_User_Len);
 	strcpy (launched_user_name, wp);
-#else // CefC_Android
-	memset (launched_user_name, 0, CefC_Ctrl_User_Len);
-	strcpy (launched_user_name, "root");
-#endif // CefC_Android
 	
 	if (strcmp (argv[1], CefC_Arg_Kill) == 0) {
 		sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_Kill);
@@ -219,8 +222,16 @@ int main (
 		if (len > 0) {
 			cef_client_message_input (
 				fhdl, buff, 
-				CefC_Ctrl_Len + CefC_Ctrl_Route_Len + CefC_Ctrl_User_Len + len);
+				CefC_Ctrl_Len + CefC_Ctrl_Route_Len + len);
 		}
+#ifdef CefC_Ser_Log
+	} else if (strcmp (argv[1], CefC_Arg_Ser_Log) == 0) {
+		sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_Ser_Log);
+		memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_Ser_Log_Len], 
+						launched_user_name, CefC_Ctrl_User_Len);
+		cef_client_message_input (fhdl, buff, 
+			CefC_Ctrl_Len + CefC_Ctrl_Ser_Log_Len + CefC_Ctrl_User_Len);
+#endif // CefC_Ser_Log
 	}
 	usleep (100000);
 	cef_client_close (fhdl);
@@ -239,10 +250,11 @@ cef_ctrl_create_route_msg (
 	uint8_t op;
 	uint8_t prot;
 	int index = 0;
-	int uri_len;
+	uint16_t uri_len;
+	int i;
 	
 	/* check the number of parameters 		*/
-	if (argc > 6) {
+	if (argc > 37) {
 		cef_log_write (CefC_Log_Error, "Invalid parameter(s) is(are) specified.\n");
 		return (-1);
 	}
@@ -256,9 +268,12 @@ cef_ctrl_create_route_msg (
 	if (strcmp (argv[2], CefC_Arg_Route_Ope_Add) == 0) {
 		/* operation is add route */
 		op = CefC_Fib_Route_Ope_Add;
-	} else if (strcmp (argv[2], CefC_Arg_Route_Ope_del) == 0) {
+	} else if (strcmp (argv[2], CefC_Arg_Route_Ope_Del) == 0) {
 		/* operation is delete route */
 		op = CefC_Fib_Route_Ope_Del;
+	} else if (strcmp (argv[2], CefC_Arg_Route_Ope_Enable) == 0) {
+		/* operation is delete route */
+		op = CefC_Fib_Route_Ope_Add;
 	} else {
 		cef_log_write (CefC_Log_Error, 
 			"Option that is neither add nor del for cefroute is specified.\n");
@@ -289,17 +304,21 @@ cef_ctrl_create_route_msg (
 	memcpy (buff + index, &prot, sizeof (prot));
 	index += sizeof (prot);
 	
-	/* set host IPaddress */
-	host_len = strlen (argv[5]);
-	memcpy (buff + index, &host_len, sizeof (host_len));
-	index += sizeof (host_len);
-	memcpy (buff + index, argv[5], host_len);
-	index += host_len;
-	
 	/* set URI */
-	uri_len = strlen (argv[3]);
+	uri_len = (uint16_t) strlen (argv[3]);
+	memcpy (buff + index, &uri_len, sizeof (uint16_t));
+	index += sizeof (uint16_t);
 	memcpy (buff + index, argv[3], uri_len);
 	index += uri_len;
-
+	
+	for (i = 5 ; i < argc ; i++) {
+		/* set host IPaddress */
+		host_len = strlen (argv[i]);
+		memcpy (buff + index, &host_len, sizeof (host_len));
+		index += sizeof (host_len);
+		memcpy (buff + index, argv[i], host_len);
+		index += host_len;
+	}
+	
 	return (index);
 }

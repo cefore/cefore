@@ -53,6 +53,33 @@
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
+#ifdef CefC_Dtc
+/*------------------------------------------------------------------*/
+/* DTC PIT entry														*/
+/*------------------------------------------------------------------*/
+
+typedef struct CefT_Dtc_Pit_Entry {
+	/*--------------------------------------------
+		Variables related to Cefore-DTC Entry
+	----------------------------------------------*/
+	unsigned char	msg[CefC_Max_Msg_Size];	/* Resend Message							*/
+	uint16_t		msg_len;				/* Resend Message length					*/
+	struct CefT_Dtc_Pit_Entry* prev;		/* Previous DTC Entry						*/
+	struct CefT_Dtc_Pit_Entry* next;		/* Next DTC Entry							*/
+	unsigned char* key;						/* FIB Key									*/
+	unsigned int key_len;					/* Key length								*/
+	uint16_t faceid;						/* Peer face id								*/
+} CefT_Dtc_Pit_Entry;
+
+typedef struct {
+	/*--------------------------------------------
+		Variables related to Cefore-DTC List
+	----------------------------------------------*/
+	CefT_Dtc_Pit_Entry* top;				/* Top of entry								*/
+	CefT_Dtc_Pit_Entry* end;				/* End of entry								*/
+	CefT_Dtc_Pit_Entry* work;				/* Working entry							*/
+} CefT_Dtc_Pit_List;
+#endif // CefC_Dtc
 
 /*------------------------------------------------------------------*/
 /* Down Stream Face entry											*/
@@ -110,6 +137,13 @@ typedef struct {
 	uint64_t			nonce;				/* Nonce 									*/
 	uint64_t 			adv_lifetime_us;	/* Advertised lifetime 						*/
 	uint64_t 			drp_lifetime_us;
+#ifdef CefC_Dtc
+	/*--------------------------------------------
+		Variables related to Cefore-DTC
+	----------------------------------------------*/
+	uint8_t				dtc_f;				/* Cefore-DTC Flag						 	*/
+	CefT_Dtc_Pit_Entry*	dtc_entry;			/* Cefore-DTC PIT Entry						*/
+#endif // CefC_Dtc
 	
 } CefT_Pit_Entry;
 
@@ -201,5 +235,49 @@ cef_pit_down_faceid_remove (
 	CefT_Pit_Entry* entry, 					/* PIT entry 								*/
 	uint16_t faceid 						/* Face-ID									*/
 );
-
+#ifdef CefC_Dtc
+/*--------------------------------------------------------------------------------------
+	Create Cefore-DTC PIT List
+----------------------------------------------------------------------------------------*/
+int
+cef_pit_dtc_init (
+	void
+);
+/*--------------------------------------------------------------------------------------
+	Destroy Cefore-DTC PIT List
+----------------------------------------------------------------------------------------*/
+void
+cef_pit_dtc_destroy (
+	void
+);
+/*--------------------------------------------------------------------------------------
+	Create Cefore-DTC PIT Entry
+----------------------------------------------------------------------------------------*/
+CefT_Dtc_Pit_Entry*
+cef_pit_dtc_entry_create (
+	unsigned char* msg,
+	uint16_t msg_len
+);
+/*--------------------------------------------------------------------------------------
+	Insert Cefore-DTC PIT Entry
+----------------------------------------------------------------------------------------*/
+void
+cef_pit_dtc_entry_insert (
+	CefT_Dtc_Pit_Entry* entry
+);
+/*--------------------------------------------------------------------------------------
+	Delete Cefore-DTC PIT Entry
+----------------------------------------------------------------------------------------*/
+int
+cef_pit_dtc_entry_delete (
+	CefT_Dtc_Pit_Entry** entry_p
+);
+/*--------------------------------------------------------------------------------------
+	Read Current Cefore-DTC PIT Entry
+----------------------------------------------------------------------------------------*/
+CefT_Dtc_Pit_Entry*
+cef_pit_dtc_entry_read (
+	void
+);
+#endif // CefC_Dtc
 #endif // __CEF_PIT_HEADER__

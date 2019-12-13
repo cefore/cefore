@@ -27,10 +27,10 @@
  * SUCH DAMAGE.
  */
 /*
- * conping.c
+ * cefping.c
  */
 
-#define __CEF_CONPING_SOURECE__
+#define __CEF_CEFPING_SOURECE__
 
 /****************************************************************************************
  Include Files
@@ -83,6 +83,7 @@ typedef struct {
 
 static char 	conf_path[PATH_MAX] = {0};
 static int 		port_num = CefC_Unset_Port;
+static uint8_t	output_f = 0;
 
 /****************************************************************************************
  Static Function Declaration
@@ -146,7 +147,7 @@ int main (
 		Init variables
 	------------------------------------------------------------------*/
 	/* Inits logging 		*/
-	cef_log_init ("conping");
+	cef_log_init ("cefping");
 	
 	cef_frame_init ();
 	memset (&params, 0, sizeof (CefT_Cp_Parms));
@@ -163,7 +164,7 @@ int main (
 		exit (0);
 	}
 #ifdef CefC_Debug
-	cef_dbg_init ("conping", conf_path, 1);
+	cef_dbg_init ("cefping", conf_path, 1);
 #endif // CefC_Debug
 	
 	/*----------------------------------------------------------------
@@ -171,18 +172,18 @@ int main (
 	------------------------------------------------------------------*/
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
-		fprintf (stdout, "[conping] ERROR: Failed to init the client package.\n");
+		fprintf (stdout, "[cefping] ERROR: Failed to init the client package.\n");
 		exit (1);
 	}
 	
 	fhdl = cef_client_connect ();
 	if (fhdl < 1) {
-		fprintf (stdout, "[conping] ERROR: fail to connect cefnetd\n");
+		fprintf (stdout, "[cefping] ERROR: fail to connect cefnetd\n");
 		exit (0);
 	}
 	
 	/*----------------------------------------------------------------
-		Creates and puts a conping
+		Creates and puts a cefping
 	------------------------------------------------------------------*/
 	tlvs.hoplimit = params.hop_limit;
 	tlvs.name_len = params.name_len;
@@ -195,7 +196,7 @@ int main (
 	tlvs.opt.responder_f = params.responder_id_len;
 	memcpy (tlvs.opt.responder_id, params.responder_id, tlvs.opt.responder_f);
 	
-	cef_client_conping_input (fhdl, &tlvs);
+	cef_client_cefping_input (fhdl, &tlvs);
 	params.count--;
 	
 	/*----------------------------------------------------------------
@@ -228,7 +229,7 @@ int main (
 				cp_results_output (buff, packet_len, header_len, now_us_t - start_us_t);
 				
 				if (params.count > 0) {
-					cef_client_conping_input (fhdl, &tlvs);
+					cef_client_cefping_input (fhdl, &tlvs);
 					end_us_t = now_us_t + (uint64_t)(params.wait_time * 1000000);
 					params.count--;
 				}
@@ -238,7 +239,7 @@ int main (
 		/* Checks the waiting time 		*/
 		if (now_us_t > end_us_t) {
 			if (params.count > 0) {
-				cef_client_conping_input (fhdl, &tlvs);
+				cef_client_cefping_input (fhdl, &tlvs);
 				end_us_t = now_us_t + (uint64_t)(params.wait_time * 1000000);
 				params.count--;
 			} else {
@@ -246,7 +247,10 @@ int main (
 			}
 		}
 	}
-	fprintf (stdout, "timeout\n");
+	if (!output_f) {
+		fprintf (stdout, "timeout\n");
+	}
+	output_f = 0;
 	cef_client_close (fhdl);
 	exit (0);
 }
@@ -265,7 +269,7 @@ cp_results_output (
 	int res;
 	char addrstr[256];
 	
-	/* Parses the received Conping Replay 	*/
+	/* Parses the received Cefping Replay 	*/
 	res = cef_frame_message_parse (
 					msg, packet_len, header_len, &poh, &pm, CefC_PT_PING_REP);
 	
@@ -316,6 +320,7 @@ cp_results_output (
 	
 	/* Outputs RTT[ms]					*/
 	fprintf (stdout, "time=%f ms\n", (double)((double) rtt_us / 1000.0));
+	output_f = 1;
 	
 	return;
 }
@@ -331,7 +336,7 @@ cp_usage_output (
 		fprintf (stdout, "%s\n\n", msg);
 	}
 	
-	fprintf (stdout, 	"Usage: conping prefix [-r responder]"
+	fprintf (stdout, 	"Usage: cefping prefix [-r responder]"
 						"[-h hop_limit][-w wait_time]\n");
 	
 	return;
@@ -499,7 +504,7 @@ cp_parse_parameters (
 				return (-1);
 			}
 			if (res < 5/* require longer than Type + Length */) {
-				cp_usage_output ("error: prefix MUST NOT be cefore:/");
+				cp_usage_output ("error: prefix MUST NOT be ccn:/");
 				return (-1);
 			}
 			params.name_len = res;

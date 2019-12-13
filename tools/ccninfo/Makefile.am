@@ -30,15 +30,15 @@
 AM_CFLAGS=-I$(top_srcdir)/src/include -Wall
 
 
-bin_PROGRAMS=contrace
-contrace_LDFLAGS=-L$(top_srcdir)/src/lib/
-contrace_LDADD=-lcefore
-contrace_CFLAGS=$(AM_CFLAGS) -DCefC_Contrace $(CONTRACE_CFLAGS)
-contrace_SOURCES=contrace.c
+bin_PROGRAMS=ccninfo
+ccninfo_LDFLAGS=-L$(top_srcdir)/src/lib/
+ccninfo_LDADD=-lcefore -lssl -lcrypto
+ccninfo_CFLAGS=$(AM_CFLAGS) -DCefC_Cefinfo
+ccninfo_SOURCES=ccninfo.c
 
 # check debug build
 if CEFDBG_ENABLE
-contrace_CFLAGS+=-DCefC_Debug
+ccninfo_CFLAGS+=-DCefC_Debug
 endif # CEFDBG_ENABLE
 
 DESTDIR=$(CEFORE_DIR_PATH)
@@ -46,3 +46,8 @@ bindir=bin
 
 install-exec-hook:
 	chmod +s $(DESTDIR)$(bindir)/$(bin_PROGRAMS)
+	-rm $(DESTDIR)$(bindir)/cefinfo
+	cd $(DESTDIR)$(bindir) && $(LN_S) $(DESTDIR)$(bindir)/ccninfo $(DESTDIR)$(bindir)/cefinfo
+
+uninstall-hook:
+	-rm $(DESTDIR)$(bindir)/cefinfo

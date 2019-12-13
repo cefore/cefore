@@ -63,14 +63,6 @@
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
-typedef struct {
-	struct sockaddr* ai_addr;
-	socklen_t ai_addrlen;
-	int 	sock;								/* File descriptor 						*/
-	int 	faceid;								/* Assigned Face-ID 					*/
-	uint8_t protocol;
-} CefT_Sock;
-
 
 /****************************************************************************************
  State Variables
@@ -145,7 +137,11 @@ cef_status_stats_output (
 	if (hdl->cs_stat) {
 		switch (hdl->cs_stat->cache_type) {
 			case CefC_Cache_Type_None: {
+#ifndef CefC_Dtc
 				sprintf (cache_type, "None");
+#else // CefC_Dtc
+				sprintf (cache_type, "DTC");
+#endif // CefC_Dtc
 				break;
 			}
 			case CefC_Cache_Type_Excache: {
@@ -164,20 +160,25 @@ cef_status_stats_output (
 	sprintf (work_str, 
 			"Version    : %x\n"
 			"Port       : %u\n"
-#ifndef CefC_Android
 			"Rx Frames  : "FMTU64"\n"
 			"Tx Frames  : "FMTU64"\n"
-#else // CefC_Android
-			"Rx Frames  : %llu\n"
-			"Tx Frames  : %llu\n"
-#endif // CefC_Android
 			"Cache Mode : %s\n",
 			CefC_Version,
 			hdl->port_num,
 			hdl->stat_recv_frames,
 			hdl->stat_send_frames,
 			cache_type);
-
+	
+#ifdef CefC_Ccore
+	if (hdl->rt_hdl) {
+		sprintf (work_str, "%sController : %s %s\n"
+			, work_str, hdl->rt_hdl->controller_id
+			, (hdl->rt_hdl->sock != -1) ? "" : "#down");
+	} else {
+		sprintf (work_str, "%sController : Not Used\n", work_str);
+	}
+#endif
+	
 	/* output Face	*/
 	sprintf (work_str, "%sFaces :\n", work_str);
 	cef_status_face_output ();
@@ -243,31 +244,38 @@ cef_status_face_output (
 			index++;
 			continue;
 		}
+		if (sock->faceid == CefC_Faceid_ListenBabel) {
+			sprintf (work_str, 
+				"%s  faceid = %3d : Local face (for cefbabeld)\n", 
+				work_str, sock->faceid);
+			index++;
+			continue;
+		}
 		/* check IPv4 Listen port	*/
 		if (sock->faceid == CefC_Faceid_ListenUdpv4) {
 			sprintf (work_str, 
-				"%s  faceid = %3d : IPv4 Listen face:udp\n", work_str, sock->faceid);
+				"%s  faceid = %3d : IPv4 Listen face (udp)\n", work_str, sock->faceid);
 			index++;
 			continue;
 		}
 		/* check IPv6 Listen port	*/
 		if (sock->faceid == CefC_Faceid_ListenUdpv6) {
 			sprintf (work_str, 
-				"%s  faceid = %3d : IPv6 Listen face:udp\n", work_str, sock->faceid);
+				"%s  faceid = %3d : IPv6 Listen face (udp)\n", work_str, sock->faceid);
 			index++;
 			continue;
 		}
 		/* check IPv4 Listen port	*/
 		if (sock->faceid == CefC_Faceid_ListenTcpv4) {
 			sprintf (work_str, 
-				"%s  faceid = %3d : IPv4 Listen face:tcp\n", work_str, sock->faceid);
+				"%s  faceid = %3d : IPv4 Listen face (tcp)\n", work_str, sock->faceid);
 			index++;
 			continue;
 		}
 		/* check IPv6 Listen port	*/
 		if (sock->faceid == CefC_Faceid_ListenTcpv6) {
 			sprintf (work_str, 
-				"%s  faceid = %3d : IPv6 Listen face:tcp\n", work_str, sock->faceid);
+				"%s  faceid = %3d : IPv6 Listen face (tcp)\n", work_str, sock->faceid);
 			index++;
 			continue;
 		}
@@ -275,14 +283,14 @@ cef_status_face_output (
 		/* check IPv4 Listen port for NDN	*/
 		if (sock->faceid == CefC_Faceid_ListenNdnv4) {
 			sprintf (work_str, 
-				"%s  faceid = %3d : IPv4 Listen face:ndn\n", work_str, sock->faceid);
+				"%s  faceid = %3d : IPv4 Listen face (ndn)\n", work_str, sock->faceid);
 			index++;
 			continue;
 		}
 		/* check IPv6 Listen port for NDN	*/
 		if (sock->faceid == CefC_Faceid_ListenNdnv6) {
 			sprintf (work_str, 
-				"%s  faceid = %3d : IPv6 Listen face:ndn\n", work_str, sock->faceid);
+				"%s  faceid = %3d : IPv6 Listen face (ndn)\n", work_str, sock->faceid);
 			index++;
 			continue;
 		}
@@ -301,7 +309,9 @@ cef_status_face_output (
 		}
 		sprintf (
 			face_info + face_info_index,
-			 "address = %s:%s", node, prot_str[sock->protocol]);
+			 "address = %s:%d (%s)%s", node, sock->port_num, prot_str[sock->protocol], 
+			 (cef_face_check_active (sock->faceid) < 1) ? " # down" : "");
+		
 		sprintf (work_str, "%s%s\n", work_str, face_info);
 		index++;
 	}
@@ -349,12 +359,18 @@ cef_status_forward_output (
 		faces = entry->faces.next;
 		face_info_index = sprintf (face_info, "    Faces : ");
 		while (faces != NULL) {
-			face_info_index += sprintf (
-									face_info + face_info_index, "%d ", faces->faceid);
+			
+			face_info_index += 
+				sprintf (face_info + face_info_index, "%d (%c%c%c)  "
+					, faces->faceid
+					, ((faces->type >> 2) & 0x01) ? 'c' : '-'
+					, ((faces->type >> 1) & 0x01) ? 's' : '-'
+					, ((faces->type) & 0x01) ? 'd' : '-');
+			
 			faces = faces->next;
 		}
 		sprintf (work_str, "%s%s\n", work_str, face_info);
-
+		
 		index++;
 	}
 

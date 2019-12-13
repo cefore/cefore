@@ -84,11 +84,8 @@ int main (
 	char** argv
 ) {
 	int res;
-	int frame_size;
 	int index = 0;
 	char uri[1024];
-	unsigned char buff[CefC_Max_Length];
-	unsigned char frame[CefC_Max_Length];
 	CefT_Interest_TLVs params;
 	struct timeval t;
 	uint64_t now_time;
@@ -100,13 +97,15 @@ int main (
 	char 	conf_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
 	
+	struct cef_app_frame app_frame;
+	unsigned char* buff;
+	
 	/***** flags 		*****/
 	int uri_f 			= 0;
 	int chunk_num_f 	= 0;
 	int time_out_f 		= 1;
 	int dir_path_f 		= 0;
 	int port_num_f 		= 0;
-	int key_path_f 		= 0;
 	
 	memset (&params, 0, sizeof (CefT_Interest_TLVs));
 	
@@ -172,13 +171,6 @@ int main (
 			port_num = atoi (work_arg);
 			port_num_f++;
 			i++;
-		} else if (strcmp (work_arg, "-k") == 0) {
-			if (key_path_f) {
-				fprintf (stderr, "ERROR: [-k] is duplicated.\n");
-				print_usage ();
-				return (-1);
-			}
-			key_path_f++;
 		} else {
 			
 			work_arg = argv[i];
@@ -233,7 +225,7 @@ int main (
 	fprintf (stderr, "[cefgetchunk] Conversion from URI into Name ... ");
 	res = cef_frame_conversion_uri_to_name (uri, params.name);
 	if (res < 0) {
-		fprintf (stderr, "] ERROR: Invalid URI is specified.\n");
+		fprintf (stderr, "ERROR: Invalid URI is specified.\n");
 		print_usage ();
 		exit (1);
 	}
@@ -246,20 +238,8 @@ int main (
 		exit (1);
 	}
 	fprintf (stderr, "OK\n");
-	
-	/*------------------------------------------
-		Checks Validation 
-	--------------------------------------------*/
-	if (key_path_f) {
-		params.alg.pubkey_len = cef_valid_read_pubkey (conf_path, params.alg.pubkey);
-		
-		if (params.alg.pubkey_len > 0) {
-			fprintf (stderr, "[cefgetchunk] Read the public key ... OK\n");
-		} else {
-			fprintf (stderr, "[cefgetchunk] Read the public key ... NG\n");
-			exit (1);
-		}
-	}
+	buff = (unsigned char*) malloc (sizeof (unsigned char) * CefC_AppBuff_Size);
+	memset (&app_frame, 0, sizeof (struct cef_app_frame));
 	
 	/* Sets Interest parameters 			*/
 	params.hoplimit 			= 32;
@@ -290,32 +270,35 @@ int main (
 			break;
 		}
 		
-		res = cef_client_read (fhdl, &buff[index], CefC_Max_Length - index);
+		res = cef_client_read (fhdl, &buff[index], CefC_AppBuff_Size - index);
 		
 		if (res > 0) {
 			res += index;
 			
 			do {
-				res = cef_client_payload_get_with_chnk_num (
-									buff, res, frame, &frame_size, &chnk_num);
+				res = cef_client_payload_get_with_info (buff, res, &app_frame);
 				
-				if (frame_size > 0) {
-					if (chnk_num == params.chunk_num) {
-						fprintf (stderr, 
-							"[cefgetchunk] Get a requested Cob #%u\n", chnk_num);
-						fwrite (frame, sizeof (unsigned char), frame_size, stdout);
+				if (app_frame.version == CefC_App_Version) {
+					if (app_frame.chunk_num == params.chunk_num) {
+						fprintf (stderr, "[cefgetchunk] Get a requested Cob #%u\n", 
+							app_frame.chunk_num);
+						fwrite (app_frame.payload, 
+							sizeof (unsigned char), app_frame.payload_len, stdout);
 					} else {
 						fprintf (stderr, 
 							"[cefgetchunk] Get a Cob #u that you did not request.\n");
 					}
 					time_out_f 		= 0;
 					app_running_f 	= 0;
-					break;
 				}
-			} while ((frame_size > 0) && (res > 0));
+				break;
+				
+			} while (res > 0);
 			
 			if (res > 0) {
 				index = res;
+			} else {
+				index = 0;
 			}
 		}
 	}
@@ -323,6 +306,7 @@ int main (
 	if (time_out_f) {
 		fprintf (stderr, "[cefgetchunk] Timeout.\n");
 	}
+	cef_client_close (fhdl);
 	
 	exit (0);
 }

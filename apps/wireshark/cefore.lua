@@ -914,7 +914,7 @@ function ccn.dissector(tvb, pInfo, root) -- Tvb, Pinfo, TreeItem
    if (nBytesLeft > 0 and block ~= nil and block.size ~= nil and block.size > nBytesLeft) then
       pInfo.desegment_offset = tvb:len() - nBytesLeft
 
-      -- Originally, I set desegment_len to the exact lenght, but it mysteriously didn't work for TCP
+      -- Originally, I set desegment_len to the exact length, but it mysteriously didn't work for TCP
       -- pInfo.desegment_len = block.size -- this will not work to desegment TCP streams
       pInfo.desegment_len = DESEGMENT_ONE_MORE_SEGMENT
    end
