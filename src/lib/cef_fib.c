@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -372,6 +372,11 @@ cef_fib_entry_lookup (
 	entry = (CefT_Fib_Entry*) cef_hash_tbl_item_get (fib, name, name_len);
 	
 	if (entry == NULL) {
+		if(cef_hash_tbl_item_num_get(fib) == cef_hash_tbl_def_max_get(fib)) {
+			cef_log_write (CefC_Log_Warn, 
+				"FIB table is full(FIB_SIZE = %d)\n", cef_hash_tbl_def_max_get(fib));
+			return (NULL);
+		}
 		entry = cef_fib_entry_create (name, name_len);
 		cef_hash_tbl_item_set (fib, name, name_len, entry);
 		
@@ -494,6 +499,15 @@ cef_fib_config_file_read (
 		/* search this name from FIB */
 		entry = (CefT_Fib_Entry*) cef_hash_tbl_item_get (fib, name, res);
 		if (entry == NULL) {
+			if(cef_face_num_get () >= CefC_Fib_Addr_Max) {
+				cef_log_write (CefC_Log_Warn, "[cefnetd.fib] The maximum number(%d) of faces has been exceeded.\n", CefC_Fib_Addr_Max);
+				break;
+			}
+			if(cef_hash_tbl_item_num_get(fib) == cef_hash_tbl_def_max_get(fib)) {
+				cef_log_write (CefC_Log_Warn, 
+					"FIB table is full(FIB_SIZE = %d)\n", cef_hash_tbl_def_max_get(fib));
+				break;
+			}
 			entry = cef_fib_entry_create (name, res);
 			cef_hash_tbl_item_set (fib, name, res, entry);
 		}
@@ -825,6 +839,13 @@ cef_fib_route_msg_read (
 	int name_len;
 	CefT_Fib_Entry* bentry;
 	CefT_Fib_Entry* aentry;
+	//
+	CefT_Fib_Face* faces = NULL;
+	int			b_type_c = 0;
+	int			b_type_s = 0;
+	int			a_type_c = 0;
+	int			a_type_s = 0;
+	//
 	
 	/* Inits the return code 		*/
 	*rc = 0x00;
@@ -865,7 +886,21 @@ cef_fib_route_msg_read (
 		cef_log_write (CefC_Log_Warn, "Invalid URI\n", uri);
 		return (-1);
 	}
-	bentry = cef_fib_entry_search (fib, name, name_len);
+	bentry = cef_hash_tbl_item_get(fib, name, name_len);
+	//FaceInfo
+	if ( bentry != NULL ) {
+		faces = bentry->faces.next;
+		while (faces != NULL) {
+			
+			if ( (faces->type >> 2) & 0x01 ) {
+				b_type_c = 1;
+			}
+			if ( (faces->type >> 1) & 0x01 ) {
+				b_type_s = 1;
+			}
+			faces = faces->next;
+		}
+	}
 	
 	while (index < msg_size) {
 		/* get host */
@@ -892,7 +927,22 @@ cef_fib_route_msg_read (
 			res = cef_fib_route_del (fib, prot, host, uri, type);
 		}
 	}
-	aentry = cef_fib_entry_search (fib, name, name_len);
+	aentry = cef_hash_tbl_item_get(fib, name, name_len);
+	//FaceInfo
+	if ( aentry != NULL ) {
+		faces = aentry->faces.next;
+		while (faces != NULL) {
+			
+			if ( (faces->type >> 2) & 0x01 ) {
+				a_type_c = 1;
+			}
+			if ( (faces->type >> 1) & 0x01 ) {
+				a_type_s = 1;
+			}
+			faces = faces->next;
+		}
+	}
+
 	if (bentry) {
 		if (aentry == NULL) {
 			*rc = 0x02;
@@ -900,6 +950,20 @@ cef_fib_route_msg_read (
 	} else {
 		if (aentry) {
 			*rc = 0x01;
+		}
+	}
+	//Face Modify Check
+	if ( (bentry != NULL) && (aentry != NULL) ) {
+		if ( (b_type_c == 0) && (b_type_s == 0) ) {
+			if ( (a_type_c == 1) || (a_type_s == 1) ) {
+				*rc = 0x01;
+			}
+		} else if ( (b_type_c == 1) || (b_type_s == 1) ) {
+			if ( (a_type_c == 0) && (a_type_s == 0) ) {
+				*rc = 0x02;
+			}
+		} else {
+			*rc = 0x00;
 		}
 	}
 	
@@ -983,6 +1047,12 @@ cef_fib_route_add (
 	/* search this name from FIB */
 	entry = (CefT_Fib_Entry*) cef_hash_tbl_item_get (fib, name, res);
 	if (entry == NULL) {
+		if(cef_hash_tbl_item_num_get(fib) == cef_hash_tbl_def_max_get(fib)) {
+			cef_log_write (CefC_Log_Warn, 
+				"FIB table is full(FIB_SIZE = %d)\n", cef_hash_tbl_def_max_get(fib));
+			return (-1);
+		}
+
 		/* create new entry */
 		entry = cef_fib_entry_create (name, res);
 		cef_hash_tbl_item_set (fib, name, res, entry);
@@ -1119,8 +1189,8 @@ cef_fib_info_get (
 	int cmp_len;
 	char face_info[CefC_Max_Length];
 	uint8_t def_name_f = 0;
+	char work_buff[CefC_Max_Length];
 	
-	info_buff[0] = 0x00;
 	index = 0;
 	
 	/* get table num		*/
@@ -1167,12 +1237,16 @@ cef_fib_info_get (
 			res = cef_face_info_get (face_info, fib_face->faceid);
 			
 			if (res > 0) {
-				sprintf (info_buff, "%sFIB: %s %s\n", info_buff, uri, face_info);
+				snprintf (work_buff, CefC_Max_Length, "%sFIB: %s %s\n", info_buff, uri, face_info);
+				memcpy (info_buff, work_buff, strlen(work_buff));
+				if (strlen(info_buff) >= ((CefC_Max_Length)-1)){
+					goto endfunc;
+				}
 			}
 			fib_face = fib_face->next;
 		}
 		index++;
 	}
-	
+endfunc:;
 	return (strlen (info_buff));
 }

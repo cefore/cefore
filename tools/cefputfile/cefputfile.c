@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -571,6 +571,11 @@ int main (
 	fclose (fp);
 	if (work_buff) {
 		free (work_buff);
+	}
+
+	if ( params.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( params.AppComp_num, params.AppComp );
 	}
 	
 	post_process ();

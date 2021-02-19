@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -56,8 +56,8 @@ typedef struct {
 	uint32_t 			capacity;
 	uint16_t			cached_con_num;
 	uint32_t			cached_cob_num;
-	CsmgrT_Stat* 		rcds[CsmgrT_Stat_Max];
-	
+	CsmgrT_Stat** 		rcds;
+
 } CsmgrT_Stat_Table;
 
 /****************************************************************************************
@@ -87,6 +87,7 @@ csmgr_stat_content_salvage (
 	CsmgrT_Stat_Table* tbl, 
 	const unsigned char* name, 
 	uint16_t name_len, 
+	int first_f,
 	int* start_index
 );
 static uint32_t
@@ -97,6 +98,7 @@ csmgr_stat_hash_number_create (
 
 /****************************************************************************************
  ****************************************************************************************/
+static int				stat_index_mngr[CsmgrT_Stat_Max];
 
 /*--------------------------------------------------------------------------------------
 	Creates the Csmgr Stat Handle
@@ -106,27 +108,18 @@ csmgr_stat_handle_create (
 	void 
 ) {
 	CsmgrT_Stat_Table* tbl;
-	int i;
-	
+
 	tbl = (CsmgrT_Stat_Table*) malloc (sizeof (CsmgrT_Stat_Table));
 	if (tbl == NULL) {
 		return (CsmgrC_Invalid);
 	}
 	memset (tbl, 0, sizeof (CsmgrT_Stat_Table));
 	
-	for (i = 0 ; i < CsmgrT_Stat_Max ; i++) {
-		tbl->rcds[i] = (CsmgrT_Stat*) malloc (sizeof (CsmgrT_Stat));
-		
-		if (tbl->rcds[i] == NULL) {
-			free (tbl);
-			return (CsmgrC_Invalid);
-		}
-		memset (tbl->rcds[i], 0, sizeof (CsmgrT_Stat));
-		tbl->rcds[i]->min_seq = UINT_MAX;
-		tbl->rcds[i]->max_seq = 0;
-
-	}
+	tbl->rcds = (CsmgrT_Stat**) malloc (sizeof (CsmgrT_Stat*) * CsmgrT_Stat_Max);
+	memset (tbl->rcds, 0, sizeof (CsmgrT_Stat*) * CsmgrT_Stat_Max);
 	
+	memset (stat_index_mngr, 0, sizeof(int)*CsmgrT_Stat_Max);
+
 	return ((CsmgrT_Stat_Handle) tbl);
 }
 
@@ -140,15 +133,23 @@ csmgr_stat_handle_destroy (
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	int i;
 
-	if (tbl) {
-		for (i = 0 ; i < CsmgrT_Stat_Max ; i++) {
-			if (tbl->rcds[i]) {
-				free (tbl->rcds[i]);
-			}
-		}
-		
-		free (tbl);
+	if (tbl == NULL) {
+		return;
 	}
+	for (i = 0 ; i < CsmgrT_Stat_Max ; i++) {
+		CsmgrT_Stat* cp;
+		CsmgrT_Stat* wcp;
+		cp = tbl->rcds[i];
+		while (cp != NULL) {
+			wcp = cp->next;
+		   	stat_index_mngr[cp->index] = 0;
+			free(cp);
+			cp = wcp;
+		}
+	}
+	free (tbl->rcds);
+	free (tbl);
+
 	return;
 }
 /*--------------------------------------------------------------------------------------
@@ -254,7 +255,7 @@ csmgr_stat_content_info_gets (
 	const unsigned char* name, 
 	uint16_t name_len, 
 	int partial_match_f, 
-	CsmgrT_Stat* ret[CefstatC_MaxUri]
+	CsmgrT_Stat* ret[]
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd = NULL;
@@ -323,9 +324,12 @@ csmgr_stat_content_info_gets (
 		
 		return (1);
 	}
-	
+	int first_f = 1;
 	do {
-		rcd = csmgr_stat_content_salvage (tbl, name, name_len, &index);
+		rcd = csmgr_stat_content_salvage (tbl, name, name_len, first_f, &index);
+		if (first_f == 1) {
+			first_f = 0;
+		}
 		
 		if (!rcd) {
 			break;
@@ -392,12 +396,19 @@ csmgr_stat_expired_content_info_get (
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
 	for (i = *index ; i < CsmgrT_Stat_Max ; i++) {
-		if ((tbl->rcds[i]->hash) && (nowt > tbl->rcds[i]->expiry)) {
-			tbl->rcds[i]->expire_f = 1;
-			*index += 1;
-			return (tbl->rcds[i]);
+		CsmgrT_Stat* cp;
+		cp = tbl->rcds[i];
+		while (cp != NULL) {
+			if (nowt > cp->expiry) {
+				if (cp->next == NULL) {
+					*index += 1;
+				}
+				cp->expire_f = 1;
+				return (cp);
+			}
+			cp = cp->next;
 		}
-	}
+	}	
 	
 	return (NULL);
 }
@@ -466,7 +477,6 @@ csmgr_stat_cob_remove (
 	CsmgrT_Stat* rcd;
 	uint64_t mask = 1;
 	uint16_t x;
-	int index;
 	
 	if ((!tbl) || (seq > CsmgrT_Stat_Seq_Max)) {
 		return (-1);
@@ -488,13 +498,8 @@ csmgr_stat_cob_remove (
 	rcd->cob_map[x] &= ~mask;
 	
 	if (rcd->cob_num == 0) {
-		index = rcd->index;
-		tbl->cached_con_num--;
-		memset (rcd, 0, sizeof (CsmgrT_Stat));
-		rcd->name_len = 0xFFFF;
-		rcd->min_seq = UINT_MAX;
-		rcd->max_seq = 0;
-		return (index);
+		csmgr_stat_content_info_delete (hdl, name, name_len);
+		return (0);
 	}
 	
 	return (-1);
@@ -540,9 +545,22 @@ csmgr_stat_cache_capacity_update (
 	if (!tbl) {
 		return;
 	}
+
 	for (i = 0 ; i < CsmgrT_Stat_Max ; i++) {
-		memset (tbl->rcds[i], 0, sizeof (CsmgrT_Stat));
+		CsmgrT_Stat* cp;
+		CsmgrT_Stat* wcp;
+		cp = tbl->rcds[i];
+		while (cp != NULL) {
+			wcp = cp->next;
+		   	stat_index_mngr[cp->index] = 0;
+			free(cp);
+			cp = wcp;
+		}
 	}
+	for (i = 0 ; i < CsmgrT_Stat_Max ; i++) {
+		tbl->rcds[i] = NULL;
+	}
+
 	tbl->cached_con_num = 0;
 	tbl->capacity = capacity;
 	tbl->cached_cob_num = 0;
@@ -612,21 +630,46 @@ csmgr_stat_content_info_delete (
 	uint16_t name_len
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
-	CsmgrT_Stat* rcd = NULL;
+	CsmgrT_Stat* cp;
+	CsmgrT_Stat* wcp;
+	uint32_t hash;
+	uint32_t index;
 	
 	if (!tbl) {
 		return;
 	}
 	
-	rcd = csmgr_stat_content_search (tbl, name, name_len);
+	hash = csmgr_stat_hash_number_create (name, name_len);
+	index = hash % CsmgrT_Stat_Max;
 	
-	if (rcd) {
-		tbl->cached_con_num--;
-		memset (rcd, 0, sizeof (CsmgrT_Stat));
-		rcd->name_len = 0xFFFF;
-		rcd->min_seq = UINT_MAX;
-		rcd->max_seq = 0;
+	cp = tbl->rcds[index];
+	if(cp == NULL){
+		return;
 	}
+	if (cp != NULL) {
+		if((cp->name_len == name_len) &&
+		   (memcmp (cp->name, name, name_len) == 0)){
+		   	tbl->rcds[index] = cp->next;
+			tbl->cached_con_num--;
+		   	stat_index_mngr[cp->index] = 0;
+		   	free(cp);
+		   	return;
+		} else {
+			cp = tbl->rcds[index];
+			for (; cp->next != NULL; cp = cp->next) {
+				if((cp->next->name_len == name_len) &&
+				   (memcmp (cp->next->name, name, name_len) == 0)){
+				   	wcp = cp->next;
+				   	cp->next = cp->next->next;
+					tbl->cached_con_num--;
+				   	stat_index_mngr[wcp->index] = 0;
+				   	free(wcp);
+				   	return;
+				}
+			}
+		}
+	}
+
 	return;
 }
 /*--------------------------------------------------------------------------------------
@@ -712,7 +755,7 @@ csmgr_stat_content_info_gets_for_pub (
 	const unsigned char* name, 
 	uint16_t name_len, 
 	int partial_match_f, 
-	CsmgrT_Stat* ret[CefstatC_MaxUri]
+	CsmgrT_Stat* ret[]
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd = NULL;
@@ -748,9 +791,12 @@ csmgr_stat_content_info_gets_for_pub (
 		
 		return (1);
 	}
-	
+	int first_f = 1;
 	do {
-		rcd = csmgr_stat_content_salvage (tbl, name, name_len, &index);
+		rcd = csmgr_stat_content_salvage (tbl, name, name_len, first_f, &index);
+		if (first_f == 1) {
+			first_f = 0;
+		}
 		
 		if (!rcd) {
 			break;
@@ -824,7 +870,6 @@ csmgr_stat_cob_remove_for_pub (
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd;
-	int index;
 	
 	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	if (!rcd) {
@@ -835,13 +880,8 @@ csmgr_stat_cob_remove_for_pub (
 	rcd->con_size -= cob_size;
 	tbl->cached_cob_num--;
 	if (rcd->cob_num == 0) {
-		index = rcd->index;
-		tbl->cached_con_num--;
-		memset (rcd, 0, sizeof (CsmgrT_Stat));
-		rcd->name_len = 0xFFFF;
-		rcd->min_seq = UINT_MAX;
-		rcd->max_seq = 0;
-		return (index);
+		csmgr_stat_content_info_delete (hdl, name, name_len);
+		return (0);
 	}
 	
 	return (-1);
@@ -858,10 +898,8 @@ csmgr_stat_content_lookup (
 	int* create_f
 ) {
 	uint32_t hash;
-	uint32_t i, n;
-	int find_f = 0;
-	uint32_t empty_index;
-	int empty_ff = 0;
+	uint32_t index;
+	CsmgrT_Stat* rcd;
 	
 	if (create_f) {
 		*create_f = 0;
@@ -871,92 +909,64 @@ csmgr_stat_content_lookup (
 		return (NULL);
 	}
 	
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
+	if (rcd) {
+		return (rcd);
+	}
+	/* Create Content */
+	if (tbl->cached_con_num == CsmgrT_Stat_Max){
+		return (NULL);
+	}
 	hash = csmgr_stat_hash_number_create (name, name_len);
-	i = hash % CsmgrT_Stat_Max;
-	
-	if (tbl->rcds[i]->hash == hash) {
-		if ((tbl->rcds[i]->name_len == name_len) && 
-			(memcmp (tbl->rcds[i]->name, name, name_len) == 0)) {
-			return (tbl->rcds[i]);
-		}
-	}
-	
-	if (tbl->rcds[i]->name_len == 0) {
-		memset (tbl->rcds[i], 0, sizeof (CsmgrT_Stat));
-		tbl->rcds[i]->hash 		= hash;
-		tbl->rcds[i]->index 	= (uint16_t) i;
-		tbl->rcds[i]->name_len 	= name_len;
-		memcpy (tbl->rcds[i]->name, name, name_len);
-		
-		if (create_f) {
-			*create_f = 1;
-		}
-		return (tbl->rcds[i]);
-	}
-	
-	for (n = i + 1 ; n < CsmgrT_Stat_Max ; n++) {
-		if (tbl->rcds[n]->name_len == 0) {
- 			find_f = 1;
-			break;
-		}
-		if (tbl->rcds[n]->hash == hash) {
-			if ((tbl->rcds[n]->name_len == name_len) && 
-				(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
-				return (tbl->rcds[n]);
-			}
-		}
-		if ((tbl->rcds[n]->name_len == 0xFFFF) &&
-			(empty_ff == 0)) {
-			empty_index = n;
-			empty_ff = 1;
-		}
-	}
-	if (find_f == 0) {
-		for (n = 0 ; n < i ; n++) {
-			if (tbl->rcds[n]->name_len == 0) {
-				find_f = 1;
+	index = hash % CsmgrT_Stat_Max;
+	CsmgrT_Stat* cp;
+	CsmgrT_Stat* wcp;
+	if(tbl->rcds[index] == NULL){
+		tbl->rcds[index] = (CsmgrT_Stat* )calloc(1, sizeof(CsmgrT_Stat) + name_len);
+		tbl->rcds[index]->name = ((unsigned char*)tbl->rcds[index]) + sizeof(CsmgrT_Stat);
+		cp = tbl->rcds[index];
+		cp->name_len = name_len;
+		memcpy (cp->name, name, name_len);
+		cp->min_seq = UINT_MAX;
+		cp->max_seq = 0;
+		for(int i=0; i<CsmgrT_Stat_Max; i++){
+			if(stat_index_mngr[i] == 0){
+				stat_index_mngr[i] = 1;
+				cp->index = i;
 				break;
 			}
-			if (tbl->rcds[n]->hash == hash) {
-				if ((tbl->rcds[n]->name_len == name_len) && 
-					(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
-					return (tbl->rcds[n]);
-				}
-			}
-			if ((tbl->rcds[n]->name_len == 0xFFFF) &&
-				(empty_ff == 0)) {
-				empty_index = n;
-				empty_ff = 1;
-			}
 		}
-	}
-	
-	if (find_f == 1) {
-		memset (tbl->rcds[n], 0, sizeof (CsmgrT_Stat));
-		tbl->rcds[n]->hash 		= hash;
-		tbl->rcds[n]->name_len 	= name_len;
-		tbl->rcds[n]->index 	= (uint16_t) n;
-		memcpy (tbl->rcds[n]->name, name, name_len);
-		
 		if (create_f) {
 			*create_f = 1;
 		}
-		return (tbl->rcds[n]);
-	}
-	if (empty_ff == 1) {
-		memset (tbl->rcds[empty_index], 0, sizeof (CsmgrT_Stat));
-		tbl->rcds[empty_index]->hash 		= hash;
-		tbl->rcds[empty_index]->name_len 	= name_len;
-		tbl->rcds[empty_index]->index 	= (uint16_t) n;
-		memcpy (tbl->rcds[empty_index]->name, name, name_len);
-		
+		return (cp);
+	} else {
+		/* insert */
+		wcp = tbl->rcds[index];
+		tbl->rcds[index] = (CsmgrT_Stat* )calloc(1, sizeof(CsmgrT_Stat) + name_len);
+		if (tbl->rcds[index] == NULL) {
+			return (NULL);
+		}
+		tbl->rcds[index]->name = ((unsigned char*)tbl->rcds[index]) + sizeof(CsmgrT_Stat);
+		cp = tbl->rcds[index];
+		cp->next = wcp;
+		cp->name_len = name_len;
+		memcpy (cp->name, name, name_len);
+		cp->min_seq = UINT_MAX;
+		cp->max_seq = 0;
+		for(int i=0; i<CsmgrT_Stat_Max; i++){
+			if(stat_index_mngr[i] == 0){
+				stat_index_mngr[i] = 1;
+				cp->index = i;
+				break;
+			}
+		}
 		if (create_f) {
 			*create_f = 1;
 		}
-		
-		return (tbl->rcds[empty_index]);
+		return (cp);
 	}
-	
+
 	return (NULL);
 }
 
@@ -967,7 +977,8 @@ csmgr_stat_content_search (
 	uint16_t name_len
 ) {
 	uint32_t hash;
-	uint32_t i, n;
+	uint32_t i;
+	CsmgrT_Stat* cp;
 	
 	if ((!name_len) || (!tbl)) {
 		return (NULL);
@@ -976,31 +987,16 @@ csmgr_stat_content_search (
 	hash = csmgr_stat_hash_number_create (name, name_len);
 	i = hash % CsmgrT_Stat_Max;
 	
-	if (tbl->rcds[i]->hash == hash) {
-		if ((tbl->rcds[i]->name_len == name_len) && 
-			(memcmp (tbl->rcds[i]->name, name, name_len) == 0)) {
-			return (tbl->rcds[i]);
+	hash = csmgr_stat_hash_number_create (name, name_len);
+	i = hash % CsmgrT_Stat_Max;
+
+	cp = tbl->rcds[i];
+	while (cp != NULL) {
+		if((cp->name_len == name_len) &&
+		   (memcmp (cp->name, name, name_len) == 0)){
+			return (cp);
 		}
-	}
-	for (n = i + 1 ; n < CsmgrT_Stat_Max ; n++) {
-		if (tbl->rcds[n]->name_len == 0) {
-			return (NULL);
-		}
-		
-		if ((tbl->rcds[n]->name_len == name_len) && 
-			(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
-			return (tbl->rcds[n]);
-		}
-	}
-	for (n = 0 ; n < i ; n++) {
-		if (tbl->rcds[n]->name_len == 0) {
-			return (NULL);
-		}
-		
-		if ((tbl->rcds[n]->name_len == name_len) && 
-			(memcmp (tbl->rcds[n]->name, name, name_len) == 0)) {
-			return (tbl->rcds[n]);
-		}
+		cp = cp->next;
 	}
 	
 	return (NULL);
@@ -1011,25 +1007,43 @@ csmgr_stat_content_salvage (
 	CsmgrT_Stat_Table* tbl, 
 	const unsigned char* name, 
 	uint16_t name_len, 
+	int first_f,
 	int* start_index
 ) {
 	int i;
+	static CsmgrT_Stat* procedp;
 	
 	if ((!tbl) ||
 		((name_len > 0) && (!name))){
 		return (NULL);
 	}
 	
+	if (first_f == 1) {
+		procedp = NULL;
+	}
 	for (i = *start_index ; i < CsmgrT_Stat_Max ; i++) {
-		if (tbl->rcds[i]->hash) {
-			if ((name_len == 0) || 
-				(memcmp (tbl->rcds[i]->name, name, name_len) == 0)) {
-				*start_index = i + 1;
-				return (tbl->rcds[i]);
+		CsmgrT_Stat* cp;
+		cp = tbl->rcds[i];
+		while (cp != NULL) {
+			if (procedp == cp) { 
+				cp = cp->next;
+				continue; //+++++ 201910xx YJK +++++
+			} else {
+				if ((name_len == 0) || 
+					(memcmp (cp->name, name, name_len) == 0)) {
+					procedp = cp;	
+					if (cp->next == NULL) {
+						*start_index = i + 1;
+					} else {
+						*start_index = i;
+					}
+					return (cp);
+				}
 			}
+			cp = cp->next;
 		}
 	}
-	
+
 	return (NULL);
 }
 

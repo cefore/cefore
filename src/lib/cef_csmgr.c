@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1267,7 +1267,7 @@ csmgr_frame_get (
 	len = ntohs (value16);
 	
 	/* check message length */
-	if ((len <= CefC_Csmgr_Msg_HeaderLen) || (len > CefC_Max_Msg_Size * 2)) {
+	if ((len <= CefC_Csmgr_Msg_HeaderLen)) {
 		buff[0] = 0;
 		return (csmgr_frame_get (buff, buff_len, msg, frame_size, type));
 	}
@@ -2213,6 +2213,7 @@ cef_csmgr_con_chunk_retrieve (
 	fds[0].events = POLLIN | POLLERR;
 	memset (buff, 0, sizeof (buff));
 	res = poll (fds, 1, CefC_Csmgr_Max_Wait_Response);
+	usleep(1000000);
 	if ((res <= 0) || (fds[0].revents & (POLLERR | POLLNVAL | POLLHUP))) {
 		close (tmp_sock);
 		return (-1);

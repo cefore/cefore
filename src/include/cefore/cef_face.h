@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -227,10 +227,10 @@ int											/* number of the listen face with TCP 		*/
 cef_face_update_listen_faces (
 	struct pollfd* inudpfds,
 	uint16_t* inudpfaces, 
-	uint8_t* inudpfdc, 
+	uint16_t* inudpfdc, 
 	struct pollfd* intcpfds,
 	uint16_t* intcpfaces, 
-	uint8_t* intcpfdc
+	uint16_t* intcpfdc
 );
 /*--------------------------------------------------------------------------------------
 	Converts the specified Face-ID into the corresponding file descriptor
@@ -378,6 +378,11 @@ cef_face_node_id_get (
 	uint16_t faceid, 
 	unsigned char* node_id
 );
+/*--------------------------------------------------------------------------------------
+	Obtains the face num
+----------------------------------------------------------------------------------------*/
+int 
+cef_face_num_get ();
 /*--------------------------------------------------------------------------------------
 	Obtains the face information
 ----------------------------------------------------------------------------------------*/

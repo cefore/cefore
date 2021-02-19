@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,7 @@
  */
 
 #define __CEF_NETD_SOURECE__
+
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
@@ -153,7 +154,7 @@ cefnetd_input_control_message (
 	CefT_Netd_Handle* hdl,						/* cefnetd handle						*/
 	unsigned char* msg, 						/* the received message(s)				*/
 	int msg_size,								/* size of received message(s)			*/
-	unsigned char* rsp, 
+	unsigned char** rspp, 
 	int fd
 );
 /*--------------------------------------------------------------------------------------
@@ -182,7 +183,7 @@ cefnetd_xroute_change_report (
 static int
 cefnetd_fib_info_get (
 	CefT_Netd_Handle* hdl, 
-	unsigned char* buff
+	unsigned char** buff
 );
 /*--------------------------------------------------------------------------------------
 	Handles the command from babeld
@@ -843,6 +844,84 @@ cefnetd_dtc_resnd (
 );
 #endif // CefC_Dtc
 
+/* NodeName Check */
+static int									/*  */
+cefnetd_nodename_check (
+	const char* in_name,					/* input NodeName							*/
+	unsigned char* ot_name					/* buffer to set After Check NodeName		*/
+);
+
+
+#ifdef CefC_C3
+#define		CefC_C3_ADD			0
+#define		CefC_C3_DEL			1
+#define		CefC_C3_FIB_APP		"FIB(APP)"
+#define		CefC_C3_FIB			"FIB"
+
+static int
+cefnetd_c3_log_init (
+	CefT_Netd_Handle* hdl 						/* cefnetd handle						*/
+);
+
+static void
+cefnetd_c3_log_output_sum (
+	CefT_Netd_Handle* hdl 						/* cefnetd handle						*/
+);
+static void
+cefnetd_c3_log_output_fib (
+	CefT_Netd_Handle* hdl, 						/* cefnetd handle						*/
+	int	a_or_d,
+	CefT_C3_LOG*	entry,
+	char*			fib_char
+);
+static void
+cefnetd_c3_log_output_pit (
+	CefT_Netd_Handle* hdl, 						/* cefnetd handle						*/
+	int	a_or_d,
+	CefT_C3_LOG*	entry
+);
+static void
+cefnetd_c3_log_end (
+	CefT_Netd_Handle* hdl 						/* cefnetd handle						*/
+);
+static void
+cefnetd_c3_log_output_fib_error (
+	CefT_Netd_Handle* hdl, 						/* cefnetd handle						*/
+	int	a_or_d,
+	char*			fib_char
+);
+
+static CefT_C3_LOG*
+cefnetd_c3_create_fib_sum (
+	CefT_Netd_Handle* hdl, 						/* cefnetd handle						*/
+	unsigned char* name,
+	unsigned int name_len
+);
+
+static CefT_C3_LOG*
+cefnetd_c3_create_pit_sum (
+	CefT_Netd_Handle* hdl, 						/* cefnetd handle						*/
+	unsigned char* name,
+	unsigned int name_len
+);
+
+static CefT_C3_LOG*
+cefnetd_c3_log_sum_fib_entry_search (
+	CefT_Hash_Handle fib_sum,
+	unsigned char* name, 					/* Key of the FIB entry						*/
+	uint16_t name_len						/* Length of Key							*/
+);
+
+static uint16_t*
+cefnetd_c3_fib_app_entry_search (
+	CefT_Hash_Handle fib_app,
+	unsigned char* name,
+	uint16_t name_len
+);
+
+#endif // CefC_C3
+
+
 /****************************************************************************************
  ****************************************************************************************/
 
@@ -883,6 +962,26 @@ cefnetd_handle_create (
 	hdl->babel_route 	= 0x03;		/* both 	*/
 	hdl->cs_mode 		= 0;
 	hdl->forwarding_info_strategy = CefC_Default_ForwardingInfoStrategy;
+	//2020
+	hdl->app_fib_max_size		= CefC_Default_FibAppSize;
+	hdl->app_pit_max_size		= CefC_Default_PitAppSize;
+	hdl->My_Node_Name			= NULL;
+	hdl->My_Node_Name_TLV		= NULL;
+	hdl->My_Node_Name_TLV_len	= 0;
+#ifdef	CefC_C3
+	hdl->c3_log					= 0;	//OFF
+	hdl->c3_log_period			= 3600;
+	hdl->c3_log_fname			= NULL;
+	hdl->c3_log_dir				= NULL;
+	hdl->c3_log_fp				= NULL;
+	hdl->c3_log_next			= 0;
+	hdl->c3_log_unknown			= 0;
+	hdl->c3_fib_add				= 0;
+	hdl->c3_fib_del				= 0;
+	hdl->c3_pit_add				= 0;
+	hdl->c3_pit_del				= 0;
+#endif
+	
 #ifdef CefC_Ccninfo
 	hdl->ccninfo_access_policy = CefC_Default_CcninfoAccessPolicy;
 	hdl->ccninfo_full_discovery = CefC_Default_CcninfoFullDiscovery;
@@ -933,7 +1032,11 @@ cefnetd_handle_create (
 	/* check state of port use */
 	res = cefnetd_check_state_of_port_use (hdl);
 	if (res < 0) {
-		cef_log_write (CefC_Log_Error, "Already another cefnetd is using the same listen port\n");
+		char	tmp_sock_path[1024];
+		char	tmp_msg[2048];
+		cef_client_local_sock_name_get (tmp_sock_path);
+		sprintf( tmp_msg, "Another cefnetd may be running with the same port. If not, remove the old socket file (%s) and restart cefnetd.\n", tmp_sock_path );
+		cef_log_write (CefC_Log_Error, tmp_msg);
 		return (NULL);
 	}
 	
@@ -943,6 +1046,10 @@ cefnetd_handle_create (
 		/* Delete UNIX domain socket file */
 		cef_client_local_sock_name_get (sock_path);
 		unlink (sock_path);
+		if (hdl->babel_use_f) {
+			cef_client_babel_sock_name_get (sock_path);
+			unlink (sock_path);
+		}
 		return (NULL);
 	}
 	srand ((unsigned) time (NULL));
@@ -983,6 +1090,10 @@ cefnetd_handle_create (
 		/* Delete UNIX domain socket file */
 		cef_client_local_sock_name_get (sock_path);
 		unlink (sock_path);
+		if (hdl->babel_use_f) {
+			cef_client_babel_sock_name_get (sock_path);
+			unlink (sock_path);
+		}
 		return (NULL);
 	}
 	if (hdl->cs_stat->cache_type != CefC_Default_Cache_Type) {
@@ -1004,6 +1115,10 @@ cefnetd_handle_create (
 		/* Delete UNIX domain socket file */
 		cef_client_local_sock_name_get (sock_path);
 		unlink (sock_path);
+		if (hdl->babel_use_f) {
+			cef_client_babel_sock_name_get (sock_path);
+			unlink (sock_path);
+		}
 		return (NULL);
 	}
 	/* set send content rate 	*/
@@ -1015,6 +1130,10 @@ cefnetd_handle_create (
 		/* Delete UNIX domain socket file */
 		cef_client_local_sock_name_get (sock_path);
 		unlink (sock_path);
+		if (hdl->babel_use_f) {
+			cef_client_babel_sock_name_get (sock_path);
+			unlink (sock_path);
+		}
 		return (NULL);
 	}
 #else // CefC_ContentStore
@@ -1029,13 +1148,18 @@ cefnetd_handle_create (
 	cefnetd_node_id_get (hdl);
 	
 	/* Creates App Reg table 		*/
-	hdl->app_reg = cef_hash_tbl_create (CefC_App_FibSize);
+	hdl->app_reg = cef_hash_tbl_create (hdl->app_fib_max_size);
 	/* Creates App Reg PIT 			*/
-	hdl->app_pit = cef_hash_tbl_create (CefC_App_PitSize);
+	hdl->app_pit = cef_hash_tbl_create (hdl->app_pit_max_size);
+
+#ifdef	CefC_C3
+	hdl->c3_log_sum_fib = cef_hash_tbl_create( hdl->app_fib_max_size );
+	hdl->c3_log_sum_pit = cef_hash_tbl_create( hdl->pit_max_size );
+#endif	// CefC_C3
 	
 	/* Inits the plugin 			*/
 	cef_plugin_init (&(hdl->plugin_hdl));
-	
+
 #ifdef CefC_Mobility
 	cef_mb_plugin_init (
 		&hdl->plugin_hdl.mb, hdl->plugin_hdl.tx_que, hdl->plugin_hdl.tx_que_mp, 
@@ -1095,6 +1219,7 @@ cefnetd_handle_create (
 		res = ccore_valid_cefnetd_init (conf_path);
 		
 		if (res < 0) {
+			cef_log_write (CefC_Log_Error, "Failed to initialize validation for ccore\n");
 			cefnetd_handle_destroy (hdl);
 			return (NULL);
 		}
@@ -1111,6 +1236,39 @@ cefnetd_handle_create (
 		return (NULL);
 	}
 #endif // CefC_Ser_Log
+
+	//NodeName Check
+	if ( hdl->My_Node_Name == NULL ) {
+		char		addrstr[256];
+		if ( hdl->top_nodeid_len == 4 ) {
+			inet_ntop (AF_INET, hdl->top_nodeid, addrstr, sizeof (addrstr));
+		} else if ( hdl->top_nodeid_len == 16 ) {
+			inet_ntop (AF_INET6, hdl->top_nodeid, addrstr, sizeof (addrstr));
+		}
+		unsigned char	out_name[CefC_Max_Length];
+		unsigned char	out_name_tlv[CefC_Max_Length];
+
+		hdl->My_Node_Name = malloc( sizeof(char) * strlen(addrstr) + 1 );
+		strcpy( hdl->My_Node_Name, addrstr );
+		/* Convert Name TLV */
+		strcpy( (char*)out_name, "ccn:/" );
+		strcat( (char*)out_name, hdl->My_Node_Name );
+		res = cef_frame_conversion_uri_to_name ((char*)out_name, out_name_tlv);
+		if ( res < 0 ) {
+			/* Error */
+			cef_log_write (CefC_Log_Error, "NODE_NAME contains characters that cannot be used.\n");
+			return( NULL );
+		} else {
+			struct tlv_hdr name_tlv_hdr;
+			name_tlv_hdr.type = htons (CefC_T_NAME);
+			name_tlv_hdr.length = htons (res);
+			hdl->My_Node_Name_TLV = (unsigned char*)malloc( res+CefC_S_TLF );
+			hdl->My_Node_Name_TLV_len = res + CefC_S_TLF;
+			memcpy( &hdl->My_Node_Name_TLV[0], &name_tlv_hdr, sizeof(struct tlv_hdr) );
+			memcpy( &hdl->My_Node_Name_TLV[CefC_S_TLF], out_name_tlv, res );
+		}
+		cef_log_write (CefC_Log_Warn, "No NODE_NAME defined in cefnetd.conf; IP address is temporarily used as the node name.\n");
+	}
 	
 	return (hdl);
 }
@@ -1122,7 +1280,7 @@ cefnetd_handle_destroy (
 	CefT_Netd_Handle* hdl						/* cefnetd handle to destroy			*/
 ) {
 	char sock_path[1024];
-	
+
 	/* destroy plugins 		*/
 #ifdef CefC_NdnPlugin
 	cef_ndn_plugin_destroy (hdl->plugin_hdl.ndn);
@@ -1158,6 +1316,11 @@ cefnetd_handle_destroy (
 #endif // CefC_Debug
 
 	cefnetd_faces_destroy (hdl);
+	if (hdl->babel_use_f) {
+		cef_client_babel_sock_name_get (sock_path);
+		unlink (sock_path);
+	}
+
 #ifdef CefC_ContentStore
 	cef_csmgr_stat_destroy (&hdl->cs_stat);
 #elif CefC_Dtc
@@ -1169,6 +1332,9 @@ cefnetd_handle_destroy (
 #ifdef CefC_Ser_Log
 	cef_ser_log_destroy ();
 #endif // CefC_Ser_Log
+#ifdef CefC_Ccore
+	ccore_handle_destroy (&hdl->rt_hdl);
+#endif // CefC_Ccore
 	free (hdl);
 #ifdef CefC_Android
 	/* Process for Android next running	*/
@@ -1183,10 +1349,6 @@ cefnetd_handle_destroy (
 	
 	cef_client_local_sock_name_get (sock_path);
 	unlink (sock_path);
-	
-#ifdef CefC_Ccore
-	ccore_handle_destroy (&hdl->rt_hdl);
-#endif // CefC_Ccore
 	
 	cef_log_write (CefC_Log_Info, "Stop\n");
 }
@@ -1209,6 +1371,18 @@ cefnetd_event_dispatch (
 	int fd_type[CefC_Listen_Face_Max * 2];
 	int faceids[CefC_Listen_Face_Max * 2];
 	int fdnum;
+	
+#ifdef CefC_C3
+	//	Start LOG
+	if ( hdl->c3_log == 1 ) {
+		res = cefnetd_c3_log_init( hdl );
+		if ( res < 0 ) {
+			/* Error */
+			cef_log_write (CefC_Log_Error, "C3_LOG cannot OPEN.\n");
+			cefnetd_running_f = 0;
+		}
+	}
+#endif	// CefC_C3
 	
 #ifdef CefC_Ccore
 	uint64_t ret_cnt = 5;
@@ -1325,7 +1499,22 @@ cefnetd_event_dispatch (
 #endif	//CefC_CefnetdCache
 		}
 #endif // CefC_ContentStore
+
+#ifdef	CefC_C3
+		if ( hdl->c3_log == 1 ) {
+			if ( nowt > hdl->c3_log_next ) {
+				cefnetd_c3_log_output_sum( hdl );
+			}
+		}
+#endif
 	}
+
+#ifdef CefC_C3
+	//	End LOG
+	if ( hdl->c3_log == 1 ) {
+		cefnetd_c3_log_end( hdl );
+	}
+#endif	// CefC_C3
 
 }
 /*--------------------------------------------------------------------------------------
@@ -1564,7 +1753,7 @@ cefnetd_poll_socket_prepare (
 	}
 #endif // CefC_Ccore
 
-	for (i = 0 ; i < CefC_App_Conn_Num ; i++) {
+	for (i = 0 ; i < hdl->app_fds_num ; i++) {
 		if (hdl->app_fds[i] != -1) {
 			fds[res].events = POLLIN | POLLERR;
 			fds[res].fd = hdl->app_fds[i] ;
@@ -1706,8 +1895,10 @@ cefnetd_input_from_local_process (
 	int i;
 	int peer_faceid;
 	unsigned char buff[CefC_Max_Length];
-	unsigned char rsp_msg[CefC_Max_Length];
+	unsigned char* rsp_msg;
 	struct pollfd send_fds[1];
+	
+	rsp_msg = calloc(1, CefC_Max_Length);
 	
 	/* Obtains the FD for local face 	*/
 	sock = cef_face_get_fd_from_faceid (CefC_Faceid_Local);
@@ -1761,9 +1952,8 @@ cefnetd_input_from_local_process (
 			hdl->app_steps[i] = 0;
 			
 			if (memcmp (buff, CefC_Ctrl, CefC_Ctrl_Len) == 0) {
-				memset (rsp_msg, 0, CefC_Max_Length);
 				flag = cefnetd_input_control_message (
-						hdl, buff, len, rsp_msg, hdl->app_fds[i]);
+						hdl, buff, len, &rsp_msg, hdl->app_fds[i]);
 				if (flag > 0) {
 					send_fds[0].fd = hdl->app_fds[i];
 					send_fds[0].events = POLLOUT | POLLERR;
@@ -1772,7 +1962,23 @@ cefnetd_input_from_local_process (
 							cef_log_write (CefC_Log_Warn, 
 								"Failed to send to Local peer (%d)\n", send_fds[0].fd);
 						} else {
-							send (hdl->app_fds[i], rsp_msg, flag, 0);
+							{
+								int	fblocks;
+								int rem_size;
+								int counter;
+								int fcntlfl;
+								fcntlfl = fcntl (hdl->app_fds[i], F_GETFL, 0);
+								fcntl (hdl->app_fds[i], F_SETFL, fcntlfl & ~O_NONBLOCK);
+								fblocks = flag / 65535;
+								rem_size = flag % 65535;
+								for (counter=0; counter<fblocks; counter++){
+									send (hdl->app_fds[i], &rsp_msg[counter*65535], 65535, 0);
+								}
+								if (rem_size != 0){
+									send (hdl->app_fds[i], &rsp_msg[fblocks*65535], rem_size, 0);
+								}
+								fcntl (hdl->app_fds[i], F_SETFL, fcntlfl | O_NONBLOCK);
+							}
 						}
 					}
 				}
@@ -1793,9 +1999,31 @@ cefnetd_input_from_local_process (
 						hdl, CefC_Faceid_Local, hdl->app_faces[i], buff, len);
 			}
 		}
+		else {
+			struct pollfd fds[1];
+			fds[0].fd = hdl->app_fds[i];
+			fds[0].events = POLLIN | POLLERR;
+			poll (fds, 1, 0);
+			if ((fds[0].revents & POLLIN) && (fds[0].revents & POLLHUP)) {
+				cef_face_close (hdl->app_faces[i]);
+				hdl->app_fds[i] = -1;
+				hdl->app_fds_num--;
+				
+				for (flag = i ; flag < hdl->app_fds_num ; flag++) {
+					hdl->app_fds[flag] = hdl->app_fds[flag + 1];
+					hdl->app_faces[flag] = hdl->app_faces[flag + 1];
+					hdl->app_steps[flag] = hdl->app_steps[flag + 1];
+				}
+				i--;
+			}
+		}
 	}
 	
 	if (!hdl->babel_use_f) {
+		if (rsp_msg != NULL){
+			free(rsp_msg);
+			rsp_msg = NULL;
+		}
 		return (1);
 	}
 	
@@ -1838,6 +2066,10 @@ cefnetd_input_from_local_process (
 	}
 	
 	if (hdl->babel_sock < 0) {
+		if (rsp_msg != NULL){
+			free(rsp_msg);
+			rsp_msg = NULL;
+		}
 		return (1);
 	}
 	
@@ -1849,9 +2081,25 @@ cefnetd_input_from_local_process (
 		if (memcmp (buff, CefC_Ctrl, CefC_Ctrl_Len) == 0) {
 			memset (rsp_msg, 0, CefC_Max_Length);
 			flag = cefnetd_input_control_message (
-					hdl, buff, len, rsp_msg, hdl->babel_sock);
+					hdl, buff, len, &rsp_msg, hdl->babel_sock);
 			if (flag > 0) {
-				send (hdl->babel_sock, rsp_msg, flag, 0);
+				{
+					int	fblocks;
+					int rem_size;
+					int counter;
+					int fcntlfl;
+					fcntlfl = fcntl (hdl->babel_sock, F_GETFL, 0);
+					fcntl (hdl->babel_sock, F_SETFL, fcntlfl & ~O_NONBLOCK);
+					fblocks = flag / 65535;
+					rem_size = flag % 65535;
+					for (counter=0; counter<fblocks; counter++){
+						send (hdl->babel_sock, &rsp_msg[counter*65535], 65535, 0);
+					}
+					if (rem_size != 0){
+						send (hdl->babel_sock, &rsp_msg[fblocks*65535], rem_size, 0);
+					}
+					fcntl (hdl->babel_sock, F_SETFL, fcntlfl | O_NONBLOCK);
+				}
 			}
 		} else if (memcmp (buff, CefC_Face_Close, len) == 0) {
 			cef_face_close (hdl->babel_face);
@@ -1861,7 +2109,22 @@ cefnetd_input_from_local_process (
 			/* NOP */;
 		}
 	}
+	else {
+		struct pollfd fds[1];
+		fds[0].fd = hdl->babel_sock;
+		fds[0].events = POLLIN | POLLERR;
+		poll (fds, 1, 0);
+		if (fds[0].revents & (POLLIN | POLLHUP)) {
+			cef_face_close (hdl->babel_face);
+			hdl->babel_sock = -1;
+			hdl->babel_face = -1;
+		}
+	}
 	
+	if (rsp_msg != NULL){
+		free(rsp_msg);
+		rsp_msg = NULL;
+	}
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -1899,6 +2162,72 @@ cefnetd_input_app_reg_command (
 	}
 #endif // CefC_Debug
 	
+	/* Max Check */
+	if ( (poh->app_reg_f == CefC_App_Reg ) || (poh->app_reg_f == CefC_App_RegPrefix) ) {
+		if( cef_hash_tbl_item_num_get(hdl->app_reg) == cef_hash_tbl_def_max_get(hdl->app_reg)) {
+		cef_log_write (CefC_Log_Warn, 
+			"FIB(APP) table is full(FIB_SIZE_APP = %d)\n", cef_hash_tbl_def_max_get(hdl->app_reg));
+		return (0);
+		}
+	} else if (poh->app_reg_f == CefC_App_RegPit) {
+		if( cef_hash_tbl_item_num_get(hdl->app_pit) == cef_hash_tbl_def_max_get(hdl->app_pit)) {
+		cef_log_write (CefC_Log_Warn, 
+			"PIT(APP) table is full(PIT_SIZE_APP = %d)\n", cef_hash_tbl_def_max_get(hdl->app_pit));
+		return (0);
+		}
+	}
+
+#ifdef	CefC_C3	
+	{
+	if ( hdl->c3_log == 1 ) {
+		int	res1;
+		int	res2;
+		int	i, pos;
+		char	uri[2048];
+		unsigned char	hash_uri[MD5_DIGEST_LENGTH];
+		char	hash_char[MD5_DIGEST_LENGTH*2+1];
+		res1 = cef_hash_tbl_item_check_exact( hdl->app_reg, pm->name, pm->name_len );
+		res2 = cef_hash_tbl_item_check_exact( hdl->fib, pm->name, pm->name_len );
+		if ( (res1 == 1) || (res2 == 1) ) {
+			/* Found */
+			if (poh->app_reg_f == CefC_App_Reg || poh->app_reg_f == CefC_App_RegPrefix) {
+				/* Error Check */
+				cef_frame_conversion_name_to_string (pm->name, pm->name_len, uri, "ccn");
+				if ( strncmp( uri, CefC_C3_URI_Prefix, CefC_C3_URI_Prefix_Len ) == 0 ) {
+					/* Error */
+					MD5 ( (unsigned char*)uri, strlen(uri), hash_uri);
+					memset( hash_char, 0x00, MD5_DIGEST_LENGTH*2+1 );
+					for ( i = 0, pos = 0; i < MD5_DIGEST_LENGTH; i++ ) {
+						sprintf(&hash_char[pos],"%02x", hash_uri[i]);
+						pos += 2;
+					}
+					cefnetd_c3_log_output_fib_error ( hdl, CefC_C3_ADD, hash_char );
+					cef_log_write (CefC_Log_Warn, "This URI[%s] has already been registered, so SKIP register\n", hash_char);
+					goto APP_REG_SKIP;
+				}
+			}
+		} else {
+			/* Not Found */
+			if (poh->app_reg_f == CefC_App_DeReg) {
+				/* Error Check */
+				cef_frame_conversion_name_to_string (pm->name, pm->name_len, uri, "ccn");
+				if ( strncmp( uri, CefC_C3_URI_Prefix, CefC_C3_URI_Prefix_Len ) == 0 ) {
+					MD5 ( (unsigned char*)uri, strlen(uri), hash_uri);
+					memset( hash_char, 0x00, MD5_DIGEST_LENGTH*2+1 );
+					for ( i = 0, pos = 0; i < MD5_DIGEST_LENGTH; i++ ) {
+						sprintf(&hash_char[pos],"%02x", hash_uri[i]);
+						pos += 2;
+					}
+					cefnetd_c3_log_output_fib_error ( hdl, CefC_C3_DEL, hash_char );
+					cef_log_write (CefC_Log_Warn, "This URI[%s] has already been deregistered, so SKIP deregister\n", hash_char);
+					goto APP_REG_SKIP;
+				}
+			}
+		}
+	}
+	}
+#endif	// CefC_C3
+	
 	if (poh->app_reg_f == CefC_App_Reg || poh->app_reg_f == CefC_App_RegPrefix) {
 		wp = (CefT_App_Reg*) malloc (sizeof (CefT_App_Reg));
 		wp->faceid = faceid;
@@ -1913,6 +2242,36 @@ cefnetd_input_app_reg_command (
 				cef_hash_tbl_item_set_for_app (hdl->app_reg, pm->name, 
 											   pm->name_len, wp->match_type, wp)) {
 			cefnetd_xroute_change_report (hdl, pm->name, pm->name_len, 1);
+#ifdef	CefC_C3	
+			{
+			if ( hdl->c3_log == 1 ) {
+				char	uri[2048];
+				CefT_C3_LOG*	entry;
+				cef_frame_conversion_name_to_string (pm->name, pm->name_len, uri, "ccn");
+				if ( strncmp( uri, CefC_C3_URI_Prefix, CefC_C3_URI_Prefix_Len ) == 0 ) {
+					entry = (CefT_C3_LOG*)cef_hash_tbl_item_get( hdl->c3_log_sum_fib, pm->name, pm->name_len );
+					if ( entry == NULL ) {
+						/* V‹K */
+						/* Create FIB SUM */
+						entry = cefnetd_c3_create_fib_sum( hdl, pm->name, pm->name_len );
+						if ( entry == NULL ) {
+							/* Error */
+							/* !!!!! */
+							goto APP_REG_SKIP;
+						}
+						/* c3 log */
+						cefnetd_c3_log_output_fib( hdl, CefC_C3_ADD, entry, CefC_C3_FIB_APP );
+					} else {
+						if ( entry->del_f == 1 ) {
+							entry->del_f = 0;
+						}
+						/* c3 log */
+						cefnetd_c3_log_output_fib( hdl, CefC_C3_ADD, entry, CefC_C3_FIB_APP );
+					}
+				}
+			}
+			}
+#endif	// CefC_C3
 		}
 		else{
 			char uri[2048];
@@ -1922,6 +2281,24 @@ cefnetd_input_app_reg_command (
 	} else if (poh->app_reg_f == CefC_App_DeReg) {
 		wp = (CefT_App_Reg*) 
 				cef_hash_tbl_item_remove (hdl->app_reg, pm->name, pm->name_len);
+#ifdef	CefC_C3	
+		{
+		if ( hdl->c3_log == 1 ) {
+			char	uri[2048];
+			CefT_C3_LOG*	entry;
+			cef_frame_conversion_name_to_string (pm->name, pm->name_len, uri, "ccn");
+			if ( strncmp( uri, CefC_C3_URI_Prefix, CefC_C3_URI_Prefix_Len ) == 0 ) {
+				/* FIB SUM set delete flag */
+				entry = (CefT_C3_LOG*)cef_hash_tbl_item_get( hdl->c3_log_sum_fib, pm->name, pm->name_len );
+				entry->del_f = 1;
+				entry->del_time = time(NULL);
+				/* C3 log */
+				cefnetd_c3_log_output_fib( hdl, CefC_C3_DEL, entry, CefC_C3_FIB_APP );
+			}
+		}
+		}
+#endif	// CefC_C3
+
 		
 		if (wp) {
 			cefnetd_xroute_change_report (hdl, pm->name, pm->name_len, 0);
@@ -1946,6 +2323,11 @@ cefnetd_input_app_reg_command (
 			cef_pit_entry_free (hdl->app_pit, pe);
 		}
 	}
+
+#ifdef	CefC_C3	
+APP_REG_SKIP:
+#endif	// CefC_C3
+
 	
 	return (1);
 }
@@ -1975,7 +2357,7 @@ cefnetd_xroute_change_report (
 	
 	memcpy (&buff[4], &name_len, sizeof (uint16_t));
 	memcpy (&buff[4 + sizeof (uint16_t)], name, name_len);
-	
+
 	rc = send (hdl->babel_sock, buff, length + 3, 0);
 	if (rc < 0) {
 		cef_face_close (hdl->babel_face);
@@ -1992,21 +2374,26 @@ cefnetd_xroute_change_report (
 static int
 cefnetd_fib_info_get (
 	CefT_Netd_Handle* hdl, 
-	unsigned char* buff
+	unsigned char** rsp_msgpp
 ) {
-	uint16_t msg_len = 3;
-	uint16_t length;
+	uint32_t msg_len = 5; /* code(1byte)+length(4byte) */
+	uint32_t length;
 	CefT_App_Reg* aentry;
 	uint32_t index = 0;
 	CefT_Fib_Entry* fentry = NULL;
 	int table_num;
 	int i;
+	char* buff;
+	int buff_size;
+	
+	buff = (char*)*rsp_msgpp;
+	buff_size = CefC_Max_Length;
 	
 	if (!hdl->babel_use_f) {
 		buff[0] = 0x01;
 		length = 0;
-		memcpy (&buff[1], &length, sizeof (uint16_t));
-		return (3);
+		memcpy (&buff[1], &length, sizeof (uint32_t));
+		return (5);
 	}
 	
 	do {
@@ -2014,6 +2401,18 @@ cefnetd_fib_info_get (
 					cef_hash_tbl_item_check_from_index (hdl->app_reg, &index);
 		
 		if (aentry) {
+			if ((msg_len + sizeof (uint16_t) + aentry->name_len) > buff_size){
+				void *new = realloc(buff, buff_size+CefC_Max_Length);
+				if (new == NULL) {
+					buff[0] = 0x01;
+					length = 0;
+					memcpy (&buff[1], &length, sizeof (uint32_t));
+					return (5);
+				}
+				buff = new;
+				*rsp_msgpp = (unsigned char*)new;
+				buff_size += CefC_Max_Length;
+			}
 			memcpy (&buff[msg_len], &aentry->name_len, sizeof (uint16_t));
 			memcpy (&buff[msg_len + sizeof (uint16_t)], aentry->name, aentry->name_len);
 			msg_len += sizeof (uint16_t) + aentry->name_len;
@@ -2030,16 +2429,54 @@ cefnetd_fib_info_get (
 			break;
 		}
 		
+		/* Face Check */
+		{
+			CefT_Fib_Face* faces = NULL;
+			int			type_c = 0;
+			int			type_s = 0;
+			int			type_d = 0;
+			
+			faces = fentry->faces.next;
+			while (faces != NULL) {
+			
+				if ( (faces->type >> 2) & 0x01 ) {
+					type_c = 1;
+				}
+				if ( (faces->type >> 1) & 0x01 ) {
+					type_s = 1;
+				}
+				if ( (faces->type) & 0x01 ) {
+					type_d = 1;
+				}
+				faces = faces->next;
+			}
+			if ( (type_c == 0) && (type_s == 0) && (type_d == 1) ) {
+				index++;
+				continue;
+			}
+		}
+		
+		if ((msg_len + sizeof (uint16_t) + fentry->klen) > buff_size){
+			void *new = realloc(buff, buff_size+CefC_Max_Length);
+			if (new == NULL) {
+				buff[0] = 0x01;
+				length = 0;
+				memcpy (&buff[1], &length, sizeof (uint32_t));
+				return (5);
+			}
+			buff = new;
+			*rsp_msgpp = (unsigned char*)new;
+			buff_size += CefC_Max_Length;
+		}
 		memcpy (&buff[msg_len], &fentry->klen, sizeof (uint16_t));
 		memcpy (&buff[msg_len + sizeof (uint16_t)], fentry->key, fentry->klen);
 		msg_len += sizeof (uint16_t) + fentry->klen;
-		
 		index++;
 	}
 	
 	buff[0] = 0x01;
-	length = msg_len - 3;
-	memcpy (&buff[1], &length, sizeof (uint16_t));
+	length = msg_len - 5;
+	memcpy (&buff[1], &length, sizeof (uint32_t));
 	
 	return ((int) msg_len);
 }
@@ -2062,6 +2499,14 @@ cefnetd_babel_process (
 	int rcu, rct;
 	char uri[CefC_Max_Length];
 	int change_f;
+
+#ifdef	CefC_C3
+	int	c3_f = 0;
+	unsigned char tmp_name[2048];
+	int		 tmp_name_len;
+	int		 res;
+	int		 changed = 0x00;
+#endif
 	
 	if (!hdl->babel_use_f) {
 		return (0);
@@ -2125,6 +2570,25 @@ cefnetd_babel_process (
 	index += sizeof (uint16_t);
 	memcpy (&buff[index], uri, prefix_len);
 	index += prefix_len;
+
+#ifdef	CefC_C3
+	{
+		/* FIB(APP) Check */
+		res = cef_frame_conversion_uri_to_name( uri, tmp_name );
+		if ( res < 0 ) {
+			cef_log_write (CefC_Log_Error, "cefnetd_babel_process() Invalid URI.\n");
+			return(-1);
+		}
+		tmp_name_len = res;
+		res = cef_hash_tbl_item_check_exact( hdl->app_reg, tmp_name, tmp_name_len );
+		if ( res == 1 ) {
+			return(-1);
+		}
+		if ( strncmp( uri, CefC_C3_URI_Prefix, CefC_C3_URI_Prefix_Len ) == 0 ) {
+			c3_f = 1;
+		}
+	}
+#endif
 	
 	/* Set host		 		*/
 	buff[index] = (uint8_t) node_len;
@@ -2132,13 +2596,19 @@ cefnetd_babel_process (
 	memcpy (&buff[index], &msg[node_index], node_len);
 	index += node_len;
 	rcu = rct = 0;
-	
+
 	/* Update FIB with TCP			*/
 	if (hdl->babel_route & 0x01) {
 		buff[1] = 0x01;
 		rcu = cef_fib_route_msg_read (
 				hdl->fib, buff, index, CefC_Fib_Entry_Dynamic, &change_f);
 	}
+
+#ifdef	CefC_C3
+	if ( change_f != 0x00 ) {
+		changed = change_f;
+	}
+#endif	
 	
 	/* Update FIB with UDP			*/
 	if (hdl->babel_route & 0x02) {
@@ -2146,12 +2616,57 @@ cefnetd_babel_process (
 		rct = cef_fib_route_msg_read (
 				hdl->fib, buff, index, CefC_Fib_Entry_Dynamic, &change_f);
 	}
+
+#ifdef	CefC_C3
+	if ( change_f != 0x00 ) {
+		changed = change_f;
+	}
+#endif	
 	
 	if (rcu + rct) {
 		cef_face_update_listen_faces (
 			hdl->inudpfds, hdl->inudpfaces, &hdl->inudpfdc, 
 			hdl->intcpfds, hdl->intcpfaces, &hdl->intcpfdc);
 	}
+
+#ifdef	CefC_C3
+	{
+	if ( hdl->c3_log == 1 ) {
+		if ( c3_f ==1 ) {
+			CefT_C3_LOG*	entry;
+			/* change_f 0x01=New Entry, 0x02=Free Entry */
+			if ( changed == 0x01 ) {
+				entry = (CefT_C3_LOG*)cef_hash_tbl_item_get( hdl->c3_log_sum_fib, tmp_name, tmp_name_len );
+				if ( entry == NULL ) {
+					/* Create FIB SUM */
+					entry = cefnetd_c3_create_fib_sum( hdl, tmp_name, tmp_name_len );
+					if ( entry == NULL ) {
+						/* !!!!! */
+					} else {
+						/* c3 log */
+						cefnetd_c3_log_output_fib( hdl, CefC_C3_ADD, entry, CefC_C3_FIB );
+					}
+				} else {
+					if ( entry->del_f == 1 ) {
+						entry->del_f = 0;
+						entry->add_time = time(NULL);
+					}
+					/* c3 log */
+					cefnetd_c3_log_output_fib( hdl, CefC_C3_ADD, entry, CefC_C3_FIB );
+				}
+			} else if ( changed == 0x02 ) {
+				/* FIB SUM set delete flag */
+				entry = (CefT_C3_LOG*)cef_hash_tbl_item_get( hdl->c3_log_sum_fib, tmp_name, tmp_name_len );
+				entry->del_f = 1;
+				entry->del_time = time(NULL);
+				/* C3 log */
+				cefnetd_c3_log_output_fib( hdl, CefC_C3_DEL, entry, CefC_C3_FIB );
+				
+			}
+		}
+	}
+	}
+#endif	//CefC_C3
 	
 	buff[0] = 0x02;
 	buff[1] = 0x01;
@@ -2167,7 +2682,7 @@ cefnetd_input_control_message (
 	CefT_Netd_Handle* hdl,						/* cefnetd handle						*/
 	unsigned char* msg, 						/* the received message(s)				*/
 	int msg_size,								/* size of received message(s)			*/
-	unsigned char* rsp, 
+	unsigned char** rspp, 
 	int fd
 ) {
 	int index;
@@ -2192,7 +2707,7 @@ cefnetd_input_control_message (
 		return (-1);
 	} else if (
 		memcmp (&msg[CefC_Ctrl_Len], CefC_Ctrl_Status, CefC_Ctrl_Status_Len) == 0) {
-		res = cef_status_stats_output (hdl, rsp);
+		res = cef_status_stats_output (hdl, rspp);
 	} else if (memcmp (&msg[CefC_Ctrl_Len], CefC_Ctrl_Route, CefC_Ctrl_Route_Len) == 0) {
 		index = CefC_Ctrl_Len + CefC_Ctrl_Route_Len;
 		if ((memcmp (&msg[index], root_user_name, CefC_Ctrl_User_Len) == 0) ||
@@ -2225,17 +2740,17 @@ cefnetd_input_control_message (
 		
 		switch (msg[index]) {
 		case 'R': {
-			res = cefnetd_fib_info_get (hdl, rsp);
+			res = cefnetd_fib_info_get (hdl, rspp);
 			break;
 		}
 		case 'A': {
 			res = cefnetd_babel_process (hdl, &msg[index], 
-				msg_size - (CefC_Ctrl_Len + CefC_Ctrl_Babel_Len), rsp);
+				msg_size - (CefC_Ctrl_Len + CefC_Ctrl_Babel_Len), *rspp);
 			break;
 		}
 		case 'D': {
 			res = cefnetd_babel_process (hdl, &msg[index], 
-				msg_size - (CefC_Ctrl_Len + CefC_Ctrl_Babel_Len), rsp);
+				msg_size - (CefC_Ctrl_Len + CefC_Ctrl_Babel_Len), *rspp);
 			break;
 		}
 		default: {
@@ -2534,6 +3049,7 @@ cefnetd_ccr_r_neighbor_process (
 	char info_buff[CcoreC_Max_Length];
 	unsigned char resp_buff[CcoreC_Max_Length];
 	int res;
+	int header_footer_size;
 	
 	/* Obtains the neighbor information 	*/
 	res = cef_face_neighbor_info_get (info_buff);
@@ -2543,6 +3059,22 @@ cefnetd_ccr_r_neighbor_process (
 	}
 	
 	/* Creates the Neighbor response 		*/
+	{
+		unsigned char	work[CcoreC_Max_Length];
+		header_footer_size=ccore_frame_neighbor_res_create (work, (const char*)"", 0);
+	}
+	if ((header_footer_size + res) > CcoreC_Max_Length) {
+		res = res - ((header_footer_size + res) - CcoreC_Max_Length);
+	}
+	{ /* Trim response data (end of data is a line feed code) */
+		char* last_nl;
+		info_buff[res] = '\0';
+		last_nl = strrchr((const char*) info_buff, (int) '\n');
+		if (last_nl != NULL){
+			*(last_nl+1) = '\0';
+			res = strlen((const char*) info_buff);
+		}
+	}
 	res = ccore_frame_neighbor_res_create (resp_buff, info_buff, res);
 	
 	/* Sends the Neighbor response to ccored 	*/
@@ -2560,7 +3092,7 @@ cefnetd_ccr_r_fib_process (
 	unsigned char* msg, 
 	int msg_len
 ) {
-	char info_buff[CcoreC_Max_Length];
+	char info_buff[CcoreC_Max_Length] = {};
 	unsigned char resp_buff[CcoreC_Max_Length];
 	int res;
 	struct cefore_fixed_hdr* cefore_hdr;
@@ -2568,6 +3100,7 @@ cefnetd_ccr_r_fib_process (
 	uint16_t type, length;
 	uint16_t index;
 	uint16_t name_len, name_index;
+	int header_footer_size;
 	
 	/*-----------------------------------------------------------
 		Parses the FIB retrieve request 
@@ -2604,6 +3137,22 @@ cefnetd_ccr_r_fib_process (
 	}
 	
 	/* Creates the FIB retrieve response 		*/
+	{
+		unsigned char	work[CcoreC_Max_Length];
+		header_footer_size=ccore_frame_fib_res_create (work, (const char*)"", 0);
+	}
+	if ((header_footer_size + res) > CcoreC_Max_Length) {
+		res = res - ((header_footer_size + res) - CcoreC_Max_Length);
+	}
+	{ /* Trim response data (end of data is a line feed code) */
+		char* last_nl;
+		info_buff[res] = '\0';
+		last_nl = strrchr((const char*) info_buff, (int) '\n');
+		if (last_nl != NULL){
+			*(last_nl+1) = '\0';
+			res = strlen((const char*) info_buff);
+		}
+	}
 	res = ccore_frame_fib_res_create (resp_buff, info_buff, res);
 	
 	/* Sends the FIB retrieve response to ccored 	*/
@@ -3287,6 +3836,7 @@ cefnetd_ccr_r_cache_chunk_process (
 	uint16_t index;
 	uint16_t type, length;
 #endif // CefC_ContentStore
+	int header_footer_size;
 
 	if ((hdl->cs_stat == NULL) || (hdl->cs_stat->cache_type == CefC_Cache_Type_None)) {
 		cef_log_write (CefC_Log_Info, "Incoming ccore message, but CS is not used.\n");
@@ -3354,6 +3904,23 @@ cefnetd_ccr_r_cache_chunk_process (
 	res = (int) strlen ((char*) info_buff);
 	
 	/* Creates the Cache Chunk Retrieve response 		*/
+	{
+		unsigned char	work[CcoreC_Max_Length];
+		header_footer_size=ccore_frame_cache_chunk_res_create (work, (const char*)"", 0, result);
+	}
+	if ((header_footer_size + res) > CcoreC_Max_Length) {
+		res = res - ((header_footer_size + res) - CcoreC_Max_Length);
+	}
+	{ /* Trim response data (end of data is a comma(',')) */
+		char* last_comma;
+		info_buff[res] = '\0';
+		last_comma = strrchr((const char*) info_buff, (int) ',');
+		if (last_comma != NULL){
+			*(last_comma+1) = '\0';
+			res = strlen((const char*) info_buff);
+		}
+	}
+	
 	res = ccore_frame_cache_chunk_res_create (buff, info_buff, res, result);
 	
 	/* Sends the Cache Chunk response to ccored 	*/
@@ -3819,6 +4386,134 @@ cefnetd_incoming_interest_process (
 #endif // CefC_Debug
 		return (-1);
 	}
+
+#ifdef	CefC_C3
+	/* FIB Check */
+	{
+	if ( pm.org.c3_f != CefC_NOT_C3 ) {
+		int	res1;
+		int	res2;
+		CefT_C3_LOG* entry;
+		CefT_C3_LOG* pit_entry;
+		CefT_AppComp*	AppComp_p;
+		CefT_AppComp*	next_AppComp_p;
+		int				pd_idx;
+		uint16_t* fib_p;
+		CefT_Fib_Entry* fib_e = NULL;
+		CefT_Pit_Entry* pe = NULL;
+
+		fib_p = (uint16_t*)cefnetd_c3_fib_app_entry_search( hdl->app_reg, pm.name, pm.name_len );
+		if (fib_p) {
+			res1 = 1;
+		} else {
+			res1 = 0;
+		}
+		fib_e = cef_fib_entry_search( hdl->fib, pm.name, pm.name_len );
+		if (fib_e) {
+			res2 = 1;
+		} else {
+			res2 = 0;
+		}
+		if ( (res1 == 1) || (res2 == 1) ) {
+			/* Found OK */
+			if ( hdl->c3_log == 1 ) {
+				entry = (CefT_C3_LOG*)cefnetd_c3_log_sum_fib_entry_search( hdl->c3_log_sum_fib, pm.name, pm.name_len );
+				if ( entry == NULL ) {
+					/* Logical contradiction */
+					cef_log_write (CefC_Log_Warn, "cefnetd_incoming_interest_process() C3_hash Logical contradiction.\n");
+					if ( pm.AppComp_num > 0 ) {
+						/* Free AppComp */
+						cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+					}
+					return( -1 );
+				} else {
+					switch ( pm.org.c3_f ) {
+						case	CefC_C3_JOIN:
+							if ( pm.org.longlife_f == 1 ) {
+								entry->c3_join_L++;
+							} else {
+								entry->c3_join_R++;
+							}
+							
+							pe = cef_pit_entry_search (hdl->pit, &pm, &poh);
+							if ( pe == NULL ) {
+#ifdef CefC_Debug
+							{
+								int	jj;
+								int tmp_name_len;
+								if (pm.chnk_num_f) {
+									tmp_name_len = pm.name_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
+								} else {
+									tmp_name_len = pm.name_len;
+								}
+
+								fprintf (stdout,
+										"[%s] pm.name_len=%d pm.chnk_num_f=%d tmp_name_len=%d\n",
+										"cefnetd_incoming_interest_process", pm.name_len, pm.chnk_num_f, tmp_name_len );
+								for ( jj = 0; jj < pm.name_len; jj++ ) {
+									fprintf( stdout, "%02x ", pm.name[jj] );
+								}
+								fprintf( stdout, "\n" );
+							}
+#endif // CefC_Debug
+								if ( pm.org.longlife_f == 1 ) {
+									/* PIT Create LOG */
+									pit_entry = cefnetd_c3_create_pit_sum( hdl, pm.name, pm.name_len );
+									if ( pit_entry == NULL ) {
+										if ( pm.AppComp_num > 0 ) {
+											/* Free AppComp */
+											cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+										}
+										return( -1 );
+									}
+									cefnetd_c3_log_output_pit( hdl, CefC_C3_ADD, pit_entry );
+								}
+							}
+						
+							break;
+						case	CefC_C3_LEAVE:
+							entry->c3_leave++;
+							break;
+						case	CefC_C3_PUBLISH:
+							entry->c3_publish++;
+							if ( pm.AppComp_num > 0 ) {
+								AppComp_p = pm.AppComp;
+								next_AppComp_p = NULL;
+								while( AppComp_p ) {
+									next_AppComp_p = (CefT_AppComp*)AppComp_p->next_p;
+									pd_idx = AppComp_p->app_comp - T_APP;
+									if ( pd_idx >= CefC_C3_LOG_TAPP_MAX-1 ) {
+										entry->c3_publish_data[CefC_C3_LOG_TAPP_MAX-1]++;
+									} else {
+										entry->c3_publish_data[pd_idx]++;
+									}
+									AppComp_p = next_AppComp_p;
+								}
+							}
+							break;
+					}
+				}
+			}
+		} else {
+			/* Not Found Unknown */
+			if ( hdl->c3_log == 1 ) {
+				hdl->c3_log_unknown++;
+			}
+			if ( pm.AppComp_num > 0 ) {
+				/* Free AppComp */
+				cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+			}
+			return( -1 );
+		}
+	}
+	}
+#endif	// CefC_C3
+
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
+
 #ifdef CefC_Debug
 	{
 		int dbg_x;
@@ -4021,14 +4716,17 @@ cefnetd_incoming_interest_process (
 				pit_res = cef_csmgr_rep_f_check (pe, peer_faceid);
 			}
 			if ((pit_res == 0) || (dnfaces == pe->dnfacenum)) {
+				forward_interest_f = 1;			//#909
 				goto FORWARD_INTEREST;
 			}
 		}
 		
 		/* Checks Content Store */
+		if (hdl->cs_stat->cache_type != CefC_Default_Cache_Type) {
+#if 0
 		if ((hdl->cs_stat->cache_type != CefC_Default_Cache_Type) && 
 			((poh.lifetime_f) && (poh.lifetime > 0))) {
-			
+#endif			
 			/* Checks the temporary/local cache in cefnetd 		*/
 			unsigned char* cob = NULL;
 			cs_res = cef_csmgr_cache_lookup (hdl->cs_stat, peer_faceid, &pm, &poh, pe, &cob);
@@ -4085,12 +4783,16 @@ FORWARD_INTEREST:
 				pit_res = cef_csmgr_rep_f_check (pe, peer_faceid);
 			}
 			if ((pit_res == 0) || (dnfaces == pe->dnfacenum)) {
+				forward_interest_f = 1;			//#909
 				goto FORWARD_INTEREST;
 			}
 		}
 		
 		/* Checks Content Store */
 		if ((poh.lifetime_f) && (poh.lifetime > 0) && (pm.app_comp == CefC_T_APP_DTC)) {
+#if 0
+		if ((poh.lifetime_f) && (poh.lifetime > 0) && (pm.app_comp == CefC_T_APP_DTC)) {
+#endif
 			/* Checks the temporary cache in cefnetd 		*/
 			unsigned char* cob = NULL;
 			cs_res = cef_csmgr_cache_lookup (hdl->cs_stat, peer_faceid, &pm, &poh, pe, &cob);
@@ -4146,7 +4848,16 @@ FORWARD_INTEREST:
 		} else {
 			name_len = pm.name_len;
 		}
+#ifdef CefC_C3
+		if ( pm.org.c3_f == CefC_NOT_C3 ) {
+			fip = (uint16_t*) cef_hash_tbl_item_get_for_app (hdl->app_reg, pm.name, name_len);
+		} else {
+			fip = (uint16_t*) cefnetd_c3_fib_app_entry_search (hdl->app_reg, pm.name, name_len);
+		}
+#else
 		fip = (uint16_t*) cef_hash_tbl_item_get_for_app (hdl->app_reg, pm.name, name_len);
+#endif		
+		
 #endif // CefC_Nwproc
 		if (fip) {
 			if (cef_face_check_active (*fip) > 0) {
@@ -4157,7 +4868,6 @@ FORWARD_INTEREST:
 				cef_face_frame_send_forced (
 					*fip, msg, (size_t) (payload_len + header_len));
 			}
-			
 			return (1);
 		}
 		
@@ -4186,7 +4896,7 @@ FORWARD_INTEREST:
 		}
 #endif // CefC_NdnPlugin
 	}
-	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -4335,8 +5045,11 @@ cefnetd_incoming_interest_with_symbolic_code_process (
 			}
 			
 			/* Checks Content Store */
+			if (hdl->cs_stat->cache_type != CefC_Default_Cache_Type) {
+#if 0
 			if ((hdl->cs_stat->cache_type != CefC_Default_Cache_Type) &&
 				((poh->lifetime_f) && (poh->lifetime > 0))) {
+#endif
 				
 				/* Checks dnface reply flag */
 				res = cef_csmgr_rep_f_check (pe, peer_faceid);
@@ -4497,6 +5210,7 @@ cefnetd_incoming_object_process (
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Content Object is too large\n");
 #endif // CefC_Debug
+
 		return (-1);
 	}
 	
@@ -4512,8 +5226,69 @@ cefnetd_incoming_object_process (
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Detects the invalid Content Object\n");
 #endif // CefC_Debug
+		if ( pm.AppComp_num > 0 ) {
+			/* Free AppComp */
+			cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+		}
 		return (-1);
 	}
+
+#ifdef	CefC_C3
+	{
+	if ( pm.org.c3_f != CefC_NOT_C3 ) {
+		if ( hdl->c3_log == 1 ) {
+			CefT_C3_LOG* entry;
+			CefT_AppComp*	AppComp_p;
+			CefT_AppComp*	next_AppComp_p;
+			int				pd_idx;
+
+			entry = (CefT_C3_LOG*)cefnetd_c3_log_sum_fib_entry_search( hdl->c3_log_sum_fib, pm.name, pm.name_len );
+			if ( entry == NULL ) {
+				/* Logical contradiction */
+				cef_log_write (CefC_Log_Warn, "cefnetd_incoming_object_process() C3_hash Logical contradiction.\n");
+				if ( pm.AppComp_num > 0 ) {
+					/* Free AppComp */
+					cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+				}
+				return( -1 );
+			} else {
+				switch ( pm.org.c3_f ) {
+					case	CefC_C3_JOIN:
+						if ( pm.org.longlife_f == 1 ) {
+							entry->c3_join_L++;
+						} else {
+							entry->c3_join_R++;
+						}
+						break;
+					case	CefC_C3_LEAVE:
+						entry->c3_leave++;
+						break;
+					case	CefC_C3_PUBLISH:
+						entry->c3_publish++;
+						if ( pm.AppComp_num > 0 ) {
+							AppComp_p = pm.AppComp;
+							next_AppComp_p = NULL;
+							while( AppComp_p ) {
+								next_AppComp_p = (CefT_AppComp*)AppComp_p->next_p;
+								pd_idx = AppComp_p->app_comp - T_APP;
+								if ( pd_idx >= CefC_C3_LOG_TAPP_MAX-1 ) {
+									entry->c3_publish_data[CefC_C3_LOG_TAPP_MAX-1]++;
+								} else {
+									entry->c3_publish_data[pd_idx]++;
+								}
+								AppComp_p = next_AppComp_p;
+							}
+						}
+						break;
+				}
+			}
+		}
+	}
+	}
+#endif	// CefC_C3
+
+
+
 
 #ifdef CefC_Debug
 	{
@@ -4533,6 +5308,10 @@ cefnetd_incoming_object_process (
 	/* Checks whether this Object is the command or not */
 	res = cefnetd_incoming_command_process (hdl, faceid, peer_faceid, &pm);
 	if (res > 0) {
+		if ( pm.AppComp_num > 0 ) {
+			/* Free AppComp */
+			cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+		}
 		return (1);
 	}
 	hdl->stat_recv_frames++;
@@ -4647,6 +5426,10 @@ SKIP_CACHE:
 					hdl->plugin_hdl.ndn, msg, payload_len + header_len, &pm, &poh);
 			}
 #endif // CefC_NdnPlugin
+			if ( pm.AppComp_num > 0 ) {
+				/* Free AppComp */
+				cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+			}
 			return (-1);
 		}
 
@@ -4723,8 +5506,13 @@ SKIP_CACHE:
 				if (pe->stole_f) {
 					cef_pit_entry_free (hdl->pit, pe);
 				}
-				if(pit_idx == 0)
+				if(pit_idx == 0) {
+					if ( pm.AppComp_num > 0 ) {
+						/* Free AppComp */
+						cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+					}
 					return (1);
+				}
 			}
 		}
 	
@@ -4733,6 +5521,11 @@ SKIP_CACHE:
 		face_num = 0;
 		pe = NULL;
 	}
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -4786,6 +5579,10 @@ cefnetd_incoming_piggyback_process (
 	
 	res = cef_frame_message_parse (
 					pkt, msg_len, header_len, &poh, &pm, CefC_PT_OBJECT);
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
 	if (res < 0) {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Finer, "Detects the invalid Piggyback\n");
@@ -4895,6 +5692,10 @@ cefnetd_incoming_pingreq_process (
 	/* Parses the received  Cefping Request	*/
 	res = cef_frame_message_parse (
 					msg, payload_len, header_len, &poh, &pm, CefC_PT_PING_REQ);
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
 	if (res < 0) {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Detects the invalid Ping Request\n");
@@ -5070,6 +5871,10 @@ cefnetd_incoming_pingrep_process (
 	/* Parses the received  Cefping Replay 	*/
 	res = cef_frame_message_parse (
 					msg, payload_len, header_len, &poh, &pm, CefC_PT_PING_REP);
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
 	if (res < 0) {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Detects the invalid Ping Response\n");
@@ -5167,6 +5972,7 @@ cefnetd_incoming_ccninforeq_process (
 #endif // CefC_Debug
 		return (-1);
 	}
+
 	/* Clear information used in authentication & authorization */
 	hdl->ccninfousr_id_len = 0;
 	memset (hdl->ccninfousr_node_id, 0, sizeof(hdl->ccninfousr_node_id));
@@ -5178,6 +5984,10 @@ cefnetd_incoming_ccninforeq_process (
 	/* Parses the received  Ccninfo Request 	*/
 	res = cef_frame_message_parse (
 					msg, payload_len, header_len, &poh, &pm, CefC_PT_REQUEST);
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
 
 	if (res < 0) {
 #ifdef CefC_Debug
@@ -5246,17 +6056,25 @@ cefnetd_incoming_ccninforeq_process (
 #endif // CefC_Android
 	
 	new_header_len 
-		= header_len + CefC_S_TLF + id_len + CefC_S_ReqArrivalTime;
+//		= header_len + CefC_S_TLF + id_len + CefC_S_ReqArrivalTime;
+		= header_len + CefC_S_TLF + hdl->My_Node_Name_TLV_len + CefC_S_ReqArrivalTime;
 	
 	if (poh.skip_hop == 0) {
 		if (new_header_len <= CefC_Max_Header_Size) {
 			gettimeofday (&t, NULL);
 			pkt_len = cef_frame_ccninfo_req_add_stamp (
-							msg, payload_len + header_len, stamp_node_id, id_len, t);
+//							msg, payload_len + header_len, stamp_node_id, id_len, t);
+							msg, payload_len + header_len, hdl->My_Node_Name_TLV, hdl->My_Node_Name_TLV_len, t);
 			header_len 	= msg[CefC_O_Fix_HeaderLength];
 			payload_len = pkt_len - header_len;
 		} else {
 			return_code = CefC_CtRc_NO_SPACE;
+#ifdef DEB_CCNINFO	
+{
+	fprintf(stderr, "[%s] NO_SPACE\n",
+			"cefnetd_incoming_ccninforeq_process" );
+}
+#endif //DEB_CCNINFO
 			goto SEND_REPLY;
 		}
 	}
@@ -5754,6 +6572,10 @@ cefnetd_incoming_ccninforep_process (
 	/* Parses the received  Cefping Replay 	*/
 	res = cef_frame_message_parse (
 					msg, payload_len, header_len, &poh, &pm, CefC_PT_REPLY);
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
 	if (res < 0) {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Detects the invalid Ccninfo Response\n");
@@ -5852,6 +6674,7 @@ cefnetd_incoming_csmgr_object_process (
 		"Process the Content Object (%d bytes) from csmgr\n", payload_len + header_len);
 	cef_dbg_buff_write (CefC_Dbg_Finest, msg, payload_len + header_len);
 #endif // CefC_Debug
+
 	/*--------------------------------------------------------------------
 		Parses the Object message
 	----------------------------------------------------------------------*/
@@ -5859,15 +6682,21 @@ cefnetd_incoming_csmgr_object_process (
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Finer, "Content Object is too large\n");
 #endif // CefC_Debug
+
 		return (-1);
 	}
 	res = cef_frame_message_parse (
 					msg, payload_len, header_len, &poh, &pm, CefC_PT_OBJECT);
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
 	if (res < 0) {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Finer, 
 			"Detects the invalid Content Object from csmgr\n");
 #endif // CefC_Debug
+
 		return (-1);
 	}
 #ifdef CefC_Debug
@@ -5979,6 +6808,7 @@ cefnetd_incoming_csmgr_object_process (
 		face_num = 0;
 	}
 	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -6222,17 +7052,106 @@ cefnetd_config_read (
 			hdl->ccninfo_reply_timeout =  res;
 		}
 #endif // CefC_Ccninfo
+		else if (strcasecmp (pname, CefC_ParamName_Node_Name) == 0) {
+			unsigned char	out_name[CefC_Max_Length];
+			unsigned char	out_name_tlv[CefC_Max_Length];
+			/* CHeck NodeName */
+			res = cefnetd_nodename_check( ws, out_name );
+			if ( res <= 0 ) {
+				/* Error */
+				cef_log_write (CefC_Log_Error, "NODE_NAME contains characters that cannot be used.\n");
+				return( -1 );
+			} else {
+				hdl->My_Node_Name = malloc( sizeof(char) * res + 1 );
+				strcpy( hdl->My_Node_Name, (char*)out_name );
+				/* Convert Name TLV */
+				strcpy( (char*)out_name, "ccn:/" );
+				strcat( (char*)out_name, hdl->My_Node_Name );
+				res = cef_frame_conversion_uri_to_name ((char*)out_name, out_name_tlv);
+				if ( res < 0 ) {
+					/* Error */
+					cef_log_write (CefC_Log_Error, "NODE_NAME contains characters that cannot be used.\n");
+					return( -1 );
+				} else {
+					struct tlv_hdr name_tlv_hdr;
+					name_tlv_hdr.type = htons (CefC_T_NAME);
+					name_tlv_hdr.length = htons (res);
+					hdl->My_Node_Name_TLV = (unsigned char*)malloc( res+CefC_S_TLF );
+					hdl->My_Node_Name_TLV_len = res + CefC_S_TLF;
+					memcpy( &hdl->My_Node_Name_TLV[0], &name_tlv_hdr, sizeof(struct tlv_hdr) );
+					memcpy( &hdl->My_Node_Name_TLV[CefC_S_TLF], out_name_tlv, res );
+				}
+			}
+		}
+		else if (strcasecmp (pname, CefC_ParamName_PitSize_App) == 0) {
+			res = atoi(ws);
+			if ( res < 1 ) {
+				cef_log_write (CefC_Log_Warn, "PIT_SIZE_APP must be higher than 0.\n");
+				return (-1);
+			}
+			if (res >= CefC_PitAppSize_MAX) {
+				cef_log_write (CefC_Log_Warn, "PIT_SIZE_APP must be lower than 1025.\n");
+				return (-1);
+			}
+			hdl->app_pit_max_size = res;
+		}
+		else if (strcasecmp (pname, CefC_ParamName_FibSize_App) == 0) {
+			res = atoi(ws);
+			if ( res < 1 ) {
+				cef_log_write (CefC_Log_Warn, "FIB_SIZE_APP must be higher than 0.\n");
+				return (-1);
+			}
+			if (res >= CefC_FibAppSize_MAX) {
+				cef_log_write (CefC_Log_Warn, "FIB_SIZE_APP must be lower than 1024000.\n");
+				return (-1);
+			}
+			hdl->app_fib_max_size = res;
+		}
+#ifdef CefC_C3
+		else if (strcasecmp (pname, CefC_ParamName_C3Log) == 0) {
+			if ( strcasecmp( ws, "OFF" ) == 0 ) {
+				hdl->c3_log = 0;
+			}
+			else if ( strcasecmp( ws, "ON" ) == 0 ) {
+				hdl->c3_log = 1;
+			}
+			else {
+				cef_log_write (CefC_Log_Warn, "CEF_C3_LOG must be ON or OFF.\n");
+				return (-1);
+			}
+		}
+		else if (strcasecmp (pname, CefC_ParamName_C3Log_Dir) == 0) {
+			res = strlen( ws );
+			hdl->c3_log_dir = malloc( sizeof(char) * res + 1 );
+			strcpy( hdl->c3_log_dir, ws );
+		}
+		else if (strcasecmp (pname, CefC_ParamName_C3log_Period) == 0) {
+			res = atoi(ws);
+			if ( res <= 0 ) {
+				cef_log_write (CefC_Log_Warn, "CEF_C3_LOG_PERIOD must be higher than 0.\n");
+			}
+			hdl->c3_log_period = res;
+		}
+#endif // CefC_C3
 		else {
 			/* NOP */;
 		}
 	}
 	fclose (fp);
-		
+
+#ifdef CefC_C3
+	if ( hdl->c3_log_dir == NULL ) {
+		hdl->c3_log_dir = malloc( sizeof(char) * strlen(CefC_C3Log_Dir_Default) + 1 );
+		strcpy( hdl->c3_log_dir, CefC_C3Log_Dir_Default );
+	}
+#endif // CefC_C3
 
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Fine, "PORT_NUM = %d\n", hdl->port_num);
 	cef_dbg_write (CefC_Dbg_Fine, "PIT_SIZE = %d\n", hdl->pit_max_size);
 	cef_dbg_write (CefC_Dbg_Fine, "FIB_SIZE = %d\n", hdl->fib_max_size);
+	cef_dbg_write (CefC_Dbg_Fine, "PIT_SIZE_APP = %d\n", hdl->app_pit_max_size);
+	cef_dbg_write (CefC_Dbg_Fine, "FIB_SIZE_APP = %d\n", hdl->app_fib_max_size);
 	cef_dbg_write (CefC_Dbg_Fine, "FORWARDING_INFO_STRATEGY = %d\n"
 								, hdl->forwarding_info_strategy);
 #ifdef CefC_Ccninfo
@@ -6247,6 +7166,15 @@ cefnetd_config_read (
 	cef_dbg_write (CefC_Dbg_Fine, "CCNINFO_REPLY_TIMEOUT = %d\n" 
 								, hdl->ccninfo_reply_timeout);
 #endif // CefC_Ccninfo
+	if ( hdl->My_Node_Name != NULL ) {
+		cef_dbg_write (CefC_Dbg_Fine, "NODE_NAME = %s\n", hdl->My_Node_Name );
+	}
+#ifdef CefC_C3
+	cef_dbg_write (CefC_Dbg_Fine, "CEF_C3_LOG = %s\n", (hdl->c3_log==0) ? "OFF":"ON" );
+	cef_dbg_write (CefC_Dbg_Fine, "CEF_C3_LOG_PERIOD = %d\n", hdl->c3_log_period );
+	cef_dbg_write (CefC_Dbg_Fine, "CEF_C3_LOG_DIR = %s\n", hdl->c3_log_dir );
+#endif // CefC_C3
+
 #ifdef CefC_ParamName_Sktype
 	cef_dbg_write (CefC_Dbg_Fine, "SockType = %d\n", hdl->sk_type);
 #endif // CefC_ParamName_Sktype
@@ -6356,6 +7284,7 @@ cefnetd_incoming_command_process (
 											/* transmission of the message(s)			*/
 	CefT_Parsed_Message* pm					/* Structure to set parsed CEFORE message	*/
 ) {
+
 	uint8_t hash = hdl->cefrt_seed;
 
 	CEFRTHASH8(pm->name, hash, pm->name_len);
@@ -6598,6 +7527,26 @@ cefnetd_pit_cleanup (
 				if (pe->dnfacenum < 1) {
 					pe = (CefT_Pit_Entry*)
 							cef_hash_tbl_item_get_from_index (hdl->pit, rec_index);
+
+#ifdef	CefC_C3
+					{
+					if ( hdl->c3_log == 1 ) {
+						CefT_C3_LOG*	entry;
+						entry = (CefT_C3_LOG*)cef_hash_tbl_item_get_for_app( hdl->c3_log_sum_pit,
+																			 pe->key, pe->klen );
+						if ( entry != NULL ) {
+							/* remove entry */
+							entry = (CefT_C3_LOG*)cef_hash_tbl_item_remove( hdl->c3_log_sum_pit, pe->key, pe->klen );
+							entry->del_time = time(NULL);
+							cefnetd_c3_log_output_pit( hdl, CefC_C3_DEL, entry );
+							free( entry->name );
+							free( entry->uri );
+							free( entry );
+							entry = NULL;
+						}
+					}
+					}
+#endif
 					cef_pit_entry_free (hdl->pit, pe);
 				}
 			} else {
@@ -6955,6 +7904,7 @@ cefnetd_cefcache_object_process (
 	payload_len = pkt_len - hdr_len;
 	header_len 	= hdr_len;
 	
+
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finer, 
 		"Process the Content Object (%d bytes) from cefnetd cache\n", payload_len + header_len);
@@ -6971,6 +7921,10 @@ cefnetd_cefcache_object_process (
 	}
 	res = cef_frame_message_parse (
 					msg, payload_len, header_len, &poh, &pm, CefC_PT_OBJECT);
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
 	if (res < 0) {
 		return (-1);
 	}
@@ -7048,6 +8002,522 @@ cefnetd_cefcache_object_process (
 		face_num = 0;
 	}
 	
+
 	return (1);
 }
 #endif //CefC_ContentStore
+
+
+/* NodeName Check */
+static int									/* 0:OK -1:Error */
+cefnetd_nodename_check (
+	const char* in_name,					/* input NodeName							*/
+	unsigned char* ot_name					/* buffer to set After Check NodeName		*/
+) {
+	unsigned char chk_name[CefC_Max_Length];
+	int		in_len;
+	int		i;
+	char*	ot_p;
+	char*	chk_p;
+	
+	
+	in_len = strlen(in_name);
+	memset( chk_name, 0x00, CefC_Max_Length );
+	
+	memcpy( chk_name, in_name, in_len );
+	
+	ot_p = (char*)ot_name;
+	chk_p = (char*)chk_name;
+
+	if ( strncmp( (char*)chk_name, "http://", 7 ) == 0 ) {
+		chk_p += 7;
+		strcpy( ot_p, chk_p );
+		return( strlen(ot_p) );
+	} 
+	
+	for ( i = 0; i < in_len; i++ ) {
+		if ( *chk_p == '/' ) {
+			chk_p++;
+		} else {
+			break;
+		}
+	}
+	
+	strcpy( ot_p, chk_p );
+	
+	return( strlen(ot_p) );
+}
+
+
+
+
+
+#ifdef CefC_C3
+static int
+cefnetd_c3_log_init (
+	CefT_Netd_Handle* hdl 						/* cefnetd handle						*/
+){
+	struct	tm	tm;
+	char	tmp_fname[1024];
+	char	tmp_suffix[128];
+	int		fname_len;
+	char	line_buff[2048];
+
+	time_t t = time(NULL);
+  	localtime_r(&t, &tm);
+  	sprintf( line_buff, "%04d-%02d-%02d %02d:%02d:%02d\t",
+         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+         tm.tm_hour, tm.tm_min, tm.tm_sec);
+	
+	memset( tmp_fname, 0x00, 1024 );
+	strcpy( tmp_fname, hdl->c3_log_dir );
+	strcat( tmp_fname, "/" );
+	strcat( tmp_fname, CefC_C3Log_File_Prefix );
+	sprintf( tmp_suffix, CefC_C3Log_File_Suffix_fmt,
+			(tm.tm_year + 1900)- 2000, tm.tm_mon + 1, tm.tm_mday,
+			tm.tm_hour, tm.tm_min, tm.tm_sec);
+	strcat( tmp_fname, tmp_suffix );
+	fname_len = strlen( tmp_fname );
+	hdl->c3_log_fname = (char*)malloc( sizeof(char) * fname_len + 1 );
+	strcpy( hdl->c3_log_fname, tmp_fname );
+
+	hdl->c3_log_fp = fopen ( hdl->c3_log_fname, "a" );
+	if ( hdl->c3_log_fp == NULL ) {
+		/* Error */
+		cef_log_write (CefC_Log_Error, "cefnetd_c3_log_init() Log open Fail.\n");
+		hdl->c3_log = 0;
+		return( -1 );
+	}
+
+	/* Cefnetd Start log */
+#if 1
+	strcat( line_buff, "Cefnetd\tStart\n" );
+#else
+	strcat( line_buff, "Cefnetd\tStart\t" );
+	sprintf( tmp_ndname, "Node Name:%s\n", hdl->My_Node_Name );
+	strcat( line_buff, tmp_ndname );
+#endif
+
+	fprintf( hdl->c3_log_fp, "%s", line_buff );
+	fflush( hdl->c3_log_fp );
+	
+	hdl->c3_log_next = hdl->nowtus + (uint64_t)(hdl->c3_log_period * 1000000llu);
+
+	return( 0 );
+}
+
+static void
+cefnetd_c3_log_output_sum (
+	CefT_Netd_Handle* hdl 						/* cefnetd handle						*/
+){
+	struct			tm	tm;
+	char			line_buff[2048];
+	char			time_buff[64];
+	char			data_buff[32];
+	int				item_num;
+	uint32_t		index;
+	int				i;
+	int				j;
+	CefT_C3_LOG*	entry = NULL;
+
+	if ( hdl->c3_log != 1 ) {
+		/* NOP */
+		return;
+	}
+
+	time_t t = time(NULL);
+  	localtime_r(&t, &tm);
+  	sprintf( time_buff, "%04d-%02d-%02d %02d:%02d:%02d\t",
+         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+         tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+	/* Unknown */
+	sprintf( line_buff, "%sTraffic\tUnknown(%d)\n", time_buff, hdl->c3_log_unknown );
+	fprintf( hdl->c3_log_fp, "%s", line_buff );
+	hdl->c3_log_unknown = 0;
+
+	/* FIB Traffic */
+	item_num = cef_hash_tbl_item_num_get( hdl->c3_log_sum_fib );
+
+	index = 0;
+	for ( i = 0; i < item_num; i++ ) {
+		entry = (CefT_C3_LOG*)cef_hash_tbl_elem_get( hdl->c3_log_sum_fib, &index );
+		if ( entry == NULL ) {
+			continue;
+		}
+		sprintf( line_buff, "%sTraffic\t%s\tJoin Longlife(%d)\tJoin Regular(%d)\tLeave(%d)\tPublish(%d)\n",
+			time_buff, entry->hash_char, entry->c3_join_L, entry->c3_join_R, entry->c3_leave, entry->c3_publish );
+		fprintf( hdl->c3_log_fp, "%s", line_buff );
+		sprintf( line_buff, "%sTraffic\t%d", time_buff, entry->c3_publish_data[0] );
+		for ( j = 1; j < CefC_C3_LOG_TAPP_MAX; j++ ) {
+			sprintf( data_buff, ",%d", entry->c3_publish_data[j] );
+			strcat( line_buff, data_buff );
+		}
+		strcat( line_buff, "\n" );
+		fprintf( hdl->c3_log_fp, "%s", line_buff );
+		if ( entry->del_f == 0 ) {
+			/* Counter Clear */
+			entry->c3_join_L = 0;
+			entry->c3_join_R = 0;
+			entry->c3_leave = 0;
+			entry->c3_publish = 0;
+			for ( j = 0; j < CefC_C3_LOG_TAPP_MAX; j++ ) {
+				entry->c3_publish_data[j] = 0;
+			}
+		} else {
+			/* remove entry */
+			entry = (CefT_C3_LOG*)cef_hash_tbl_item_remove( hdl->c3_log_sum_fib, entry->name, entry->name_len );
+			if ( entry == NULL ) {
+				/* Logical contradiction */
+				cef_log_write (CefC_Log_Warn, "cefnetd_c3_log_output_sum() hash_remove Logical contradiction.\n");
+			} else {
+				free( entry->name );
+				free( entry->uri );
+				free( entry );
+				entry = NULL;
+			}
+		}
+		index++;
+	}
+	hdl->c3_log_next = hdl->nowtus + (uint64_t)(hdl->c3_log_period * 1000000llu);
+	fflush( hdl->c3_log_fp );
+
+	return;
+}
+static void
+cefnetd_c3_log_output_fib (
+	CefT_Netd_Handle* hdl, 						/* cefnetd handle						*/
+	int	a_or_d,
+	CefT_C3_LOG*	entry,
+	char*			fib_char
+){
+	struct	tm	tm;
+	char	line_buff[2048];
+	char	time_buff[64];
+	double	diff;
+
+	if ( hdl->c3_log != 1 ) {
+		/* NOP */
+		return;
+	}
+
+	if ( a_or_d == CefC_C3_ADD ) {
+		localtime_r(&entry->add_time, &tm);
+		sprintf( line_buff, "%04d-%02d-%02d %02d:%02d:%02d\t",
+    	     tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			 tm.tm_hour, tm.tm_min, tm.tm_sec);
+		strcat( line_buff, fib_char );
+		strcat( line_buff, "\tAdd\t" );
+		strcat( line_buff, entry->hash_char );
+	} else {
+		localtime_r(&entry->del_time, &tm);
+		sprintf( line_buff, "%04d-%02d-%02d %02d:%02d:%02d\t",
+    	     tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			 tm.tm_hour, tm.tm_min, tm.tm_sec);
+		strcat( line_buff, fib_char );
+		strcat( line_buff, "\tDel\t" );
+		strcat( line_buff, entry->hash_char );
+		strcat( line_buff, "\t" );
+		localtime_r(&entry->add_time, &tm);
+		sprintf( time_buff, "%04d-%02d-%02d %02d:%02d:%02d\t",
+    	     tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			 tm.tm_hour, tm.tm_min, tm.tm_sec);
+		strcat( line_buff, time_buff );
+		diff = difftime( entry->del_time, entry->add_time );
+		sprintf( time_buff, "%f", diff );
+		strcat( line_buff, time_buff );
+	}
+	
+	fprintf( hdl->c3_log_fp, "%s\n", line_buff );
+	fflush( hdl->c3_log_fp );
+
+	return;
+}
+static void
+cefnetd_c3_log_output_pit (
+	CefT_Netd_Handle* hdl, 						/* cefnetd handle						*/
+	int	a_or_d,
+	CefT_C3_LOG*	entry
+){
+	struct	tm	tm;
+	char	line_buff[2048];
+	char	time_buff[64];
+	double	diff;
+
+	if ( hdl->c3_log != 1 ) {
+		/* NOP */
+		return;
+	}
+
+	if ( a_or_d == CefC_C3_ADD ) {
+		localtime_r(&entry->add_time, &tm);
+		sprintf( line_buff, "%04d-%02d-%02d %02d:%02d:%02d\tPIT\tAdd\t",
+    	     tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			 tm.tm_hour, tm.tm_min, tm.tm_sec);
+		strcat( line_buff, entry->hash_char );
+	} else {
+		localtime_r(&entry->del_time, &tm);
+		sprintf( line_buff, "%04d-%02d-%02d %02d:%02d:%02d\tPIT\tDel\t",
+    	     tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			 tm.tm_hour, tm.tm_min, tm.tm_sec);
+		strcat( line_buff, entry->hash_char );
+		strcat( line_buff, "\t" );
+		localtime_r(&entry->add_time, &tm);
+		sprintf( time_buff, "%04d-%02d-%02d %02d:%02d:%02d\t",
+    	     tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			 tm.tm_hour, tm.tm_min, tm.tm_sec);
+		strcat( line_buff, time_buff );
+		diff = difftime( entry->del_time, entry->add_time );
+		sprintf( time_buff, "%f", diff );
+		strcat( line_buff, time_buff );
+	}
+	
+	fprintf( hdl->c3_log_fp, "%s\n", line_buff );
+	fflush( hdl->c3_log_fp );
+
+	return;
+}
+static void
+cefnetd_c3_log_end (
+	CefT_Netd_Handle* hdl 						/* cefnetd handle						*/
+){
+	struct	tm	tm;
+	char	line_buff[2048];
+
+	if ( hdl->c3_log != 1 ) {
+		/* NOP */
+		return;
+	}
+
+	//Last Log
+	cefnetd_c3_log_output_sum ( hdl );
+
+	time_t t = time(NULL);
+  	localtime_r(&t, &tm);
+  	sprintf( line_buff, "%04d-%02d-%02d %02d:%02d:%02d\t",
+         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+         tm.tm_hour, tm.tm_min, tm.tm_sec);
+	
+	/* Cefnetd Stop log */
+	strcat( line_buff, "Cefnetd\tStop\n" );
+	fprintf( hdl->c3_log_fp, "%s", line_buff );
+	fflush( hdl->c3_log_fp );
+	fclose( hdl->c3_log_fp );
+
+	return;
+}
+static void
+cefnetd_c3_log_output_fib_error (
+	CefT_Netd_Handle* hdl, 						/* cefnetd handle						*/
+	int	a_or_d,
+	char*			fib_char
+) {
+	struct	tm	tm;
+	char	line_buff[2048];
+
+	if ( hdl->c3_log != 1 ) {
+		/* NOP */
+		return;
+	}
+	
+	time_t t = time(NULL);
+  	localtime_r(&t, &tm);
+
+	if ( a_or_d == CefC_C3_ADD ) {
+		sprintf( line_buff, "%04d-%02d-%02d %02d:%02d:%02d\tFIB(APP)\tAdd Error\t%s\n",
+    	     tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			 tm.tm_hour, tm.tm_min, tm.tm_sec, fib_char);
+	} else {
+		sprintf( line_buff, "%04d-%02d-%02d %02d:%02d:%02d\tFIB(APP)\tDel Error\t%s\n",
+    	     tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			 tm.tm_hour, tm.tm_min, tm.tm_sec, fib_char);
+	}
+	fprintf( hdl->c3_log_fp, "%s", line_buff );
+	fflush( hdl->c3_log_fp );
+	
+	return;
+}
+
+static CefT_C3_LOG*
+cefnetd_c3_create_fib_sum (
+	CefT_Netd_Handle* hdl, 						/* cefnetd handle						*/
+	unsigned char* name,
+	unsigned int name_len
+) {
+	CefT_C3_LOG*	fib_sum;
+	char			uri_buff[2048];
+	int				res;
+	int				i, pos;
+	
+	fib_sum = (CefT_C3_LOG*)malloc( sizeof(CefT_C3_LOG) );
+	/* name */
+	fib_sum->name_len = name_len;
+	fib_sum->name = (unsigned char*)malloc( sizeof(unsigned char) * name_len );
+	memcpy( fib_sum->name, name, name_len );
+	/* uri hash */
+	res = cef_frame_conversion_name_to_string ( name,  name_len, uri_buff, "ccn");
+	fib_sum->uri = (char*)malloc( sizeof(char) * res + 1 );
+	strcpy( fib_sum->uri, uri_buff );
+	MD5 ( (unsigned char*)fib_sum->uri, strlen(fib_sum->uri), fib_sum->hash_uri);
+	memset( fib_sum->hash_char, 0x00, MD5_DIGEST_LENGTH*2+1 );
+	for ( i = 0, pos = 0; i < MD5_DIGEST_LENGTH; i++ ) {
+		sprintf(&fib_sum->hash_char[pos],"%02x", fib_sum->hash_uri[i]);
+		pos += 2;
+	}
+	/* init counter */
+	fib_sum->del_f = 0;
+	fib_sum->add_time = time(NULL);
+	fib_sum->c3_join_L	= 0;
+	fib_sum->c3_join_R	= 0;
+	fib_sum->c3_leave	= 0;
+	fib_sum->c3_publish	= 0;
+	for ( i = 0; i < CefC_C3_LOG_TAPP_MAX; i++ ) {
+		fib_sum->c3_publish_data[i] = 0;
+	}
+	/* hash set */
+	res = cef_hash_tbl_item_set_for_app( hdl->c3_log_sum_fib, name,  name_len,
+											CefC_App_MatchType_Prefix, (void*)fib_sum );
+	if ( res == CefC_Hash_Faile ) {
+		/* CefC_Hash_Faile */
+		free( fib_sum->name );
+		free( fib_sum->uri );
+		free( fib_sum );
+		cef_log_write (CefC_Log_Error, "cefnetd_c3_create_fib_sum() hash_set Faile.\n");
+		return( NULL );
+	}
+	fib_sum->index = res;
+
+	return( fib_sum );
+}
+
+static CefT_C3_LOG*
+cefnetd_c3_create_pit_sum (
+	CefT_Netd_Handle* hdl, 						/* cefnetd handle						*/
+	unsigned char* name,
+	unsigned int name_len
+) {
+	CefT_C3_LOG*	pit_sum;
+	char			uri_buff[2048];
+	int				res;
+	int				i, pos;
+	
+	pit_sum = (CefT_C3_LOG*)malloc( sizeof(CefT_C3_LOG) );
+	/* name */
+	pit_sum->name_len = name_len;
+	pit_sum->name = (unsigned char*)malloc( sizeof(unsigned char) * name_len );
+	memcpy( pit_sum->name, name, name_len );
+	/* uri hash */
+	res = cef_frame_conversion_name_to_string ( name,  name_len, uri_buff, "ccn");
+	pit_sum->uri = (char*)malloc( sizeof(char) * res + 1 );
+	strcpy( pit_sum->uri, uri_buff );
+	MD5 ( (unsigned char*)pit_sum->uri, strlen(pit_sum->uri), pit_sum->hash_uri);
+	memset( pit_sum->hash_char, 0x00, MD5_DIGEST_LENGTH*2+1 );
+	for ( i = 0, pos = 0; i < MD5_DIGEST_LENGTH; i++ ) {
+		sprintf(&pit_sum->hash_char[pos],"%02x", pit_sum->hash_uri[i]);
+		pos += 2;
+	}
+	/* init counter */
+	pit_sum->del_f = 0;
+	pit_sum->add_time = time(NULL);
+	pit_sum->c3_join_L	= 0;
+	pit_sum->c3_join_R	= 0;
+	pit_sum->c3_leave	= 0;
+	pit_sum->c3_publish	= 0;
+	for ( i = 0; i < CefC_C3_LOG_TAPP_MAX; i++ ) {
+		pit_sum->c3_publish_data[i] = 0;
+	}
+	/* hash set */
+	res = cef_hash_tbl_item_set_for_app( hdl->c3_log_sum_pit, name,  name_len,
+//											CefC_App_MatchType_Prefix, (void*)pit_sum );
+											CefC_App_MatchType_Exact, (void*)pit_sum );
+
+	if ( res == CefC_Hash_Faile ) {
+		/* CefC_Hash_Faile */
+		free( pit_sum->name );
+		free( pit_sum->uri );
+		free( pit_sum );
+		cef_log_write (CefC_Log_Error, "cefnetd_c3_create_pit_sum() hash_set Faile.\n");
+		return( NULL );
+	}
+	pit_sum->index = res;
+
+	return( pit_sum );
+}
+
+
+static CefT_C3_LOG*
+cefnetd_c3_log_sum_fib_entry_search (
+	CefT_Hash_Handle fib_sum,
+	unsigned char* name, 					/* Key of the FIB entry						*/
+	uint16_t name_len						/* Length of Key							*/
+) {
+	CefT_C3_LOG* entry;
+	unsigned char* msp;
+	unsigned char* mep;
+	uint16_t len = name_len;
+	uint16_t length;
+
+	while (len > 0) {
+		entry = (CefT_C3_LOG*) cef_hash_tbl_item_get (fib_sum, name, len);
+
+		if (entry != NULL) {
+			return (entry);
+		}
+		
+		msp = name;
+		mep = name + len - 1;
+		while (msp < mep) {
+			memcpy (&length, &msp[CefC_S_Length], CefC_S_Length);
+			length = ntohs (length);
+
+			if (msp + CefC_S_Type + CefC_S_Length + length < mep) {
+				msp += CefC_S_Type + CefC_S_Length + length;
+			} else {
+				break;
+			}
+		}
+		len = msp - name;
+	}
+
+	return (NULL);
+}
+
+static uint16_t*
+cefnetd_c3_fib_app_entry_search (
+	CefT_Hash_Handle fib_app,
+	unsigned char* name, 					/* Key of the FIB entry						*/
+	uint16_t name_len						/* Length of Key							*/
+) {
+	uint16_t* entry;
+	unsigned char* msp;
+	unsigned char* mep;
+	uint16_t len = name_len;
+	uint16_t length;
+
+	while (len > 0) {
+		entry = (uint16_t*) cef_hash_tbl_item_get (fib_app, name, len);
+
+		if (entry != NULL) {
+			return (entry);
+		}
+		
+		msp = name;
+		mep = name + len - 1;
+		while (msp < mep) {
+			memcpy (&length, &msp[CefC_S_Length], CefC_S_Length);
+			length = ntohs (length);
+
+			if (msp + CefC_S_Type + CefC_S_Length + length < mep) {
+				msp += CefC_S_Type + CefC_S_Length + length;
+			} else {
+				break;
+			}
+		}
+		len = msp - name;
+	}
+
+	return (NULL);
+}
+
+#endif // CefC_C3
+

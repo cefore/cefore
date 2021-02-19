@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -770,7 +770,7 @@ cef_client_read (
 	infds[0].fd = conn->sock;
 	infds[0].events = POLLIN | POLLERR;
 
-	poll (infds, 1, 1);
+	poll (infds, 1, 1000);
 
 	if (infds[0].revents != 0) {
 		if (infds[0].revents & (POLLERR | POLLNVAL | POLLHUP)) {
@@ -864,6 +864,10 @@ cef_client_payload_get_with_info (
 	
 	res = cef_frame_message_parse (
 				&buff[i], pkt_len, hdr_len, &poh, &pm, CefC_PT_OBJECT);
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
 	if (res < 0) {
 		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
 		memcpy (&buff[0], &work_buff[0], new_len);
@@ -894,6 +898,7 @@ cef_client_payload_get_with_info (
 		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
 		memcpy (&buff[0], &work_buff[0], new_len);
 	}
+	
 	return(new_len);
 }
 /*--------------------------------------------------------------------------------------
@@ -947,6 +952,10 @@ cef_client_request_get_with_info (
 	
 	res = cef_frame_message_parse (
 				&buff[i], pkt_len, hdr_len, &poh, &pm, CefC_PT_INTEREST);
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
 	if (res < 0) {
 		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
 		memcpy (&buff[0], &work_buff[0], new_len);

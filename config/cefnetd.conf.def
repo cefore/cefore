@@ -2,6 +2,12 @@
 # cefnetd.conf
 #
 
+#
+# Node Name is specified in URI format.
+#   ex) abc.com/tokyo/router-a
+#
+#NODE_NAME=""
+
 # Operational Log Level
 #  0: Error only
 #  1: Warning and Error
@@ -39,10 +45,22 @@
 #PIT_SIZE=2048
 
 #
+# Maximum number of PIT(APP) entries.
+# This value must be higther than 0 and lower than 1025.
+#
+#PIT_SIZE_APP=64
+
+#
 # Maximum number of FIB entries.
 # This value must be higther than 0 and lower than 65536.
 #
 #FIB_SIZE=1024
+
+#
+# Maximum number of FIB(APP) entries.
+# This value must be higther than 0 and lower than 1024000.
+#
+#FIB_SIZE_APP=64
 
 #
 # Content Store used by cefnetd
@@ -120,7 +138,7 @@
 #
 #CONTROLLER_ID=127.0.0.1
 #CONTROLLER_PORT_NUM=9458
-#CONTROLLER_KEY=/usr/local/cefore/ccore-public-key.pem
+#CONTROLLER_KEY=/usr/local/cefore/ccore-public-key
 
 #
 # cefbabeld
@@ -145,6 +163,20 @@
 #SER_LOG_ENABLE=0
 #SER_LOG_SIZE=65535
 #SER_LOG_DIR=/path/to/file.csv
+
+#
+# Community Log
+#
+#  Necessity of output log for community.
+#    OFF or ON
+#CEF_C3_LOG=OFF
+#
+# Community log output directory.
+#CEF_C3_LOG_DIR=/usr/local/cefore/logs
+#
+# Community log output period. The unit is seconds.
+#   This value must be greater than 0.
+#CEF_C3_LOG_PERIOD=3600
 
 # Debug log level
 #

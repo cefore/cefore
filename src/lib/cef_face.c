@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -299,10 +299,10 @@ int
 cef_face_update_listen_faces (
 	struct pollfd* inudpfds,
 	uint16_t* inudpfaces, 
-	uint8_t* inudpfdc, 
+	uint16_t* inudpfdc, 
 	struct pollfd* intcpfds,
 	uint16_t* intcpfaces, 
-	uint8_t* intcpfdc
+	uint16_t* intcpfdc
 ) {
 	int i;
 	int new_inudpfdc = 2;
@@ -1340,7 +1340,9 @@ cef_face_object_send (
 		} else {
 			res = write (entry->sock, msg, msg_len);
 			if (res < 0) {
-				cef_face_close (faceid);
+				if ((errno != EAGAIN) && (errno != EWOULDBLOCK)) {	//#834
+					cef_face_close (faceid);
+				}
 			}
 		}
 	}
@@ -1541,6 +1543,17 @@ cef_face_neighbor_info_get (
 		index++;
 	}
 	return (strlen (info_buff));
+}
+/*--------------------------------------------------------------------------------------
+	Obtains the face num
+----------------------------------------------------------------------------------------*/
+int 
+cef_face_num_get (
+) {
+	int table_num;
+
+	table_num = cef_hash_tbl_item_num_get (sock_tbl);
+	return (table_num);
 }
 
 /*--------------------------------------------------------------------------------------

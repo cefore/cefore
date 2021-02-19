@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -98,20 +98,22 @@ main (
 	char** argv
 ) {
 	int tcp_sock;
-	int len;
 	int res;
 	int frame_size;
 	unsigned char buff[CefC_Csmgr_Stat_Mtu] = {0};
 	uint16_t value16;
 	int name_len;
 	struct pollfd fds[1];
-	unsigned char frame[CefC_Csmgr_Stat_Mtu] = {0};
+	unsigned char *frame;
 	char uri[1024] = {0};
 	char dst[64] = {0};
 	char port_str[32] = {0};
 	unsigned char tmp_name[512];
 	int i;
 	char*	work_arg;
+	uint32_t msg_len, rcvd_size;
+	int rc;
+	int blocks;
 
 	/***** flags 		*****/
 	int host_f 			= 0;
@@ -119,7 +121,6 @@ main (
 	int uri_f 			= 0;
 
 	/***** state variavles 	*****/
-	uint8_t type 		= 0;
 	uint16_t index 		= 0;
 	uint8_t uri_value 	= 0;
 
@@ -247,25 +248,46 @@ main (
 	}
 
 	/* receive message	*/
+	rcvd_size = 0;
+	frame_size = 0;
+	msg_len = 0;
+	frame = calloc (1, CefC_Csmgr_Stat_Mtu);
+	if (frame == NULL) {
+		fprintf (stderr, "ERROR : Frame buffer allocation (alloc) error\n");
+		close (tcp_sock);
+		cef_csmgr_buffer_destroy ();
+		return (-1);
+	}
+
+RERECV:;
 	fds[0].fd = tcp_sock;
 	fds[0].events = POLLIN | POLLERR;
-	memset (buff, 0, sizeof (buff));
-	/* poll	*/
-	res = poll (fds, 1, 1000);
+	res = poll(fds, 1, 10000);
 	if (res < 0) {
 		/* poll error	*/
 		fprintf (stderr, "ERROR : poll error (%s)\n", strerror (errno));
 		close (tcp_sock);
+		cef_csmgr_buffer_destroy ();
+		free (frame);
 		return (-1);
 	} else 	if (res == 0) {
 		/* timeout	*/
 		fprintf (stderr, "ERROR : timeout\n");
 		close (tcp_sock);
+		cef_csmgr_buffer_destroy ();
+		free (frame);
 		return (-1);
 	}
-
-	if (fds[0].revents & (POLLERR | POLLNVAL | POLLHUP)) {
-		/* events error.	*/
+	if (fds[0].revents & POLLIN) {	
+		rc = recv (tcp_sock, frame+rcvd_size , CefC_Csmgr_Stat_Mtu, 0);
+		if (rc < 0) {
+			fprintf (stderr, "ERROR : Receive message error (%s)\n", strerror (errno));
+			close (tcp_sock);
+			cef_csmgr_buffer_destroy ();
+			free (frame);
+			return (-1);
+		}
+	} else {
 		if (fds[0].revents & POLLERR) {
 			fprintf (stderr, "ERROR : Poll event is POLLERR\n");
 		} else if (fds[0].revents & POLLNVAL) {
@@ -274,39 +296,48 @@ main (
 			fprintf (stderr, "ERROR : Poll event is POLLHUP\n");
 		}
 		close (tcp_sock);
+		cef_csmgr_buffer_destroy ();
+		free (frame);
 		return (-1);
 	}
-
-	len = recv (fds[0].fd, buff, CefC_Csmgr_Stat_Mtu, 0);
-	if (len > 0) {
-		cef_csmgr_buffer_init ();
-		
-		/* receive message	*/
-		len = csmgr_frame_get (buff, len, frame, &frame_size, &type);
-		if (frame_size > 0) {
-			if (type != CefC_Csmgr_Msg_Type_Status) {
-				fprintf (stderr, "ERROR : Response type is not status\n");
-				close (tcp_sock);
-				cef_csmgr_buffer_destroy ();
-				return (-1);
-			}
-			output_result (frame, frame_size);
-		} else {
-			fprintf (stderr, "ERROR : Response message is Invalid\n");
-			cef_csmgr_buffer_destroy ();
+	rcvd_size += rc;
+	if (rcvd_size == rc) {
+		if ((rc < 6/* Ver(1)+Type(1)+Length(4) */) 
+			|| (frame[CefC_O_Fix_Ver] != CefC_Version)
+			|| (frame[CefC_O_Fix_Type] != CefC_Csmgr_Msg_Type_Status) ){
+			fprintf (stderr, "ERROR : Response type is not status\n");
 			close (tcp_sock);
+			cef_csmgr_buffer_destroy ();
+			free (frame);
 			return (-1);
 		}
-	} else {
-		/* closed socket	*/
-		fprintf (stderr, "ERROR : Receive message error (%s)\n", strerror (errno));
-		cef_csmgr_buffer_destroy ();
-		close (tcp_sock);
-		return (-1);
+			
+		memcpy (&msg_len, &frame[2], sizeof (uint32_t));
+		msg_len = ntohl (msg_len);
+		blocks = (msg_len) / CefC_Csmgr_Stat_Mtu;
+		if (((msg_len) % CefC_Csmgr_Stat_Mtu) != 0){
+			blocks += 1;
+		}
+		if (blocks > 1) {
+			void *new = realloc(frame, blocks * CefC_Csmgr_Stat_Mtu);
+			if (new == NULL) {
+				fprintf (stderr, "ERROR : Frame buffer allocation (realloc) error\n");
+				close (tcp_sock);
+				cef_csmgr_buffer_destroy ();
+				free (frame);
+				return (-1);
+			}
+			frame = new;
+		}
 	}
+	if (rcvd_size < msg_len){
+		goto RERECV;
+	}
+	frame_size = msg_len;
+	output_result (&frame[6/* Ver(1)+Type(1)+Length(4) */], frame_size-6/* Ver(1)+Type(1)+Length(4) */);
 	cef_csmgr_buffer_destroy ();
 	close (tcp_sock);
-
+	free (frame);
 	return (0);
 }
 /*--------------------------------------------------------------------------------------
@@ -321,7 +352,7 @@ output_result (
 	struct CefT_Csmgr_Status_Rep stat_rep;
 	unsigned char name[65535];
 	char get_uri[65535];
-	uint16_t index = 0;
+	uint32_t index = 0;
 	int con_no = 0;
 	
 	if (frame_size < sizeof (struct CefT_Csmgr_Status_Hdr)) {

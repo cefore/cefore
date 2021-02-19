@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,9 +49,6 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
-
-#define CefstatC_MaxUri		128
-
 
 /****************************************************************************************
  Structure Declarations

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2019, National Institute of Information and Communications
+# Copyright (c) 2016-2020, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -29,8 +29,10 @@
 
 AM_CFLAGS=-I$(top_srcdir)/src/include -Wall -O2 -fPIC
 AM_LDFLAGS=-lssl -lcrypto
+
 AM_CSOURCES=cef_hash.c cef_client.c cef_fib.c cef_pit.c cef_face.c cef_frame.c \
 	cef_log.c cef_print.c cef_mpool.c cef_rngque.c cef_valid.c 
+
 
 # check debug build
 if CEFDBG_ENABLE

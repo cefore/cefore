@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -389,7 +389,7 @@ int main (
 		params.opt.lifetime 		= 10000;
 	} else {
 		params.opt.symbolic_f		= CefC_T_OPT_REGULAR;
-		params.opt.lifetime 		= 4000;
+		params.opt.lifetime 		= CefC_Default_LifetimeSec * 1000;
 		params.chunk_num			= 0;
 		params.chunk_num_f			= 1;
 	}
@@ -503,8 +503,40 @@ int main (
 					if (nsg_flag) {
 						stat_recv_frames++;
 						stat_recv_bytes += app_frame.payload_len;
+//+++++ 2019/07/12: TIX #902 +++++
+#if !defined(JK_NONBLOCK) && !defined(JK_BLOCK) 
 						fwrite (app_frame.payload, 
 							sizeof (unsigned char), app_frame.payload_len, stdout);
+						gettimeofday (&t, NULL);
+						now_time = cef_client_covert_timeval_to_us (t);
+						end_time = now_time + 1000000;
+#elif defined(JK_NONBLOCK)
+						{
+							int val;
+							if (stat_recv_frames == 1) {
+								if ((val = fcntl(1, F_GETFL, 0)) < 0) {
+									fprintf(stderr, "fcntl F_GETFL error");
+									exit(1);
+								}
+								if (fcntl(1, F_SETFL, val | O_NONBLOCK) < 0) {
+									fprintf(stderr, "fcntl F_SETFL error");
+									exit(1);
+								}
+							}
+						}
+						write (1, app_frame.payload, app_frame.payload_len);
+#elif defined(JK_BLOCK)
+						fwrite (app_frame.payload, 
+							sizeof (unsigned char), app_frame.payload_len, stdout);
+						gettimeofday (&t, NULL);
+						now_time = cef_client_covert_timeval_to_us (t);
+						end_time = now_time + 1000000;
+#else
+//	fprintf(stderr, "JK: ERROR\n");
+	exit(1);
+#endif
+//----- 2019/07/12: TIX #902 -----
+
 					} else {
 						
 						/* Inserts the received frame to the buffer 	*/

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -123,7 +123,7 @@ cef_plugin_samptp_cob (
 	int res;
 	
 	/* Updates statistics 		*/
-	m_stat_int_rx++;
+	m_stat_cob_rx++;
 	
 	/* Forwards the Object to app 			*/
 	for (i = 0 ; i < rx_elem->out_faceid_num ; i++) {
@@ -158,7 +158,7 @@ cef_plugin_samptp_cob (
 			cef_mpool_free (tp->tx_que_mp, tx_elem);
 		}
 		/* Updates statistics 		*/
-		m_stat_int_tx += idx;
+		m_stat_cob_tx += idx;
 	}
 	
 	return (CefC_Pi_Object_NoSend);
@@ -176,7 +176,7 @@ cef_plugin_samptp_interest (
 	int i;
 	
 	/* Updates statistics 		*/
-	m_stat_cob_rx++;
+	m_stat_int_rx++;
 	
 	/* Creates the forward object 				*/
 	tx_elem = (CefT_Tx_Elem*) cef_mpool_alloc (tp->tx_que_mp);
@@ -197,7 +197,7 @@ cef_plugin_samptp_interest (
 	}
 	
 	/* Updates statistics 		*/
-	m_stat_cob_tx += rx_elem->out_faceid_num;
+	m_stat_int_tx += rx_elem->out_faceid_num;
 	
 	return (CefC_Pi_Interest_NoSend);
 }

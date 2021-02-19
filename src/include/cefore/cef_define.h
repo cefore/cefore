@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -113,6 +113,18 @@
 #define CefC_ParamName_Babel_Route		"CEFBABEL_ROUTE"
 #define CefC_ParamName_Cs_Mode			"CS_MODE"
 #define CefC_ParamName_ForwardingInfoStrategy	"FORWARDING_INFO_STRATEGY"
+//2020
+#define CefC_ParamName_Node_Name		"NODE_NAME"
+#define CefC_ParamName_PitSize_App		"PIT_SIZE_APP"
+#define CefC_ParamName_FibSize_App		"FIB_SIZE_APP"
+//C3
+#define CefC_ParamName_C3Log			"CEF_C3_LOG"
+#define CefC_ParamName_C3Log_Dir		"CEF_C3_LOG_DIR"
+#define CefC_ParamName_C3log_Period		"CEF_C3_LOG_PERIOD"
+#define	CefC_C3_LOG_TAPP_MAX			32
+#define	CefC_C3_URI_Prefix				"ccn:/ClapCorner"
+#define	CefC_C3_URI_Prefix_Len			strlen(CefC_C3_URI_Prefix)
+
 #ifdef CefC_Ser_Log
 #define CefC_ParamName_Log_Size			"SER_LOG_SIZE"
 #define CefC_ParamName_Log_Enable		"SER_LOG_ENABLE"
@@ -137,9 +149,15 @@
 #define CefC_Default_NbrSize			1
 #define CefC_Default_NbrInterval		10000000
 #define CefC_Default_NbrThread			3
-#define CefC_Default_LifetimeSec		4
-#define CefC_Default_LifetimeUs			4000000
+#define CefC_Default_LifetimeSec		2
+#define CefC_Default_LifetimeUs			2000000
 #define CefC_Default_ForwardingInfoStrategy	0
+//2020
+#define	CefC_Default_PitAppSize			64
+#define	CefC_Default_FibAppSize			64
+#define	CefC_PitAppSize_MAX				1025
+#define	CefC_FibAppSize_MAX				1024000
+
 #ifdef CefC_Ccninfo
 #define CefC_Default_CcninfoAccessPolicy	0
 #define CefC_Default_CcninfoFullDiscovery	0
@@ -152,7 +170,7 @@
 #define CefC_App_Version				0xCEF00101
 #define CefC_App_Type_Internal			0x10000000
 #define CefC_App_Header_Size			16
-#define CefC_App_FibSize				64
+#define CefC_App_FibSize				200000
 #define CefC_App_PitSize				256
 
 /*************** Upper limit of Face 	***************/

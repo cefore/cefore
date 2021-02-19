@@ -104,6 +104,8 @@ switch_TiHdrTLV[8] = function(block, root)
       strstatus = "SOURCE"
    elseif ( value == 0x22 ) then
       strstatus = "REPAIR"
+   elseif ( value == 0x8100 ) then
+      strstatus = "FIN"
    end
 
    local treeInfo = root:add(block.tvb(block.offset, block.size),
@@ -144,6 +146,15 @@ switch_TiHdrTLV[11] = function(block, root)
    local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):uint()
    local treeInfo = root:add(block.tvb(block.offset, block.size),
          "TI_RELIABILITY(" .. block.type .. ") Length: " .. block.length .. " Value: " .. value)
+
+   return treeInfo
+end
+--
+-- TI_EV
+--
+switch_TiHdrTLV[12] = function(block, root)
+   local treeInfo = root:add(block.tvb(block.offset, block.size),
+         "TI_EV(" .. block.type .. ") Length: " .. block.length)
 
    return treeInfo
 end
@@ -282,6 +293,16 @@ switch_OptSymTLV[5] = function(block, root)
 
    return treeInfo
 end
+--
+-- OPT_NWPROC
+--
+switch_OptSymTLV[6] = function(block, root)
+   local treeInfo = root:add(block.tvb(block.offset, block.size),
+         "OPT_NWPROC(" .. block.type .. ") Length: " .. block.length .. " Value: " ..
+         block.tvb(block.offset + block.typeLen + block.lengthLen, block.length))
+
+   return treeInfo
+end
 
 switch_OptHdrTLV[0x1001] = function(block, root)
    local treeInfo = root:add(block.tvb(block.offset, block.size),
@@ -310,18 +331,17 @@ switch_OptHdrTLV[0x1002] = function(block, root)
    local tpValiant = getBlock(block.tvb, offset)
    local strValiant = ""
 
-   -- TP_SAMPLE
    if ( 0 < tpValiant.type ) then
-       local TpSampleInfo = treeInfo:add(block.tvb(tpValiant.offset, tpValiant.size), string.format("Valiant: SAMPLETP(0x%x)", tpValiant.type))
+       local TpInfo = treeInfo:add(block.tvb(tpValiant.offset, tpValiant.size), string.format("Valiant: TP_L4C2(0x%x)", tpValiant.type))
        local valueLeft = tpValiant.length
-       strValiant = "SAMPLETP"
+       strValiant = "L4C2 Transport"
 
        offset   = offset + tpValiant.typeLen + tpValiant.lengthLen;
 
        while valueLeft > 0 do
           local subTLVs = getBlock(block.tvb, offset)
 
-          subTLVs.root = switch_TiHdrTLV[subTLVs.type](subTLVs, TpSampleInfo)
+          subTLVs.root = switch_TiHdrTLV[subTLVs.type](subTLVs, TpInfo)
           valueLeft = valueLeft - subTLVs.size
           offset    = offset    + subTLVs.size
        end
@@ -397,6 +417,8 @@ function addCcnFixHdrInfo(msg, root) -- may be add additional context later
       msgtype = "Content Object"
    elseif ( msg.type == 2 ) then
       msgtype = "InterestReturn"
+   elseif ( msg.type == 0x10 ) then
+      msgtype = "PT_CTRL"
    end
    treeInfo = root:add(msg.tvb(msg.offset+1, 1), "Type: " .. msgtype .. "(" .. msg.type .. ")")
    treeInfo = root:add(msg.tvb(msg.offset+2, 2), "PacketLength: " .. msg.PacketLength)
@@ -559,6 +581,7 @@ end
 -----------------------------------------------------
 -- Message TLVs
 -----------------------------------------------------
+local switch_NictOrgTLV = {}
 local switch_MessageTLV = {}
 --
 -- T_NAME
@@ -635,6 +658,136 @@ switch_MessageTLV[8] = function(block, msginfo, msgroot)
 
    return treeInfo
 end
+--
+-- T_END_CHUNK
+--
+switch_MessageTLV[12] = function(block, msginfo, msgroot)
+   local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):uint64()
+   local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
+         "T_END_CHUNK(" .. block.type .. ") Length: " .. block.length .. " Value: " .. value)
+
+   return treeInfo
+end
+
+--
+-- CefC_T_SYMBOLIC
+--
+switch_NictOrgTLV[1] = function(block, msginfo, msgroot)
+   local treeInfo = msginfo:add(block.tvb(block.offset, block.size), "T_SYMBOLIC(" .. block.type .. ")" )
+
+   return treeInfo
+end
+--
+-- CefC_T_LONGLIFE
+--
+switch_NictOrgTLV[2] = function(block, msginfo, msgroot)
+   local treeInfo = msginfo:add(block.tvb(block.offset, block.size), "T_LONGLIFE(" .. block.type .. ")" )
+
+   return treeInfo
+end
+
+--
+-- T_ORG
+--
+switch_MessageTLV[4095] = function(block, msginfo, msgroot)
+   local val_h = block.tvb(block.offset + block.typeLen + block.lengthLen, 1):uint()
+   local val_l = block.tvb(block.offset + block.typeLen + block.lengthLen+1, 2):uint()
+   local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
+         "T_ORG(" .. block.type .. ") Length: " .. block.length .. " PEN: " .. string.format("0x%02x", val_h) .. string.format("%04x", val_l))
+
+   local offset   = block.offset + block.typeLen + block.lengthLen
+   local valueLeft = block.length
+
+   offset = offset + 3
+
+   while valueLeft > 0 do
+      local subTLVs = getNictOrgBlock(block.tvb, offset)
+
+       if (subTLVs == nil or subTLVs.size == nil) then
+          -- no valid tlv found
+          break
+       end
+
+      subTLVs.root = switch_NictOrgTLV[subTLVs.type](subTLVs, treeInfo)
+      valueLeft = valueLeft - subTLVs.size
+      offset    = offset    + subTLVs.size
+   end
+
+   return treeInfo
+end
+
+-----------------------------------------------------
+-- Validation TLVs
+-----------------------------------------------------
+local switch_ValidationTLV = {}
+--
+-- T_CRC32C
+--
+switch_ValidationTLV[2] = function(block, valdinfo, valdroot)
+   local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
+         "T_CRC32C(" .. block.type .. ") Length: " .. block.length)
+
+   valdroot:append_text(" Validation by CRC32C")
+
+   return treeInfo
+end
+--
+-- T_HMAC_SHA256
+--
+switch_ValidationTLV[4] = function(block, valdinfo, valdroot)
+   local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
+         "T_HMAC_SHA256(" .. block.type .. ") Length: " .. block.length)
+
+   valdroot:append_text(" Validation by HMAC_SHA256")
+
+   return treeInfo
+end
+--
+-- T_RSA_SHA256
+--
+switch_ValidationTLV[5] = function(block, valdinfo, valdroot)
+   local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
+         "T_RSA_SHA256(" .. block.type .. ") Length: " .. block.length)
+   local offset   = block.offset + block.typeLen + block.lengthLen
+   local valueLeft = block.length
+
+   valdroot:append_text(" Validation by RSA_SHA256")
+
+   while valueLeft > 0 do
+      local subTLVs = getBlock(block.tvb, offset)
+
+      subTLVs.root = switch_ValidationTLV[subTLVs.type](subTLVs, treeInfo, root)
+      valueLeft = valueLeft - subTLVs.size
+      offset    = offset    + subTLVs.size
+   end
+
+   return treeInfo
+end
+--
+-- T_CERT_FORWARDER
+--
+switch_ValidationTLV[0x1001] = function(block, valdinfo, valdroot)
+   local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
+         "T_CERT_FORWARDER(" .. string.format("0x%x", block.type) .. ") Length: " .. block.length)
+
+   return treeInfo
+end
+
+-----------------------------------------------------
+-- Controller Message Types
+-----------------------------------------------------
+local switch_ControllerTLV = {}
+--
+-- T_INFO
+--
+switch_ControllerTLV[0x1001] = function(block, root)
+   local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):string()
+   local treeInfo = root:add(block.tvb(block.offset, block.size),
+         "T_INFO(" .. string.format("0x%x", block.type) .. ") Length: " .. block.length .. " Value: " .. string.format("%s", value))
+
+   return treeInfo
+end
+
 -----------------------------------------------------
 -- Message Types
 -----------------------------------------------------
@@ -687,6 +840,16 @@ end
 switch_MessageType[3] = function(block, root)
    local treeInfo = root:add(block.tvb(block.offset, block.size),
          "T_VALIDATION_ALG(" .. block.type .. ") Length: " .. block.length)
+   local offset   = block.offset + block.typeLen + block.lengthLen
+   local valueLeft = block.length
+
+   while valueLeft > 0 do
+      local subTLVs = getBlock(block.tvb, offset)
+
+      subTLVs.root = switch_ValidationTLV[subTLVs.type](subTLVs, treeInfo, root)
+      valueLeft = valueLeft - subTLVs.size
+      offset    = offset    + subTLVs.size
+   end
 
    return treeInfo
 end
@@ -718,8 +881,37 @@ switch_MessageType[6] = function(block, root)
    return treeInfo
 end
 
+--
+-- T_NOTIFY
+--
+switch_MessageType[0x4321] = function(block, root)
+   local treeInfo = root:add(block.tvb(block.offset, block.size),
+         "T_NOTIFY(" .. string.format("0x%x", block.type) .. ") Length: " .. block.length)
+   local offset   = block.offset + block.typeLen + block.lengthLen
+   local valueLeft = block.length
+
+   root:append_text(" Controller Notify ")
+
+   while valueLeft > 0 do
+      local subTLVs = getBlock(block.tvb, offset)
+
+      subTLVs.root = switch_ControllerTLV[subTLVs.type](subTLVs, treeInfo, root)
+      valueLeft = valueLeft - subTLVs.size
+      offset    = offset    + subTLVs.size
+   end
+
+   return treeInfo
+end
+
 function addMessageInfo(block, root) -- may be add additional context later
-   block.root = switch_MessageType[block.type](block, root)
+   if ( block.type < 7 ) then
+      block.root = switch_MessageType[block.type](block, root)
+   elseif ( block.type == 0x4321 ) then
+      block.root = switch_MessageType[block.type](block, root)
+   else
+      block.root = root:add(block.tvb(block.offset, block.size),
+         "T_unknown(" .. string.format("0x%x",block.type) .. ") Length: " .. block.length)
+   end
 
    return block.root
 end
@@ -733,7 +925,8 @@ function getCcnHeader(tvb, offset)
    block.tvb = tvb
    block.offset = offset
 
-   if (CcnVersion ~= 0xf0) then
+--   if (CcnVersion ~= 0xf0) then
+   if (CcnVersion ~= 0x01) then
       return nil
    end
 
@@ -744,12 +937,37 @@ function getCcnHeader(tvb, offset)
 end
 
 function getBlock(tvb, offset)
+   if offset >= tvb:len() then
+      return nil
+   end
+
    local block = {}
    block.tvb = tvb
    block.offset = offset
 
    block.type,   block.typeLen   = tvb(offset+0, 2):uint(), 2
    block.length, block.lengthLen = tvb(offset+2, 2):uint(), 2
+
+   block.size = block.typeLen + block.lengthLen + block.length
+
+   return block
+end
+
+function getNictOrgBlock(tvb, offset)
+   if offset >= tvb:len() then
+      return nil
+   end
+
+   local block = {}
+   block.tvb = tvb
+   block.offset = offset
+
+   block.type,   block.typeLen   = tvb(offset+0, 2):uint(), 2
+   if block.type >= 0x8000 then
+     block.length, block.lengthLen = tvb(offset+2, 2):uint(), 2
+   else
+     block.length, block.lengthLen = 0, 0
+   end
 
    block.size = block.typeLen + block.lengthLen + block.length
 
@@ -780,24 +998,9 @@ function getSubBlocks(block)
       local child = getBlock(block.tvb,
                              block.offset + block.typeLen + block.lengthLen + (block.length - valueLeft))
 
-      valueLeft = valueLeft - child.size
-      table.insert(subBlocks, child)
-   end
-
-   if (valueLeft == 0) then
-      return subBlocks
-   else
-      return nil
-   end
-end
-
-function getPayloadSubBlocks(block)
-   local valueLeft = block.length
-   local subBlocks = {}
-
-   while valueLeft > 0 do
-      local child = getBlock(block.tvb,
-                             block.offset + block.typeLen + block.lengthLen + (block.length - valueLeft))
+      if child == nil then
+         return nil
+      end
 
       valueLeft = valueLeft - child.size
       table.insert(subBlocks, child)
@@ -836,7 +1039,7 @@ function ccn.dissector(tvb, pInfo, root) -- Tvb, Pinfo, TreeItem
    CcnMsg.tree = root:add(ccn, tvb(CcnMsg.offset, CcnMsg.size))
 
    local block = getBlock(CcnMsg.tvb, CcnMsg.offset+8)
-   if (block == nil and block.size == nil) then
+   if (block == nil or block.size == nil) then
       -- no valid CCN header found
       return 0
    end
@@ -849,28 +1052,33 @@ function ccn.dissector(tvb, pInfo, root) -- Tvb, Pinfo, TreeItem
 
    local nBytesLeft = 0
 
+   -- Create OptionHeader Section
    if ( 8 < CcnMsg.HeaderLength ) then
-      nBytesLeft = CcnMsg.HeaderLength - 8
+      block.size = CcnMsg.HeaderLength - 8
+      block.tree = CcnMsg.tree:add(block.tvb(block.offset, block.size),
+                                   "OptionHeader Length: " .. block.size)
 
-      -- Create OptionHeader Section
+      local Oph = block
+      nBytesLeft = Oph.size
+
       while (0 < nBytesLeft) do
+         block = getBlock(Oph.tvb, Oph.offset + (Oph.size - nBytesLeft))
          local queue = {block}
+
          while (#queue > 0) do
             local block = queue[1]
             table.remove(queue, 1)
 
             block.elements = getSubBlocks(block)
-            local subtree = addOptHdrInfo(block, CcnMsg.tree)
+            local subtree = addOptHdrInfo(block, Oph.tree)
 
             if (block.elements ~= nil) then
                for i, subBlock in pairs(block.elements) do
                   subBlock.tree = subtree
---                table.insert(queue, subBlock)
                end
             end
          end
-         nBytesLeft = nBytesLeft - (block.size)
-         block = getBlock(block.tvb, block.offset+(block.size))
+         nBytesLeft = nBytesLeft - block.size
       end
    end
 
@@ -878,6 +1086,7 @@ function ccn.dissector(tvb, pInfo, root) -- Tvb, Pinfo, TreeItem
    nBytesLeft = tvb:len() - block.offset
 
    block.tree = CcnMsg.tree:add(block.tvb(block.offset, nBytesLeft), "Messages")
+   local MsgTree = block.tree
 
    -- Create Message Item Tree
    while (0 < nBytesLeft) do
@@ -887,22 +1096,20 @@ function ccn.dissector(tvb, pInfo, root) -- Tvb, Pinfo, TreeItem
          local block = queue[1]
          table.remove(queue, 1)
 
-         block.elements = getPayloadSubBlocks(block)
-         local subTLV = addMessageInfo(block, block.tree)
+         block.elements = getSubBlocks(block)
+         local subtree = addMessageInfo(block, MsgTree)
 
          if (block.elements ~= nil) then
             for i, subBlock in pairs(block.elements) do
-               subBlock.tree = subTLV
---             addMessageInfo(subBlock, subTLV)
+               subBlock.tree = subtree
             end
          end
-
-         nBytesLeft = nBytesLeft - block.size
       end
 
+      nBytesLeft = nBytesLeft - block.size
       if (0 < nBytesLeft) then
          ok, block = pcall(getBlock, tvb, tvb:len() - nBytesLeft)
-         if (not ok) then
+         if (not ok or block == nil) then
             break
          end
       end
@@ -914,7 +1121,7 @@ function ccn.dissector(tvb, pInfo, root) -- Tvb, Pinfo, TreeItem
    if (nBytesLeft > 0 and block ~= nil and block.size ~= nil and block.size > nBytesLeft) then
       pInfo.desegment_offset = tvb:len() - nBytesLeft
 
-      -- Originally, I set desegment_len to the exact length, but it mysteriously didn't work for TCP
+      -- Originally, I set desegment_len to the exact lenght, but it mysteriously didn't work for TCP
       -- pInfo.desegment_len = block.size -- this will not work to desegment TCP streams
       pInfo.desegment_len = DESEGMENT_ONE_MORE_SEGMENT
    end
@@ -925,6 +1132,9 @@ udpDissectorTable:add("9896", ccn)
 
 local tcpDissectorTable = DissectorTable.get("tcp.port")
 tcpDissectorTable:add("9896", ccn)
+
+local tcpDissectorTable = DissectorTable.get("tcp.port")
+tcpDissectorTable:add("9458", ccn)
 
 local ethernetDissectorTable = DissectorTable.get("ethertype")
 ethernetDissectorTable:add(0x8624, ccn)

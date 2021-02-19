@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -2076,6 +2076,21 @@ csmgrd_incoming_interest (
 		return;
 	}
 
+#ifdef CefC_Debug
+//	{
+//		fprintf (stdout,
+//			"[%s] name_len=%d\n",
+//			"csmgrd_incoming_interest", name_len );
+//		int ii;
+//		for ( ii = 0; ii < name_len; ii++ ) {
+//		fprintf (stdout,
+//				"%02x ",
+//				name[ii] );
+//		}
+//		fprintf (stdout,"\n" );
+//	}
+#endif // CefC_Debug
+
 	/* Checks Interest Type */
 	switch (int_type) {
 		case CefC_Csmgr_Interest_Type_Normal: {
@@ -2168,20 +2183,27 @@ csmgrd_incoming_status_msg (
 	unsigned char* buff,						/* receive message						*/
 	int buff_len								/* receive message length				*/
 ) {
-	CsmgrT_Stat* stat[CefstatC_MaxUri];
+	CsmgrT_Stat* stat[CsmgrT_Stat_Max];
 	int res, i;
 	uint64_t nowt;
 	struct timeval tv;
-	unsigned char wbuf[CefC_Csmgr_Stat_Mtu] = {0};
+	unsigned char *wbuf;
+	uint32_t wbuf_size;
 	unsigned char* key = NULL;
-	uint16_t index;
+	uint32_t index;
 	uint16_t klen;
 	uint64_t value64;
 	struct CefT_Csmgr_Status_Hdr stat_hdr;
 	struct CefT_Csmgr_Status_Rep stat_rep;
-	uint16_t value16;
+	uint32_t value32;
 	struct pollfd fds[1];
 	uint16_t 		con_num = 0;
+
+	wbuf = calloc (1, CefC_Csmgr_Stat_Mtu);
+	if (wbuf == NULL){
+		return;
+	}
+	wbuf_size = CefC_Csmgr_Stat_Mtu;
 	
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
@@ -2195,7 +2217,7 @@ csmgrd_incoming_status_msg (
 	/* Creates the response 		*/
 	wbuf[CefC_O_Fix_Ver]  = CefC_Version;
 	wbuf[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_Status;
-	index = CefC_Csmgr_Msg_HeaderLen;
+	index = CefC_Csmgr_Msg_HeaderLen + 2; /*** Added 2 bytes to extend the total frame length to 4 bytes ***/
 	
 	index += sizeof (struct CefT_Csmgr_Status_Hdr);
 	
@@ -2203,6 +2225,15 @@ csmgrd_incoming_status_msg (
 		res = csmgrd_stat_content_info_gets (stat_hdl, key, klen, 1, stat);
 		
 		for (i = 0 ; i < res ; i++) {
+			if (index+stat[i]->name_len+sizeof (struct CefT_Csmgr_Status_Rep) > wbuf_size){
+				void *new = realloc(wbuf, wbuf_size+CefC_Csmgr_Stat_Mtu);
+				if (new == NULL) {
+					free (wbuf);
+					return;
+				}
+				wbuf = new;
+				wbuf_size += CefC_Csmgr_Stat_Mtu;
+			}
 			con_num ++;
 			stat_rep.name_len 	= htons (stat[i]->name_len);
 			stat_rep.con_size 	= cef_client_htonb (stat[i]->con_size);
@@ -2222,31 +2253,67 @@ csmgrd_incoming_status_msg (
 	}
 	stat_hdr.node_num = htons ((uint16_t) hdl->peer_num);
 	stat_hdr.con_num  = htons (con_num);
-	memcpy (&wbuf[CefC_Csmgr_Msg_HeaderLen], &stat_hdr, sizeof (struct CefT_Csmgr_Status_Hdr));
+	memcpy (&wbuf[CefC_Csmgr_Msg_HeaderLen+2/* To extend length from 2 bytes to 4 bytes */], &stat_hdr, sizeof (struct CefT_Csmgr_Status_Hdr));
 	
-	value16 = htons (index);
-	memcpy (&wbuf[CefC_O_Length], &value16, CefC_S_Length);
+	value32 = htonl (index);
+	memcpy (&wbuf[CefC_O_Length], &value32, sizeof(value32));
 	
-	/* Send message 		*/
-	fds[0].fd = sock;
-	fds[0].events = POLLOUT | POLLERR;
-	res = poll (fds, 1, 100);
-	if (res < 1) {
+	{
+		int	fblocks;
+		int rem_size;
+		int counter;
+		fblocks = index / CefC_Csmgr_Stat_Mtu;
+		rem_size = index % CefC_Csmgr_Stat_Mtu;
+		int flag;
+		flag = fcntl (sock, F_GETFL, 0);
+		fcntl (sock, F_SETFL, flag & ~O_NONBLOCK);
+		for (counter=0; counter<fblocks; counter++){
+			/* Send message 		*/
+			fds[0].fd = sock;
+			fds[0].events = POLLOUT | POLLERR;
+			res = poll (fds, 1, 1000);
+			if (res < 1) {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Failed to poll (response status message).\n");
 #endif // CefC_Debug
-		return;
-	}
+				free (wbuf);
+				return;
+			}
 #ifdef CefC_Debug
-	cef_dbg_write (CefC_Dbg_Fine, "Send status response(len = %u).\n", index);
+			cef_dbg_write (CefC_Dbg_Fine, "Send status response(len = %u).\n", CefC_Csmgr_Stat_Mtu);
 #endif // CefC_Debug
+			res = cef_csmgr_send_msg (sock, &wbuf[counter*CefC_Csmgr_Stat_Mtu], CefC_Csmgr_Stat_Mtu);
+#ifdef CefC_Debug
+			if (res < 0) {
+				cef_dbg_write (CefC_Dbg_Fine, "Failed to send response message(status).\n");
+			}
+#endif // CefC_Debug
+		}
+		if (rem_size != 0){
+			/* Send message 		*/
+			fds[0].fd = sock;
+			fds[0].events = POLLOUT | POLLERR;
+			res = poll (fds, 1, 1000);
+			if (res < 1) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Failed to poll (response status message).\n");
+#endif // CefC_Debug
+				free (wbuf);
+				return;
+			}
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "Send status response(len = %u).\n", rem_size);
+#endif // CefC_Debug
+			res = cef_csmgr_send_msg (sock, &wbuf[fblocks*CefC_Csmgr_Stat_Mtu], rem_size);
+#ifdef CefC_Debug
+			if (res < 0) {
+				cef_dbg_write (CefC_Dbg_Fine, "Failed to send response message(status).\n");
+			}
+#endif // CefC_Debug
+		}
+	}
 	
-	res = cef_csmgr_send_msg (sock, wbuf, index);
-#ifdef CefC_Debug
-	if (res < 0) {
-		cef_dbg_write (CefC_Dbg_Fine, "Failed to send response message(status).\n");
-	}
-#endif // CefC_Debug
+	free (wbuf);
 	
 	return;
 }
@@ -2262,7 +2329,7 @@ csmgrd_incoming_ccninfo_msg (
 	int buff_len								/* receive message length				*/
 ) {
 	
-	CsmgrT_Stat* stat[CefstatC_MaxUri];
+	CsmgrT_Stat* stat[CsmgrT_Stat_Max];
 	int res, i;
 	unsigned char msg[CefC_Max_Length] = {0};
 	unsigned char* key;
@@ -2438,7 +2505,7 @@ csmgrd_incoming_pre_ccninfo_msg (
 	unsigned char* buff,						/* receive message						*/
 	int buff_len								/* receive message length				*/
 ) {
-	CsmgrT_Stat* stat[CefstatC_MaxUri];
+	CsmgrT_Stat* stat[CsmgrT_Stat_Max];
 	int res;
 	
 	/* Obtain cached content information 			*/
@@ -2915,7 +2982,7 @@ csmgrd_incoming_cefping_msg (
 	unsigned char* buff,						/* receive message						*/
 	int buff_len								/* receive message length				*/
 ) {
-	CsmgrT_Stat* stat[CefstatC_MaxUri];
+	CsmgrT_Stat* stat[CsmgrT_Stat_Max];
 	int res;
 	
 	/* Obtain cached content information 			*/
@@ -3366,6 +3433,7 @@ csmgrd_incoming_rcch_msg (
 	uint64_t mask;
 	int find_f = 0;
 	char info[CefC_Max_Length] = {0};
+	int info_rem_size=sizeof(info)-1; /* -1 for EOS */
 	char tmp_str[32] = {0};
 	char* wp = info;
 	size_t len;
@@ -3466,6 +3534,10 @@ csmgrd_incoming_rcch_msg (
 							st = val;
 							sprintf(tmp_str, "%d", st);
 							len = strlen((char*)tmp_str);
+							info_rem_size -= (int)len;
+							if (info_rem_size < 0) {
+								goto OUT_COBMAP_LOOP;
+							}
 							memcpy(wp, tmp_str, len);
 							wp = wp + len;
 						}
@@ -3478,6 +3550,10 @@ csmgrd_incoming_rcch_msg (
 							else
 								sprintf(tmp_str, ",");
 							len = strlen((char*)tmp_str);
+							info_rem_size -= (int)len;
+							if (info_rem_size < 0) {
+								goto OUT_COBMAP_LOOP;
+							}
 							memcpy(wp, tmp_str, len);
 							wp = wp + len;
 						}
@@ -3491,11 +3567,14 @@ csmgrd_incoming_rcch_msg (
 OUT_COBMAP_LOOP:
 		if (find_f == 1) {
 			if(st < e_val)
-				sprintf(tmp_str, ":%d,", ed);
+				sprintf(tmp_str, ":%d,", e_val);
 			else
 				sprintf(tmp_str, ",");
 			len = strlen((char*)tmp_str);
-			memcpy(wp, tmp_str, len);
+			info_rem_size -= (int)len;
+			if (info_rem_size >= 0) {
+				memcpy(wp, tmp_str, len);
+			}
 		}
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Retrieve Cache Chunk.\n");
@@ -3543,6 +3622,9 @@ csmgrd_rcch_response_send (
 		index += sizeof (uint16_t);
 	} else {
 		len = strlen((char*)info);
+		if ((index+sizeof(uint16_t)+len) > CefC_Max_Length) {
+			len = len - ((index+sizeof(uint16_t)+len) - CefC_Max_Length);
+		}
 		value16 = htons (len);
 		memcpy (buff + index, &value16, CefC_S_Length);
 		index += sizeof (uint16_t);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -58,7 +58,7 @@
 /*------------------------------------------------------------------*/
 #define CefC_Max_Msg_Size			8192		/* Maximum Message Size (8 Kbytes) 		*/
 #define CefC_Max_Header_Size 		255			/* Maximum Header Size 					*/
-#define CefC_Max_Node_Id 			64
+#define CefC_Max_Node_Id 			1025
 #define CefC_Max_Stamp_Num 			20
 
 /*------------------------------------------------------------------*/
@@ -306,6 +306,15 @@
 #define CefC_CtRc_FATAL_ERROR		0x80
 
 
+#define	CefC_URI_NOT_ACCEPT_CHUNK	0
+#define	CefC_URI_ACCEPT_CHUNK		1
+
+#define		CefC_NOT_C3				0
+#define		CefC_C3_JOIN			1
+#define		CefC_C3_LEAVE			2
+#define		CefC_C3_PUBLISH			3
+
+
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
@@ -470,6 +479,8 @@ typedef struct {
 	
 	/***** Interest User Request		*****/
 	// TBD
+
+	int			c3_f;
 	
 } CefT_Option_TLVs;
 
@@ -487,6 +498,16 @@ typedef struct {
 	uint16_t 			hop_by_hop_f;
 	
 } CefT_Valid_Alg_TLVs;
+
+/* For Application Components */
+typedef struct _ceft_appcomp {
+	uint16_t 				app_comp;				/* Index of App Components  		*/
+													/* sets CefC_T_APP_XXXXX 			*/
+	uint16_t 				app_comp_len;			/* length of app_comp_val 			*/
+	unsigned char 			app_comp_val[CefC_Max_Length];
+													/* value of App Components TLV 		*/
+	void*					next_p;
+} CefT_AppComp;
 
 /*--------------------------------------------------------------*/
 /* Parameters to set Interest 							 		*/
@@ -520,6 +541,8 @@ typedef struct {
 	uint16_t 				app_comp_len;			/* length of app_comp_val 			*/
 	unsigned char 			app_comp_val[CefC_Max_Length];
 													/* value of App Components TLV 		*/
+	uint16_t				AppComp_num;			/* Number of Application Components */
+	CefT_AppComp*			AppComp;
 	
 	/***** Option Header	*****/
 	CefT_Option_TLVs 		opt;					/* Parameters to set Option Header 	*/
@@ -560,6 +583,11 @@ typedef struct {
 	
 	/***** Validation Algorithm TLV 	*****/
 	CefT_Valid_Alg_TLVs 	alg;
+	
+	/* Application Components */
+	uint16_t				AppComp_num;			/* Number of Application Components */
+	CefT_AppComp*			AppComp;
+
 	
 } CefT_Object_TLVs;
 
@@ -621,6 +649,10 @@ typedef struct CefT_Org_Params {
 	unsigned char*			sl_offset;				/* Serial Log offset				*/
 	uint16_t				sl_length;				/* Length of SerLog					*/
 #endif // CefC_Ser_Log
+
+	int						c3_f;
+	uint16_t				c3_length;
+
 } CefT_Org_Params;
 
 /*--------------------------------------------------------------*/
@@ -735,6 +767,8 @@ typedef struct {
 	uint16_t 		app_comp_len;				/* Length of App Components  			*/
 	uint16_t 		app_comp_offset;			/* Offset of value App Components from 	*/
 												/* the top of the message 				*/
+	uint16_t				AppComp_num;			/* Number of Application Components */
+	CefT_AppComp*			AppComp;
 	
 	/***** PAYLOAD TLV 		*****/
 	uint16_t		payload_f;					/* Offset of Payload					*/
@@ -814,6 +848,164 @@ typedef struct {
 	CefT_Ccninfo_Rep*	rep_blk;				/* Report block TLV								*/
 	CefT_Ccninfo_Rep*	rep_blk_tail;
 } CefT_Parsed_Ccninfo;
+
+
+/**
+ * Clap Corner
+ *  */
+/**  */
+#define PEN_SIZE          3  // Private Enterprise Number
+#define HEX_UUID_SIZE     32 // UUID
+#define MAX_NAME_SEGMENTS 1  // Name TLV
+#define MAX_NUM_SIZE      4  // TLV
+
+#define PT_CONTENT        0x02   // PT_CONTENT
+#define PT_REQUEST        0x04   // PT_REQUEST
+#define PT_REPLY          0x05   // PT_REPLY
+#define T_INTEREST        0x0001 // 
+#define T_OBJECT          0x0002 // 
+#define T_COMM_CREATE     0x8101 // 
+#define T_COMM_DESTROY    0x8102 // 
+#define T_COMM_JOIN       0x8103 // 
+#define T_COMM_LEAVE      0x8104 // 
+#define T_COMM_PUBLISH    0x8105 // 
+// 0x8106 reserved
+
+// Name TLV
+#define T_NAME            0x0000
+#define T_MESSAGEMENT     0x0001
+#define T_CHUNK           0x0010
+#define T_APP             0x1000   // T_APP=0x1XXX XXXは000-FFF
+#define T_APP_0           0x1000   // T_APP:0
+#define T_APP_1           0x1001   // T_APP:1
+#define T_APP_2           0x1002   // T_APP:2
+// 間を省略します
+#define T_APP_4095        0x1FFF   // T_APP:4095
+
+// End Chunk
+#define T_ENDCHUNK        0x000C
+
+// 
+#define T_COMM_OWNER      0x8107
+#define T_COMM_USER       0x8108
+#define T_COMM_DEVICE     0x8109
+#define T_COMM_PASS       0x810a
+#define T_COMM_RWPASS     0x810b
+#define T_COMM_START      0x810c
+#define T_COMM_END        0x810d
+#define T_COMM_LOCATION   0x810e
+#define T_ORG             0x0fff
+#define NICT_PEN          0x00C96C
+
+/**  */
+
+// Name TLV
+struct c3_name_segment {
+    uint16_t     type;
+	uint16_t     length;
+	uint8_t      segment[HEX_UUID_SIZE];
+} __attribute__((__packed__));
+
+// 
+struct c3_number {
+    uint16_t     type;                  // T_CHUNK(0x0010) T_ENDCHUNK(0x000C)、
+	                                    // T_APP:1-T_APP:4095(0x1001-0x1FFF)
+	uint16_t     length;                // 1-4
+	uint8_t      data[MAX_NUM_SIZE];    // 
+	                                    // 
+} __attribute__((__packed__));
+
+// Name TLV
+// JOIN, LEAVE, CREATE, DESTROY
+struct c3_simple_name {
+	uint16_t                type;     // T_NAME(0x0000)
+	uint16_t                length;
+	struct c3_name_segment  segments[MAX_NAME_SEGMENTS];
+} __attribute__((__packed__));
+
+// Name TLV
+// PUBLISH
+struct c3_name {
+	uint16_t                type;       // T_NAME(0x0000)
+	uint16_t                length;
+	struct c3_name_segment  segments[MAX_NAME_SEGMENTS];
+	struct c3_number         datatype;  // typeはT_APP:1-T_APP:4095 (0x1001-0x1FFF)
+	struct c3_number         chunk;     // typeはT_CHUNK(0x0010)
+} __attribute__((__packed__));
+
+// Vendor TLV
+struct c3_vendor {
+	uint16_t    type;     // T_ORG(0x0FFF)
+    uint16_t    length;   // length of (PEN + Vendor Specific Value)
+	uint8_t     pen[PEN_SIZE]; // Private Enterprise Number (NICT: 0x00C96C)
+	uint8_t     value[CefC_Max_Length]; // Vendor Specific Value
+} __attribute__((__packed__));
+
+// Message TLV
+// JOIN, LEAVE, CREATE, DESTROY
+struct c3_message {
+	uint16_t                type;    // T_INTEREST(0x0001)
+	uint16_t                length;  // length of (Name TLV + Vendor TLV)
+    struct c3_simple_name   name;    // Name TLV
+	struct c3_vendor        vendor;  // Vendor TLV
+} __attribute__((__packed__));
+
+// Payload TLV
+struct c3_payload {
+	uint16_t    type;                    // T_PAYLOAD(0x0001)
+	uint16_t    length;                  // length of Payload (0 is possible)
+	uint8_t     value[CefC_Max_Length];  // Payload
+} __attribute__((__packed__));
+
+// Payload TLV Message TLV
+// PUBLISH
+ struct c3_mes_payload {
+	uint16_t           type;     // T_OBJECT(0x0002)
+	uint16_t           length;   // length of (Name TLV + Vendor TLV)
+    struct c3_name     name;     // Name TLV
+	struct c3_number   endchunk; // End Chunk TLV (Optional) T_ENDCHUNK (0x000C)
+	struct c3_vendor   vendor;   // Vendor TLV
+	struct c3_payload  payload;  // Payload TLV (Optional)
+} __attribute__((__packed__));
+
+// Clap Corner Interest
+struct c3_interest {
+	struct fixed_hdr    header;   // PT_REQUEST(0x04) PT_REPLY(0x05) PT_CONTENT (0x)
+	struct c3_message   messsage;
+} __attribute__((__packed__));
+
+// Clap Corner Object
+struct c3_object {
+	struct fixed_hdr    header;   // Type PT_REPLY (0x05)
+	struct c3_mes_payload   messsage; // 
+} __attribute__((__packed__));
+
+
+/**
+ * Vendor Specific Value 
+ */
+#define C3_MAX_SUB_VALUES   6   // 
+#define C3_MAX_VALUE_SIZE   256 // 
+
+// T_COMM_OWNER (0x8107), T_COMM_USER (0x8108), T_COMM_DEVICE(0x8109),
+// T_COMM_PASS (0x810a), T_COMM_RW_PASS (0x810b), T_COMM_START (0x810c),
+// T_COMM_END (0x810d), T_COMM_LOCATION (0x810e)
+struct c3_tlv {
+    uint16_t  type;
+	uint16_t  length;
+	uint8_t   value[C3_MAX_VALUE_SIZE];
+} __attribute__((__packed__));
+
+// Vendor Speficic Value
+// T_COMM_CREATE (0x8101), T_COMM_DESTROY (0x8102),T_COMM_JOIN (0x8103),
+// T_COMM_LEAVE (0x8104), T_COMM_PUBLISH (0x8105) 
+struct c3_vendor_tlv {
+	uint16_t        type;
+	uint16_t        length;
+	struct c3_tlv   values[C3_MAX_SUB_VALUES];
+} __attribute__((__packed__));
+
+
 
 /****************************************************************************************
  Global Variables
@@ -1119,4 +1311,24 @@ cef_frame_debug_print_buff (
 	uint16_t buff_len,					/* Length of buff								*/
 	uint8_t n_per_line					/* Number of 1 line (0 is nothing to do)		*/
 );
+
+int
+cef_frame_input_uri_pre_check(
+	const char* inuri, 						/* URI										*/
+	unsigned char* name_1,					/* buffer to set Name 						*/
+	int			chunk_f						/* "/Chunk=" Accept or Not Accept			*/
+);
+
+int
+cef_frame_input_uri_pre_check2(
+	const char* inuri, 						/* URI										*/
+	unsigned char* name_1,					/* buffer to set Name 						*/
+	int			chunk_f						/* "/Chunk=" Accept or Not Accept			*/
+);
+
+void
+cef_frame_app_components_free(  uint16_t		AppComp_num,
+								 CefT_AppComp*	AppComp
+);
+
 #endif // __CEF_FRAME_HEADER__

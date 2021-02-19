@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -77,11 +77,11 @@
 #define MemC_Max_Conntent_Num 		512
 #define MemC_Max_KLen 				1024
 #define MemC_Max_Buff 				32
-#define MemC_Min_Buff				4
+//#define MemC_Min_Buff				1
+#define MemC_Min_Buff				4		//20191127 Test
 #define MemC_CID_HexCh_size			(MD5_DIGEST_LENGTH * 2)		/* Size to store binary CID converted to hex character */
 #define MemC_CID_KLen				(CefC_S_TLF+CefC_NWP_CID_Prefix_Len+MemC_CID_HexCh_size)
 
-//#define MEM_TABLE_MAX 				4
 #define MEM_TABLE_MAX 				1
 
 #define MEM_SEMNAME					"/cefmemsem"
@@ -1189,14 +1189,8 @@ mem_cache_set_lifetime (
 					if (memcmp (name, entry->name, name_len)) {
 						continue;
 					}
-					
-					if ((entry->expiry == 0) || (new_life < entry->expiry)) {
-						entry->expiry = new_life;
-					}
-					
-					if (new_life < entry->cache_time) {
-						entry->cache_time = new_life;
-					}
+					entry->expiry = new_life;
+					entry->cache_time = new_life;
 				}
 			}
 		}

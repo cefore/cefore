@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -58,7 +58,8 @@
 
 /***** structure for listing content entries *****/
 typedef struct _FifoT_Entry {
-	unsigned char 	key[CsmgrdC_Key_Max];	/* key of content entry 					*/
+	unsigned char 	*key;					/* key of content entry 					*/
+
 	int 			key_len;				/* length of key 							*/
     int             valid;
 } FifoT_Entry;
@@ -145,6 +146,13 @@ destroy (
 	cache_cap 		= 0;
 	store_api 		= NULL;
 	remove_api 		= NULL;
+
+	for (int i=0; i< cache_cap; i++) {
+		if (cache_entry_list[i].key != NULL){
+			free(cache_entry_list[i].key);
+		}
+	}
+
     free(cache_entry_list);
     crlib_lookup_table_destroy();
 }
@@ -242,12 +250,15 @@ static void fifo_store_entry(
     unsigned char 	key[CsmgrdC_Key_Max];
     int 			key_len;
     FifoT_Entry*   rsentry;
+	unsigned char* q;
     
     key_len = csmgrd_name_chunknum_concatenate (
                     entry->name, entry->name_len, entry->chnk_num, key);
     rsentry = &cache_entry_list[index];
     rsentry->key_len = key_len;
-    memcpy(rsentry->key, key, key_len);
+  	q = calloc(1, key_len);
+    memcpy(q, key, key_len);
+	rsentry->key = q;
     rsentry->valid = 1;
     crlib_lookup_table_add(rsentry->key, rsentry->key_len, index);
     (*store_api)(entry);
@@ -262,6 +273,8 @@ static void fifo_remove_entry(
     rsentry = &cache_entry_list[index];
     crlib_lookup_table_remove(rsentry->key, rsentry->key_len);
     if (!is_removed) (*remove_api)(rsentry->key, rsentry->key_len);
+
+	free(rsentry->key);
     memset(rsentry, 0, sizeof(FifoT_Entry));
     cache_count--;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -90,6 +90,11 @@ typedef struct {
 static char 	conf_path[PATH_MAX] = {0};
 static int 		port_num = CefC_Unset_Port;
 
+static	char*				My_Node_Name 			= NULL;	/* Node Name							*/
+static	unsigned char*		My_Node_Name_TLV 		= NULL;	/* Node Name TLV						*/
+static	int					My_Node_Name_TLV_len	= 0;	/* Node Name TLV Length					*/
+
+
 /****************************************************************************************
  Static Function Declaration
  ****************************************************************************************/
@@ -142,6 +147,22 @@ ct_results_output (
 	uint32_t start_ntp32b,
 	CefT_Ccninfo_TLVs* tlvs
 );
+
+/*  */
+static int
+ct_my_node_name_get ( void ) ;
+
+static int
+ct_trim_line_string (
+	const char* p1, 							/* target string for trimming 			*/
+	char* p2,									/* name string after trimming			*/
+	char* p3									/* value string after trimming			*/
+);
+
+/* Global */
+char	char_cmd[8];
+
+
 #if 0
 /*--------------------------------------------------------------------------------------
 	for debug
@@ -191,6 +212,8 @@ int main (
 	/*----------------------------------------------------------------
 		Parses parameters
 	------------------------------------------------------------------*/
+	memset( char_cmd, 0x00, 8 );
+	strcpy( char_cmd, argv[0] );
 	if (ct_parse_parameters (argc, argv) < 0) {
 		exit (0);
 	}
@@ -208,17 +231,20 @@ int main (
 	------------------------------------------------------------------*/
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
-		fprintf (stdout, "[ccninfo] ERROR: Failed to init the client package.\n");
+		char	tmp_msg[512];
+		sprintf( tmp_msg, "[%s] ERROR: Failed to init the client package.", char_cmd );
+		fprintf (stdout, "%s\n", tmp_msg );
 		exit (0);
 	}
 	
 	fhdl = cef_client_connect ();
 	if (fhdl < 1) {
-		fprintf (stderr, "[ccninfo] ERROR: fail to connect cefnetd\n");
+		char	tmp_msg[512];
+		sprintf( tmp_msg, "[%s] ERROR: Fail to connect cefnetd.", char_cmd );
+		fprintf (stdout, "%s\n", tmp_msg );
 		exit (0);
 	}
 	
-
 	/*----------------------------------------------------------------
 		Creates and puts a ccninfo request
 	------------------------------------------------------------------*/
@@ -238,8 +264,62 @@ int main (
 	tlvs.opt.req_id |= 0x8080;
 	/* get my node IP */
 	cp_node_id_get (&node_id_len, node_identifer);
-	tlvs.opt.node_id_len = node_id_len;
-	memcpy(tlvs.opt.node_identifer, node_identifer, tlvs.opt.node_id_len);
+
+	//NodeName S
+	res = ct_my_node_name_get();
+	if ( res <= 0 ) {
+		/* Use IP addr */
+		char		addrstr[256];
+		if ( node_id_len == 4 ) {
+			inet_ntop (AF_INET, node_identifer, addrstr, sizeof (addrstr));
+		} else if ( node_id_len == 16 ) {
+			inet_ntop (AF_INET6, node_identifer, addrstr, sizeof (addrstr));
+		}
+		My_Node_Name = (char*)malloc( strlen(addrstr) + 1 );
+		strcpy( My_Node_Name, addrstr );
+	}
+	
+	/* Convert Name TLV */
+	{
+		unsigned char	out_name[CefC_Max_Length];
+		unsigned char	out_name_tlv[CefC_Max_Length];
+		strcpy( (char*)out_name, "ccn:/" );
+		strcat( (char*)out_name, My_Node_Name );
+		res = cef_frame_conversion_uri_to_name ((char*)out_name, out_name_tlv);
+		if ( res < 0 ) {
+			/* Error */
+			char	tmp_msg[512];
+			sprintf( tmp_msg, "[%s] ERROR: NODE_NAME contains characters that cannot be used.", char_cmd );
+			fprintf (stdout, "%s\n", tmp_msg );
+			exit (0);
+		} else {
+			struct tlv_hdr name_tlv_hdr;
+			name_tlv_hdr.type = htons (CefC_T_NAME);
+			name_tlv_hdr.length = htons (res);
+			My_Node_Name_TLV = (unsigned char*)malloc( res+CefC_S_TLF );
+			My_Node_Name_TLV_len = res + CefC_S_TLF;
+			memcpy( &My_Node_Name_TLV[0], &name_tlv_hdr, sizeof(struct tlv_hdr) );
+			memcpy( &My_Node_Name_TLV[CefC_S_TLF], out_name_tlv, res );
+		}
+#ifdef	DEB_CCNINFO
+		fprintf (stdout,
+			"NODE_NAME=%s\n", My_Node_Name );
+		int	ii;
+		fprintf (stdout,
+			"NODE_NAME TLV_len=%d \n",
+			My_Node_Name_TLV_len );
+		for ( ii = 0; ii < My_Node_Name_TLV_len; ii++ ) {
+			fprintf( stdout, "%02x ", My_Node_Name_TLV[ii] );
+		}
+		fprintf( stdout, "\n" );
+#endif
+
+	}
+	//NodeName E
+
+	tlvs.opt.node_id_len = My_Node_Name_TLV_len;
+	memcpy(tlvs.opt.node_identifer, My_Node_Name_TLV, tlvs.opt.node_id_len);
+
 	/* Set Validation Alglithm */
 	if (params.validf == 1) {
 		tlvs.alg.valid_type = (uint16_t) cef_valid_type_get (params.valid_algo);
@@ -255,32 +335,13 @@ int main (
 		cef_valid_init(conf_path);
 	}
 	
-	fprintf (stderr, "ccninfo to %s with "	, params.prefix);
+	fprintf (stderr, "%s to %s with "	, char_cmd, params.prefix);
 	fprintf (stderr, "HopLimit=%d, "		, params.hop_limit);
 	fprintf (stderr, "SkipHopCount=%d, "	, params.skip_hop);
 	fprintf (stderr, "Flag=0x%04X, "		, params.flag);
 	fprintf (stderr, "Request ID=%u and "		, tlvs.opt.req_id);
-	{
-		char 		addrstr[256];
-		struct hostent* host;
-		if (node_id_len == 4) {
-			host = gethostbyaddr ((const char*)node_identifer, 4, AF_INET);
-			if (host != NULL) {
-				fprintf (stderr, "node ID=%s\n", host->h_name);
-			} else {
-				inet_ntop (AF_INET, &node_identifer, addrstr, sizeof (addrstr));
-				fprintf (stderr, "node ID=%s\n", addrstr);
-			}
-		} else if (node_id_len ==  16) {
-			host = gethostbyaddr ((const char*)&node_identifer, 16, AF_INET6);
-			if (host != NULL) {
-				fprintf (stderr, "node ID=%s\n", host->h_name);
-			} else {
-				inet_ntop (AF_INET6, node_identifer, addrstr, sizeof (addrstr));
-				fprintf (stderr, "node ID=%s\n", addrstr);
-			}
-		}
-	}
+	fprintf (stderr, "node ID=%s\n", My_Node_Name);
+
 	res = cef_client_ccninfo_input (fhdl, &tlvs);
 	if (res < 0){
 		exit (-1);
@@ -311,7 +372,6 @@ int main (
 		
 		/* Obtains the replay from cefnetd 			*/
 		res = cef_client_read (fhdl, &buff[index], CefC_Max_Length - index);
-		
 		if (res > 0) {
 			res += index;
 			
@@ -369,11 +429,11 @@ ct_results_output (
 	CefT_Ccninfo_Rep*	rep_p;
 	uint32_t			prev_ar_time;
 	unsigned			char uri_str[2048];
-	char 				addrstr[256];
 	double 				diff_us;
-	struct hostent*		host;
 	char				con_type;
 	
+
+	memset( &pci, 0x00, sizeof(CefT_Parsed_Ccninfo) );
 	/* Checks the Validation 			*/
 	res = cef_valid_msg_verify_forccninfo (msg, packet_len, NULL, NULL);
 	if (res != 0) {
@@ -386,6 +446,18 @@ ct_results_output (
 		return;
 	}
 	
+
+#ifdef DEB_CCNINFO
+{
+	int dbg_x;
+	fprintf (stderr, "DEB_CCNINFO-ccninfo: Ccninfo Reply's Msg [ ");
+	for (dbg_x = 0 ; dbg_x < packet_len ; dbg_x++) {
+		fprintf (stderr, "%02x ", msg[dbg_x]);
+	}
+	fprintf (stderr, "](%d(h=%d, p=%d))\n", packet_len, header_len, packet_len-header_len);
+}
+#endif //DEB_CCNINFO
+
 	/* Check Reply hoplimit and ID */
 	if (pci.pkt_type != CefC_PT_REPLY ||
 		tlvs->hoplimit < pci.rpt_blk_num ||
@@ -394,10 +466,7 @@ ct_results_output (
 		memcmp (tlvs->opt.node_identifer, pci.node_id, pci.id_len) != 0) {
 		return;
 	}
-	if (pci.rpt_blk_num == 0) {
-		return;
-	}
-		
+
 	
 #ifdef DEB_CCNINFO
 {
@@ -409,32 +478,29 @@ ct_results_output (
 	fprintf (stderr, "](%d(h=%d, p=%d))\n", packet_len, header_len, packet_len-header_len);
 }
 #endif //DEB_CCNINFO
+
+	if (pci.rpt_blk_num == 0) {
+		//Top NO_SPACE
+		fprintf (stderr, "\nresponse NO_SPACE\n\n");
+		fprintf (stderr, "NO_SPACE Error: Node information cannot be inserted in Reply due to lack of space or MTU exceeded. Run CCNinfo to skip the nodes using -s option.\n");
+		cef_frame_ccninfo_parsed_free (&pci);
+		return;
+	}
 	
 	/* Outputs header message 			*/
 	fprintf (stderr, "\nresponse from ");
 	if (pci.rpt_blk_tail != NULL) {
-		if (pci.rpt_blk_tail->id_len == 4) {
-			host = gethostbyaddr ((const char*)pci.rpt_blk_tail->node_id, 4, AF_INET);
-			if (host != NULL) {
-				fprintf (stderr, "%s: ", host->h_name);
-			} else {
-				inet_ntop (AF_INET, pci.rpt_blk_tail->node_id, addrstr, sizeof (addrstr));
-				fprintf (stderr, "%s: ", addrstr);
-			}
-		} else if (pci.rpt_blk_tail->id_len == 16) {
-			host = gethostbyaddr ((const char*)pci.rpt_blk_tail->node_id, 16, AF_INET6);
-			if (host != NULL) {
-				fprintf (stderr, "%s: ", host->h_name);
-			} else {
-				inet_ntop (AF_INET, pci.rpt_blk_tail->node_id, addrstr, sizeof (addrstr));
-				fprintf (stderr, "%s: ", addrstr);
-			}
-		} else {
-			for (res = 0 ; res < pci.rpt_blk_tail->id_len ; res++) {
-				fprintf (stderr, "%02X", pci.rpt_blk_tail->node_id[res]);
-			}
-			fprintf (stderr, ": ");
-		}
+		unsigned char	in_node_name_buff[1024];
+		char			ot_node_name_buff[1024];
+		memset( in_node_name_buff, 0x00, 1024 );
+		memset( ot_node_name_buff, 0x00, 1024 );
+		memcpy( in_node_name_buff, &pci.rpt_blk_tail->node_id[4], pci.rpt_blk_tail->id_len - 4);
+		/*node_name_len =*/ cef_frame_conversion_name_to_uri( in_node_name_buff,
+															pci.rpt_blk_tail->id_len - 4,
+															ot_node_name_buff );
+		/* ccn:/ */
+		fprintf (stderr, "%s: ", &ot_node_name_buff[5]);
+		
 	} else {
 		return;
 	}
@@ -490,35 +556,27 @@ ct_results_output (
 	/* Outputs RTT[ms]					*/
 	fprintf (stderr, ", time=%f ms\n\n", (double)((double) rtt_us / 1000.0));
 	
+	if ( pci.ret_code == CefC_CtRc_NO_SPACE ) {
+		
+		
+	}
+	
 	/* Outputs Route 					*/
 	fprintf (stderr, "route information:\n");
 	rpt_p = pci.rpt_blk;
 	for (i = 0 ; i < pci.rpt_blk_num ; i++) {
 		fprintf (stderr, "%2d ", i + 1);
-		
-		if (rpt_p->id_len == 4) {
-			host = gethostbyaddr ((const char*)rpt_p->node_id, 4, AF_INET);
-			if (host != NULL) {
-				fprintf (stderr, "%s\t\t\t", host->h_name);
-			} else {
-				inet_ntop (AF_INET, rpt_p->node_id, addrstr, sizeof (addrstr));
-				fprintf (stderr, "%s\t\t\t", addrstr);
-			}
-		} else if (rpt_p->id_len == 16) {
-			host = gethostbyaddr ((const char*)rpt_p->node_id, 16, AF_INET6);
-			if (host != NULL) {
-				fprintf (stderr, "%s\t\t\t", host->h_name);
-			} else {
-				inet_ntop (AF_INET6, rpt_p->node_id, addrstr, sizeof (addrstr));
-				fprintf (stderr, "%s\t\t\t", addrstr);
-			}
-		} else {
-			for (res = 0 ; res < rpt_p->id_len ; res++) {
-				fprintf (stderr, "%02X", rpt_p->node_id[res]);
-			}
-			fprintf (stderr, "\t\t\t");
-		}
-		
+		unsigned char	in_node_name_buff[1024];
+		char			ot_node_name_buff[1024];
+		memset( in_node_name_buff, 0x00, 1024 );
+		memset( ot_node_name_buff, 0x00, 1024 );
+		memcpy( in_node_name_buff, &rpt_p->node_id[4], rpt_p->id_len - 4);
+		/*node_name_len =*/ cef_frame_conversion_name_to_uri( in_node_name_buff,
+															rpt_p->id_len - 4,
+															ot_node_name_buff );
+		/* ccn:/ */
+		fprintf (stderr, "%s: ", &ot_node_name_buff[5]);
+
 		if (i) {
 			diff_us  = (double)(((0xffff0000 & rpt_p->req_arrival_time) >>16)  + (0x0000ffff & rpt_p->req_arrival_time)/65536.0);
 			diff_us -= (double)(((0xffff0000 & prev_ar_time) >>16)  + (0x0000ffff & prev_ar_time)/65536.0);
@@ -535,6 +593,10 @@ ct_results_output (
 		rpt_p = rpt_p->next;
 	}
 	fprintf (stderr, "\n");
+
+	if ( pci.ret_code == CefC_CtRc_NO_SPACE ) {
+		fprintf (stderr, "NO_SPACE Error: Node information cannot be inserted in Reply due to lack of space or MTU exceeded. Run CCNinfo to skip the nodes using -s option.\n");
+	}
 	
 	/* Outputs Cache Status 				*/
 	if (pci.rep_blk_num == 0) {
@@ -590,6 +652,7 @@ ct_results_output (
 	fprintf (stderr, "\n");
 	
 	cef_frame_ccninfo_parsed_free (&pci);
+
 	return;
 }
 
@@ -600,9 +663,9 @@ static void
 ct_usage_output (
 	const char* msg									/* Supplementary information 		*/
 ) {
-	fprintf (stderr, 	"Usage:ccninfo name_prefix [-f] [-n] [-o] [-r hop_count]"
+	fprintf (stderr, 	"Usage:%s name_prefix [-f] [-c] [-o] [-r hop_count]"
 		                " [-s hop_count] [-v valid_algo] name_prefix "
-		                " [-d config_file_dir] [-p port_num]\n");
+		                " [-d config_file_dir] [-p port_num]\n", char_cmd);
 	
 	if (msg) {
 		fprintf (stderr, "%s\n", msg);
@@ -634,7 +697,7 @@ ct_parse_parameters (
 	int 	port_num_f 		= 0;
 	int		num_opt_prefix	= 0;
 	
-	params.flag = CefC_CtOp_Cache;
+	params.flag = 0x00;
 	
 	/* Parses parameters 		*/
 	for (i = 1 ; i < argc ; i++) {
@@ -659,14 +722,14 @@ ct_parse_parameters (
 		/*-----------------------------------------------------------------------*/
 		/****** -n (requires only the routing path) 						******/
 		/*-----------------------------------------------------------------------*/
-		else if (strcmp (work_arg, "-n") == 0) {
-			/* Checks whether [-n] is not specified more than twice. 	*/
+		else if (strcmp (work_arg, "-c") == 0) {
+			/* Checks whether [-c] is not specified more than twice. 	*/
 			if (num_opt_n) {
-				ct_usage_output ("error: [-n] is duplicated.");
+				ct_usage_output ("error: [-c] is duplicated.");
 				return (-1);
 			}
 			
-			params.flag &= ~CefC_CtOp_Cache;
+			params.flag |= CefC_CtOp_Cache;
 			num_opt_n++;
 		}
 		/*-----------------------------------------------------------------------*/
@@ -995,6 +1058,131 @@ cp_node_id_get (
 
 	return;
 }
+
+static int
+ct_my_node_name_get ( void )
+{
+
+	char 	ws[1024];
+	FILE*	fp = NULL;
+	char 	buff[1024];
+	char 	pname[64];
+	int 	res;
+
+	unsigned char	chk_name[CefC_Max_Length];
+	int		in_len;
+	int		ot_len;
+	int		i;
+	char*	chk_p;
+
+	/* Obtains the directory path where the cefnetd's config file is located. */
+	cef_client_config_dir_get (ws);
+	
+	sprintf (ws, "%s/cefnetd.conf", ws);
+	
+	/* Opens the cefnetd's config file. */
+	fp = fopen (ws, "r");
+	if (fp == NULL) {
+		char	tmp_msg[512];
+		sprintf( tmp_msg, "[%s] ERROR: <Fail> cefnetd_config_read (fopen).", char_cmd );
+		fprintf (stdout, "%s\n", tmp_msg );
+		exit (0);
+	}
+	
+	/* Reads and records written values in the cefnetd's config file. */
+	while (fgets (buff, 1023, fp) != NULL) {
+		buff[1023] = 0;
+
+		if (buff[0] == 0x23/* '#' */) {
+			continue;
+		}
+
+		res = ct_trim_line_string (buff, pname, ws);
+		if (res < 0) {
+			continue;
+		}
+
+		if (strcasecmp (pname, CefC_ParamName_Node_Name) == 0) {
+			/* Check NodeName */
+			in_len = strlen(ws);
+			memset( chk_name, 0x00, CefC_Max_Length );
+			memcpy( chk_name, ws, in_len );
+			chk_p = (char*)chk_name;
+			if ( strncmp( (char*)chk_name, "http://", 7 ) == 0 ) {
+				chk_p += 7;
+				in_len -= 7;
+			} 
+			
+			for ( i = 0; i < in_len; i++ ) {
+				if ( *chk_p == '/' ) {
+					chk_p++;
+				} else {
+					break;
+				}
+			}
+			ot_len = strlen( chk_p );
+			My_Node_Name = (char*)malloc( ot_len + 1 );
+			strcpy( My_Node_Name, chk_p );
+		} else {
+			continue;
+		}
+
+	}
+	
+	fclose (fp);
+	
+	return( ot_len );
+}
+
+static int
+ct_trim_line_string (
+	const char* p1, 							/* target string for trimming 			*/
+	char* p2,									/* name string after trimming			*/
+	char* p3									/* value string after trimming			*/
+) {
+	char ws[1024];
+	char* wp = ws;
+	char* rp = p2;
+	int equal_f = -1;
+
+	while (*p1) {
+		if ((*p1 == 0x0D) || (*p1 == 0x0A)) {
+			break;
+		}
+
+		if ((*p1 == 0x20) || (*p1 == 0x09)) {
+			p1++;
+			continue;
+		} else {
+			*wp = *p1;
+		}
+
+		p1++;
+		wp++;
+	}
+	*wp = 0x00;
+	wp = ws;
+
+	while (*wp) {
+		if (*wp == 0x3d /* '=' */) {
+			if (equal_f > 0) {
+				return (-1);
+			}
+			equal_f = 1;
+			*rp = 0x00;
+			rp = p3;
+		} else {
+			*rp = *wp;
+			rp++;
+		}
+		wp++;
+	}
+	*rp = 0x00;
+
+	return (equal_f);
+}
+
+
 #if 0
 /*--------------------------------------------------------------------------------------
 	for debug

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -71,11 +71,11 @@
 
 typedef size_t CsmgrT_Stat_Handle;
 
-typedef struct {
+typedef struct CsmgrT_Stat {
 	
 	uint32_t 			hash;
 	uint16_t 			index;
-	unsigned char 		name[CsmgrT_Name_Max];
+	unsigned char 		*name;
 	uint16_t 			name_len;
 	uint64_t 			con_size;
 	uint64_t 			cob_num;
@@ -87,7 +87,7 @@ typedef struct {
 	uint32_t 			max_seq;
 	struct in_addr 		node;
 	int 				expire_f;
-	
+	struct CsmgrT_Stat*	next;
 } CsmgrT_Stat;
 
 /****************************************************************************************
@@ -135,7 +135,7 @@ csmgr_stat_content_info_gets (
 	const unsigned char* name, 
 	uint16_t name_len, 
 	int partial_match_f, 
-	CsmgrT_Stat* ret[CefstatC_MaxUri]
+	CsmgrT_Stat* ret[]
 );
 /*--------------------------------------------------------------------------------------
 	Obtain the expred lifetime content information
@@ -254,7 +254,7 @@ csmgr_stat_content_info_gets_for_pub (
 	const unsigned char* name, 
 	uint16_t name_len, 
 	int partial_match_f, 
-	CsmgrT_Stat* ret[CefstatC_MaxUri]
+	CsmgrT_Stat* ret[]
 );
 /*--------------------------------------------------------------------------------------
 	Update cached Cob status for publisher

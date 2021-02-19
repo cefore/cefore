@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -67,8 +67,8 @@
  State Variables
  ****************************************************************************************/
 
-static char* work_str = NULL;
-static char tmp_str[CefC_Display_Max];
+static char* rsp_bufp;
+static int   rsp_buf_size;
 
 /****************************************************************************************
  Static Function Declaration
@@ -79,30 +79,37 @@ static char prot_str[3][16] = {"invalid", "tcp", "udp"};
 /*--------------------------------------------------------------------------------------
 	Output Face status
 ----------------------------------------------------------------------------------------*/
-static void
+static int
 cef_status_face_output (
 	void
 );
 /*--------------------------------------------------------------------------------------
 	Output FIB status
 ----------------------------------------------------------------------------------------*/
-static void
+static int
 cef_status_forward_output (
 	CefT_Hash_Handle* handle
 );
 /*--------------------------------------------------------------------------------------
 	Output PIT status
 ----------------------------------------------------------------------------------------*/
-static void
+static int
 cef_status_pit_output (
 	CefT_Hash_Handle* handle
 );
 /*--------------------------------------------------------------------------------------
 	Output App FIB status
 ----------------------------------------------------------------------------------------*/
-static void
+static int
 cef_status_app_forward_output (
 	CefT_Hash_Handle* handle
+);
+/*--------------------------------------------------------------------------------------
+	Add output to response buffer
+----------------------------------------------------------------------------------------*/
+static int
+cef_status_add_output_to_rsp_buf(
+	char* buff
 );
 
 
@@ -115,13 +122,15 @@ cef_status_app_forward_output (
 int 
 cef_status_stats_output (
 	CefT_Netd_Handle* hdl,						/* cefnetd handle						*/
-	unsigned char* rsp
+	unsigned char** rspp
 ) {
 	char node_type[32] = {0};
 	char cache_type[32] = {0};
-	
-	work_str = (char*) rsp;
-	memset (tmp_str, 0, sizeof(tmp_str));
+	char work_str[CefC_Max_Length];
+	int  fret = 0;
+	(*rspp)[0] = 0;
+	rsp_bufp = (char*) *rspp;
+	rsp_buf_size = CefC_Max_Length;
 	
 	switch (hdl->node_type) {
 		case CefC_Node_Type_Receiver: {
@@ -173,7 +182,7 @@ cef_status_stats_output (
 		sprintf (cache_type, "None");
 	}
 	
-	snprintf (tmp_str, CefC_Display_Max, 
+	sprintf (rsp_bufp,
 			"Version    : %x\n"
 			"Port       : %u\n"
 			"Rx Frames  : %llu\n"
@@ -187,55 +196,86 @@ cef_status_stats_output (
 	
 #ifdef CefC_Ccore
 	if (hdl->rt_hdl) {
-		snprintf (work_str, CefC_Display_Max, "%sController : %s %s\n"
-			, tmp_str, hdl->rt_hdl->controller_id
+		sprintf (work_str, "Controller : %s %s\n"
+			,  hdl->rt_hdl->controller_id
 			, (hdl->rt_hdl->sock != -1) ? "" : "#down");
 	} else {
-		snprintf (work_str, CefC_Display_Max, "%sController : Not Used\n", tmp_str);
+		sprintf (work_str, "Controller : Not Used\n");
 	}
-	memcpy (tmp_str, work_str, strlen(work_str));
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		goto endfunc;
+	}
 #endif
 	
 	/* output Face	*/
-	snprintf (work_str, CefC_Display_Max, "%sFaces :", tmp_str);
-	memcpy (tmp_str, work_str, strlen(work_str));
-	cef_status_face_output ();
+	sprintf (work_str, "Faces :");
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		goto endfunc;
+	}
+	if ((fret=cef_status_face_output ()) != 0){
+		goto endfunc;
+	}
 	
 	/* output FIB	*/
-	snprintf (work_str, CefC_Display_Max, "%sFIB(App) :", tmp_str);
-	memcpy (tmp_str, work_str, strlen(work_str));
-	cef_status_app_forward_output (&hdl->app_reg);
-	snprintf (work_str, CefC_Display_Max, "%sFIB :", tmp_str);
-	memcpy (tmp_str, work_str, strlen(work_str));
-	cef_status_forward_output (&hdl->fib);
+	sprintf (work_str, "FIB(App) :");
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		goto endfunc;
+	}
+	if ((fret=cef_status_app_forward_output (&hdl->app_reg)) != 0){
+		goto endfunc;
+	}
+	sprintf (work_str, "FIB :");
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		goto endfunc;
+	}
+	if ((fret=cef_status_forward_output (&hdl->fib)) != 0){
+		goto endfunc;
+	}
 
 	/* output PIT	*/
-	snprintf (work_str, CefC_Display_Max, "%sPIT(App) :", tmp_str);
-	memcpy (tmp_str, work_str, strlen(work_str));
-	cef_status_pit_output (&hdl->app_pit);
-	snprintf (work_str, CefC_Display_Max, "%sPIT :", tmp_str);
-	memcpy (tmp_str, work_str, strlen(work_str));
-	cef_status_pit_output (&hdl->pit);
+	sprintf (work_str, "PIT(App) :");
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		goto endfunc;
+	}
+	if ((fret=cef_status_pit_output (&hdl->app_pit)) != 0){
+		goto endfunc;
+	}
+	sprintf (work_str, "PIT :");
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		goto endfunc;
+	}
+	if ((fret=cef_status_pit_output (&hdl->pit)) != 0){
+		goto endfunc;
+	}
 	
 #ifdef CefC_NdnPlugin
 {
 	char ndn_str[CefC_Display_Max];
-	snprintf (work_str, CefC_Display_Max, "%sNDN :\n", tmp_str);
-	memcpy (tmp_str, work_str, strlen(work_str));
+	sprintf (work_str, "NDN :\n");
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		goto endfunc;
+	}
 	cef_plugin_ndn_fib_print (ndn_str);
-	snprintf (work_str, CefC_Display_Max, "%s%s\n", tmp_str, ndn_str);
-	memcpy (tmp_str, work_str, strlen(work_str));
+	sprintf (work_str, "%s\n", ndn_str);
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		goto endfunc;
+	}
 }
 #endif // CefC_NdnPlugin
 	
-	snprintf (work_str, CefC_Display_Max, "%s\n", tmp_str);
-	
-	return (strlen (work_str));
+endfunc:;
+
+	*rspp = (unsigned char*) rsp_bufp;
+	if (fret == 0) {
+		return (strlen (rsp_bufp));
+	} else {
+		return (0);
+	}
 }
 /*--------------------------------------------------------------------------------------
 	Output Face status
 ----------------------------------------------------------------------------------------*/
-static void
+static int
 cef_status_face_output (
 	void
 ) {
@@ -252,92 +292,112 @@ cef_status_face_output (
 
 	char face_info[65535] = {0};
 	int face_info_index = 0;
+	char work_str[CefC_Max_Length];
+	int fret = 0;
 
 	/* get socket table	*/
 	sock_tbl = cef_face_return_sock_table ();
 	/* get table num		*/
 	table_num = cef_hash_tbl_item_num_get (*sock_tbl);
 
-	snprintf (work_str, CefC_Display_Max, "%s %d\n", tmp_str, table_num);
-	memcpy (tmp_str, work_str, strlen(work_str));
-
-	if (table_num == 0) {
-		snprintf (work_str, CefC_Display_Max, "%s  Entry is empty\n", tmp_str);
-		memcpy (tmp_str, work_str, strlen(work_str));
-		return;
+	sprintf (work_str, " %d\n", table_num);
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		return (-1);
 	}
 
+	if (table_num == 0) {
+		sprintf (work_str, "  Entry is empty\n");
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
+		return (0);
+	}
 	/* output table		*/
 	for (i = 0; i < table_num; i++) {
 		/* get socket table	*/
 		sock = (CefT_Sock*) cef_hash_tbl_elem_get (*sock_tbl, &index);
 		if (sock == NULL) {
-			memcpy (tmp_str, work_str, strlen(work_str));
 			break;
 		}
 
 		/* check local face flag	*/
 		face = cef_face_get_face_from_faceid (sock->faceid);
 		if (face->local_f || (sock->faceid == 0)) {
-			snprintf (work_str, CefC_Display_Max, "%s  faceid = %3d : Local face\n", tmp_str, sock->faceid);
-			memcpy (tmp_str, work_str, strlen(work_str));
+			sprintf (work_str, "  faceid = %3d : Local face\n", sock->faceid);
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 			index++;
 			continue;
 		}
 		if (sock->faceid == CefC_Faceid_ListenBabel) {
-			snprintf (work_str, CefC_Display_Max, 
-				"%s  faceid = %3d : Local face (for cefbabeld)\n", 
-				tmp_str, sock->faceid);
-			memcpy (tmp_str, work_str, strlen(work_str));
+			sprintf (work_str, 
+				"  faceid = %3d : Local face (for cefbabeld)\n", 
+				 sock->faceid);
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 			index++;
 			continue;
 		}
 		/* check IPv4 Listen port	*/
 		if (sock->faceid == CefC_Faceid_ListenUdpv4) {
-			snprintf (work_str, CefC_Display_Max, 
-				"%s  faceid = %3d : IPv4 Listen face (udp)\n", tmp_str, sock->faceid);
-			memcpy (tmp_str, work_str, strlen(work_str));
+			sprintf (work_str, 
+				"  faceid = %3d : IPv4 Listen face (udp)\n", sock->faceid);
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 			index++;
 			continue;
 		}
 		/* check IPv6 Listen port	*/
 		if (sock->faceid == CefC_Faceid_ListenUdpv6) {
-			snprintf (work_str, CefC_Display_Max, 
-				"%s  faceid = %3d : IPv6 Listen face (udp)\n", tmp_str, sock->faceid);
-			memcpy (tmp_str, work_str, strlen(work_str));
+			sprintf (work_str, 
+				"  faceid = %3d : IPv6 Listen face (udp)\n", sock->faceid);
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 			index++;
 			continue;
 		}
 		/* check IPv4 Listen port	*/
 		if (sock->faceid == CefC_Faceid_ListenTcpv4) {
-			snprintf (work_str, CefC_Display_Max, 
-				"%s  faceid = %3d : IPv4 Listen face (tcp)\n", tmp_str, sock->faceid);
-			memcpy (tmp_str, work_str, strlen(work_str));
+			sprintf (work_str,
+				"  faceid = %3d : IPv4 Listen face (tcp)\n", sock->faceid);
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 			index++;
 			continue;
 		}
 		/* check IPv6 Listen port	*/
 		if (sock->faceid == CefC_Faceid_ListenTcpv6) {
-			snprintf (work_str, CefC_Display_Max, 
-				"%s  faceid = %3d : IPv6 Listen face (tcp)\n", tmp_str, sock->faceid);
-			memcpy (tmp_str, work_str, strlen(work_str));
+			sprintf (work_str,
+				"  faceid = %3d : IPv6 Listen face (tcp)\n", sock->faceid);
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 			index++;
 			continue;
 		}
 		
 		/* check IPv4 Listen port for NDN	*/
 		if (sock->faceid == CefC_Faceid_ListenNdnv4) {
-			snprintf (work_str, CefC_Display_Max, 
-				"%s  faceid = %3d : IPv4 Listen face (ndn)\n", tmp_str, sock->faceid);
-			memcpy (tmp_str, work_str, strlen(work_str));
+			sprintf (work_str,
+				"  faceid = %3d : IPv4 Listen face (ndn)\n", sock->faceid);
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 			index++;
 			continue;
 		}
 		/* check IPv6 Listen port for NDN	*/
 		if (sock->faceid == CefC_Faceid_ListenNdnv6) {
-			snprintf (work_str, CefC_Display_Max, 
-				"%s  faceid = %3d : IPv6 Listen face (ndn)\n", tmp_str, sock->faceid);
-			memcpy (tmp_str, work_str, strlen(work_str));
+			sprintf (work_str, 
+				"  faceid = %3d : IPv6 Listen face (ndn)\n", sock->faceid);
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 			index++;
 			continue;
 		}
@@ -367,16 +427,18 @@ cef_status_face_output (
 				 (cef_face_check_active (sock->faceid) < 1) ? " # down" : "");
 		}
 		
-		snprintf (work_str, CefC_Display_Max, "%s%s\n", tmp_str, face_info);
-		memcpy (tmp_str, work_str, strlen(work_str));
+		sprintf (work_str, "%s\n", face_info);
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
 		index++;
 	}
-	return;
+	return(0);
 }
 /*--------------------------------------------------------------------------------------
 	Output FIB status
 ----------------------------------------------------------------------------------------*/
-static void
+static int
 cef_status_forward_output (
 	CefT_Hash_Handle* handle
 ) {
@@ -389,23 +451,32 @@ cef_status_forward_output (
 	int res = 0;
 	char face_info[65535] = {0};
 	int face_info_index = 0;
+	char work_str[CefC_Max_Length];
+	int fret = 0;
+
 
 	/* get table num		*/
 	table_num = cef_hash_tbl_item_num_get (*handle);
 	if (table_num == 0) {
-		snprintf (work_str, CefC_Display_Max, "%s\n  Entry is empty\n", tmp_str);
-		memcpy (tmp_str, work_str, strlen(work_str));
-		return;
+		sprintf (work_str, "\n  Entry is empty\n");
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
+		return (0);
 	}
 
-	snprintf (work_str, CefC_Display_Max, "%s %d\n", tmp_str, table_num);
-	memcpy (tmp_str, work_str, strlen(work_str));
+	sprintf (work_str, " %d\n", table_num);
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		return (-1);
+	}
 
 	/* output table		*/
 	for (i = 0; i < table_num; i++) {
 		entry = (CefT_Fib_Entry*) cef_hash_tbl_elem_get (*handle, &index);
 		if (entry == NULL) {
-			memcpy (tmp_str, work_str, strlen(work_str));
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 			break;
 		}
 		res = cef_frame_conversion_name_to_uri (entry->key, entry->klen, uri);
@@ -413,8 +484,10 @@ cef_status_forward_output (
 			continue;
 		}
 		/* output uri	*/
-		snprintf (work_str, CefC_Display_Max, "%s  %s\n", tmp_str, uri);
-		memcpy (tmp_str, work_str, strlen(work_str));
+		sprintf (work_str, "  %s\n", uri);
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
 		memset (uri, 0, sizeof(uri));
 
 		/* output faces	*/
@@ -431,18 +504,19 @@ cef_status_forward_output (
 			
 			faces = faces->next;
 		}
-		snprintf (work_str, CefC_Display_Max, "%s%s\n", tmp_str, face_info);
-		memcpy (tmp_str, work_str, strlen(work_str));
-		
+		sprintf (work_str, "%s\n", face_info);
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
 		index++;
 	}
 
-	return;
+	return (0);
 }
 /*--------------------------------------------------------------------------------------
 	Output PIT status
 ----------------------------------------------------------------------------------------*/
-static void
+static int
 cef_status_pit_output (
 	CefT_Hash_Handle* handle
 ) {
@@ -466,29 +540,32 @@ cef_status_pit_output (
 	uint16_t name_index;
 	struct tlv_hdr* thdr;
 	uint16_t chunknum_f;
-	
-#ifdef CefC_Nwproc
-	int ret = 0;
-	int output_num = 0;
-#endif // CefC_Nwproc
+	char work_str[CefC_Max_Length];
+	int fret = 0;
 	
 	/* get table num		*/
 	table_num = cef_hash_tbl_item_num_get (*handle);
 	if (table_num == 0) {
-		snprintf (work_str, CefC_Display_Max, "%s\n  Entry is empty\n", tmp_str);
-		memcpy (tmp_str, work_str, strlen(work_str));
-		return;
+		sprintf (work_str, "\n  Entry is empty\n");
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
+		return (0);
 	}
 
-	snprintf (work_str, CefC_Display_Max, "%s %d\n", tmp_str, table_num);
-	memcpy (tmp_str, work_str, strlen(work_str));
+	sprintf (work_str, " %d\n", table_num);
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		return (-1);
+	}
 
 	/* output table		*/
 	for (i = 0; i < table_num; i++) {
 		entry = (CefT_Pit_Entry*) cef_hash_tbl_elem_get (*handle, &index);
 		if (entry == NULL) {
-			snprintf (work_str, CefC_Display_Max, "%sentry is NULL\n", tmp_str);
-			memcpy (tmp_str, work_str, strlen(work_str));
+			sprintf (work_str, "entry is NULL\n");
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 			break;
 		}
 		
@@ -517,6 +594,7 @@ cef_status_pit_output (
 					break;
 				}
 				default: {
+					dec_name_len += CefC_S_TLF + sub_length;		//20190918 For HEX_Type
 					break;
 				}
 			}
@@ -530,11 +608,15 @@ cef_status_pit_output (
 		}
 		/* output uri	*/
 		if (chunknum_f) {
-			snprintf (work_str, CefC_Display_Max, "%s  %s%%%04x\n", tmp_str, uri, chunk_num);
-			memcpy (tmp_str, work_str, strlen(work_str));
+			sprintf (work_str, "  %s/Chunk=%d\n", uri, chunk_num);
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 		} else {
-			snprintf (work_str, CefC_Display_Max, "%s  %s\n", tmp_str, uri);
-			memcpy (tmp_str, work_str, strlen(work_str));
+			sprintf (work_str, "  %s\n", uri);
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 		}
 		memset (uri, 0, sizeof(uri));
 
@@ -546,8 +628,10 @@ cef_status_pit_output (
 									face_info + face_info_index, "%d ", dnfaces->faceid);
 			dnfaces = dnfaces->next;
 		}
-		snprintf (work_str, CefC_Display_Max, "%s%s\n", tmp_str, face_info);
-		memcpy (tmp_str, work_str, strlen(work_str));
+		sprintf (work_str, "%s\n", face_info);
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
 
 		/* output upfaces	*/
 		upfaces = entry->upfaces.next;
@@ -558,30 +642,26 @@ cef_status_pit_output (
 			upfaces = upfaces->next;
 		}
 #ifndef CefC_Nwproc
-		snprintf (work_str, CefC_Display_Max, "%s%s\n", tmp_str, face_info);
-		memcpy (tmp_str, work_str, strlen(work_str));
+		sprintf (work_str, "%s\n", face_info);
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
 #else // CefC_Nwproc
-		ret = snprintf (work_str, CefC_Display_Max, "%s%s\n", tmp_str, face_info);
-		memcpy (tmp_str, work_str, strlen(work_str));
-		if (ret >= CefC_Display_Max-128) {
-			snprintf(work_str, CefC_Display_Max, 
-				"%s  --- Output to about %d entry (buffer limit) ---\n", tmp_str, ++output_num);
-			memcpy (tmp_str, work_str, strlen(work_str));
-			break;
-		} else {
-			output_num++;
+		sprintf (work_str, "%s\n", face_info);
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
 		}
 #endif // CefC_Nwproc
 		index++;
 	}
 
-	return;
+	return (0);
 }
 
 /*--------------------------------------------------------------------------------------
 	Output App FIB status
 ----------------------------------------------------------------------------------------*/
-static void
+static int
 cef_status_app_forward_output (
 	CefT_Hash_Handle* handle
 ){
@@ -598,23 +678,31 @@ cef_status_app_forward_output (
 	int i = 0;
 	char uri[65535] = {0};
 	int res = 0;
+	char work_str[CefC_Max_Length];
+	int fret = 0;
 
 	/* get table num		*/
 	table_num = cef_hash_tbl_item_num_get (*handle);
 	if (table_num == 0) {
-		snprintf (work_str, CefC_Display_Max, "%s\n  Entry is empty\n", tmp_str);
-		memcpy (tmp_str, work_str, strlen(work_str));
-		return;
+		sprintf (work_str, "\n  Entry is empty\n");
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
+		return (0);
 	}
 
-	snprintf (work_str, CefC_Display_Max, "%s %d\n", tmp_str, table_num);
-	memcpy (tmp_str, work_str, strlen(work_str));
+	sprintf (work_str, " %d\n", table_num);
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		return (-1);
+	}
 
 	/* output table		*/
 	for (i = 0; i < table_num; i++) {
 		entry = (struct App_Reg*) cef_hash_tbl_elem_get (*handle, &index);
 		if (entry == NULL) {
-			memcpy (tmp_str, work_str, strlen(work_str));
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
 			break;
 		}
 		res = cef_frame_conversion_name_to_uri (entry->name, entry->name_len, uri);
@@ -622,18 +710,22 @@ cef_status_app_forward_output (
 			continue;
 		}
 		/* output uri	*/
-		snprintf (work_str, CefC_Display_Max, "%s  %s\n", tmp_str, uri);
-		memcpy (tmp_str, work_str, strlen(work_str));
+		sprintf (work_str, "  %s\n", uri);
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
 		memset (uri, 0, sizeof(uri));
 
 		/* output faces	*/
-		snprintf (work_str, CefC_Display_Max, "%s    Faces : %d\n", tmp_str, entry->faceid);
-		memcpy (tmp_str, work_str, strlen(work_str));
+		sprintf (work_str, "    Faces : %d\n", entry->faceid);
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
 		
 		index++;
 	}
 
-	return;
+	return (0);
 }
 
 /*--------------------------------------------------------------------------------------
@@ -722,6 +814,7 @@ cef_status_stats_output_pit (
 						break;
 					}
 					default: {
+						dec_name_len += CefC_S_TLF + sub_length;	//20190918 For HEX_Type
 						break;
 					}
 				}
@@ -735,7 +828,7 @@ cef_status_stats_output_pit (
 			}
 			/* output uri	*/
 			if (chunknum_f) {
-				fprintf (fp, "  %s%%%04x\n", uri, chunk_num);
+				fprintf (fp, "  %s/Chunk=%d\n", uri, chunk_num);
 			} else {
 				fprintf (fp, "  %s\n", uri);
 			}
@@ -769,5 +862,23 @@ cef_status_stats_output_pit (
 	fclose (fp);
 	return (1);
 }
-
-
+/*--------------------------------------------------------------------------------------
+	Add output to response buffer
+----------------------------------------------------------------------------------------*/
+static int
+cef_status_add_output_to_rsp_buf(
+	char* buff
+) {
+	
+	if ((strlen(rsp_bufp)+strlen(buff)) >= (rsp_buf_size-1)){
+		void *new = realloc(rsp_bufp, rsp_buf_size+CefC_Max_Length);
+		if (new == NULL) {
+			return(-1);
+		}
+		rsp_bufp = new;
+		rsp_buf_size += CefC_Max_Length;
+	}
+	strcat(rsp_bufp, buff);
+	
+	return(0);
+}

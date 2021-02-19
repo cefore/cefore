@@ -281,6 +281,7 @@ cef_hash_tbl_item_set_for_app (
 	uint32_t i;
 	uint32_t empty_index;
 	uint32_t empty_ff = 0;
+	int		 res;
 
 	/*--------------------------*/
 	/* Temporary Implimentation */
@@ -289,6 +290,11 @@ cef_hash_tbl_item_set_for_app (
 	if ((klen > CefC_Max_KLen) || (ht == NULL)) {
 		return (CefC_Hash_Faile);
 	}
+	res = cef_hash_tbl_item_check_exact( handle, key, klen );
+	if ( res > 0 ) {
+		return (CefC_Hash_Faile);
+	}
+
 	ht->cleanup_step = CefC_Cleanup_Smin;
 	ht->cleanup_mwin = CefC_Cleanup_Wmin;
 	ht->cleanup_cwin = 0;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,7 @@
 #include <signal.h>
 #include <poll.h>
 #include <limits.h>
+#include <openssl/md5.h>
 
 #ifndef CefC_Android
 #include <ifaddrs.h>
@@ -116,7 +117,7 @@
 #ifdef CefC_Android
 #define CefC_Listen_Face_Max		8
 #else // CefC_Android
-#define CefC_Listen_Face_Max		32
+#define CefC_Listen_Face_Max		CefC_Face_Router_Max
 #endif // CefC_Android
 
 /*------------------------------------------------------------------*/
@@ -127,6 +128,14 @@
 #define CefC_Max_Nbr 				32			/* Maximum Neighbor Count 				*/
 #define CefC_Fail_Thred				3			/* Threadshold to estimate link failure	*/
 
+#ifdef CefC_C3
+/*------------------------------------------------------------------*/
+/* C3																*/
+/*------------------------------------------------------------------*/
+#define	CefC_C3Log_File_Prefix		"cef_c3_"
+#define	CefC_C3Log_File_Suffix_fmt	"%02d%02d%02d_%02d%02d%02d.log"
+#define	CefC_C3Log_Dir_Default		"/usr/local/cefore/logs"
+#endif
 
 /****************************************************************************************
  Structure Declarations
@@ -147,6 +156,26 @@ typedef struct {
 	int 				con_num;
 	
 } CefT_Uris;
+
+#ifdef CefC_C3
+/* C3 Log */
+typedef struct {
+	char*			uri;
+	unsigned char*	name;
+	unsigned int	name_len;
+	int				index;
+	unsigned char	hash_uri[MD5_DIGEST_LENGTH];
+	char			hash_char[MD5_DIGEST_LENGTH*2+1];
+	int				del_f;						/* 0: Not delete 1:Is Delete */
+	time_t			add_time;
+	time_t			del_time;
+	int				c3_join_L;
+	int				c3_join_R;
+	int				c3_leave;
+	int				c3_publish;
+	int				c3_publish_data[CefC_C3_LOG_TAPP_MAX];
+} CefT_C3_LOG;
+#endif	// CefC_C3
 
 typedef struct {
 	
@@ -185,15 +214,15 @@ typedef struct {
 	/********** Listen Port 		***********/
 	struct pollfd 		inudpfds[CefC_Listen_Face_Max];
 	uint16_t 			inudpfaces[CefC_Listen_Face_Max];
-	uint8_t				inudpfdc;
+	uint16_t			inudpfdc;
 
 	struct pollfd 		intcpfds[CefC_Listen_Face_Max];
 	uint16_t 			intcpfaces[CefC_Listen_Face_Max];
-	uint8_t				intcpfdc;
+	uint16_t			intcpfdc;
 	
 	struct pollfd 		inndnfds[CefC_Listen_Face_Max];
 	uint16_t 			inndnfaces[CefC_Listen_Face_Max];
-	uint8_t				inndnfdc;
+	uint16_t			inndnfdc;
 	
 	/********** Parameters 			***********/
 	uint16_t 			port_num;				/* Port Number							*/
@@ -211,6 +240,17 @@ typedef struct {
 												/*      any 1 match FIB entry			*/
 												/*   1: Forward using 					*/
 												/*      all match FIB entries			*/
+	uint32_t			app_fib_max_size;		/* Maximum FIB(APP) entry 				*/
+	uint32_t			app_pit_max_size;		/* Maximum PIT(APP) entry 				*/
+	char*				My_Node_Name;			/* Node Name							*/
+	unsigned char*		My_Node_Name_TLV;		/* Node Name TLV						*/
+	int					My_Node_Name_TLV_len;	/* Node Name TLV Length					*/
+#ifdef CefC_C3
+	int					c3_log;					/* C3_Log	0:OFF 1:ON					*/
+	int					c3_log_period;			/* C3_Log_Period (Second)				*/
+	char*				c3_log_dir;				/* C3_Log_Dir							*/
+#endif	// CefC_C3
+
 #ifdef CefC_Ccninfo
 	uint32_t 			ccninfo_access_policy;	/* CCNinfo access policy				*/
 												/*   0: No limit						*/
@@ -315,7 +355,21 @@ typedef struct {
 	int 				ccninfo_rcvdpub_key_bi_len;
 	unsigned char* 		ccninfo_rcvdpub_key_bi;
 #endif //CefC_Ccninfo
-	
+
+#ifdef CefC_C3
+	/* C3 Log */
+	FILE*				c3_log_fp;
+	char*				c3_log_fname;
+	uint64_t			c3_log_next;
+	int					c3_log_unknown;
+	int					c3_fib_add;
+	int					c3_fib_del;
+	int					c3_pit_add;
+	int					c3_pit_del;
+	CefT_Hash_Handle	c3_log_sum_fib;
+	CefT_Hash_Handle	c3_log_sum_pit;
+#endif	//CefC_C3
+
 } CefT_Netd_Handle;
 
 /****************************************************************************************

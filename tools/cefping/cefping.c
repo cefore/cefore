@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -273,6 +273,10 @@ cp_results_output (
 	/* Parses the received Cefping Replay 	*/
 	res = cef_frame_message_parse (
 					msg, packet_len, header_len, &poh, &pm, CefC_PT_PING_REP);
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
 	
 	if (res < 0) {
 		return;

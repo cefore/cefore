@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -59,7 +59,8 @@
 
 /***** structure for listing content entries *****/
 typedef struct {
-	unsigned char 	key[CsmgrdC_Key_Max];	/* key of content entry 					*/
+	unsigned char 	*key;					/* key of content entry 					*/
+
 	int 			key_len;				/* length of key 							*/
     int             freq;
     int             track;
@@ -268,12 +269,15 @@ static void lfu_store_entry(
     unsigned char 	key[CsmgrdC_Key_Max];
     int 			key_len;
     LfuT_Entry*   rsentry;
+	unsigned char* q;
     
     key_len = csmgrd_name_chunknum_concatenate (
                     entry->name, entry->name_len, entry->chnk_num, key);
     rsentry = (LfuT_Entry*)cef_mpool_alloc(lfu_mp);
     rsentry->key_len = key_len;
-    memcpy(rsentry->key, key, key_len);
+  	q = calloc(1, key_len);
+    memcpy(q, key, key_len);
+	rsentry->key = q;
     rsentry->freq = 0;
     rsentry->track = 1;
     cef_rngque_push(rings[0], rsentry);
@@ -292,6 +296,8 @@ static void lfu_remove_entry(
     cache_count--;
     entry->freq = -1;
     if (!is_removed) (*remove_api)(entry->key, entry->key_len);
+
+	free(entry->key);
 }
 
 static int lfu_get_min_freq_ring_having_entry() {

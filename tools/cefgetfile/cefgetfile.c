@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -449,7 +449,7 @@ int main (
 		params.opt.lifetime 		= 10000;
 	} else {
 		params.opt.symbolic_f		= CefC_T_OPT_REGULAR;
-		params.opt.lifetime 		= 4000;
+		params.opt.lifetime 		= CefC_Default_LifetimeSec * 1000;
 		params.chunk_num			= 0;
 		params.chunk_num_f			= 1;
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -52,7 +52,7 @@
 
 #define CefC_Pit_False				1		/* False									*/
 #define CefC_Pit_True				1		/* True										*/
-#define CefC_Maximum_Lifetime		8000	/* Maximum lifetime [ms] 					*/
+#define CefC_Maximum_Lifetime		16000	/* Maximum lifetime [ms] 					*/
 
 /****************************************************************************************
  Structures Declaration
@@ -149,12 +149,6 @@ cef_pit_entry_lookup (
 	unsigned char* tmp_name = NULL;
 	uint16_t tmp_name_len = 0;
 
-	if(cef_hash_tbl_item_num_get(pit) == cef_hash_tbl_def_max_get(pit)) {
-		cef_log_write (CefC_Log_Warn, 
-			"PIT table is full(PIT_SIZE = %d)\n", cef_hash_tbl_def_max_get(pit));
-		return (NULL);
-	}
-	
 	if (pm->top_level_type == CefC_T_DISCOVERY) {  /* for CCNINFO */
 		/* KEY: Name + NodeIdentifier + RequestID */
 		tmp_name_len = cef_pit_concatenate_name_and_id (&tmp_name, pm, poh);
@@ -167,6 +161,12 @@ cef_pit_entry_lookup (
 
 	/* Creates a new PIT entry, if it dose not match 	*/
 	if (entry == NULL) {
+		if(cef_hash_tbl_item_num_get(pit) == cef_hash_tbl_def_max_get(pit)) {
+			cef_log_write (CefC_Log_Warn, 
+				"PIT table is full(PIT_SIZE = %d)\n", cef_hash_tbl_def_max_get(pit));
+			return (NULL);
+		}
+		
 		entry = (CefT_Pit_Entry*) malloc (sizeof (CefT_Pit_Entry));
 		memset (entry, 0, sizeof (CefT_Pit_Entry));
 		entry->key = (unsigned char*) malloc (sizeof (char) * tmp_name_len);
@@ -316,7 +316,8 @@ cef_pit_entry_search (
 		if (pm->top_level_type == CefC_T_DISCOVERY) {  /* for CCNINFO */
 			free (tmp_name);
 		}
-		if (now > entry->adv_lifetime_us) {
+/*		if (now > entry->adv_lifetime_us) {	20190822*/
+		if ((now > entry->adv_lifetime_us) && (poh->app_reg_f != CefC_App_DeRegPit)){	//20190822
 			return (NULL);
 		}
 		return (entry);

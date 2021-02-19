@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2020, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,8 @@
  */
 
 #define __CEF_FRAME_SOURECE__
+
+#define _GNU_SOURCE
 
 /****************************************************************************************
  Include Files
@@ -302,6 +304,7 @@ static uint16_t flvn_cachetime;
 static uint16_t flvn_expiry;
 static uint16_t flvn_rct;
 static uint16_t flvn_seqnum;
+
 
 /****************************************************************************************
  Static Function Declaration
@@ -768,6 +771,9 @@ cef_frame_message_parse (
 	memset (poh, 0, sizeof (CefT_Parsed_Opheader));
 	memset (pm, 0, sizeof (CefT_Parsed_Message));
 
+	pm->AppComp_num = 0;
+	pm->AppComp = NULL;
+
 	/*----------------------------------------------------------------------*/
 	/* Parses Option Header				 									*/
 	/*----------------------------------------------------------------------*/
@@ -950,6 +956,30 @@ cef_frame_conversion_uri_to_name (
 	uint16_t cid_f = 0;
 #endif // CefC_Nwproc
 
+	uint16_t T_APP_XXX;
+	uint16_t T_APP_XXX_n;
+	int app_f = -1;
+	int	ii;
+	int chunk_f = -1;
+	char* eq_p;
+	char* slash_p;
+	char	num_buff[32];
+	unsigned char 	chk_uri[CefC_Max_Length];
+	int ret_c;
+	unsigned int hex_num;
+	uint16_t HEX_TYPE;
+	uint16_t HEX_TYPE_n;
+	int hex_type_f = -1;
+	int chunk_accept = CefC_URI_ACCEPT_CHUNK;
+
+
+	memset( chk_uri, 0x00, CefC_Max_Length );
+	ret_c = cef_frame_input_uri_pre_check2(inuri, chk_uri, chunk_accept);
+	if ( ret_c != 0 ) {
+		return (-1);
+	}
+	ruri = (unsigned char*) chk_uri;
+
 	strcpy (protocol, "ccn");
 
 	/* Parses the prefix of Name 	*/
@@ -1001,6 +1031,109 @@ cef_frame_conversion_uri_to_name (
 	}
 
 	while (*curi) {
+
+		slash_p = strchr( (char*)suri, '/' );
+		eq_p    = strchr( (char*)suri, '=' );
+		if ( eq_p == NULL ) {
+			goto IS_NAMESEG;
+		} else if ( slash_p != NULL ) {
+			if ( slash_p < eq_p ) {
+				goto IS_NAMESEG;
+			}
+		}
+
+		memset( num_buff, 0x00, 32 );
+		if ( strncasecmp( (char*)suri, "App:", 4 ) == 0 ) {		/* /APP:xx= */
+			suri += 4;
+
+			/* get Num */
+			for( ii = 0; ii < 32; ) {
+				if ( (*suri >= '0') && (*suri <= '9') ) {
+					num_buff[ii] = *suri;
+					ii++;
+					suri++;
+				} else {
+					break;
+				}
+			}
+			if ( strlen(num_buff) <= 0 ) {
+				/* Error */
+				return (-1);
+			}
+			if ( *suri == '=' ) {
+				app_f = atoi(num_buff);
+				suri++;
+				curi = suri;
+				
+				if (*curi == 0x00) {
+					/* T-APP 0-Length */
+					T_APP_XXX = CefC_T_APP_MIN + app_f;
+					T_APP_XXX_n = htons (T_APP_XXX);
+					memcpy (wp, &T_APP_XXX_n, CefC_S_Type);
+					wp += CefC_S_Type;
+					value = 0;
+					memcpy (wp, &value, CefC_S_Length);
+					wp += CefC_S_Length;
+					break;
+				}
+			} else {
+				/* Error */
+				return (-1);
+			}
+		}	/* /APP:xx= */
+
+		memset( num_buff, 0x00, 32 );
+		if ( strncasecmp( (char*)suri, "Chunk=", 6 ) == 0 ) {		/* /Chunk= */
+			suri += 6;
+			chunk_f = 1;
+			curi = suri;
+		}		/* /Chunk= */
+
+		if ( (app_f == -1) && (chunk_f == -1) ) {
+			memset( num_buff, 0x00, 32 );
+			if ( strncasecmp( (char*)suri, "0x", 2 ) == 0 ) {			/* HEX Type */
+				/* get HEX Type */
+				num_buff[0] = '0';
+				num_buff[1] = 'x';
+				suri += 2;
+				for( ii = 2; ii < 32; ) {
+					if ( isxdigit(*suri) ) {
+						num_buff[ii] = *suri;
+						ii++;
+						suri++;
+					} else {
+						break;
+					}
+				}
+				if ( *suri == '=' ) {
+					suri++;
+				}
+				/* Already Len=6 check is pre_check */
+				sscanf(num_buff, "%x", &hex_num);
+				HEX_TYPE = (uint16_t)hex_num;
+
+				if ( HEX_TYPE == CefC_T_CHUNK ) {
+					chunk_f = 1;
+				} else {
+					hex_type_f = 1;
+				}
+				curi = suri;
+				if (*curi == 0x00) {
+					/* HEX_TYPE 0-Length */
+					HEX_TYPE_n = htons(HEX_TYPE);
+					memcpy (wp, &HEX_TYPE_n, sizeof(CefC_S_Type));
+					wp += CefC_S_Type;
+					value = 0;
+					memcpy (wp, &value, CefC_S_Length);
+					wp += CefC_S_Length;
+					hex_type_f = -1;
+					break;
+				}
+			}	/* HEX Type */
+		}
+
+IS_NAMESEG:
+
 		if((*curi < 0x30) ||							/* NOT 0~9,A~Z,a~z */
 			((*curi > 0x39) && (*curi < 0x41)) ||
 			((*curi > 0x5a) && (*curi < 0x61)) ||
@@ -1032,9 +1165,7 @@ cef_frame_conversion_uri_to_name (
 		ruri = curi + 1;
 
 		if ((*curi == 0x2f) || (*ruri == 0x00)) {
-			if (*ruri == 0x2f) {
-				return (-1);
-			}
+
 			if ((*ruri == 0x00) && (*curi != 0x2f)) {
 				curi++;
 			}
@@ -1042,20 +1173,169 @@ cef_frame_conversion_uri_to_name (
 			nameseg_cnt++;
 #endif // CefC_Nwproc
 			if (memcmp("0x", suri, 2) != 0) { /* none HEX Name */
-				memcpy (wp, &ftvn_nameseg, CefC_S_Type);
-				wp += CefC_S_Type;
-				value = (uint16_t)(curi - suri);
-				value = htons (value);
-				memcpy (wp, &value, CefC_S_Length);
-				wp += CefC_S_Length;
-				while (suri < curi) {
-					*wp = *suri;
-					wp++;
+
+				if ( app_f >= 0 ) {
+					/* T_APP */
+					T_APP_XXX = CefC_T_APP_MIN + app_f;
+					T_APP_XXX_n = htons (T_APP_XXX);
+					memcpy (wp, &T_APP_XXX_n, CefC_S_Type);
+					wp += CefC_S_Type;
+					value = (uint16_t)(curi - suri);
+					value = htons (value);
+					memcpy (wp, &value, CefC_S_Length);
+					wp += CefC_S_Length;
+					while (suri < curi) {
+						*wp = *suri;
+						wp++;
+						suri++;
+					}
+					app_f = -1;
+				} else if ( chunk_f >= 0 ) {
+					uint16_t chunk_len;
+					uint16_t chunk_len_ns;
+					uint64_t value;
+					char buffer[128];
+				 	int  i = 0;
+				 	int mustContinue = 0;
+
+					/* get Num */
+					for( ii = 0; ii < 32; ) {
+						if ( (*suri >= '0') && (*suri <= '9') ) {
+							num_buff[ii] = *suri;
+							ii++;
+							suri++;
+						} else {
+							break;
+						}
+					}
+		
+					value = atoi(num_buff);
+					memset(buffer, 0, sizeof(buffer));
+					for (int byte = 7; byte >= 0; byte--) {
+						uint8_t b = (value >> (byte * 8)) & 0xFF;
+						if (b != 0 || byte == 0 || mustContinue) {
+							buffer[i] = b;
+							i++;
+							mustContinue = 1;
+						}
+					}
+					chunk_len = i;
+
+					memcpy (wp, &ftvn_chunk, sizeof(CefC_S_Type));
+					wp += CefC_S_Type;
+					chunk_len_ns = htons(chunk_len);
+					memcpy (wp, &chunk_len_ns, sizeof(CefC_S_Length));
+					wp += CefC_S_Length;
+					memcpy (wp, buffer, chunk_len);
+					wp += chunk_len;
+					chunk_f = -1;
+				} else if ( hex_type_f > 0 ) {
+					HEX_TYPE_n = htons(HEX_TYPE);
+					memcpy (wp, &HEX_TYPE_n, sizeof(CefC_S_Type));
+					wp += CefC_S_Type;
+					value = (uint16_t)(curi - suri);
+					value = htons (value);
+					memcpy (wp, &value, CefC_S_Length);
+					wp += CefC_S_Length;
+					while (suri < curi) {
+						*wp = *suri;
+						wp++;
+						suri++;
+					}
+					hex_type_f = -1;
+				} else if ( *suri != 0x2f ) {
+					memcpy (wp, &ftvn_nameseg, CefC_S_Type);
+					wp += CefC_S_Type;
+					value = (uint16_t)(curi - suri);
+					value = htons (value);
+					memcpy (wp, &value, CefC_S_Length);
+					wp += CefC_S_Length;
+					while (suri < curi) {
+						*wp = *suri;
+						wp++;
+						suri++;
+					}
+				}
+				
+				if ( *curi == 0x2f )  {
+#ifndef CefC_Nwproc
+					if ( *ruri == 0x2f ) {
+						/* *curi='/' && *ruri='/' */
+#else
+					if ( (*ruri == 0x2f) || (*ruri == 0x3b) ) {
+						/* *curi='/' && *ruri='/' */
+						/* *curi='/' && *ruri=';' */
+#endif	//CefC_Nwproc
+						if ( app_f >= 0 ) {
+							/* T_APP */
+							T_APP_XXX = CefC_T_APP_MIN + app_f;
+							T_APP_XXX_n = htons (T_APP_XXX);
+							memcpy (wp, &T_APP_XXX_n, CefC_S_Type);
+							wp += CefC_S_Type;
+							value = 0;
+							memcpy (wp, &value, CefC_S_Length);
+							wp += CefC_S_Length;
+							suri++;
+							curi++;
+							app_f = -1;
+						} else if ( hex_type_f > 0 ) {
+							/* HEX_TYPE */
+							HEX_TYPE_n = htons(HEX_TYPE);
+							memcpy (wp, &HEX_TYPE_n, sizeof(CefC_S_Type));
+							wp += CefC_S_Type;
+							value = 0;
+							memcpy (wp, &value, CefC_S_Length);
+							wp += CefC_S_Length;
+							suri++;
+							curi++;
+							hex_type_f = -1;
+						} else {
+							/* create 0°Length TLV */
+							memcpy (wp, &ftvn_nameseg, CefC_S_Type);
+							wp += CefC_S_Type;
+							value = 0;
+							memcpy (wp, &value, CefC_S_Length);
+							wp += CefC_S_Length;
+						}
+					} else if ( *ruri == 0x00 ) {
+						/* Last '/' */
+						if ( app_f >= 0 ) {
+							/* T_APP */
+							T_APP_XXX = CefC_T_APP_MIN + app_f;
+							T_APP_XXX_n = htons (T_APP_XXX);
+							memcpy (wp, &T_APP_XXX_n, CefC_S_Type);
+							wp += CefC_S_Type;
+							value = 0;
+							memcpy (wp, &value, CefC_S_Length);
+							wp += CefC_S_Length;
+							suri++;
+							curi++;
+							app_f = -1;
+						} else if ( hex_type_f > 0 ) {
+							/* HEX_TYPE */
+							HEX_TYPE_n = htons(HEX_TYPE);
+							memcpy (wp, &HEX_TYPE_n, sizeof(CefC_S_Type));
+							wp += CefC_S_Type;
+							value = 0;
+							memcpy (wp, &value, CefC_S_Length);
+							wp += CefC_S_Length;
+							suri++;
+							curi++;
+							hex_type_f = -1;
+						} else {
+					  		/* create 0°Length TLV */
+							memcpy (wp, &ftvn_nameseg, CefC_S_Type);
+							wp += CefC_S_Type;
+							value = 0;
+							memcpy (wp, &value, CefC_S_Length);
+							wp += CefC_S_Length;
+							suri++;
+							curi++;
+						}
+					}
 					suri++;
 				}
-				if (*curi == 0x2f) {
-					suri++;
-				}
+
 				if (*curi == 0x00) {
 					break;
 				}
@@ -1100,20 +1380,93 @@ cef_frame_conversion_uri_to_name (
 				}
 			  	hvlen = hclen / 2 ;
 			  	/* create TLV */
-				memcpy (wp, &ftvn_nameseg, CefC_S_Type);
-				wp += CefC_S_Type;
+				if ( app_f >= 0 ) {
+					/* T_APP */
+					T_APP_XXX = CefC_T_APP_MIN + app_f;
+					T_APP_XXX_n = htons (T_APP_XXX);
+					memcpy (wp, &T_APP_XXX_n, CefC_S_Type);
+					wp += CefC_S_Type;
+					app_f = -1;
+				} else if ( hex_type_f > 0 ) {
+					HEX_TYPE_n = htons(HEX_TYPE);
+					memcpy (wp, &HEX_TYPE_n, sizeof(CefC_S_Type));
+					wp += CefC_S_Type;
+					hex_type_f = -1;
+				} else {
+					memcpy (wp, &ftvn_nameseg, CefC_S_Type);
+					wp += CefC_S_Type;
+				}
 				value = (uint16_t)(hvlen);
 				value = htons (value);
 				memcpy (wp, &value, CefC_S_Length);
 				wp += CefC_S_Length;
 			  	memcpy (wp, hvbuff, hvlen);
 			  	wp += hvlen;
-				if (*curi == 0x2f) {
-					suri++;
+
+				if ( *curi == 0x2f )  {
+#ifndef CefC_Nwproc
+					if ( *ruri == 0x2f ) {
+						/* *curi='/' && *ruri='/' */
+#else
+					if ( (*ruri == 0x2f) || (*ruri == 0x3b) ) {
+						/* *curi='/' && *ruri='/' */
+						/* *curi='/' && *ruri=';' */
+#endif	//CefC_Nwproc
+				  		/* create 0°Length TLV */
+						memcpy (wp, &ftvn_nameseg, CefC_S_Type);
+						wp += CefC_S_Type;
+						value = 0;
+						memcpy (wp, &value, CefC_S_Length);
+						wp += CefC_S_Length;
+					} else if ( *ruri == 0x00 ) {
+						/* Last '/' */
+				  		/* create 0°Length TLV */
+						memcpy (wp, &ftvn_nameseg, CefC_S_Type);
+						wp += CefC_S_Type;
+						value = 0;
+						memcpy (wp, &value, CefC_S_Length);
+						wp += CefC_S_Length;
+						suri++;
+						curi++;
+					}
 				}
+				suri++;
+
 				if (*curi == 0x00) {
 					break;
 				}
+			}
+		} else if (*curi == ';' ) {
+			if ( app_f >= 0 ) {
+				/* T_APP */
+				T_APP_XXX = CefC_T_APP_MIN + app_f;
+				T_APP_XXX_n = htons (T_APP_XXX);
+				memcpy (wp, &T_APP_XXX_n, CefC_S_Type);
+				wp += CefC_S_Type;
+				value = (uint16_t)(curi - suri);
+				value = htons (value);
+				memcpy (wp, &value, CefC_S_Length);
+				wp += CefC_S_Length;
+				while (suri < curi) {
+					*wp = *suri;
+					wp++;
+					suri++;
+				}
+				app_f = -1;
+			} else if ( hex_type_f > 0 ) {
+				HEX_TYPE_n = htons(HEX_TYPE);
+				memcpy (wp, &HEX_TYPE_n, sizeof(CefC_S_Type));
+				wp += CefC_S_Type;
+				value = (uint16_t)(curi - suri);
+				value = htons (value);
+				memcpy (wp, &value, CefC_S_Length);
+				wp += CefC_S_Length;
+				while (suri < curi) {
+					*wp = *suri;
+					wp++;
+					suri++;
+				}
+				hex_type_f = -1;
 			}
 		}
 		curi++;
@@ -1156,9 +1509,9 @@ cef_frame_conversion_uri_to_name (
 			x--;
 		}
 		
-		if(delim_pos == 0)
+		if(delim_pos == 0) {
 			return (base_name_len);
-		
+		}
 		/* Separate T_NAMESEGMENT for attributes */
 		x = 0;
 		while (x < delim_pos) {
@@ -1166,35 +1519,44 @@ cef_frame_conversion_uri_to_name (
 			seg_len = ntohs (tlv_hdr->length);
 			x += CefC_S_TLF;
 			if (x+seg_len > delim_pos) {
-				tlv_hdr->length = htons(delim_pos - x);
-				seg_len = base_name_len - delim_pos;
-				memcpy (&(wp3[y]), tlv_hdr, sizeof (struct tlv_hdr));
-				y += CefC_S_TLF;
-				memcpy (&(wp3[y]), &(name[x]), delim_pos - x);
-				y += (delim_pos - x);
-				
-				if(delim_pos_cid > 0) 
-					wo_cid_len = delim_pos_cid - delim_pos;
-				else
-					wo_cid_len = seg_len;
-				/* attributes */
-				memcpy (&(wp3[y]), &ftvn_nameseg, CefC_S_Type);
-				y += CefC_S_Type;
-				value = htons (wo_cid_len);
-				memcpy (&(wp3[y]), &value, CefC_S_Length);
-				y += CefC_S_Length;
-				memcpy (&(wp3[y]), &(name[delim_pos]), wo_cid_len);
-				add_name_len += CefC_S_TLF;
-				/* CID */
-				if(delim_pos_cid > 0) {
-					y += wo_cid_len;
+
+				if ( (delim_pos - x) == 0 ) {
+					memcpy (&(wp3[y]), tlv_hdr, sizeof (struct tlv_hdr));
+					y += CefC_S_TLF;
+					memcpy (&(wp3[y]), &(name[x]), seg_len);
+					y += seg_len;
+					x += seg_len;
+				} else {
+					tlv_hdr->length = htons(delim_pos - x);
+					seg_len = base_name_len - delim_pos;
+					memcpy (&(wp3[y]), tlv_hdr, sizeof (struct tlv_hdr));
+					y += CefC_S_TLF;
+					memcpy (&(wp3[y]), &(name[x]), delim_pos - x);
+					y += (delim_pos - x);
+					
+					if(delim_pos_cid > 0) 
+						wo_cid_len = delim_pos_cid - delim_pos;
+					else
+						wo_cid_len = seg_len;
+					/* attributes */
 					memcpy (&(wp3[y]), &ftvn_nameseg, CefC_S_Type);
 					y += CefC_S_Type;
-					value = htons (seg_len - wo_cid_len);
+					value = htons (wo_cid_len);
 					memcpy (&(wp3[y]), &value, CefC_S_Length);
 					y += CefC_S_Length;
-					memcpy (&(wp3[y]), &(name[delim_pos_cid]), seg_len - wo_cid_len);
+					memcpy (&(wp3[y]), &(name[delim_pos]), wo_cid_len);
 					add_name_len += CefC_S_TLF;
+					/* CID */
+					if(delim_pos_cid > 0) {
+						y += wo_cid_len;
+						memcpy (&(wp3[y]), &ftvn_nameseg, CefC_S_Type);
+						y += CefC_S_Type;
+						value = htons (seg_len - wo_cid_len);
+						memcpy (&(wp3[y]), &value, CefC_S_Length);
+						y += CefC_S_Length;
+						memcpy (&(wp3[y]), &(name[delim_pos_cid]), seg_len - wo_cid_len);
+						add_name_len += CefC_S_TLF;
+					}
 				}
 				
 				break;
@@ -1303,21 +1665,6 @@ cef_frame_interest_create (
 		value32x2_fld.value2  	= htonl (tlvs->max_seq);
 		memcpy (&buff[index], &value32x2_fld, sizeof (struct value32x2_tlv));
 		index += CefC_S_TLF + CefC_S_Symbolic_Code;
-	}
-
-	/* Sets App Components */
-	if ((tlvs->app_comp >= CefC_T_APP_MIN) &&
-		(tlvs->app_comp <= CefC_T_APP_MAX)) {
-		fld_thdr.type 	= htons (tlvs->app_comp);
-		fld_thdr.length = htons (tlvs->app_comp_len);
-
-		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
-		index += CefC_S_TLF;
-
-		if (tlvs->app_comp_len) {
-			memcpy (&buff[index], tlvs->app_comp_val, tlvs->app_comp_len);
-			index += tlvs->app_comp_len;
-		}
 	}
 
 	/* Sets T_NAME		*/
@@ -3467,6 +3814,9 @@ cef_frame_message_name_tlv_parse (
 	uint16_t chunk_len = 0;
 	uint32_t* v32p;
 
+	CefT_AppComp*	AppComp_p = NULL;
+	CefT_AppComp*	before_AppComp_p = NULL;
+
 	/* Parses Name 					*/
 	while (index < length) {
 		thdr = (struct tlv_hdr*) &value[index];
@@ -3512,14 +3862,31 @@ cef_frame_message_name_tlv_parse (
 			default: {
 				if ((sub_type >= CefC_T_APP_MIN) &&
 					(sub_type <= CefC_T_APP_MAX)) {
-					pm->app_comp = sub_type;
-					pm->app_comp_len = sub_length;
+					name_len += CefC_S_TLF + sub_length;		//20190712
+					/* Create AppComp */
+					AppComp_p = (CefT_AppComp*)malloc( sizeof(CefT_AppComp) );
+					memset( AppComp_p->app_comp_val, 0x00, CefC_Max_Length );
+					AppComp_p->app_comp = sub_type;
+					AppComp_p->app_comp_len = sub_length;
+					if ( sub_length > 0 ) {
+						memcpy( AppComp_p->app_comp_val, &value[index], sub_length );
+					}
+					AppComp_p->next_p = NULL;
+					pm->AppComp_num++;
+					if ( before_AppComp_p == NULL ) {
+						pm->AppComp = AppComp_p;
+						before_AppComp_p = pm->AppComp;
+					} else {
+						before_AppComp_p->next_p = AppComp_p;
+						before_AppComp_p = AppComp_p;
+					}
 
 					if (sub_length > 0) {
 						pm->app_comp_offset = offset + index + CefC_S_TLF;
 					}
 				} else {
 					/* Ignore 		*/
+					name_len += CefC_S_TLF + sub_length;	//20190918 For HEX_Type
 				}
 				break;
 			}
@@ -3561,6 +3928,7 @@ cef_frame_message_name_tlv_parse (
 	pm->cid_len = tmp_val;
 	}
 #endif // CefC_Nwproc
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -3812,6 +4180,9 @@ cef_frame_conversion_name_to_uri (
 	unsigned char def_name[CefC_Max_Length];
 	int def_name_len;
 
+	uint16_t sub_type;
+	uint16_t app_num;
+
 	strcpy (uri, "ccn:/");
 	uri_len = strlen ("ccn:/");
 
@@ -3835,6 +4206,43 @@ cef_frame_conversion_name_to_uri (
 			}
 		}
 		if(hname == 0){
+
+			char char_num[8];
+			int	 num_len;
+			sub_type = ntohs (tlv_hdr->type);
+			if ((sub_type >= CefC_T_APP_MIN) &&
+				(sub_type <= CefC_T_APP_MAX)) {
+				memset( char_num, 0x00, 8 );
+				/* T_APP */
+				app_num = sub_type - CefC_T_APP_MIN;
+				sprintf( char_num, "%d", app_num );
+				num_len = strlen( char_num );
+				memcpy( &uri[uri_len], "APP:", 4 );
+				uri_len += 4;
+				memcpy( &uri[uri_len], char_num, num_len );
+				uri_len += num_len;
+				uri[uri_len] = '=';
+				uri_len++;
+			} else if ( sub_type == CefC_T_NAMESEGMENT ) {
+				/* T_NAMESEGMENT */
+			} else {
+				/* HEX Type */
+				unsigned char	sub_wk[8];
+				memset( sub_wk, 0x00, 8 );
+				memcpy( sub_wk, &tlv_hdr->type, 2 );
+				memset( char_num, 0x00, 8 );
+				uri[uri_len++] = '0';
+				uri[uri_len++] = 'x';
+				sprintf( char_num, "%02x", sub_wk[0] );
+				memcpy( &uri[uri_len], char_num, 2 );
+				uri_len += 2;
+				sprintf( char_num, "%02x", sub_wk[1] );
+				memcpy( &uri[uri_len], char_num, 2 );
+				uri_len += 2;
+				uri[uri_len] = '=';
+				uri_len++;
+			}
+
 			for (i = 0 ; i < seg_len ; i++) {
 				if(((name[x + i] >= 0x30) && (name[x + i] <= 0x39)) ||		/* 0~9 */
 					((name[x + i] >= 0x41) && (name[x + i] <= 0x5a)) ||		/* A~Z */
@@ -3878,6 +4286,43 @@ cef_frame_conversion_name_to_uri (
 				}
 			}
 		} else {
+
+			char char_num[8];
+			int	 num_len;
+			sub_type = ntohs (tlv_hdr->type);
+			if ((sub_type >= CefC_T_APP_MIN) &&
+				(sub_type <= CefC_T_APP_MAX)) {
+				memset( char_num, 0x00, 8 );
+				/* T_APP */
+				app_num = sub_type - CefC_T_APP_MIN;
+				sprintf( char_num, "%d", app_num );
+				num_len = strlen( char_num );
+				memcpy( &uri[uri_len], "APP:", 4 );
+				uri_len += 4;
+				memcpy( &uri[uri_len], char_num, num_len );
+				uri_len += num_len;
+				uri[uri_len] = '=';
+				uri_len++;
+			} else if ( sub_type == CefC_T_NAMESEGMENT ) {
+				/* T_NAMESEGMENT */
+			} else {
+				/* HEX Type */
+				unsigned char	sub_wk[8];
+				memset( sub_wk, 0x00, 8 );
+				memcpy( sub_wk, &tlv_hdr->type, 2 );
+				memset( char_num, 0x00, 8 );
+				uri[uri_len++] = '0';
+				uri[uri_len++] = 'x';
+				sprintf( char_num, "%02x", sub_wk[0] );
+				memcpy( &uri[uri_len], char_num, 2 );
+				uri_len += 2;
+				sprintf( char_num, "%02x", sub_wk[1] );
+				memcpy( &uri[uri_len], char_num, 2 );
+				uri_len += 2;
+				uri[uri_len] = '=';
+				uri_len++;
+			}
+
 			uri[uri_len++] = '0';
 			uri[uri_len++] = 'x';
 			for (i = 0 ; i < seg_len ; i++) {
@@ -4186,7 +4631,15 @@ cef_frame_get_len_total_namesegments (
 	while (x < name_len) {
 		tlv_hdr = (struct tlv_hdr*) &name[x];
 		len = ntohs (tlv_hdr->length);
-		if (ntohs(tlv_hdr->type) == CefC_T_NAMESEGMENT) {
+
+		if ((ntohs(tlv_hdr->type) == CefC_T_NAMESEGMENT) ||
+			((ntohs(tlv_hdr->type) >= CefC_T_APP_MIN) &&
+			 (ntohs(tlv_hdr->type) <= CefC_T_APP_MAX))) {
+			seg_tlen += CefC_S_TLF + len;
+		}
+		else if (ntohs(tlv_hdr->type) == CefC_T_CHUNK) {
+			/* NOP */
+		} else {
 			seg_tlen += CefC_S_TLF + len;
 		}
 		x += (CefC_S_TLF + len);
@@ -4205,7 +4658,7 @@ cef_frame_message_user_tlv_parse (
 ) {
 	unsigned char* wp;
 	unsigned char* ewp;
-	
+
 	if (length < 7) {
 		/* Type+Length+PEN */
 		return (-1);
@@ -4264,7 +4717,7 @@ cef_frame_message_user_tlv_parse (
 				break;
 		}
 	}
-	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -4530,4 +4983,560 @@ cef_frame_debug_print_buff (
 	}
 	fprintf (stderr, "\n----------(%d)\n", bidx);
 	return;
+}
+
+
+int
+cef_frame_input_uri_pre_check(
+	const char* inuri, 						/* URI										*/
+	unsigned char* name_1,					/* buffer to set After Check URI			*/
+	int			chunk_f						/* "/Chunk=" Accept or Not Accept			*/
+) {
+	unsigned char chk_1[CefC_Max_Length];
+	unsigned char tmp_str[CefC_Max_Length];
+	char	num_buff[32];
+	int		i;
+	int		num_test;
+	int		tmp_str_len;
+	int		tmp_len;
+	int		first_seg_f = 1;	/* 1:first segmment 0:not */
+	int		find_eq = 0;
+	int		chunk_ctr = 0;
+	int		find_chunk = 0;
+	char* break_p;
+	char* n1_p;
+	char* c1_p;
+	unsigned int hex_test;
+	
+	memset( chk_1, 0x00, CefC_Max_Length );
+	
+	/* Need #define _GNU_SOURCE */
+	memcpy( chk_1, inuri, strlen(inuri) );
+
+	n1_p = (char*)name_1;
+	c1_p = (char*)chk_1;
+	break_p = strchr( (char*)chk_1, '/' );		/* search / */
+	if ( break_p == NULL ) {
+		/* Error */
+		return (-1);
+	}
+
+	break_p++;
+	tmp_len = break_p - c1_p;
+	memcpy( n1_p, chk_1, tmp_len );				/* first / */
+	
+	n1_p += tmp_len;
+	c1_p += tmp_len;
+
+	if ( *break_p == '/' ) {				/* // */
+		/* Error // */
+		return (-1);
+	}
+
+	while( *c1_p ) {
+		memset( tmp_str, 0x00, CefC_Max_Length );
+		break_p = strchr( c1_p, '/' );			/* Next / */
+		if ( break_p == NULL ) {
+			tmp_len = strlen( c1_p );
+		} else {
+			tmp_len = break_p - c1_p;
+		}
+		memcpy( tmp_str, c1_p, tmp_len );		/* / ‘O‚Ü‚Å */
+		tmp_str_len = (int)strlen((char*)tmp_str);
+		
+		if ( strncasecmp((char*)tmp_str, "NAME=", 5) == 0  ) {
+			/* NAME= */
+			if ( (tmp_str_len == 5) && (first_seg_f == 1) ) {
+				/* Error first is "NAME=" */
+				return (-1);
+			}
+			tmp_str_len -= 5;
+			if ( tmp_str_len > 0 ) {
+				for ( i = 0; i < tmp_str_len; i++ ) {
+					if ( tmp_str[5+i] != '"' ) {
+						*n1_p = tmp_str[5+i];
+						n1_p++;
+					} else {
+						/* NOP */
+					}
+				}
+			}
+			c1_p += tmp_len;
+		} else if ( strncasecmp((char*)tmp_str, "Chunk=", 6) == 0  ) {
+			memset( num_buff, 0x00, 32 );
+			if ( first_seg_f == 1 ) {
+				/* Error */
+				return (-1);
+			}
+//			if ( tmp_str[5] != '=' ) {
+//				/* Error Not "Chunk=" */
+//				return (-1);
+//			}
+			find_chunk = 1;
+			if ( chunk_f == CefC_URI_NOT_ACCEPT_CHUNK ) {
+				/* Error */
+				return (-1);
+			}
+			chunk_ctr++;
+			if ( chunk_ctr > 1 ) {
+				/* Error */
+				return (-1);
+			}
+			for( i = 0; i < 32; ) {
+				if ( tmp_str[6+i] == 0x00 ) {
+					break;
+				}
+				if ( tmp_str[6+i] == '/' ) {
+					/* Error Not Last seg */
+					return (-1);
+					break;
+				}
+				if ( (tmp_str[6+i] >= '0') && (tmp_str[6+i] <= '9') ) {
+					num_buff[i] = tmp_str[6+i];
+					i++;
+				} else {
+					/* Error Not numeric */
+					return (-1);
+				}
+			}
+			if ( strlen(num_buff) <= 0 ) {
+				/* Error Not set */
+				return (-1);
+			}
+			/* OK */
+			memcpy( n1_p, tmp_str, tmp_len );
+			n1_p += tmp_len;
+			c1_p += tmp_len;
+		} else if ( strncasecmp( (char*)tmp_str, "App:", 4 ) == 0 ) {
+			memset( num_buff, 0x00, 32 );
+			find_eq = 0;
+			for( i = 0; i < 32; ) {
+				if ( tmp_str[4+i] == 0x00 ) {
+					break;
+				}
+				if ( tmp_str[4+i] == '=' ) {
+					find_eq = 1;
+					i++;
+					break;
+				}
+				if ( (tmp_str[4+i] >= '0') && (tmp_str[4+i] <= '9') ) {
+					num_buff[i] = tmp_str[4+i];
+					i++;
+				} else {
+					/* Error Not numeric */
+					return (-1);
+				}
+			}
+			if ( (tmp_str[4+i] == 0x00) && (first_seg_f == 1) ) {
+				/* Error /APP:n=/ && first_seg */
+					return (-1);
+			}
+			if ( (strlen(num_buff) <= 0) || (find_eq == 0) ) {
+				/* Error Not set */
+				return (-1);
+			} else {
+				num_test = atoi( num_buff );
+				if ( (num_test < 0) || (num_test > 4095) ) {
+					/* Error Out-of-Range */
+					return (-1);
+				}
+			}
+			/* OK */
+			for ( i = 0; i < tmp_len; i++ ) {
+				if ( tmp_str[i] != '"' ) {
+					*n1_p = tmp_str[i];
+					n1_p++;
+				} else {
+					/* NOP */
+				}
+			}
+			c1_p += tmp_len;
+		} else if ( strncasecmp( (char*)tmp_str, "0x", 2 ) == 0 ) {
+			/* HEX Type */
+			memset( num_buff, 0x00, 32 );
+			num_buff[0] ='0';
+			num_buff[1] ='x';
+			for( i = 0; i < 32; ) {
+				if ( tmp_str[2+i] == 0x00 ) {
+					break;
+				}
+				if ( tmp_str[2+i] == '=' ) {
+					break;
+				}
+				if ( isxdigit(tmp_str[2+i]) ) {
+					num_buff[2+i] = tmp_str[2+i];
+					i++;
+				} else {
+					/* Error Not xdigit */
+					return (-1);
+				}
+			}
+			if ( strlen(num_buff) != 6 ) {
+				/* Error Not set */
+				return (-1);
+			} else if ( (tmp_str_len == 7) && (first_seg_f == 1) ) {
+				/* Error 0xXXXX=/ && First_SEG*/
+				return (-1);
+			} else {
+				sscanf(num_buff, "%x", &hex_test);
+				if ( hex_test == CefC_T_NAMESEGMENT ) {
+					/* OK */
+				} else if ( (hex_test >= CefC_T_APP_MIN) && (hex_test <= CefC_T_APP_MAX) ) {
+					/* OK */
+				} else if ( hex_test == CefC_T_CHUNK ) {
+					if ( chunk_f == CefC_URI_NOT_ACCEPT_CHUNK ) {
+						/* Error */
+						return (-1);
+					}
+					find_chunk = 1;
+					/* OK */
+				} else {
+					/* OK */
+#if 0
+					/* Error Out-of-Range */
+					return (-1);
+#endif
+				}
+			}
+			/* OK */
+			for ( i = 0; i < tmp_len; i++ ) {
+				if ( tmp_str[i] != '"' ) {
+					*n1_p = tmp_str[i];
+					n1_p++;
+				} else {
+					/* NOP */
+				}
+			}
+			/* OK */
+//			memcpy( n1_p, tmp_str, tmp_len );
+//			n1_p += tmp_len;
+			c1_p += tmp_len;
+		} else {
+			/* OK */
+			for ( i = 0; i < tmp_len; i++ ) {
+				if ( tmp_str[i] != '"' ) {
+					*n1_p = tmp_str[i];
+					n1_p++;
+				} else {
+					/* NOP */
+				}
+			}
+//			memcpy( n1_p, tmp_str, tmp_len );
+//			n1_p += tmp_len;
+			c1_p += tmp_len;
+		}
+		if ( break_p != NULL ) {
+			if ( find_chunk == 1 ) {
+				/* /Chunk= or 0x0010 is not Last segment */
+				return (-1);
+			}
+			memset( n1_p, '/', 1 );
+			n1_p++;
+			c1_p++;
+		}
+
+		first_seg_f = 0;
+	}
+	
+	return (0);
+}
+
+
+void
+cef_frame_app_components_free(  uint16_t		AppComp_num,
+								CefT_AppComp*	AppComp
+) {
+	CefT_AppComp*	AppComp_p = AppComp;
+	CefT_AppComp*	next_AppComp_p = NULL;
+
+	while( AppComp_p ) {
+		next_AppComp_p = (CefT_AppComp*)AppComp_p->next_p;
+		free( AppComp_p );
+		AppComp_p = next_AppComp_p;
+	}
+
+	AppComp = NULL;
+	AppComp_num = 0;
+
+	return;
+}
+
+
+int
+cef_frame_input_uri_pre_check2(
+	const char* inuri, 						/* URI										*/
+	unsigned char* name_1,					/* buffer to set After Check URI			*/
+	int			chunk_f						/* "/Chunk=" Accept or Not Accept			*/
+) {
+	unsigned char chk_1[CefC_Max_Length];
+	unsigned char tmp_str[CefC_Max_Length];
+	char	num_buff[32];
+	int		i;
+	int		num_test;
+	int		tmp_str_len;
+	int		tmp_len;
+	int		first_seg_f = 1;	/* 1:first segmment 0:not */
+	int		find_eq = 0;
+	int		chunk_ctr = 0;
+	int		find_chunk = 0;
+	char* break_p;
+	char* n1_p;
+	char* c1_p;
+	char* eq_p;
+	unsigned int hex_test;
+	
+	memset( chk_1, 0x00, CefC_Max_Length );
+	
+	/* Need #define _GNU_SOURCE */
+	memcpy( chk_1, inuri, strlen(inuri) );
+
+	n1_p = (char*)name_1;
+	c1_p = (char*)chk_1;
+	break_p = strchr( (char*)chk_1, '/' );		/* search / */
+	if ( break_p == NULL ) {
+		/* Error */
+		return (-1);
+	}
+
+	break_p++;
+	tmp_len = break_p - c1_p;
+	memcpy( n1_p, chk_1, tmp_len );				/* first / */
+	
+	n1_p += tmp_len;
+	c1_p += tmp_len;
+
+	if ( *break_p == '/' ) {				/* // */
+		/* Error // */
+		return (-1);
+	}
+
+	while( *c1_p ) {
+		memset( tmp_str, 0x00, CefC_Max_Length );
+		break_p = strchr( c1_p, '/' );			/* Next / */
+		if ( break_p == NULL ) {
+			tmp_len = strlen( c1_p );
+		} else {
+			tmp_len = break_p - c1_p;
+		}
+		memcpy( tmp_str, c1_p, tmp_len );		/*  pre '/' */
+		tmp_str_len = (int)strlen((char*)tmp_str);
+		
+		/* /xxxxxxxxx/ */
+		/* search '=' */
+		eq_p = strchr( (char*)tmp_str, '=' );
+		if ( eq_p == NULL ) {
+			/* OK */
+			for ( i = 0; i < tmp_len; i++ ) {
+				if ( tmp_str[i] != '"' ) {
+					*n1_p = tmp_str[i];
+					n1_p++;
+				} else {
+					/* NOP */
+				}
+			}
+			c1_p += tmp_len;
+			if ( break_p != NULL ) {
+				if ( find_chunk == 1 ) {
+					/* /Chunk= or 0x0010 is not Last segment */
+					return (-1);
+				}
+				memset( n1_p, '/', 1 );
+				n1_p++;
+				c1_p++;
+			}
+			first_seg_f = 0;
+			continue;
+		}
+
+		if ( strncasecmp((char*)tmp_str, "NAME=", 5) == 0  ) {
+			/* NAME= */
+			if ( (tmp_str_len == 5) && (first_seg_f == 1) ) {
+				/* Error first is "NAME=" */
+				return (-1);
+			}
+			tmp_str_len -= 5;
+			if ( tmp_str_len > 0 ) {
+				for ( i = 0; i < tmp_str_len; i++ ) {
+					if ( tmp_str[5+i] != '"' ) {
+						*n1_p = tmp_str[5+i];
+						n1_p++;
+					} else {
+						/* NOP */
+					}
+				}
+			}
+			c1_p += tmp_len;
+		} else if ( strncasecmp((char*)tmp_str, "Chunk=", 6) == 0  ) {
+			memset( num_buff, 0x00, 32 );
+			if ( first_seg_f == 1 ) {
+				/* Error */
+				return (-1);
+			}
+			find_chunk = 1;
+			if ( chunk_f == CefC_URI_NOT_ACCEPT_CHUNK ) {
+				/* Error */
+				return (-1);
+			}
+			chunk_ctr++;
+			if ( chunk_ctr > 1 ) {
+				/* Error */
+				return (-1);
+			}
+			for( i = 0; i < 32; ) {
+				if ( tmp_str[6+i] == 0x00 ) {
+					break;
+				}
+				if ( tmp_str[6+i] == '/' ) {
+					/* Error Not Last seg */
+					return (-1);
+					break;
+				}
+				if ( (tmp_str[6+i] >= '0') && (tmp_str[6+i] <= '9') ) {
+					num_buff[i] = tmp_str[6+i];
+					i++;
+				} else {
+					/* Error Not numeric */
+					return (-1);
+				}
+			}
+			if ( strlen(num_buff) <= 0 ) {
+				/* Error Not set */
+				return (-1);
+			}
+			/* OK */
+			memcpy( n1_p, tmp_str, tmp_len );
+			n1_p += tmp_len;
+			c1_p += tmp_len;
+		} else if ( strncasecmp( (char*)tmp_str, "App:", 4 ) == 0 ) {
+			memset( num_buff, 0x00, 32 );
+			find_eq = 0;
+			for( i = 0; i < 32; ) {
+				if ( tmp_str[4+i] == 0x00 ) {
+					break;
+				}
+				if ( tmp_str[4+i] == '=' ) {
+					find_eq = 1;
+					i++;
+					break;
+				}
+				if ( (tmp_str[4+i] >= '0') && (tmp_str[4+i] <= '9') ) {
+					num_buff[i] = tmp_str[4+i];
+					i++;
+				} else {
+					/* Error Not numeric */
+					return (-1);
+				}
+			}
+			if ( (tmp_str[4+i] == 0x00) && (first_seg_f == 1) ) {
+				/* Error /APP:n=/ && first_seg */
+					return (-1);
+			}
+			if ( (strlen(num_buff) <= 0) || (find_eq == 0) ) {
+				/* Error Not set */
+				return (-1);
+			} else {
+				num_test = atoi( num_buff );
+				if ( (num_test < 0) || (num_test > 4095) ) {
+					/* Error Out-of-Range */
+					return (-1);
+				}
+			}
+			/* OK */
+			for ( i = 0; i < tmp_len; i++ ) {
+				if ( tmp_str[i] != '"' ) {
+					*n1_p = tmp_str[i];
+					n1_p++;
+				} else {
+					/* NOP */
+				}
+			}
+			c1_p += tmp_len;
+		} else if ( strncasecmp( (char*)tmp_str, "0x", 2 ) == 0 ) {
+			/* HEX Type */
+			memset( num_buff, 0x00, 32 );
+			num_buff[0] ='0';
+			num_buff[1] ='x';
+			for( i = 0; i < 32; ) {
+				if ( tmp_str[2+i] == 0x00 ) {
+					break;
+				}
+				if ( tmp_str[2+i] == '=' ) {
+					break;
+				}
+				if ( isxdigit(tmp_str[2+i]) ) {
+					num_buff[2+i] = tmp_str[2+i];
+					i++;
+				} else {
+					/* Error Not xdigit */
+					return (-1);
+				}
+			}
+			if ( strlen(num_buff) != 6 ) {
+				/* Error Not set */
+				return (-1);
+			} else if ( (tmp_str_len == 7) && (first_seg_f == 1) ) {
+				/* Error 0xXXXX=/ && First_SEG*/
+				return (-1);
+			} else {
+				sscanf(num_buff, "%x", &hex_test);
+				if ( hex_test == CefC_T_NAMESEGMENT ) {
+					/* OK */
+				} else if ( (hex_test >= CefC_T_APP_MIN) && (hex_test <= CefC_T_APP_MAX) ) {
+					/* OK */
+				} else if ( hex_test == CefC_T_CHUNK ) {
+					if ( chunk_f == CefC_URI_NOT_ACCEPT_CHUNK ) {
+						/* Error */
+						return (-1);
+					}
+					find_chunk = 1;
+					/* OK */
+				} else {
+					/* OK */
+#if 0
+					/* Error Out-of-Range */
+					return (-1);
+#endif
+				}
+			}
+			/* OK */
+			for ( i = 0; i < tmp_len; i++ ) {
+				if ( tmp_str[i] != '"' ) {
+					*n1_p = tmp_str[i];
+					n1_p++;
+				} else {
+					/* NOP */
+				}
+			}
+			/* OK */
+//			memcpy( n1_p, tmp_str, tmp_len );
+//			n1_p += tmp_len;
+			c1_p += tmp_len;
+		} else {
+			/* OK */
+			for ( i = 0; i < tmp_len; i++ ) {
+				if ( tmp_str[i] != '"' ) {
+					*n1_p = tmp_str[i];
+					n1_p++;
+				} else {
+					/* NOP */
+				}
+			}
+//			memcpy( n1_p, tmp_str, tmp_len );
+//			n1_p += tmp_len;
+			c1_p += tmp_len;
+		}
+		if ( break_p != NULL ) {
+			if ( find_chunk == 1 ) {
+				/* /Chunk= or 0x0010 is not Last segment */
+				return (-1);
+			}
+			memset( n1_p, '/', 1 );
+			n1_p++;
+			c1_p++;
+		}
+
+		first_seg_f = 0;
+	}
+	
+	return (0);
 }
