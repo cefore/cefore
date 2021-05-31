@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -146,6 +146,10 @@ CefT_Client_Handle 								/* created client handle 				*/
 cef_client_connect (
 	void
 );
+CefT_Client_Handle 								/* created client handle 				*/
+cef_client_connect_to_csmgrd (
+	void
+);
 /*--------------------------------------------------------------------------------------
 	Creats the client handle with the SOCK_DGRAM socket
 ----------------------------------------------------------------------------------------*/
@@ -196,6 +200,15 @@ cef_client_interest_input (
 ----------------------------------------------------------------------------------------*/
 int 											/* length of read buffer 				*/
 cef_client_read (
+	CefT_Client_Handle fhdl, 					/* client handle 						*/
+	unsigned char* buff, 						/* buffer to write the message 			*/
+	int len 									/* length of buffer 					*/
+);
+/*--------------------------------------------------------------------------------------
+	Reads the message from the specified connection (socket)
+----------------------------------------------------------------------------------------*/
+int 											/* length of read buffer 				*/
+cef_client_read2 (
 	CefT_Client_Handle fhdl, 					/* client handle 						*/
 	unsigned char* buff, 						/* buffer to write the message 			*/
 	int len 									/* length of buffer 					*/

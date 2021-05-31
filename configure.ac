@@ -5,7 +5,7 @@ dnl
 dnl  project setting
 dnl
 AC_PREREQ([2.69])
-AC_INIT([cefore], [0.8.2.2], [])
+AC_INIT([cefore], [0.8.3], [])
 AC_CONFIG_AUX_DIR(autotools)
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
@@ -150,6 +150,7 @@ AC_CONFIG_FILES([
   src/include/cefore/Makefile
   src/lib/Makefile
   src/plugin/Makefile
+  src/bw_stat_plugin/Makefile
   utils/Makefile
   config/Makefile
   tools/Makefile
@@ -157,6 +158,8 @@ AC_CONFIG_FILES([
   tools/cefputstream/Makefile
   tools/cefgetfile/Makefile
   tools/cefputfile/Makefile
+  tools/cefgetfile_sec/Makefile
+  tools/cefputfile_sec/Makefile
   tools/cefgetchunk/Makefile
 ])
 

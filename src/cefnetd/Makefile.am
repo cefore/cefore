@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2020, National Institute of Information and Communications
+# Copyright (c) 2016-2021, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -71,7 +71,7 @@ cefnetd_LDFLAGS=-L$(top_srcdir)/src/lib/ -L$(top_srcdir)/src/plugin/ -lpthread
 if LINUX
 cefnetd_LDFLAGS+=-pthread
 endif # LINUX
-cefnetd_LDADD=-lcef_plugin -lcefore -lssl -lcrypto
+cefnetd_LDADD=-lcef_plugin -lcefore -lssl -lcrypto -ldl
 
 cefnetd_CFLAGS=$(CEF_NETD_CFLAGS)
 cefnetd_SOURCES=cef_main.c cef_node.c cef_sched.c cef_netd.c cef_status.c cef_netd.h cef_status.h

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,8 +46,6 @@
 #include <cefore/cef_rngque.h>
 #include <csmgrd/csmgrd_plugin.h>
 
-
-
 /****************************************************************************************
  Macros
  ****************************************************************************************/
@@ -55,11 +53,6 @@
 /*------------------------------------------------------------------
 	Limitation
 --------------------------------------------------------------------*/
-#define MemC_Max_Capacity				655360
-#define MemC_Max_Child_Num				8			/* Num of child (fork process)		*/
-#define MemC_Max_Block_Num				100			/* Num of send cob at once			*/
-#define MemC_Block_Send_Rate			16			/* Num of send cob at once			*/
-
 
 /****************************************************************************************
  Structure Declarations
@@ -68,7 +61,11 @@
 typedef struct {
 	
 	char 			algo_name[1024];			/* algorithm to replece cache entries	*/
-	int 			capacity;					/* size of cache table 					*/
+	int				algo_name_size;				/* average name size of Cob processed 	*/
+												/* by algorithm							*/
+	int				algo_cob_size;				/* average Cob size of Cob processed 	*/
+                                  				/* by algorithm							*/
+	uint64_t 	 	cache_capacity;				/* size of cache capacity				*/
 	
 } MemT_Config_Param;
 
@@ -76,28 +73,20 @@ typedef struct {
 	
 	/********** parameters 		***********/
 	char 			algo_name[1024];			/* algorithm to replece cache entries	*/
-	int 			capacity;					/* size of cache table 					*/
-	
-	/********** memory cache 	***********/
-	CefT_Mp_Handle	 mem_cache_cob_mp;			/* for cob entry						*/
-	CefT_Hash_Handle mem_cache_table;			/* Memory Cache Table					*/
+	int				algo_name_size;				/* average name size of Cob processed 	*/
+												/* by algorithm							*/
+	int				algo_cob_size;				/* average Cob size of Cob processed 	*/
+                                  				/* by algorithm							*/
+	int 			cache_capacity;				/* size of cache table 					*/
 	
 	/********** cache algorithm library **********/
 	void* 			algo_lib;					/* records to the loaded library 		*/
 	CsmgrdT_Lib_Interface algo_apis;
 	
+	uint64_t 		cache_cobs;					/* cached cobs 							*/
+	
 } MemT_Cache_Handle;
 
-typedef struct {
-
-	/********** Child pid list ***********/
-	pid_t			child_pid;
-	unsigned char	key[CsmgrdC_Key_Max];
-	int 			key_len;
-	uint32_t		seq_num;
-	int				sock;
-
-} MemT_Ch_Pid_List;
 
 
 #endif // __CSMGRD_MEM_CACHE_HEADER__

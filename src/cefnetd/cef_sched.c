@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -168,10 +168,10 @@ cefnetd_ccninforeq_forward (
 				faceids[i], msg, payload_len + header_len);
 			if (hdl->forwarding_info_strategy == CefC_Default_ForwardingInfoStrategy) {
 				if (poh->ccninfo_flag & CefC_CtOp_FullDisCover) {
-					if (hdl->ccninfo_full_discovery == 0 /* Allow */) {
+					if (hdl->ccninfo_full_discovery == 1 /* Allow ccninfo-03 */) {
 						;	/* Full discover is performed.			*/
 					} else 
-					if (hdl->ccninfo_full_discovery == 1 /* Not Allow */) {
+					if (hdl->ccninfo_full_discovery == 0 /* Not Allow */) {
 						break;
 					} else {
 						if (fulldiscovery_authNZ != 0/* fulldiscovery_authNZ = NG */) {

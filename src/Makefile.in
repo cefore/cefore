@@ -15,7 +15,7 @@
 @SET_MAKE@
 
 #
-# Copyright (c) 2016-2020, National Institute of Information and Communications
+# Copyright (c) 2016-2021, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -186,7 +186,7 @@ am__define_uniq_tagged_files = \
   done | $(am__uniquify_input)`
 ETAGS = etags
 CTAGS = ctags
-DIST_SUBDIRS = include lib plugin cefnetd csmgrd
+DIST_SUBDIRS = include lib plugin cefnetd bw_stat_plugin csmgrd
 am__DIST_COMMON = $(srcdir)/Makefile.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 am__relativize = \
@@ -330,7 +330,7 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-SUBDIRS = include lib plugin cefnetd $(am__append_1)
+SUBDIRS = include lib plugin cefnetd bw_stat_plugin $(am__append_1)
 all: all-recursive
 
 .SUFFIXES:
@@ -642,6 +642,9 @@ uninstall-am:
 
 .PRECIOUS: Makefile
 
+
+# bw_stat
+#SUBDIRS+=bw_stat_plugin
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

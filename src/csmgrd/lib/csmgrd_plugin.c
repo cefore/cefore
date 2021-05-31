@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,11 @@
 
 #define __CSMGRD_PLUGIN_SOURCE__
 
+//#define	__CSMGRD_PLUGIN_SEND_ERROR__
+
+#define		CSMGRD_PLUGIN_SEND_USLEEP	100000
+#define		CSMGRD_PLUGIN_SEND_TIMEOUT	10000
+
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
@@ -49,14 +54,13 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+#define ALGO_MAX_MEM_USAGE				55
 
-
+#define	DEMO_RETRY_NUM	10
 
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
-
-
 
 /****************************************************************************************
  State Variables
@@ -94,43 +98,6 @@ csmgrd_dbg_trim_line_string (
  ****************************************************************************************/
 
 /*--------------------------------------------------------------------------------------
-	Function to Create Cob message
-----------------------------------------------------------------------------------------*/
-void
-csmgrd_plugin_cob_msg_create (
-	unsigned char* buff,						/* created message						*/
-	uint16_t* buff_len,							/* Length of message					*/
-	unsigned char* msg,							/* Content Object						*/
-	uint16_t msg_len,							/* Length of Content Object				*/
-	uint32_t chnk_num,							/* Chunk number							*/
-	int faceid									/* faceid								*/
-) {
-	uint16_t index = 0;
-	/* set header */
-	buff[CefC_O_Fix_Ver]  = CefC_Version;
-	buff[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_Bulk_Cob;
-	index += CefC_Csmgr_Msg_HeaderLen;
-
-	/* set cob message */
-	memcpy (buff + index, &(msg_len), CefC_S_Length);
-	memcpy (buff + index + CefC_S_Length, msg, msg_len);
-	index += CefC_S_Length + msg_len;
-
-	/* set chunk num */
-	memcpy (buff + index, &(chnk_num), CefC_S_ChunkNum);
-	index += CefC_S_ChunkNum;
-
-	/* set faceid */
-	memcpy (buff + index, &faceid, sizeof (faceid));
-	index += sizeof (faceid);
-
-	/* set Length */
-	memcpy (buff + CefC_O_Length, &index, CefC_S_Length);
-
-	*buff_len = index;
-	return;
-}
-/*--------------------------------------------------------------------------------------
 	Function to Send Cob message
 ----------------------------------------------------------------------------------------*/
 int
@@ -139,18 +106,68 @@ csmgrd_plugin_cob_msg_send (
 	unsigned char* msg,						/* send message								*/
 	uint16_t msg_len						/* message length							*/
 ) {
-	struct pollfd fds[1];
-	fds[0].fd  = fd;
-	fds[0].events = POLLOUT | POLLERR;
-	if (poll (fds, 1, 100) < 1) {
-		/* poll error */
-		return (-1);
+
+   	unsigned char* p = msg;
+   	int len = msg_len;
+	fd_set fds, writefds;
+	int n;
+	struct timeval timeout;
+	int res = 0;
+	int send_count = 0;
+
+
+   	res = send (fd, p, len,  MSG_DONTWAIT);
+	if ( res <= 0 ) {
+#ifdef	__CSMGRD_PLUGIN_SEND_ERROR__
+		fprintf(stderr, "[%s](res <=0): ########### ERROR=%s send_count:%d\n", __FUNCTION__, strerror (errno), send_count);
+#endif
+		return( 0 );
 	}
-	/* send Cob message */
-	if (send (fds[0].fd, msg, msg_len, 0) < 1) {
-		/* send error */
-		if ((errno != EAGAIN) && (errno != EWOULDBLOCK)) {
-			return (-1);
+	len -= res;  
+	p += res;
+	send_count++;
+
+	while( len > 0 ) {
+		timeout.tv_sec  = 0;
+		timeout.tv_usec = CSMGRD_PLUGIN_SEND_TIMEOUT;
+		FD_ZERO (&writefds);
+		FD_SET (fd, &writefds);
+		memcpy (&fds, &writefds, sizeof (fds));
+		n = select (fd+1, NULL, &fds, NULL, &timeout);
+		if (n > 0) {
+			if (FD_ISSET (fd, &fds)) {
+			   	res = send (fd, p, len,  MSG_DONTWAIT);
+			   	if ( res > 0 ) {
+					len -= res;  
+					p += res;
+				} else {
+#ifdef	__CSMGRD_PLUGIN_SEND_ERROR__
+					fprintf(stderr, "[%s](res <=0): ########### ERROR=%s send_count:%d\n", __FUNCTION__, strerror (errno), send_count);
+#endif
+					if ( errno == EAGAIN ) {
+						usleep(CSMGRD_PLUGIN_SEND_USLEEP);
+					}
+				}
+				send_count++;
+			}
+		} else {
+			if ( send_count == 0 ) {
+#ifdef	__CSMGRD_PLUGIN_SEND_ERROR__
+				fprintf(stderr, "[%s](%d): ########### n:%d   send_count:%d   len:%d   %s\n", 
+										__FUNCTION__, __LINE__, n, send_count, len, strerror (errno));
+#endif
+				break;
+			} else if ( send_count > DEMO_RETRY_NUM ) {
+#ifdef	__CSMGRD_PLUGIN_SEND_ERROR__
+				fprintf(stderr, "[%s](%d): ########### n:%d   send_count:%d   len:%d   %s\n", 
+										__FUNCTION__, __LINE__, n, send_count, len, strerror (errno));
+#endif
+				break;
+			}
+			send_count++;
+			if ( errno == EAGAIN ) {
+				usleep(CSMGRD_PLUGIN_SEND_USLEEP);
+			}
 		}
 	}
 	return (0);
@@ -179,7 +196,6 @@ csmgrd_lib_api_get (
 	algo_apis->hit = dlsym (*algo_lib, "hit");
 	algo_apis->miss = dlsym (*algo_lib, "miss");
 	algo_apis->status = dlsym (*algo_lib, "status");
-
 
 	return (1);
 }
@@ -251,6 +267,7 @@ cef_csmgr_con_entry_create (
 	if ((buff[CefC_O_Fix_Ver]  != CefC_Version) ||
 		(buff[CefC_O_Fix_Type] >= CefC_Csmgr_Msg_Type_Num) ||
 		(buff[CefC_O_Fix_Type] == CefC_Csmgr_Msg_Type_Invalid)) {
+//@@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
 		return (-1);
 	}
 	memcpy (&value16, &buff[CefC_O_Length], CefC_S_Length);
@@ -259,6 +276,7 @@ cef_csmgr_con_entry_create (
 	/* check message length */
 	if ((len <= CefC_Csmgr_Msg_HeaderLen) || 
 		(len > buff_len)) {
+//@@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
 		return (-1);
 	}
 	index = CefC_Csmgr_Msg_HeaderLen;
@@ -267,31 +285,51 @@ cef_csmgr_con_entry_create (
 	memcpy (&value16, &buff[index], CefC_S_Length);
 	entry->pay_len = ntohs (value16);
 
-	if(entry->pay_len > len){
-		return(-1);
+	if (entry->pay_len > len) {
+//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
+		return (-1);
 	}
 	index += CefC_S_Length;
 	
 	/* Get cob message */
 	memcpy (&value16, &buff[index], CefC_S_Length);
 	entry->msg_len = ntohs (value16);
-	if(entry->pay_len > entry->msg_len){
-		return(-1);
+	if (entry->pay_len > entry->msg_len) {
+//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
+		return (-1);
 	}
-	if(entry->msg_len > len){
-		return(-1);
+	if (entry->msg_len > len) {
+//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
+		return (-1);
 	}
 	index += CefC_S_Length;
+	entry->msg = calloc (1 , entry->msg_len);
+	if (entry->msg == NULL) {
+//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
+		return (-1);
+	}
 	memcpy (entry->msg, &buff[index], entry->msg_len);
 	index += entry->msg_len;
 	
 	/* Get cob name */
 	memcpy (&value16, &buff[index], CefC_S_Length);
 	entry->name_len = ntohs (value16);
-	if(entry->name_len > entry->msg_len){
-		return(-1);
+	if (entry->name_len > entry->msg_len) {
+		free (entry->msg);
+//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
+		return (-1);
 	}
 	index += CefC_S_Length;
+	if (!(buff[index] == 0x00 && buff[index+1] == 0x01)) { 
+		free (entry->msg);
+//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
+		return (-1);
+	}
+	entry->name = calloc (1 , entry->name_len);
+	if (entry->name == NULL) {
+		free (entry->msg);
+		return (-1);
+	}
 	memcpy (entry->name, &buff[index], entry->name_len);
 	index += entry->name_len;
 	
@@ -318,7 +356,135 @@ cef_csmgr_con_entry_create (
 	gettimeofday (&tv, NULL);
 	entry->ins_time = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
-	return ((int) index);
+//@@@@@fprintf(stderr, "[%s]: ------ reternOK(%d) -----\n", __FUNCTION__, __LINE__);
+	return ((int) index+3/* for MAGIC */); 
+}
+/*--------------------------------------------------------------------------------------
+	Check for excessive or insufficient memory resources for cache algorithm library
+----------------------------------------------------------------------------------------*/
+int
+csmgrd_cache_algo_availability_check (
+	uint64_t	capacity,
+	char*		algo,
+	int			name_size,
+	int			cob_size,
+	char*		cs_type
+) {
+	FILE* fp;
+	uint64_t total_mega = 0;
+	uint64_t free_mega = 0;
+	uint64_t est_resource;
+
+	/* get total and free memory size */
+#ifndef CefC_MACOS
+	/************************************************************************************/
+	/* [/proc/meminfo format]															*/
+	/*		MemTotal:        8167616 kB													*/
+	/*		MemFree:         7130204 kB													*/
+	/*		MemAvailable:    7717896 kB													*/
+	/*		...																			*/
+	/************************************************************************************/
+	char buf[1024];
+	char* key_total = "MemTotal:";
+	char* key_free = "MemFree:";
+	char* meminfo = "/proc/meminfo";
+	int val;
+	if ((fp = fopen (meminfo, "r")) == NULL) {
+		cef_log_write (CefC_Log_Critical, "%s(%d): Could not open %s to get memory information.\n", __FUNCTION__, meminfo);
+		return (-1);
+	}
+	while (fgets (buf, sizeof (buf), fp) != NULL) {
+		if (strncmp (buf, key_total, strlen (key_total)) == 0) {
+			sscanf (&buf[strlen (key_total)], "%d", &val);
+			total_mega = val / 1024;
+		}
+		if (strncmp (buf, key_free, strlen (key_free)) == 0) {
+			sscanf (&buf[strlen (key_free)], "%d", &val);
+			free_mega = val / 1024;
+		}
+	}
+	if (total_mega == 0) {
+		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n", 
+						__FUNCTION__, key_total);
+		fclose (fp);
+		return (-1);
+	}
+	if (free_mega == 0) {
+		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n", 
+						__FUNCTION__, key_free);
+		fclose (fp);
+		return (-1);
+	}
+	fclose (fp);
+#else // CefC_MACOS
+	/************************************************************************************/
+	/* ["top -l 1 | grep PhysMem:" format]												*/
+	/*		PhysMem: 7080M used (1078M wired), 1109M unused.							*/
+	/************************************************************************************/
+	char buf[1024];
+	char* cmd = "top -l 1 | grep PhysMem:";
+	char* tag = "PhysMem:"; 
+	int	 used = 0, unused = 0;
+	if ((fp = popen (cmd, "r")) != NULL) {
+		while (fgets (buf, sizeof (buf), fp) != NULL) {
+			if (strstr (buf, tag) != NULL) {
+				char* pos = strchr (buf, ' ');
+				sscanf (pos, "%d", &used);
+				pos = strchr (pos, ',');
+				sscanf (pos+1, "%d", &unused);
+			} 
+		}
+		pclose (fp);
+	} else {
+		cef_log_write (CefC_Log_Critical, "%s(%d): Could not get memory information.\n", __FUNCTION__, __LINE__);
+		return (-1);
+	}		
+	if (unused == 0 || used == 0) {
+		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n", 
+					__FUNCTION__, tag);
+		return (-1);
+	}
+	total_mega = used + unused;
+	free_mega = unused;
+#endif // CefC_MACOS
+
+	/* Cache Strategy Management Resource Estimate */
+	est_resource  = capacity * (uint64_t)(24+4+name_size);
+
+	/* Cache Strategy Related (loopkup) Resource Estimates */
+	est_resource += capacity * (uint64_t)(8+32+name_size);
+	
+	if (strcmp (cs_type, "memory") == 0) {
+		/* Cache Resource Estimate */
+		est_resource += capacity * (uint64_t)(8+40+name_size+cob_size);
+	} else {
+		est_resource += free_mega * 1024000 * 0.3;
+	}
+	
+	if (free_mega * 1024000 * ALGO_MAX_MEM_USAGE / 100 < est_resource) {
+		char* conf;
+		if (strcmp (cs_type, "memory") == 0) {
+			conf = "csmgrd";
+		} else 
+		if (strcmp (cs_type, "filesystem") == 0) {
+			conf = "csmgrd";
+		} else {
+			conf = "dbcache";
+		}
+		csmgrd_log_write (CefC_Log_Error, 
+		    "Unable to use %s cache with specified algorithm due to lack of memory"
+    		"resource. Unset algorithm, i.e., CACHE_ALGORITHM=None, in %s.conf.\n"
+			"	(Detected Memory Size="FMTU64"\n"
+			"	 Estimated available memory size="FMTU64"\n"
+			"	 Memory size that the algorithm is expected to use="FMTU64")\n",
+			cs_type, conf, 
+			free_mega * 1024000,
+			free_mega * 1024000 * ALGO_MAX_MEM_USAGE / 100,
+			est_resource);
+		return (-1);
+	}
+	
+	return (0);
 }
 void
 csmgrd_log_init (
@@ -376,7 +542,7 @@ csmgrd_log_init2 (
 		
 		if (strcmp (pname, "CEF_LOG_LEVEL") == 0) {
 			log_lv = atoi (ws);
-			if (!(0<=log_lv && log_lv <= 2)){
+			if (!(0<=log_lv && log_lv <= 2)) {
 				log_lv = 0;
 			}
 		}

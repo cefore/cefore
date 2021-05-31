@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -73,14 +73,19 @@
 /* Macros for csmgr													*/
 /*------------------------------------------------------------------*/
 #define CefC_Csmgr_File_Path_Length		1024		/* Max length of file path			*/
+#define CefC_Conpubd_File_Path_Length	1024		/* Max length of file path			*/
 #define CefC_Csmgrd_Conf_Name			"csmgrd.conf"
 													/* csmrd Config file name			*/
-#define CefC_Conpud_Conf_Name			"conpubd.conf"
+#define CefC_Conpubd_Conf_Name			"conpubd.conf"
 													/* conpubd Config file name			*/
 #define CefC_Csmgr_Max_Table_Num		65535		/* Max size of table				*/
 #define CefC_Csmgr_Max_Table_Margin		10000		/* Margin size of table				*/
 #define CefC_Csmgr_Max_Send_Num			16
-#define CefC_Csmgr_Max_Wait_Response	1000		/* Wait time(msec)					*/
+#if 0
+#define CefC_Csmgr_Max_Wait_Response	2000		/* Wait time(msec)					*/
+#else
+#define CefC_Csmgr_Max_Wait_Response	5000		/* Wait time(msec)					*/
+#endif
 #define CefC_Default_Cache_Send_Rate	512			/* default send rate for mem cache	*/
 
 #define CefC_Csmgr_Cmd_MaxLen			1024
@@ -183,6 +188,11 @@ typedef struct {
 												/* 3 : Excache(Conpubd)					*/
 	uint32_t		def_rct;					/* default RCT 							*/
 	
+	/********** CSMGR_ACCESS **********/
+	int				csmgr_access;				/* 0:ReadWrite 1:ReadOnly				*/
+	/********** BUFFER_CHACHE_TIME **********/
+	uint32_t		buffer_cache_time;			/* msec									*/
+	
 	/********** Memory Cache Information	***********/
 	uint32_t		cache_cap;					/* Cache Capacity						*/
 	
@@ -214,6 +224,8 @@ typedef struct {
 	int 			pipe_fd[2];						/* socket of cefnetd->Local cache		*/
 													/*  0: for cefnetd						*/
 													/*  1: for Local cache				*/
+	int				to_csmgrd_pipe_fd[2];
+
 	
 } CefT_Cs_Stat;
 
@@ -263,7 +275,7 @@ typedef struct {
 struct CefT_Csmgr_Status_Hdr {
 	
 	uint16_t 		node_num;
-	uint16_t 		con_num;
+	uint32_t 		con_num;
 	
 } __attribute__((__packed__));
 
@@ -594,4 +606,11 @@ cef_csmgr_dtc_item_put (
 	CefT_Parsed_Opheader* poh				/* Parsed Option header						*/
 );
 #endif // CefC_Dtc
+
+
+void *
+cef_csmgr_send_to_csmgrd_thread (
+	void *p
+);
+
 #endif // __CEF_CSMGR_HEADER__

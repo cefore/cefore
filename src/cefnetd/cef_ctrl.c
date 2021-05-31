@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -227,10 +227,13 @@ int main (
 		usleep (CefC_StatusRspWait);
 		int ff = 1;
 		int resped = 0;
+
 		while (1) {
 			if (ff == 1) {
 				ff = 0;
-				for (int i=0; i < 30000000/CefC_StatusRspWait; i++) {
+
+//				for (int i=0; i < 30000000/CefC_StatusRspWait; i++) {
+				for (int i=0; i < 1200000000/CefC_StatusRspWait; i++) {	//600sec
 					res = cef_client_read (fhdl, rsp_msg, CefC_Max_Length);
 					if (res > 0){
 						break;

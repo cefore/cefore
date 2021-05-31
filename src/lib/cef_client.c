@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -270,6 +270,84 @@ cef_client_connect (
 	/* Android socket Name starts with \0.	*/
 	memcpy (saddr.sun_path, cef_lsock_name, cef_lsock_name_len);
 #else // CefC_Android
+	strcpy (saddr.sun_path, cef_lsock_name);
+#endif // CefC_Android
+
+	
+	/* prepares a source socket 	*/
+#ifdef CefC_Android
+	/* Android socket Name starts with \0.	*/
+	if (connect (sock, (struct sockaddr*) &saddr,
+			sizeof (saddr.sun_family) + cef_lsock_name_len) < 0) {
+        cef_log_write (CefC_Log_Error, "%s (connect:%s)\n", __func__, strerror(errno));
+		close (sock);
+		return ((CefT_Client_Handle) NULL);
+	}
+#else // CefC_Android
+
+#ifdef __APPLE__
+	saddr.sun_len = sizeof (saddr);
+
+	if (connect (sock, (struct sockaddr *)&saddr, SUN_LEN (&saddr)) < 0) {
+		cef_log_write (CefC_Log_Error, "%s (connect:%s)\n", __func__, strerror(errno));
+		close (sock);
+		return ((CefT_Client_Handle) NULL);
+	}
+#else // __APPLE__
+	if (connect (sock, (struct sockaddr*) &saddr,
+			sizeof (saddr.sun_family) + strlen (cef_lsock_name)) < 0) {
+		cef_log_write (CefC_Log_Error, "%s (connect:%s)\n", __func__, strerror(errno));
+		close (sock);
+		return ((CefT_Client_Handle) NULL);
+	}
+#endif // __APPLE__
+
+#endif // CefC_Android
+	
+	flag = fcntl (sock, F_GETFL, 0);
+	if (flag < 0) {
+		cef_log_write (CefC_Log_Error, "%s (fcntl:%s)\n", __func__, strerror(errno));
+		close (sock);
+		return ((CefT_Client_Handle) NULL);
+	}
+	if (fcntl (sock, F_SETFL, flag | O_NONBLOCK) < 0) {
+		cef_log_write (CefC_Log_Error, "%s (fcntl:%s)\n", __func__, strerror(errno));
+		close (sock);
+		return ((CefT_Client_Handle) NULL);
+	}
+
+	conn = (CefT_Connect*) malloc (sizeof (CefT_Connect));
+	memset (conn, 0, sizeof (CefT_Connect));
+	conn->sock = sock;
+
+	return ((CefT_Client_Handle) conn);
+}
+CefT_Client_Handle 								/* created client handle 				*/
+cef_client_connect_to_csmgrd (
+	void
+) {
+	CefT_Connect* conn;
+	struct sockaddr_un saddr;
+	int sock;
+	int flag;
+	
+	if ((sock = socket (AF_UNIX, SOCK_STREAM, 0)) < 0) {
+		cef_log_write (CefC_Log_Error, "%s (socket:%s)\n", __func__, strerror(errno));
+		return ((CefT_Client_Handle) NULL);
+	}
+
+	/* initialize sockaddr_un 		*/
+	memset (&saddr, 0, sizeof (saddr));
+	saddr.sun_family = AF_UNIX;
+#ifdef CefC_Android
+	/* Android socket Name starts with \0.	*/
+	memcpy (saddr.sun_path, cef_lsock_name, cef_lsock_name_len);
+#else // CefC_Android
+#if 1 //@@@@@@@@@@@@
+	fprintf(stderr, "===== cef_lsock_name=%s =====\n", cef_lsock_name);
+#define CSMGR_SPATH  "/tmp/csmgr_9799.0"
+strcpy (cef_lsock_name, CSMGR_SPATH);
+#endif //@@@@@@@@@@@
 	strcpy (saddr.sun_path, cef_lsock_name);
 #endif // CefC_Android
 
@@ -637,7 +715,61 @@ cef_client_message_input (
 			sendto (conn->sock, msg, len
 					, 0, conn->ai->ai_addr, conn->ai->ai_addrlen);
 		} else {
-			send (conn->sock, msg, len, 0);
+#if 0	
+			slen = send (conn->sock, msg, len, 0);
+#else
+	int res = 0;  
+    unsigned char* p = msg;
+    size_t slen = len;
+RSEND:;
+    while( slen > 0 ){
+        while( 1 ){  
+			res = send (conn->sock, p, slen, 0);
+        	if( errno != EINTR ) {
+        		break;
+        	}
+        }  
+        if( res < 0 ){  
+            if( errno == EAGAIN ||  
+                errno == EWOULDBLOCK ){  
+                while(1){
+					fd_set fds, writefds;
+					int n;
+					struct timeval timeout;
+					int rcount;
+					rcount = 0;
+					timeout.tv_sec  = 0;
+//					timeout.tv_usec = 100000; //@@@@@@@@@@
+					timeout.tv_usec = 1000; //@@@@@@@@@@
+					FD_ZERO(&writefds);
+					FD_SET(conn->sock, &writefds);
+					memcpy(&fds, &writefds, sizeof(fds));
+					n = select(conn->sock+1, NULL, &fds, NULL, &timeout);
+					if (n > 0 ) {
+						if (FD_ISSET(conn->sock, &fds)) {
+//fprintf(stderr, "[%s](0): goto RSEND \n", __FUNCTION__);
+							goto RSEND;
+						}
+					}
+					rcount ++;
+					if (rcount > 2){
+						fprintf(stderr, "[%s](%d): ########### SOCKET is Busy((slen=%ld, res=%d, %s) \n", __FUNCTION__, __LINE__, slen, res, strerror (errno));
+							return(-1);
+					}
+				}  
+            } else{  
+				fprintf(stderr, "[%s](2): ########### ERROR=%s \n", __FUNCTION__, strerror (errno));
+  			    close (conn->sock);
+			    conn->sock = -1;
+		        return (res);
+            }  
+        }  
+		if(res > 0){
+    	    slen -= res;  
+    	    p += res; 
+		}
+    }  
+#endif
 		}
 	}
 	
@@ -678,10 +810,14 @@ cef_client_object_input (
 	CefT_Object_TLVs* tlvs						/* parameters to create the object 		*/
 ) {
 	CefT_Connect* conn = (CefT_Connect*) fhdl;
-	unsigned char buff[CefC_Max_Length];
+	unsigned char buff[CefC_Max_Length*2];
 	int len;
 	
 	len = cef_frame_object_create (buff, tlvs);
+	//0.8.3
+	if ( len < 0 ) {
+		return( len );
+	}
 	
 	if (len > 0) {
 		if (conn->ai) {
@@ -796,6 +932,49 @@ cef_client_read (
 }
 
 /*--------------------------------------------------------------------------------------
+	Reads the message from the specified connection (socket)
+----------------------------------------------------------------------------------------*/
+int 											/* length of read buffer 				*/
+cef_client_read2 (
+	CefT_Client_Handle fhdl, 					/* client handle 						*/
+	unsigned char* buff, 						/* buffer to write the message 			*/
+	int len 									/* length of buffer 					*/
+) {
+	CefT_Connect* conn = (CefT_Connect*) fhdl;
+	int recv_len = 0;
+	struct pollfd infds[1];
+	struct sockaddr_storage sas;
+	socklen_t sas_len = (socklen_t) sizeof (struct sockaddr_storage);
+
+	infds[0].fd = conn->sock;
+	infds[0].events = POLLIN | POLLERR;
+
+	poll (infds, 1, 1);
+
+	if (infds[0].revents != 0) {
+		if (infds[0].revents & (POLLERR | POLLNVAL | POLLHUP)) {
+			if (conn->ai) {
+				recv_len = recvfrom (
+						conn->sock, buff, len, 0, (struct sockaddr*) &sas, &sas_len);
+			} else {
+				recv_len = recv (conn->sock, buff, len, 0);
+			}
+			/* TBD: Error Process */
+		}
+		if (infds[0].revents & POLLIN) {
+			if (conn->ai) {
+				recv_len = recvfrom (
+						conn->sock, buff, len, 0, (struct sockaddr*) &sas, &sas_len);
+			} else {
+				recv_len = recv (conn->sock, buff, len, 0);
+			}
+		}
+	}
+
+	return (recv_len);
+}
+
+/*--------------------------------------------------------------------------------------
 	Obtains one message from the buffer
 ----------------------------------------------------------------------------------------*/
 int 											/* remaining length of buffer 			*/
@@ -836,8 +1015,16 @@ cef_client_payload_get_with_info (
 		(buff[i + 1] > CefC_PT_PING_REP)) {
 		
 		while (i < buff_len) {
+
+#if 0
 			if ((buff[i] 	!= CefC_Version) || 
 				(buff[i + 1] != CefC_PT_OBJECT)) {
+#else
+			if (((buff[i] 	!= CefC_Version) || 
+				(buff[i + 1] != CefC_PT_OBJECT)) ||
+				((buff[i] 	!= CefC_Version) || 
+				(buff[i + 1] != CefC_PT_INTRETURN))) {
+#endif
 				i += 2;
 			} else {
 				break;
@@ -861,6 +1048,13 @@ cef_client_payload_get_with_info (
 	}
 	
 	new_len = buff_len - pkt_len;
+	
+	if ( fix_hdr->type == CefC_PT_INTRETURN ) {
+		app_frame->version = CefC_App_Version;
+		app_frame->type = CefC_PT_INTRETURN;
+		app_frame->returncode = fix_hdr->reserve1;
+		return(new_len);
+	}
 	
 	res = cef_frame_message_parse (
 				&buff[i], pkt_len, hdr_len, &poh, &pm, CefC_PT_OBJECT);
@@ -974,7 +1168,12 @@ cef_client_request_get_with_info (
 	
 	app_request->version = CefC_App_Version;
 	app_request->type = CefC_App_Type_Internal;
-	app_request->chunk_num = pm.chnk_num;
+	app_request->chnk_num_f = pm.chnk_num_f;
+	if ( pm.chnk_num_f == 1 ) {
+		app_request->chunk_num = pm.chnk_num;
+	} else {
+		app_request->chunk_num = 0;
+	}
 
 	app_request->name_len = pm.name_len;
 	app_request->total_segs_len =

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -93,7 +93,7 @@ static int 		port_num = CefC_Unset_Port;
 static	char*				My_Node_Name 			= NULL;	/* Node Name							*/
 static	unsigned char*		My_Node_Name_TLV 		= NULL;	/* Node Name TLV						*/
 static	int					My_Node_Name_TLV_len	= 0;	/* Node Name TLV Length					*/
-
+static	int					Conf_Valid_ALG = 1;		/* ccninfo-05 0:NONE 1:crc32(default) 2:sha256 */
 
 /****************************************************************************************
  Static Function Declaration
@@ -212,13 +212,30 @@ int main (
 	/*----------------------------------------------------------------
 		Parses parameters
 	------------------------------------------------------------------*/
+
+	/* get my node IP */
+	cp_node_id_get (&node_id_len, node_identifer);
+	//NodeName S
+	res = ct_my_node_name_get();
+	if ( res <= 0 ) {
+		/* Use IP addr */
+		char		addrstr[256];
+		if ( node_id_len == 4 ) {
+			inet_ntop (AF_INET, node_identifer, addrstr, sizeof (addrstr));
+		} else if ( node_id_len == 16 ) {
+			inet_ntop (AF_INET6, node_identifer, addrstr, sizeof (addrstr));
+		}
+		My_Node_Name = (char*)malloc( strlen(addrstr) + 1 );
+		strcpy( My_Node_Name, addrstr );
+	}
+	//
 	memset( char_cmd, 0x00, 8 );
 	strcpy( char_cmd, argv[0] );
 	if (ct_parse_parameters (argc, argv) < 0) {
 		exit (0);
 	}
 	if (params.skip_hop >= params.hop_limit) {
-		ct_usage_output ("error: [-s hop_count] is greater than or equal to [-r hop_count]");
+		ct_usage_output ("error: [-s skip_hop] is greater than or equal to [-r hop_count]");
 		exit (0);
 	}
 	cef_log_init2 (conf_path, 1 /* for CEFNETD */);
@@ -262,6 +279,7 @@ int main (
 	srand ((unsigned) time (NULL));
 	tlvs.opt.req_id = (uint16_t)(rand () % 65535);
 	tlvs.opt.req_id |= 0x8080;
+#if 0
 	/* get my node IP */
 	cp_node_id_get (&node_id_len, node_identifer);
 
@@ -278,12 +296,13 @@ int main (
 		My_Node_Name = (char*)malloc( strlen(addrstr) + 1 );
 		strcpy( My_Node_Name, addrstr );
 	}
+#endif
 	
 	/* Convert Name TLV */
 	{
 		unsigned char	out_name[CefC_Max_Length];
 		unsigned char	out_name_tlv[CefC_Max_Length];
-		strcpy( (char*)out_name, "ccn:/" );
+		strcpy( (char*)out_name, "ccnx:/" );
 		strcat( (char*)out_name, My_Node_Name );
 		res = cef_frame_conversion_uri_to_name ((char*)out_name, out_name_tlv);
 		if ( res < 0 ) {
@@ -431,7 +450,7 @@ ct_results_output (
 	unsigned			char uri_str[2048];
 	double 				diff_us;
 	char				con_type;
-	
+	uint16_t			f_err = 0x00;
 
 	memset( &pci, 0x00, sizeof(CefT_Parsed_Ccninfo) );
 	/* Checks the Validation 			*/
@@ -498,11 +517,17 @@ ct_results_output (
 		/*node_name_len =*/ cef_frame_conversion_name_to_uri( in_node_name_buff,
 															pci.rpt_blk_tail->id_len - 4,
 															ot_node_name_buff );
-		/* ccn:/ */
-		fprintf (stderr, "%s: ", &ot_node_name_buff[5]);
+		/* ccnx:/ */
+		fprintf (stderr, "%s: ", &ot_node_name_buff[6]);
 		
 	} else {
 		return;
+	}
+	
+
+	if ( pci.ret_code > CefC_CtRc_FATAL_ERROR ) {
+		pci.ret_code &= ~CefC_CtRc_FATAL_ERROR;
+		f_err = CefC_CtRc_FATAL_ERROR;
 	}
 	
 	/* Checks Return Code 			*/
@@ -553,13 +578,12 @@ ct_results_output (
 		}
 	}
 	
+	if ( f_err == CefC_CtRc_FATAL_ERROR ) {
+			fprintf (stderr, ",FATAL_ERROR");
+	}
+	
 	/* Outputs RTT[ms]					*/
 	fprintf (stderr, ", time=%f ms\n\n", (double)((double) rtt_us / 1000.0));
-	
-	if ( pci.ret_code == CefC_CtRc_NO_SPACE ) {
-		
-		
-	}
 	
 	/* Outputs Route 					*/
 	fprintf (stderr, "route information:\n");
@@ -574,8 +598,8 @@ ct_results_output (
 		/*node_name_len =*/ cef_frame_conversion_name_to_uri( in_node_name_buff,
 															rpt_p->id_len - 4,
 															ot_node_name_buff );
-		/* ccn:/ */
-		fprintf (stderr, "%s: ", &ot_node_name_buff[5]);
+		/* ccnx:/ */
+		fprintf (stderr, "%s: ", &ot_node_name_buff[6]);
 
 		if (i) {
 			diff_us  = (double)(((0xffff0000 & rpt_p->req_arrival_time) >>16)  + (0x0000ffff & rpt_p->req_arrival_time)/65536.0);
@@ -630,7 +654,7 @@ ct_results_output (
 				memset(seqno_str, 0, sizeof(seqno_str));
 				cef_frame_conversion_name_to_uri (
 							rep_p->rep_name, tmp_nmlen, (char *)uri_str);
-				sprintf((char *)seqno_str, "/Chunk=%d", seqno);
+				sprintf((char *)seqno_str, "/Chunk=%u", seqno);
 				fprintf (stderr, "%s%s", uri_str, seqno_str);
 			} else {
 				cef_frame_conversion_name_to_uri (
@@ -638,14 +662,43 @@ ct_results_output (
 				fprintf (stderr, "%s", uri_str);
 			}
 		}
-		
-		fprintf (stderr, "\t%7u B %7u %5u   "
-			, rep_p->obj_size, rep_p->obj_cnt, rep_p->rcv_interest_cnt);
-		
-		fprintf (stderr, "%u-%u   ", rep_p->first_seq, rep_p->last_seq);
-		
-		fprintf (stderr, "%u secs   %u secs\n"
-			, rep_p->cache_time, rep_p->lifetime);
+
+		if ( rep_p->obj_size == UINT32_MAX ) {
+			fprintf (stderr, "\t********" );
+		} else {
+			fprintf (stderr, "\t%10u KB", rep_p->obj_size );
+		}
+		if ( rep_p->obj_cnt == UINT32_MAX ) {
+			fprintf (stderr, " ********" );
+		} else {
+			fprintf (stderr, " %10u", rep_p->obj_cnt );
+		}
+		if ( rep_p->rcv_interest_cnt == UINT32_MAX ) {
+			fprintf (stderr, " ******** " );
+		} else {
+			fprintf (stderr, " %10u   ", rep_p->rcv_interest_cnt );
+		}
+		if ( rep_p->first_seq == UINT32_MAX ) {
+			fprintf (stderr, "********-" );
+		} else {
+			fprintf (stderr, "%u-", rep_p->first_seq );
+		}
+		if ( rep_p->last_seq == UINT32_MAX ) {
+			fprintf (stderr, "********   " );
+		} else {
+			fprintf (stderr, "%u   ", rep_p->last_seq );
+		}
+		if ( rep_p->cache_time == UINT32_MAX ) {
+			fprintf (stderr, "********   " );
+		} else {
+			fprintf (stderr, "%u secs  ", rep_p->cache_time );
+		}
+		if ( rep_p->lifetime == UINT32_MAX ) {
+			fprintf (stderr, "********   " );
+		} else {
+			fprintf (stderr, "%u secs\n", rep_p->lifetime );
+		}
+
 		rep_p = rep_p->next;
 	}
 	
@@ -663,8 +716,8 @@ static void
 ct_usage_output (
 	const char* msg									/* Supplementary information 		*/
 ) {
-	fprintf (stderr, 	"Usage:%s name_prefix [-f] [-c] [-o] [-r hop_count]"
-		                " [-s hop_count] [-v valid_algo] name_prefix "
+	fprintf (stderr, 	"Usage:%s name_prefix [-V] [-f] [-c] [-o] [-r hop_count]"
+		                " [-s skip_hop] [-v valid_algo] "
 		                " [-d config_file_dir] [-p port_num]\n", char_cmd);
 	
 	if (msg) {
@@ -693,6 +746,7 @@ ct_parse_parameters (
 	int 	num_opt_r 		= 0;
 	int 	num_opt_s 		= 0;
 	int 	num_opt_v 		= 0;
+	int 	num_opt_V 		= 0;	/* ccninfo-05 */
 	int 	dir_path_f 		= 0;
 	int 	port_num_f 		= 0;
 	int		num_opt_prefix	= 0;
@@ -785,11 +839,11 @@ ct_parse_parameters (
 		else if (strcmp (work_arg, "-s") == 0) {
 			/* Checks whether [-s] is not specified more than twice. 	*/
 			if (num_opt_s) {
-				ct_usage_output ("error: [-s hop_count] is duplicated.");
+				ct_usage_output ("error: [-s skip_hop] is duplicated.");
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				ct_usage_output ("error: [-s hop_count] is invalid.");
+				ct_usage_output ("error: [-s skip_hop] is invalid.");
 				return (-1);
 			}
 			
@@ -797,18 +851,20 @@ ct_parse_parameters (
 			work_arg = argv[i + 1];
 			for (n = 0 ; work_arg[n] ; n++) {
 				if (isdigit (work_arg[n]) == 0) {
-					ct_usage_output ("error: [-s hop_count] is invalid.");
+					ct_usage_output ("error: [-s skip_hop] is invalid.");
 					return (-1);
 				}
 			}
 			params.skip_hop = atoi (work_arg);
 			
 			if (params.skip_hop < 1) {
-				ct_usage_output ("error: [-s hop_count] is smaller than 1.");
+				ct_usage_output ("error: [-s skip_hop] is smaller than 1.");
 				return (-1);
 			}
-			if (params.skip_hop > 255) {
-				ct_usage_output ("error: [-s hop_count] is greater than 254.");
+//			if (params.skip_hop > 255) {
+			if (params.skip_hop > 15) {
+				ct_usage_output ("error: [-s skip_hop] is greater than 15.");
+				return (-1);
 			}
 			num_opt_s++;
 			i++;
@@ -822,16 +878,24 @@ ct_parse_parameters (
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-v] has no parameter.\n");
-				return (-1);
-			}
-			work_arg = argv[i + 1];
-			if (!(strcmp(work_arg, "crc32")==0 || strcmp(work_arg, "sha256")==0)) {
-				fprintf (stderr, "ERROR: [-v] has invalid algorithm(%s)\n", work_arg);
-				return (-1);
+				if ( Conf_Valid_ALG == 0 ) {
+					/* Error */
+					fprintf (stderr, "ERROR: Validation algorithm must be specified with -v option when CCNINFO_VALID_ALG is set none.\n");
+					return (-1);
+				} else if ( Conf_Valid_ALG == 1 ) {
+					strcpy (params.valid_algo, "crc32");
+				} else if ( Conf_Valid_ALG == 2 ) {
+					strcpy (params.valid_algo, "sha256");
+				}
+			} else {
+				work_arg = argv[i + 1];
+				if (!(strcmp(work_arg, "crc32")==0 || strcmp(work_arg, "sha256")==0)) {
+					fprintf (stderr, "ERROR: [-v] has invalid algorithm(%s)\n", work_arg);
+					return (-1);
+				}
+				strcpy (params.valid_algo, work_arg);
 			}
 			
-			strcpy (params.valid_algo, work_arg);
 			params.validf = 1;
 			num_opt_v++;
 			i++;
@@ -869,6 +933,18 @@ ct_parse_parameters (
 			port_num = atoi (work_arg);
 			port_num_f++;
 			i++;
+		}
+		/*-----------------------------------------------------------------------*/
+		/****** -V (Require validation in response) 						******/
+		/*-----------------------------------------------------------------------*/
+		else if (strcmp (work_arg, "-V") == 0) {
+			/* Checks whether [-V] is not specified more than twice. 	*/
+			if (num_opt_V) {
+				ct_usage_output ("error: [-V] is duplicated.");
+				return (-1);
+			}
+			params.flag |= CefC_CtOp_ReqValidation;
+			num_opt_V++;
 		}
 		/*-----------------------------------------------------------------------*/
 		/****** name_prefix 												******/
@@ -913,7 +989,21 @@ ct_parse_parameters (
 						ct_usage_output ("error: Chunk# is invalid.");
 						return(-1);
 					}
-					params.chunkno = (uint32_t) atoi(chunknop);
+
+					{
+						char *endptr = "";
+						uint64_t chnk_work;
+						chnk_work = strtoul (chunknop, &endptr, 0);
+						if (strcmp (endptr, "") != 0) {
+							ct_usage_output ("error: Chunk# is invalid.");
+							return(-1);
+						}
+						if (chnk_work > UINT32_MAX) {
+							ct_usage_output ("error: Chunk# is invalid.");
+							return(-1);
+						}
+						params.chunkno = (uint32_t)chnk_work;
+					}
 					params.chunkf = 1;
 					strcpy (params.prefix, work_arg);
 					*chunkp = '\0';
@@ -927,7 +1017,7 @@ ct_parse_parameters (
 				return (-1);
 			}
 			if (res < 5) {
-				ct_usage_output ("error: prefix MUST NOT be ccn:/.");
+				ct_usage_output ("error: prefix MUST NOT be ccnx:/.");
 				return (-1);
 			}
 			params.name_len = res;
@@ -1123,6 +1213,15 @@ ct_my_node_name_get ( void )
 			ot_len = strlen( chk_p );
 			My_Node_Name = (char*)malloc( ot_len + 1 );
 			strcpy( My_Node_Name, chk_p );
+		} else if (strcasecmp (pname, CefC_ParamName_CcninfoValidAlg) == 0 ) {
+			/* ccninfo-05 */
+			if ( strcasecmp( ws, "NONE" ) == 0 ) {
+				Conf_Valid_ALG = 0;
+			} else if ( strcasecmp( ws, "crc32" ) == 0 ) {
+				Conf_Valid_ALG = 1;
+			} else if ( strcasecmp( ws, "sha256" ) == 0 ) {
+				Conf_Valid_ALG = 2;
+			}
 		} else {
 			continue;
 		}
@@ -1201,7 +1300,8 @@ cp_dbg_cpi_print (
 	fprintf(stderr, "  --- Request Block ---\n");
 	fprintf(stderr, "  Request ID              : %u\n", pci->req_id);
 	fprintf(stderr, "  SkipHopCount            : %u\n", pci->skip_hop);
-	fprintf(stderr, "  Flags                   : 0x%02x F(%c), O(%c), C(%c)\n", pci->ccninfo_flag,
+	fprintf(stderr, "  Flags                   : 0x%02x V(%c) F(%c), O(%c), C(%c)\n", pci->ccninfo_flag,
+						(pci->ccninfo_flag & CefC_CtOp_ReqValidation) ? 'o': 'x',
 						(pci->ccninfo_flag & CefC_CtOp_FullDisCover) ? 'o': 'x',
 						(pci->ccninfo_flag & CefC_CtOp_Publisher)    ? 'o': 'x',
 						(pci->ccninfo_flag & CefC_CtOp_Cache)        ? 'o': 'x');
@@ -1226,6 +1326,16 @@ cp_dbg_cpi_print (
 	for (aaa=0; aaa<pci->disc_name_len; aaa++)
 		fprintf(stderr, "%02x ", pci->disc_name[aaa]);
 	fprintf(stderr, "(%d)\n", pci->disc_name_len);
+
+	if ( pci->reply_node_len > 0 ) {
+	fprintf(stderr, "  --- Disc Reply Node ---\n");
+	fprintf(stderr, "    Request Arrival Time  : %u\n", pci->reply_req_arrival_time);
+	fprintf(stderr, "    Node Identifier       : ");
+	for (aaa=0; aaa<pci->reply_node_len; aaa++)
+		fprintf(stderr, "%02x ", pci->reply_reply_node[aaa]);
+	fprintf(stderr, "\n");
+	}
+
 	fprintf(stderr, "  --- Reply Block ---(%d)\n", pci->rep_blk_num);
 	rep_p = pci->rep_blk;
 	for (bbb=0; bbb<pci->rep_blk_num; bbb++) {

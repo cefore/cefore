@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,10 @@
 
 #define __CEF_PIT_SOURECE__
 
+//#define	__PIT_DEBUG__
+//#define		__RESTRICT__
+//#define		__INTEREST__
+//#define		__PIT_CLEAN__
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
@@ -69,7 +73,20 @@ static char 	pit_dbg_msg[2048];
 #ifdef CefC_Dtc
 CefT_Dtc_Pit_List* dtc_pit = NULL;
 #endif // CefC_Dtc
+#ifdef __PIT_DEBUG__
+//static char 	pit_dbg[2048];
+#endif
 static uint32_t ccninfo_reply_timeout = CefC_Default_CcninfoReplyTimeout;
+//0.8.3
+static uint32_t symbolic_max_lifetime;
+static uint32_t regular_max_lifetime;
+
+#define	CefC_IR_SUPPORT_NUM			3
+uint8_t	IR_PRIORITY_TBL[CefC_IR_SUPPORT_NUM] = {
+	CefC_IR_HOPLIMIT_EXCEEDED,
+	CefC_IR_NO_ROUTE,
+	CefC_IR_CONGESION
+};
 
 /****************************************************************************************
  Static Function Declaration
@@ -113,16 +130,6 @@ cefrt_pit_cleanup (
 	CefT_Pit_Entry* entry 					/* PIT entry 								*/
 );
 #endif
-/*--------------------------------------------------------------------------------------
-	Concatenates a the specified Name and NodeIdentifier, RequestID for ccninfo
-----------------------------------------------------------------------------------------*/
-static uint16_t
-cef_pit_concatenate_name_and_id (
-	unsigned char** con_name,				/* New name									*/
-	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
-	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
-);
-
 /****************************************************************************************
  ****************************************************************************************/
 
@@ -131,9 +138,13 @@ cef_pit_concatenate_name_and_id (
 ----------------------------------------------------------------------------------------*/
 void
 cef_pit_init (
-	uint32_t reply_timeout			/* PIT lifetime(seconds) at "full discovery request" */
+	uint32_t reply_timeout,		   /* PIT lifetime(seconds) at "full discovery request" */
+	uint32_t symbolic_max_lt,      /* Symbolic Interest max Lifetime 0.8.3             */
+	uint32_t regular_max_lt        /* Regular Interest max Lifetime 0.8.3              */
 ){
 	ccninfo_reply_timeout = reply_timeout;
+	symbolic_max_lifetime = symbolic_max_lt;
+	regular_max_lifetime = regular_max_lt;
 	return;
 }
 /*--------------------------------------------------------------------------------------
@@ -144,20 +155,33 @@ cef_pit_entry_lookup (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
 	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+	, unsigned char* ccninfo_pit,			/* pit name for ccninfo ccninfo-03			*/
+	int	ccninfo_pit_len						/* ccninfo pit length						*/
 ) {
 	CefT_Pit_Entry* entry;
 	unsigned char* tmp_name = NULL;
 	uint16_t tmp_name_len = 0;
 
+#ifdef	__PIT_DEBUG__
+	fprintf (stderr, "[%s] IN\n",
+			 "cef_pit_entry_lookup" );
+#endif
+
 	if (pm->top_level_type == CefC_T_DISCOVERY) {  /* for CCNINFO */
 		/* KEY: Name + NodeIdentifier + RequestID */
-		tmp_name_len = cef_pit_concatenate_name_and_id (&tmp_name, pm, poh);
+		tmp_name_len = ccninfo_pit_len;
+		tmp_name = (unsigned char*)malloc( sizeof(char) * tmp_name_len );
+		memcpy( tmp_name, ccninfo_pit, tmp_name_len );
 	} else {
 		tmp_name = pm->name;
 		tmp_name_len = pm->name_len;
 	}
 	/* Searches a PIT entry 	*/
 	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, tmp_name, tmp_name_len);
+#ifdef	__PIT_DEBUG__
+	fprintf (stderr, "\t %p\n",
+			 (void*)entry );
+#endif
 
 	/* Creates a new PIT entry, if it dose not match 	*/
 	if (entry == NULL) {
@@ -179,6 +203,27 @@ cef_pit_entry_lookup (
 		entry->nonce = 0;
 		entry->adv_lifetime_us = 0;
 		entry->drp_lifetime_us = 0;
+		//0.8.3
+		entry->hoplimit = 0;
+		entry->PitType  = pm->InterestType;
+		entry->Last_chunk_num = 0;
+		entry->KIDR_len = pm->KeyIdRester_sel_len;
+		if ( entry->KIDR_len == 0 ) {
+			entry->KIDR_selector = NULL;
+		} else {
+			entry->KIDR_selector = (unsigned char*)malloc( entry->KIDR_len );
+			memcpy( entry->KIDR_selector, pm->KeyIdRester_selector, entry->KIDR_len );
+		}
+		entry->COBHR_len = pm->ObjHash_len;
+		if ( entry->COBHR_len == 0 ) {
+			entry->COBHR_selector = NULL;
+		} else {
+			entry->COBHR_selector = (unsigned char*)malloc( entry->COBHR_len );
+			memcpy( entry->COBHR_selector, pm->ObjHash, entry->COBHR_len );
+		}
+#ifdef __RESTRICT__
+		printf( "%s entry->KIDR_len:%d   entry->COBHR_len:%d\n", __func__, entry->KIDR_len, entry->COBHR_len );
+#endif
 	}
 #ifdef CefC_Debug
 	{
@@ -191,66 +236,23 @@ cef_pit_entry_lookup (
 		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
 	}
 #endif // CefC_Debug
+#ifdef __PIT_DEBUG__
+	{
+		int dbg_xx;
+		
+		fprintf (stderr, "[" );
+		for (dbg_xx = 0 ; dbg_xx < entry->klen ; dbg_xx++) {
+			fprintf (stderr, "%02X ", entry->key[dbg_xx]);
+			
+		}
+		fprintf (stderr, "]\n" );
+	}
+#endif // CefC_Debug
 	
 	if (pm->top_level_type == CefC_T_DISCOVERY) {  /* for CCNINFO */
 		free (tmp_name);
 	}
 	return (entry);
-}
-/*--------------------------------------------------------------------------------------
-	Concatenates a the specified Name and NodeIdentifier, RequestID for ccninfo
-----------------------------------------------------------------------------------------*/
-static uint16_t
-cef_pit_concatenate_name_and_id (
-	unsigned char** con_name,				/* New name									*/
-	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
-	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
-) {
-	unsigned char* wp;
-	uint16_t ftvh_nameseg = CefC_T_NAMESEGMENT;
-	uint16_t ftvn_nameseg;
-	uint16_t value;
-	ftvn_nameseg = htons (ftvh_nameseg);
-	uint16_t con_name_len = 0;
-	uint16_t tmp_nmlen = 0;
-	
-	con_name_len = pm->name_len + CefC_S_TLF + poh->id_len + CefC_S_TLF + sizeof (uint16_t);
-	*con_name = (unsigned char*) malloc (sizeof (char) * con_name_len);
-	wp = *con_name;
-	if (pm->chnk_num_f) {
-		uint32_t seqno;
-		tmp_nmlen = cef_frame_get_name_without_chunkno (pm->name, pm->name_len, &seqno);
-		memcpy (wp, pm->name, tmp_nmlen);
-		wp += tmp_nmlen;
-	} else {
-		memcpy (wp, pm->name, pm->name_len);
-		wp += pm->name_len;
-	}
-	
-	/* Concatenates NodeIdentifier					*/
-	memcpy (wp, &ftvn_nameseg, CefC_S_Type);
-	wp += CefC_S_Type;
-	value = htons (poh->id_len);
-	memcpy (wp, &value, CefC_S_Length);
-	wp += CefC_S_Length;
-	memcpy (wp, poh->node_id, poh->id_len);
-	wp += poh->id_len;
-	
-	/* Concatenates RequestID						*/
-	memcpy (wp, &ftvn_nameseg, CefC_S_Type);
-	wp += CefC_S_Type;
-	value = htons (sizeof (uint16_t));
-	memcpy (wp, &value, CefC_S_Length);
-	wp += CefC_S_Length;
-	memcpy (wp, &poh->req_id, sizeof (uint16_t));
-	wp += sizeof (uint16_t);
-	
-	/* Concatenates ChunkNumber */
-	if (tmp_nmlen > 0) {
-		memcpy (wp, &pm->name[tmp_nmlen], (pm->name_len - tmp_nmlen));
-	}
-	
-	return (con_name_len);
 }
 /*--------------------------------------------------------------------------------------
 	Searches a PIT entry matching the specified Name
@@ -260,6 +262,8 @@ cef_pit_entry_search (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
 	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+	, unsigned char* ccninfo_pit,			/* pit name for ccninfo ccninfo-03			*/
+	int	ccninfo_pit_len						/* ccninfo pit length						*/
 ) {
 	CefT_Pit_Entry* entry;
 	uint16_t name_len = pm->name_len;
@@ -273,7 +277,9 @@ cef_pit_entry_search (
 	}
 	if (pm->top_level_type == CefC_T_DISCOVERY) { /* for CCNINFO */
 		/* KEY: Name + NodeIdentifier + RequestID */
-		tmp_name_len = cef_pit_concatenate_name_and_id (&tmp_name, pm, poh);
+		tmp_name_len = ccninfo_pit_len;
+		tmp_name = (unsigned char*)malloc( sizeof(char) * tmp_name_len );
+		memcpy( tmp_name, ccninfo_pit, tmp_name_len );
 	} else {
 		tmp_name = pm->name;
 		tmp_name_len = pm->name_len;
@@ -602,9 +608,14 @@ cef_pit_entry_down_face_update (
 	uint16_t faceid,						/* Face-ID									*/
 	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
 	CefT_Parsed_Opheader* poh,				/* Parsed Option Header						*/
-	unsigned char* msg 						/* cefore packet 							*/
+	unsigned char* msg,						/* cefore packet 							*/
+	int		 Resend_method					/* Resend method 0.8.3 						*/
 ) {
 	CefT_Down_Faces* face;
+#ifdef	__PIT_DEBUG__
+	fprintf (stderr, "[%s] IN faceid=%d\n",
+			 "cef_pit_entry_down_face_update", faceid );
+#endif
 	
 	int new_downface_f = 0;
 	int forward_interest_f = 0;
@@ -622,12 +633,21 @@ cef_pit_entry_down_face_update (
 	/* Looks up a Down Face entry 		*/
 	new_downface_f = cef_pit_entry_down_face_lookup (
 						entry, faceid, &face, pm->nonce, pm->org.longlife_f);
+#ifdef	__PIT_DEBUG__
+	fprintf (stderr, "\t new_downface_f=%d (1:NEW)\n",
+			 new_downface_f );
+	fprintf (stderr, "\t face->lifetime_us= "FMTU64"\n", face->lifetime_us / 1000 );
+#endif
 	
 	/* Checks flags 					*/
 	if (new_downface_f) {
 		face->nonce = pm->nonce;
 	} else {
 		if ((pm->nonce) && (pm->nonce == face->nonce)) {
+#ifdef	__PIT_DEBUG__
+			fprintf (stderr, "[%s] return(0) ((pm->nonce) && (pm->nonce == face->nonce))\n",
+			 "cef_pit_entry_down_face_update" );
+#endif
 			return (0);
 		}
 		face->nonce = pm->nonce;
@@ -638,6 +658,10 @@ cef_pit_entry_down_face_update (
 			entry->symbolic_f++;
 		}
 	}
+#ifdef	__PIT_DEBUG__
+	fprintf (stderr, "\t entry->symbolic_f=%d\n",
+			 entry->symbolic_f );
+#endif
 #ifdef CefC_Ccninfo
 	/* for ccninfo */
 	if (pm->top_level_type == CefC_T_DISCOVERY) {
@@ -652,13 +676,25 @@ cef_pit_entry_down_face_update (
 	
 	/* Checks whether the life time is smaller than the limit 	*/
 #ifndef CefC_Nwproc
-	if (poh->lifetime > CefC_Maximum_Lifetime) {
-		poh->lifetime = CefC_Maximum_Lifetime;
+	if ( entry->PitType != CefC_PIT_TYPE_Reg ) {	//0.8.3
+		if (poh->lifetime > symbolic_max_lifetime) {
+			poh->lifetime = symbolic_max_lifetime;
+		}
+	} else {
+		if (poh->lifetime > regular_max_lifetime) {
+			poh->lifetime = regular_max_lifetime;
+		}
 	}
 #else // CefC_Nwproc
-	if (!poh->nwproc_f){
-		if (poh->lifetime > CefC_Maximum_Lifetime) {
-			poh->lifetime = CefC_Maximum_Lifetime;
+	if (!poh->nwproc_f) {
+		if ( entry->PitType != CefC_PIT_TYPE_Reg ) {	//0.8.3
+			if (poh->lifetime > symbolic_max_lifetime) {
+				poh->lifetime = symbolic_max_lifetime;
+			}
+		} else {
+			if (poh->lifetime > regular_max_lifetime) {
+				poh->lifetime = regular_max_lifetime;
+			}
 		}
 	}
 #endif // CefC_Nwproc
@@ -680,12 +716,25 @@ cef_pit_entry_down_face_update (
 	prev_lifetime_us  = face->lifetime_us;
 	face->lifetime_us = nowt_us + extent_us;
 	
+
+#ifdef	__PIT_DEBUG__
+	fprintf (stderr, "\t Before\n" );
+	fprintf (stderr, "\t extent_us= "FMTU64"\n", extent_us / 1000 );
+	fprintf (stderr, "\t prev_lifetime_us= "FMTU64"\n", prev_lifetime_us / 1000 );
+	fprintf (stderr, "\t face->lifetime_us= "FMTU64"\n", face->lifetime_us / 1000 );
+	fprintf (stderr, "\t entry->drp_lifetime_us= "FMTU64"\n", entry->drp_lifetime_us / 1000 );
+	fprintf (stderr, "\t entry->adv_lifetime_us= "FMTU64"\n", entry->adv_lifetime_us / 1000 );
+#endif
+
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finest, "[pit] Lifetime = "FMTU64"\n", extent_us / 1000);
 #endif // CefC_Debug
 	
 	/* Checks the advertised lifetime to upstream 		*/
 	if (face->lifetime_us > entry->drp_lifetime_us) {
+#ifdef	__PIT_DEBUG__
+		fprintf (stderr, "\t (face->lifetime_us > entry->drp_lifetime_us)\n" );
+#endif
 		forward_interest_f = 1;
 #ifndef CefC_Nwproc
 		entry->drp_lifetime_us = face->lifetime_us + 1000000;
@@ -694,12 +743,18 @@ cef_pit_entry_down_face_update (
 #endif // CefC_Nwproc
 		entry->adv_lifetime_us = face->lifetime_us;
 	} else {
+#ifdef	__PIT_DEBUG__
+		fprintf (stderr, "\t !(face->lifetime_us > entry->drp_lifetime_us)\n" );
+#endif
 #ifdef CefC_Ccninfo
 		if (pm->top_level_type == CefC_T_DISCOVERY) {
 			return (forward_interest_f);
 		}
 #endif //CefC_Ccninfo
 		if (face->lifetime_us < prev_lifetime_us) {
+#ifdef	__PIT_DEBUG__
+			fprintf (stderr, "\t (face->lifetime_us < prev_lifetime_us)\n" );
+#endif
 			face = &(entry->dnfaces);
 			max_lifetime_us = face->lifetime_us;
 			
@@ -716,6 +771,9 @@ cef_pit_entry_down_face_update (
 					new_lifetime_ms = (max_lifetime_us - nowt_us) / 1000;
 					nw_lifetime_ms = htons (new_lifetime_ms);
 					memcpy (&msg[poh->lifetime_f], &nw_lifetime_ms, CefC_S_Lifetime);
+#ifdef	__PIT_DEBUG__
+					fprintf (stderr, "\t Lifetime (update)= %d\n", new_lifetime_ms );
+#endif
 #ifdef CefC_Debug
 					cef_dbg_write (CefC_Dbg_Finest, 
 						"[pit] Lifetime (update) = "FMTU64"\n", nw_lifetime_ms);
@@ -732,9 +790,58 @@ cef_pit_entry_down_face_update (
 			}
 		}
 	}
+#ifdef	__PIT_DEBUG__
+	fprintf (stderr, "[%s] Before (%d) forward (yes=1/no=0)\n",
+			 "cef_pit_entry_down_face_update", forward_interest_f );
+	fprintf (stderr, "\t Resend_method:%s\n",
+			  (Resend_method == CefC_IntRetrans_Type_RFC) ? "RFC":"SUP");
+#endif
+
+#if 1
+	//0.8.3  RFC
+	//	forward_interest_f=0
+	//		new_downface_f=0 Same Face:Retransmit
+	//		new_downface_f=1 Not Same Face: Check HopLimit
+	//	forward_interest_f=1
+	if ( Resend_method == CefC_IntRetrans_Type_RFC ) {
+		if ( forward_interest_f == 0 ) {
+			if ( new_downface_f == 0 ) {
+				forward_interest_f = 1;
+			} else {
+				if ( pm->hoplimit > entry->hoplimit ) {
+					forward_interest_f = 1;
+				}
+			}
+		} else {	/* ( forward_interest_f == 1 ) */
+			if ( new_downface_f == 0 ) {
+				/* NOP */
+			} else {	/*  */
+				if ( pm->hoplimit <= entry->hoplimit ) {
+					forward_interest_f = 0;
+				}
+			}
+		}
+	}
+	/* Update HopLimit */
+	if ( (forward_interest_f == 1) && (pm->hoplimit > entry->hoplimit) ) {
+		entry->hoplimit = pm->hoplimit;
+	}
+#endif
+
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finest, 
 		"[pit] forward (yes=1/no=0) = %d\n", forward_interest_f);
+#endif
+
+#ifdef	__PIT_DEBUG__
+	fprintf (stderr, "\t After\n" );
+	fprintf (stderr, "\t extent_us= "FMTU64"\n", extent_us / 1000 );
+	fprintf (stderr, "\t prev_lifetime_us= "FMTU64"\n", prev_lifetime_us / 1000 );
+	fprintf (stderr, "\t face->lifetime_us= "FMTU64"\n", face->lifetime_us / 1000 );
+	fprintf (stderr, "\t entry->drp_lifetime_us= "FMTU64"\n", entry->drp_lifetime_us / 1000 );
+	fprintf (stderr, "\t entry->adv_lifetime_us= "FMTU64"\n", entry->adv_lifetime_us / 1000 );
+	fprintf (stderr, "[%s] OUT return(%d) forward (yes=1/no=0)\n",
+			 "cef_pit_entry_down_face_update", forward_interest_f );
 #endif
 	
 	return (forward_interest_f);
@@ -775,6 +882,10 @@ cef_pit_entry_free (
 	CefT_Down_Faces* dnface_next;
 	CefT_Down_Faces* dnface = entry->dnfaces.next;
 
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "[%s] IN entry->dnfacenum:%d\n", __func__, entry->dnfacenum );
+#endif
+
 	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_remove (pit, entry->key, entry->klen);
 
 #ifdef CefC_Debug
@@ -797,6 +908,12 @@ cef_pit_entry_free (
 	
 	while (dnface) {
 		dnface_next = dnface->next;
+		if ( dnface->IR_len > 0 ) {
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t dnface->IR_len:%d Type:%d\n", dnface->IR_len, dnface->IR_Type );
+#endif
+			free( dnface->IR_msg );
+		}
 		free (dnface);
 		dnface = dnface_next;
 	}
@@ -804,6 +921,12 @@ cef_pit_entry_free (
 	dnface = entry->clean_dnfaces.next;
 	while (dnface) {
 		dnface_next = dnface->next;
+		if ( dnface->IR_len > 0 ) {
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t clean dnface->IR_len:%d Type:%d\n", dnface->IR_len, dnface->IR_Type );
+#endif
+			free( dnface->IR_msg );
+		}
 		free (dnface);
 		dnface = dnface_next;
 	}
@@ -813,6 +936,14 @@ cef_pit_entry_free (
 		cef_pit_dtc_entry_delete (&entry->dtc_entry);
 	}
 #endif // CefC_Dtc
+
+	//0.8.3
+	if ( entry->KIDR_len > 0 ) {
+		free( entry->KIDR_selector );
+	}
+	if ( entry->COBHR_len > 0 ) {
+		free( entry->COBHR_selector );
+	}
 
 	free (entry->key);
 	free (entry);
@@ -833,8 +964,14 @@ cef_pit_clean (
 	CefT_Down_Faces* clean_dnface;
 	
 	now = cef_client_present_timeus_get ();
-	
+
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "[%s] IN entry->dnfacenum:%d\n", __func__, entry->dnfacenum );
+#endif
 	if (now > entry->adv_lifetime_us) {
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t(now > entry->adv_lifetime_us)\n" );
+#endif
 		
 		clean_dnface = &(entry->clean_dnfaces);
 		while (clean_dnface->next) {
@@ -848,14 +985,33 @@ cef_pit_clean (
 			clean_dnface->next = dnface;
 			clean_dnface = dnface;
 			clean_dnface->next = NULL;
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t move to clean\n" );
+#endif
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t clean dnface->IR_len:%d Type:%d\n", dnface->IR_len, dnface->IR_Type );
+#endif
+			if (cef_face_check_active (dnface->faceid) > 0) {
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t Send IR\n" );
+#endif
+				cef_face_frame_send_forced (dnface->faceid, dnface->IR_msg, dnface->IR_len);
+			}
+
 		}
 		entry->dnfaces.next = NULL;
 		entry->dnfacenum = 0;
 		
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t entry->dnfacenum:%d\n", entry->dnfacenum );
+#endif
 		return;
 	}
 	
 	if (now < entry->clean_us) {
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t(now < entry->clean_us) RETURN\n" );
+#endif
 		return;
 	}
 	entry->clean_us = now + 1000000;
@@ -863,10 +1019,16 @@ cef_pit_clean (
 	dnface = &(entry->dnfaces);
 	dnface_prv = dnface;
 	
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t Before while\n" );
+#endif
 	while (dnface->next) {
 		dnface = dnface->next;
 		
 		if (now > dnface->lifetime_us) {
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t(now > dnface->lifetime_us)\n" );
+#endif
 			dnface_prv->next = dnface->next;
 			clean_dnface = &(entry->clean_dnfaces);
 			while (clean_dnface->next) {
@@ -876,10 +1038,25 @@ cef_pit_clean (
 			clean_dnface->next->next = NULL;
 			dnface = dnface_prv;
 			entry->dnfacenum--;
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t move to clean\n" );
+#endif
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t dnface->IR_len:%d Type:%d\n", dnface->IR_len, dnface->IR_Type );
+#endif
+			if (cef_face_check_active (dnface->faceid) > 0) {
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t Send IR\n" );
+#endif
+				cef_face_frame_send_forced (dnface->faceid, dnface->IR_msg, dnface->IR_len);
+			}
 		} else {
 			dnface_prv = dnface;
 		}
 	}
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "\t After while RETURN entry->dnfacenum:%d\n", entry->dnfacenum );
+#endif
 	
 	return;
 }
@@ -918,6 +1095,14 @@ cef_pit_entry_down_face_lookup (
 	dnface->next->faceid = faceid;
 	dnface->next->nonce  = nonce;
 	*rt_dnface = dnface->next;
+	//0.8.3
+	dnface->next->IR_Type = 0;
+	dnface->next->IR_len  = 0;
+	dnface->next->IR_msg  = NULL;
+	
+#ifdef	__INTEREST__
+	fprintf (stderr, "%s New DnFace id:%d\n", __func__, faceid );
+#endif
 	
 	return (1);
 }
@@ -1220,3 +1405,211 @@ cef_pit_dtc_entry_read (
 	return (dtc_pit->work);
 }
 #endif // CefC_Dtc
+
+//0.8.3
+/*--------------------------------------------------------------------------------------
+	Symbolic PIT Check
+----------------------------------------------------------------------------------------*/
+int
+cef_pit_symbolic_pit_check (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+)	{
+	CefT_Pit_Entry* entry;
+
+#ifdef	__INTEREST__
+	fprintf (stderr, "%s IN\n", __func__ );
+#endif
+	/* Searches a PIT entry 	*/
+	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, pm->name, pm->name_len);
+	
+	if ( entry == NULL ) {
+#ifdef	__INTEREST__
+	fprintf (stderr, "%s Return(0) ( entry == NULL )\n", __func__ );
+#endif
+		return (0);
+	}
+	
+	if ( entry->PitType == pm->InterestType ) {
+#ifdef	__INTEREST__
+	fprintf (stderr, "%s Return(0) ( entry->PitType == pm->InterestType )\n", __func__ );
+#endif
+		return (0);
+	} else {
+#ifdef	__INTEREST__
+	fprintf (stderr, "%s Return(-0) ( entry->PitType != pm->InterestType )\n", __func__ );
+#endif
+		return (-1);
+	}
+}
+/*--------------------------------------------------------------------------------------
+	Searches a PIT entry matching the specified Name with chunk number
+----------------------------------------------------------------------------------------*/
+CefT_Pit_Entry* 							/* a PIT entry								*/
+cef_pit_entry_search_with_chunk (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+) {
+	CefT_Pit_Entry* entry;
+	uint64_t now;
+	
+#ifdef CefC_Debug
+	{
+		int dbg_x;
+		
+		sprintf (pit_dbg_msg, "[pit] Search the entry [");
+		for (dbg_x = 0 ; dbg_x < pm->name_len ; dbg_x++) {
+			sprintf (pit_dbg_msg, "%s %02X", pit_dbg_msg, pm->name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
+	}
+#endif // CefC_Debug
+	
+	/* Searches a PIT entry 	*/
+	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, pm->name, pm->name_len);
+	now = cef_client_present_timeus_get ();
+	
+	if (entry != NULL) {
+		if (!entry->symbolic_f) {
+			entry->stole_f = 1;
+		}
+#ifdef CefC_Debug
+		{
+			int dbg_x;
+			
+			sprintf (pit_dbg_msg, "[pit] Exact matched to the entry [");
+			for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
+				sprintf (pit_dbg_msg, "%s %02X", pit_dbg_msg, entry->key[dbg_x]);
+			}
+			cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
+		}
+#endif // CefC_Debug
+		if ((now > entry->adv_lifetime_us) && (poh->app_reg_f != CefC_App_DeRegPit)){	//20190822
+			return (NULL);
+		}
+		return (entry);
+	}
+	
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Finest, "[pit] Mismatched\n");
+#endif // CefC_Debug
+	
+	return (NULL);
+}
+/*--------------------------------------------------------------------------------------
+	Searches a PIT entry matching the specified Name without chunk number
+----------------------------------------------------------------------------------------*/
+CefT_Pit_Entry* 							/* a PIT entry								*/
+cef_pit_entry_search_without_chunk (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+) {
+	CefT_Pit_Entry* entry;
+	uint16_t tmp_name_len;
+	uint64_t now;
+	
+	tmp_name_len = pm->name_len;
+
+#ifdef CefC_Debug
+	{
+		int dbg_x;
+		
+		sprintf (pit_dbg_msg, "[pit] Search the entry [");
+		for (dbg_x = 0 ; dbg_x < tmp_name_len ; dbg_x++) {
+			sprintf (pit_dbg_msg, "%s %02X", pit_dbg_msg, pm->name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
+	}
+#endif // CefC_Debug
+	
+	now = cef_client_present_timeus_get ();
+	if (pm->chnk_num_f) {
+		uint16_t name_len_wo_chunk;
+		name_len_wo_chunk = tmp_name_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
+		entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, pm->name, name_len_wo_chunk);
+
+		if (entry != NULL) {
+			if (entry->symbolic_f) {
+				entry = cef_pit_cleanup (pit, entry);
+#ifdef CefC_Debug
+				{
+					int dbg_x;
+					
+					if (entry) {
+						sprintf (pit_dbg_msg, "[pit] Partial matched to the entry [");
+						for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
+							sprintf (pit_dbg_msg, 
+								"%s %02X", pit_dbg_msg, entry->key[dbg_x]);
+						}
+						cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
+					} else {
+						cef_dbg_write (CefC_Dbg_Finest, "[pit] Mismatched\n");
+					}
+				}
+#endif // CefC_Debug
+				if (now > entry->adv_lifetime_us) {
+					return (NULL);
+				}
+				return (entry);
+			}
+		}
+	}
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Finest, "[pit] Mismatched\n");
+#endif // CefC_Debug
+	
+	return (NULL);
+}
+
+/*--------------------------------------------------------------------------------------
+	Set InterestReturn Info to DownFace
+----------------------------------------------------------------------------------------*/
+int
+cef_pit_interest_return_set (
+	CefT_Pit_Entry* entry, 					/* PIT entry 								*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh,				/* Parsed Option Header						*/
+	uint16_t faceid, 						/* Face-ID									*/
+	uint8_t				IR_Type,			/* InterestReturn Type 						*/
+	unsigned int 		IR_len,				/* Length of IR_msg 						*/
+	unsigned char* 		IR_msg				/* InterestReturn msg 						*/
+) {
+
+	CefT_Down_Faces* dnface = &(entry->dnfaces);
+	while (dnface->next) {
+		dnface = dnface->next;
+		
+		if (dnface->faceid == faceid) {
+			break;
+		}
+	}
+	if ( dnface != NULL ) {
+		if ( dnface->IR_Type != 0 ) {
+			if ( dnface->IR_Type == IR_Type ) {
+				/* Same set input */
+				free(dnface->IR_msg);
+			} else {
+				if ( dnface->IR_Type == IR_PRIORITY_TBL[2] ) {
+					/* Low set input */
+					free(dnface->IR_msg);
+				} else if ( dnface->IR_Type == IR_PRIORITY_TBL[1] ) {
+					/* Middle set input */
+					free(dnface->IR_msg);
+				} else {
+					/* High not set */
+					return(0);
+				}
+			}
+		}
+		dnface->IR_Type = IR_Type;
+		dnface->IR_len  = IR_len;
+		dnface->IR_msg  = (unsigned char*)malloc(sizeof(char)*IR_len);
+		memcpy( dnface->IR_msg, IR_msg, IR_len );
+		return(0);
+	}
+
+	return(-1);
+}

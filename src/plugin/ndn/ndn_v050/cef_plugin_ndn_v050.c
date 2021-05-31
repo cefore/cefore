@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -953,7 +953,7 @@ cef_plugin_ndn_data_process (
 	CefT_Object_TLVs params;
 	CefC_Ndn_Pit_Entry* pit_entry;
 	CefC_Ndn_Pit_Face* face;
-	unsigned char buff[CefC_Max_Length];
+	unsigned char buff[CefC_Max_Length*2];
 	int res;
 	
 	/* Parses the received NDN Data 		*/

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -80,12 +80,12 @@ typedef struct _FifoT_Entry {
 /*** content entries for memory cache ***/
 typedef struct CefT_Mem_Hash_Cell {
 	
-	uint32_t 					hash;
-	unsigned char* 				key;
-	uint32_t 					klen;
+	uint32_t 						hash;
+	unsigned char* 					key;
+	uint32_t 						klen;
 	CefMemCacheT_Content_Mem_Entry* 	
 								elem;
-	struct CefT_Mem_Hash_Cell	*next;
+	struct CefT_Mem_Hash_Cell		*next;
 } CefT_Mem_Hash_Cell;
 
 /*** management entries for caching hash table ***/
@@ -100,9 +100,9 @@ typedef struct CefT_Mem_Hash {
 typedef struct CefT_Mem_Hash_Stat {
 	unsigned char* 				contents_name;		/* Name of Contents					*/
 	uint32_t 					cname_len;			/* Length of Name					*/
-	uint32_t					contents_size;		/* Total size of ContentObject		*/
-	uint32_t					cob_num;			/* Number of ContentObject			*/
-	uint32_t					ac_cnt;				/* Access Count of Contents			*/
+	uint64_t					contents_size;		/* Total size of ContentObject		*/
+	uint64_t					cob_num;			/* Number of ContentObject			*/
+	uint64_t					ac_cnt;				/* Access Count of Contents			*/
 	struct CefT_Mem_Hash_Stat*	next;
 } CefT_Mem_Hash_Stat;
 
@@ -215,7 +215,7 @@ cef_mem_cache_hash_tbl_item_set (
 	const unsigned char* key,
 	uint32_t klen,
 	CefMemCacheT_Content_Mem_Entry* elem, 
-	CefMemCacheT_Content_Mem_Entry* old_elem
+	CefMemCacheT_Content_Mem_Entry** old_elem
 );
 static CefMemCacheT_Content_Mem_Entry* 
 cef_mem_cache_hash_tbl_item_get (
@@ -758,7 +758,7 @@ cef_mem_cache_cs_store (
 	entry->node			 = new_entry->node;
 	
 	if (cef_mem_cache_hash_tbl_item_set (
-		key, key_len, entry, old_entry) < 0) {
+		key, key_len, entry, &old_entry) < 0) {
 		free (entry->msg);
 		free (entry->name);
 		free (entry);
@@ -896,11 +896,23 @@ cef_mem_cache_cob_write (
 
 	trg_key_len = cef_mem_cache_key_create (cob, trg_key);
 	entry = cef_mem_cache_hash_tbl_item_get (trg_key, trg_key_len);
+#if 1
 	if (entry == NULL) {
 		cef_mem_cache_fifo_insert(cob);
 		cef_mem_cache_mstat_insert (trg_key, trg_key_len, cob->pay_len);
 	}
-	
+#else
+	/* This code (#else part) enables to overwrite the old cob kept in the Local cache  */
+	/* if the new cob with the same name is received.                                   */
+	/* This is a tentative solution, because this kind of cached content control should */
+	/* be done with the version number of each cob.                                     */
+	if (entry != NULL) {
+		cef_mem_cache_fifo_erase (trg_key, trg_key_len);
+		cef_mem_cache_cs_remove (trg_key, trg_key_len);
+	}
+	cef_mem_cache_fifo_insert(cob);
+	cef_mem_cache_mstat_insert (trg_key, trg_key_len, cob->pay_len);
+#endif	
 	return (0);
 }
 
@@ -971,7 +983,7 @@ cef_mem_cache_hash_tbl_item_set (
 	const unsigned char* key,
 	uint32_t klen,
 	CefMemCacheT_Content_Mem_Entry* elem, 
-	CefMemCacheT_Content_Mem_Entry* old_elem
+	CefMemCacheT_Content_Mem_Entry** old_elem
 ) {
 	CefT_Mem_Hash* ht = (CefT_Mem_Hash*) mem_hash_tbl;
 	uint32_t hash = 0;
@@ -979,7 +991,7 @@ cef_mem_cache_hash_tbl_item_set (
 	CefT_Mem_Hash_Cell* cp;
 	CefT_Mem_Hash_Cell* wcp;
 
-	old_elem = NULL;
+	*old_elem = NULL;
 
 	hash = cef_mem_hash_number_create (key, klen);
 	y = hash % ht->tabl_max;
@@ -1002,7 +1014,7 @@ cef_mem_cache_hash_tbl_item_set (
 		for (cp = ht->tbl[y]; cp != NULL; cp = cp->next) {
 			if((cp->klen == klen) &&
 			   (memcmp (cp->key, key, klen) == 0)){
-				old_elem = cp->elem;
+				*old_elem = cp->elem;
 				cp->elem = elem;
 				return (1);
 		   }
@@ -1359,9 +1371,31 @@ cef_mem_cache_mstat_get (
 	while (mstat_p != NULL) {
 		if (mstat_p->cname_len == tmp_klen &&
 			memcmp (mstat_p->contents_name, key, tmp_klen) == 0) {
+#if 0 //+++++@@@@@ CCNINFO
 			info_p->con_size = mstat_p->contents_size;
 			info_p->con_num  = mstat_p->cob_num;
 			info_p->ac_cnt   = mstat_p->ac_cnt;
+#else
+			{
+				uint32_t con_size;
+				if (mstat_p->contents_size / 1024 > UINT32_MAX) {
+					con_size = UINT32_MAX;
+				} else {
+					con_size = (uint32_t)(mstat_p->contents_size / 1024);
+				}
+				info_p->con_size = con_size;
+			}
+			if (mstat_p->cob_num > UINT32_MAX) {
+				info_p->con_num 	= UINT32_MAX;
+			} else {
+				info_p->con_num 	= mstat_p->cob_num;
+			}
+			if (mstat_p->ac_cnt > UINT32_MAX) {
+				info_p->ac_cnt 	= UINT32_MAX;
+			} else {
+				info_p->ac_cnt 	= mstat_p->ac_cnt;
+			}
+#endif //-----@@@@@ CCNINFO
 			
 			return (1);
 		}

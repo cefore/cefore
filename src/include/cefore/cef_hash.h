@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -61,12 +61,39 @@
 #define CefC_Hash_New			1
 #define CefC_Hash_Old			2
 
+#if 1
+#define CefC_Max_KLen 				1024
+#define CefC_Cleanup_Wmin	 		16
+#define CefC_Cleanup_Smin	 		0
+#define CefC_Cleanup_Smax	 		4
+#endif
 
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
 typedef size_t CefT_Hash_Handle;
 
+#if 1
+typedef struct CefT_Hash_Table {
+	uint32_t 		hash;
+	unsigned char 	key[CefC_Max_KLen + 1];
+	void* 			elem;
+	uint32_t 		klen;
+	uint8_t			opt_f;
+} CefT_Hash_Table;
+
+typedef struct CefT_Hash {
+	uint32_t 			seed;
+	CefT_Hash_Table*	tbl;
+	uint32_t 			elem_max;			/* Prime numbers larger than the user defined maximum size */
+	uint32_t 			elem_num;
+	uint32_t 			def_elem_max;		/* User defined maximum size	*/
+
+	uint32_t 			cleanup_mwin;
+	uint32_t 			cleanup_cwin;
+	uint32_t 			cleanup_step;
+} CefT_Hash;
+#endif
 /****************************************************************************************
  Global Variables
  ****************************************************************************************/

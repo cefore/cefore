@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,8 @@
  */
 
 #define __CEF_FIB_SOURECE__
+
+//#define	__FIB_DEV__
 
 /****************************************************************************************
  Include Files
@@ -528,6 +530,11 @@ cef_fib_config_file_read (
 			cef_log_write (CefC_Log_Info, 
 				"Creation the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n", 
 				uri, prot, addr[i], faceid);
+
+#ifdef __FIB_DEV__
+			fprintf( stderr, "[%s] Creation the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n",
+				__func__, uri, prot, addr[i], faceid);
+#endif
 			
 			cef_fib_set_faceid_to_entry (entry, faceid, CefC_Fib_Entry_Static);
 		}

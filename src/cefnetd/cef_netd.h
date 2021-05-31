@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,6 +44,7 @@
 #include <poll.h>
 #include <limits.h>
 #include <openssl/md5.h>
+#include <dlfcn.h>
 
 #ifndef CefC_Android
 #include <ifaddrs.h>
@@ -54,6 +55,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <net/if.h>
+
+#include <openssl/sha.h>	//0.8.3
 
 #include <cefore/cef_define.h>
 #include <cefore/cef_fib.h>
@@ -85,6 +88,13 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+
+/* Library name	libcefnetd_plugin			*/
+#ifdef __APPLE__
+#define CefnetdC_Plugin_Library_Name	"libcefnetd_plugin.dylib"
+#else // __APPLE__
+#define CefnetdC_Plugin_Library_Name	"libcefnetd_plugin.so"
+#endif // __APPLE__
 
 /*------------------------------------------------------------------*/
 /* Commands to control cefnetd										*/
@@ -245,6 +255,24 @@ typedef struct {
 	char*				My_Node_Name;			/* Node Name							*/
 	unsigned char*		My_Node_Name_TLV;		/* Node Name TLV						*/
 	int					My_Node_Name_TLV_len;	/* Node Name TLV Length					*/
+	//0.8.3
+	int					IntrestRetrans;			/* 0:RFC8599 1:SUPPRESSIVE */
+	int					Selective_fwd;			/* 0:Not FWD 1:FWD */
+	int					SymbolicBack;			/* */
+	double				IR_Congesion;			/* */
+	int					BW_Stat_interval;
+	int					Symbolic_max_lifetime;
+	int					Regular_max_lifetime;
+	int					Ex_Cache_Access;		/* 0:Read/Write   1:ReadOnly			*/
+	uint32_t			Buffer_Cache_Time;		/* Buffer cahce timt					*/
+												/* for KeyIdRestriction					*/
+												/* Private key, public key prefix		*/
+												/*   Private key name: 					*/
+												/*     Specified string + "-private-key"*/
+												/*   Public key name: 					*/
+												/*     Specified string + "-public-key" */
+
+
 #ifdef CefC_C3
 	int					c3_log;					/* C3_Log	0:OFF 1:ON					*/
 	int					c3_log_period;			/* C3_Log_Period (Second)				*/
@@ -356,6 +384,15 @@ typedef struct {
 	unsigned char* 		ccninfo_rcvdpub_key_bi;
 #endif //CefC_Ccninfo
 
+	//0.8.3
+	/********** Plugin Interface for libcefnetd_plugin **********/
+	char					bw_stat_pin_name[128];
+	CefT_Plugin_Bw_Stat*	bw_stat_hdl;
+	void*					mod_lib;	/* plugin library	*/
+	
+	/********** cefstatus pipe **********/
+	int		cefstatus_pipe_fd[2];
+
 #ifdef CefC_C3
 	/* C3 Log */
 	FILE*				c3_log_fp;
@@ -371,6 +408,11 @@ typedef struct {
 #endif	//CefC_C3
 
 } CefT_Netd_Handle;
+
+typedef struct {
+	unsigned char	msg[128];
+	int				resp_fd;
+}	CefT_Cefstatus_Msg;
 
 /****************************************************************************************
  Global Variables
@@ -529,7 +571,14 @@ uint16_t
 cefnetd_ccninfo_check_relpy_size(
 	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
 	unsigned char* msg, 					/* Reply message							*/
-	uint16_t msg_len 						/* Length of this message			*/
+	uint16_t msg_len, 						/* Length of this message			*/
+	uint16_t ccninfo_flag					/* ccninfo_flag ccninfo-05 */
+);
+
+
+void *
+cefnetd_cefstatus_thread (
+	void *p
 );
 
 #endif // __CEF_NETD_HEADER__

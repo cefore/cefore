@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -508,8 +508,8 @@ cp_parse_parameters (
 				cp_usage_output ("error: prefix is invalid.");
 				return (-1);
 			}
-			if (res < 5/* require longer than Type + Length */) {
-				cp_usage_output ("error: prefix MUST NOT be ccn:/");
+			if (res < 6/* require longer than Type + Length */) {
+				cp_usage_output ("error: prefix MUST NOT be ccnx:/");
 				return (-1);
 			}
 			params.name_len = res;

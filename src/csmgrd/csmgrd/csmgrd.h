@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -72,6 +72,7 @@ typedef struct {
 	/********** Content Store Parameters	***********/
 	uint32_t		interval;					/* Interval that to check cache			*/
 	char			cs_mod_name[CsmgrdC_Max_Plugin_Name_Len]; /* CS plugin name			*/
+	char			fsc_cache_path[CefC_Csmgr_File_Path_Length]; /* FSC cache path		*/
 	uint16_t 		port_num;					/* PORT_NUM in csmgrd.conf 				*/
 	char 			local_sock_id[1024];
 	
@@ -117,13 +118,12 @@ typedef struct {
 	char			cs_mod_name[CsmgrdC_Max_Plugin_Name_Len];
 												/* plugin library name					*/
 	void*			mod_lib;					/* plugin library						*/
+	char			fsc_cache_path[CefC_Csmgr_File_Path_Length]; /* FSC cache path		*/
 	
 	/********** excache Status			***********/
 	uint32_t		interval;					/* Interval that to check cache			*/
 	
 } CefT_Csmgrd_Handle;
-
-
 
 /****************************************************************************************
  Function Declarations

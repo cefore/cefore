@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,34 +43,16 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+#if 0
 #define CefC_Max_KLen 				1024
 #define CefC_Cleanup_Wmin	 		16
 #define CefC_Cleanup_Smin	 		0
 #define CefC_Cleanup_Smax	 		4
+#endif
 
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
-
-typedef struct CefT_Hash_Table {
-	uint32_t 		hash;
-	unsigned char 	key[CefC_Max_KLen + 1];
-	void* 			elem;
-	uint32_t 		klen;
-	uint8_t			opt_f;
-} CefT_Hash_Table;
-
-typedef struct CefT_Hash {
-	uint32_t 			seed;
-	CefT_Hash_Table*	tbl;
-	uint32_t 			elem_max;			/* Prime numbers larger than the user defined maximum size */
-	uint32_t 			elem_num;
-	uint32_t 			def_elem_max;		/* User defined maximum size	*/
-
-	uint32_t 			cleanup_mwin;
-	uint32_t 			cleanup_cwin;
-	uint32_t 			cleanup_step;
-} CefT_Hash;
 
 typedef struct CefT_List_Hash_Cell {
 	unsigned char* 			key;
@@ -190,7 +172,7 @@ cef_hash_tbl_item_set (
 	uint32_t hash;
 	uint32_t index;
 	uint32_t i;
-	uint32_t empty_index;
+	uint32_t empty_index = 0;
 	uint32_t empty_ff = 0;
 
 	if ((klen > CefC_Max_KLen) || (ht == NULL)) {
@@ -279,7 +261,7 @@ cef_hash_tbl_item_set_for_app (
 	uint32_t hash;
 	uint32_t index;
 	uint32_t i;
-	uint32_t empty_index;
+	uint32_t empty_index = 0;
 	uint32_t empty_ff = 0;
 	int		 res;
 
@@ -829,6 +811,10 @@ cef_lhash_tbl_create (
 	CefT_List_Hash* ht = NULL;
 	int i, n;
 	int flag;
+
+	if (table_size > INT32_MAX) {
+		table_size = INT32_MAX;
+	}
 	
 	for (i = table_size ; i > 1 ; i++) {
 		flag = 0;
@@ -844,10 +830,6 @@ cef_lhash_tbl_create (
 		} else {
 			break;
 		}
-	}
-
-	if (table_size > 1048576) {
-		return ((CefT_Hash_Handle) NULL);
 	}
 
 	ht = (CefT_List_Hash*) malloc (sizeof (CefT_List_Hash));
@@ -874,7 +856,6 @@ cef_lhash_tbl_create_u32 (
 	CefT_List_Hash* ht = NULL;
 	int i, n;
 	int flag;
-	
 	for (i = table_size ; i > 1 ; i++) {
 		flag = 0;
 		
@@ -951,6 +932,7 @@ cef_lhash_tbl_item_set (
 	uint32_t index;
 	CefT_List_Hash_Cell* cp;
 	CefT_List_Hash_Cell* wcp;
+
 
 	if ((klen > CefC_Max_KLen) || (ht == NULL)) {
 		return (CefC_Hash_Faile);

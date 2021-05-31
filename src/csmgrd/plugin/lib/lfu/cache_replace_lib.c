@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -228,7 +228,7 @@ void crlib_force_print_name(const unsigned char* name, uint16_t len) {
 	char buf[4096];
 	char *cur = buf;
 	memset(buf, 0, len + 10);
-    sprintf(cur, "[ccn:"); cur += 5;
+    sprintf(cur, "[ccnx:"); cur += 6;
     if (len > 2) {
 	i = 3;
 	while (i < len) {
@@ -255,7 +255,7 @@ void crlib_force_print_entry(CsmgrdT_Content_Entry* entry) {
 	char buf[4096];
 	char *cur = buf;
 	memset(buf, 0, len + 10);
-    sprintf(cur, "[%8d][ccn:", len); cur += 15;
+    sprintf(cur, "[%8d][ccnx:", len); cur += 16;
 	i = 3;
 	while (i < len) {
 		*cur = '/'; cur++;
@@ -274,7 +274,7 @@ void crlib_force_print_name_wl(const unsigned char* name, uint16_t len) {
 	char buf[4096];
 	char *cur = buf;
 	memset(buf, 0, len + 10);
-    sprintf(cur, "[%05d][ccn:", len); cur += 12;
+    sprintf(cur, "[%05d][ccnx:", len); cur += 13;
     if (len > 2) {
 	i = 3;
 	while (i < len) {
@@ -307,7 +307,7 @@ static void emu_force_print_name(const unsigned char* name, uint16_t len, const 
 	char buf[4096];
 	char *cur = buf;
 	memset(buf, 0, len + 10);
-    sprintf(cur, "[ccn:"); cur += 5;
+    sprintf(cur, "[ccnx:"); cur += 6;
 	i = 3;
 	while (i < len) {
 		*cur = '/'; cur++;

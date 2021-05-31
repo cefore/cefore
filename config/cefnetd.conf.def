@@ -90,6 +90,12 @@
 #BUFFER_CAPACITY=30000
 
 #
+# Buffer cache time(ms).
+# This value must be higher than or equal to 0.
+#
+#BUFFER_CACHE_TIME=10000
+
+#
 # FIB entry selection strategy.
 #   0: Forward using any 1 Longest prefix match FIB entry
 #   1: Forward using all Longest prefix match FIB entries
@@ -98,26 +104,25 @@
 
 #
 # CCNinfo access policy
-#   0: No limit
-#   1: Permit transfer only
-#   2: Do not allow access
+#0: Allow Request (default)
+#1: Allow to forward Request (i.e., no cache information informed)
+#2: Disallow Request
 #
 #CCNINFO_ACCESS_POLICY=0
 
-#
-# "Full discovery request" permission setting
-#   0: Allow
-#   1: Not Allow
-#   2: Authentication and Authorization
+# "CCNinfo Full discovery request" permission setting
+#0: Disallow Full-discovery Request (default)
+#1: Allow Full-discovery Request
+#2: Allow Full-discovery Request only from authenticated consumers (NOT IMPLEMENTED YET)
 #
 #CCNINFO_FULL_DISCOVERY=0
 
 #
 # Specify the Validation Algorithm to be added to Content Object.
-# Validation is not added when NONE is specified.
+# Validation is not added when None is specified.
 # Either sha256 or crc32 can be specified.
 #
-#CCNINFO_VALID_ALG=NONE
+#CCNINFO_VALID_ALG=crc32
 
 #
 # Private key, public key prefix
@@ -156,6 +161,65 @@
 #NBR_SIZE=1
 #NBR_INTERVAL=10000
 #NBR_THRESH=3
+
+#
+# Same Interest retransmission strategy
+#	RFC8569 or SUPPRESSIVE
+#
+#INTEREST_RETRANSMISSION=RFC8569
+
+#
+# Whether to transfer Selective Interest upstream
+#	0:No 1:Yes
+#
+#SELECTIVE_FORWARDING=1
+
+#
+# A range of chunk numbers that allow retroactive responses to the Simbolic Interest
+#	n is an integer greater than or equal to 0.
+#
+#SYMBOLIC_BACKBUFFER=100
+
+#
+# Bandwidth utilization threshold (%) of the receive IF to respond to Congesion when receiving Interest
+#	n is an integer greater than or equal to 0.
+#
+#INTEREST_RETURN_CONGESTION_THRESHOLD=90
+
+#
+# Interval (seconds) for bandwidth utilization calculation
+#	n is an integer greater than or equal to 1.
+#
+#BANDWIDTH_STAT_INTERVAL=1
+
+#
+# Maximum Lifetime of Symbolic Interest (seconds)
+#	n is an integer greater than or equal to 0.
+#
+#SYMBOLIC_INTEREST_MAX_LIFETIME=4
+
+
+#
+# Maximum Lifetime of Regular Interest (seconds)
+#	n is an integer greater than or equal to 0.
+#
+#REGULAR_INTEREST_MAX_LIFETIME=2
+
+#
+# The name of the plug-in that determines congestion.
+# If None, the congestion judgment is always in a non-congested state.
+#
+#BANDWIDTH_STAT_PLUGIN=bw_stat
+
+
+#CSMGR_ACCESS=RW
+
+#
+# RTC(seconds) to set for Cob to Local cache. 
+# This value must be higher than 1 and lower than 3600.
+#
+#LOCAL_CACHE_DEFAULT_RCT=600
+
 
 #
 # Serial Logging

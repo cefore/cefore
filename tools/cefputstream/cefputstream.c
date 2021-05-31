@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -100,7 +100,7 @@ int main (
 	int res;
 	unsigned char buff[CefC_Max_Length];
 	CefT_Object_TLVs params;
-	int seqnum = 0;
+	uint64_t seqnum = 0;
 	int opt;
 	char uri[1024];
 
@@ -113,6 +113,7 @@ int main (
 	uint64_t jitter;
 	char*	work_arg;
 	int 	i;
+	int		input_res;
 	
 	char 	conf_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
@@ -130,9 +131,9 @@ int main (
 	int valid_f 	= 0;
 	
 	/***** parameters 	*****/
-	uint16_t cache_time 	= 0;
+	uint64_t cache_time 	= 0;
 	uint64_t expiry 		= 0;
-	int rate 				= 5;
+	double rate 			= 5.0;
 	int block_size 			= 1024;
 	
 	/*------------------------------------------
@@ -190,8 +191,8 @@ int main (
 			if (block_size < 60) {
 				block_size = 60;
 			}
-			if (block_size > 1460) {
-				block_size = 1460;
+			if (block_size > CefC_Max_Block) {
+				block_size = CefC_Max_Block;
 			}
 			blocks_f++;
 			i++;
@@ -298,7 +299,7 @@ int main (
 			}
 			res = strlen (work_arg);
 			
-			if (res >= 1204) {
+			if (res >= 1024) {
 				fprintf (stderr, "ERROR: uri is too long.\n");
 				print_usage ();
 				return (-1);
@@ -344,7 +345,7 @@ int main (
 		Sets Expiry Time and RCT
 	--------------------------------------------*/
 	gettimeofday (&now_t, NULL);
-	now_ms = now_t.tv_sec * 1000 + now_t.tv_usec / 1000;
+	now_ms = now_t.tv_sec * 1000llu + now_t.tv_usec / 1000llu;
 	
 	if (cache_time > 0) {
 		params.opt.cachetime_f 	= 1;
@@ -395,9 +396,9 @@ int main (
 		Main Loop
 	--------------------------------------------*/
 	fprintf (stderr, "[cefputstream] URI         = %s\n", uri);
-	fprintf (stderr, "[cefputstream] Rate        = %d Mbps\n", rate);
+	fprintf (stderr, "[cefputstream] Rate        = %f Mbps\n", rate);
 	fprintf (stderr, "[cefputstream] Block Size  = %d Bytes\n", block_size);
-	fprintf (stderr, "[cefputstream] Cache Time  = %d sec\n", cache_time);
+	fprintf (stderr, "[cefputstream] Cache Time  = "FMTU64" sec\n", cache_time);
 	fprintf (stderr, "[cefputstream] Expiration  = "FMTU64" sec\n", expiry);
 	
 	memset (buff, 1, CefC_Max_Length);
@@ -433,12 +434,21 @@ int main (
 			}
 			
 			res = read (0, buff, block_size);
+			if(seqnum > UINT32_MAX){
+				res = 0;
+			}
 			
 			if (res > 0) {
 				memcpy (params.payload, buff, res);
 				params.payload_len = (uint16_t) res;
 				params.chnk_num = seqnum;
-				cef_client_object_input (fhdl, &params);
+				//0.8.3
+				input_res = cef_client_object_input (fhdl, &params);
+				if ( input_res < 0 ) {
+					fprintf (stdout, "ERROR: Content Object frame size over(%d).\n", input_res*(-1));
+					fprintf (stdout, "       Try shortening the block size specification.\n");
+					exit (1);
+				}
 				stat_send_frames++;
 				stat_send_bytes += res;
 				seqnum++;
