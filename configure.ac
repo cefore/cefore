@@ -4,8 +4,8 @@
 dnl
 dnl  project setting
 dnl
-AC_PREREQ([2.69])
-AC_INIT([cefore], [0.8.3], [])
+AC_PREREQ([2.71])
+AC_INIT([cefore],[0.8.3],[])
 AC_CONFIG_AUX_DIR(autotools)
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
@@ -62,12 +62,17 @@ echo "#define CEFORE_VERSION \"Cefore version $VERSION\"" > src/cefnetd/version.
 dnl
 dnl  check OpenSSL library
 dnl
-if test "x${opssl_header_path}" = "x" ; then
-  opssl_header_path=/usr/include/openssl/sha.h
-else
-  opssl_header_path=${opssl_header_path}/openssl/sha.h
-fi
-AC_CHECK_FILES([${opssl_header_path}],[],[AC_MSG_ERROR("OpenSSL is not installed.")])
+AC_ARG_WITH([openssl-dir],
+  [AS_HELP_STRING([--with-openssl-dir=DIR],[An openssl path (default /usr)
+  ])],
+  [openssl_path=$withval],
+  [openssl_path=/usr]
+)
+check_openssl_header=${openssl_path}/include/openssl/sha.h
+
+AC_CHECK_FILES([${check_openssl_header}],[],[AC_MSG_ERROR("OpenSSL is not installed.")])
+CFLAGS="${CFLAGS} -I${openssl_path}/include"
+LDFLAGS="${LDLAGS} -L${openssl_path}/lib"
 
 # checks for args
 
