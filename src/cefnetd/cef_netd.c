@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,7 @@
 
 #define __CEF_NETD_SOURECE__
 
+//#define	DEB_CCNINFO
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
@@ -138,6 +139,7 @@ static char cnd_dbg_msg[2048];
 /****************************************************************************************
  Static Function Declaration
  ****************************************************************************************/
+static	pthread_t cefnetd_cefstatus_th;
 
 /*--------------------------------------------------------------------------------------
 	Reads the config file
@@ -409,7 +411,8 @@ cefnetd_input_message_process (
 	int peer_faceid, 						/* Face-ID to reply to the origin of 		*/
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* the received message(s)					*/
-	int msg_size							/* size of received message(s)				*/
+	int msg_size,							/* size of received message(s)				*/
+	char*	user_id
 );
 /*--------------------------------------------------------------------------------------
 	Seeks the top of the frame from the receive buffer
@@ -431,7 +434,8 @@ cefnetd_incoming_interest_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 );
 /*--------------------------------------------------------------------------------------
 	Handles the received Content Object message
@@ -444,7 +448,8 @@ cefnetd_incoming_object_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 );
 /*--------------------------------------------------------------------------------------
 	Handles the received InterestReturn
@@ -457,7 +462,8 @@ cefnetd_incoming_intreturn_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 );
 /*--------------------------------------------------------------------------------------
 	Handles the received Cefping Request
@@ -470,7 +476,8 @@ cefnetd_incoming_pingreq_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 );
 /*--------------------------------------------------------------------------------------
 	Handles the received Cefping Replay
@@ -483,7 +490,8 @@ cefnetd_incoming_pingrep_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 );
 /*--------------------------------------------------------------------------------------
 	Handles the received Ccninfo Request
@@ -496,7 +504,8 @@ cefnetd_incoming_ccninforeq_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 );
 /*--------------------------------------------------------------------------------------
 	Handles the received Ccninfo Replay
@@ -509,7 +518,8 @@ cefnetd_incoming_ccninforep_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 );
 #ifdef CefC_ContentStore
 /*--------------------------------------------------------------------------------------
@@ -530,7 +540,8 @@ static int									/* Returns a negative value if it fails 	*/
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) = {
 	cefnetd_incoming_interest_process,
 	cefnetd_incoming_object_process,
@@ -598,7 +609,8 @@ cefnetd_incoming_csmgr_interest_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 );
 /*--------------------------------------------------------------------------------------
 	Handles the received Content Object message
@@ -611,7 +623,8 @@ cefnetd_incoming_csmgr_object_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 );
 /*--------------------------------------------------------------------------------------
 	Handles the received Cefping Request
@@ -624,7 +637,8 @@ cefnetd_incoming_csmgr_pingreq_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 );
 /*--------------------------------------------------------------------------------------
 	Handles the received Ccninfo Request
@@ -637,7 +651,8 @@ cefnetd_incoming_csmgr_ccninforeq_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 );
 
 static int									/* Returns a negative value if it fails 	*/
@@ -648,7 +663,8 @@ static int									/* Returns a negative value if it fails 	*/
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) = {
 	cefnetd_incoming_csmgr_interest_process,
 	cefnetd_incoming_csmgr_object_process,
@@ -690,7 +706,31 @@ cefnetd_FHR_Reply_process(
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
 	const unsigned char* name,				/* Report name								*/
-	uint32_t name_len						/* Report name length						*/
+	uint32_t name_len,						/* Report name length						*/
+	CefT_Parsed_Opheader* poh
+);
+
+/*--------------------------------------------------------------------------------------
+	ccninfo loop check ccninfo-03
+----------------------------------------------------------------------------------------*/
+static	int
+cefnetd_ccninfo_loop_check(
+	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
+	CefT_Parsed_Ccninfo* pci
+);
+
+/*--------------------------------------------------------------------------------------
+	Create for ccninfo_pit ccninfo-03
+----------------------------------------------------------------------------------------*/
+#define		CCNINFO_REQ		0
+#define		CCNINFO_REP		1
+static int
+cefnetd_ccninfo_pit_create(
+	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
+	CefT_Parsed_Ccninfo* pci,
+	unsigned char* ccninfo_pit,
+	int		req_or_rep,
+	int		skip_option
 );
 #endif // CefC_Ccninfo
 /*--------------------------------------------------------------------------------------
@@ -844,6 +884,28 @@ cefnetd_dtc_resnd (
 );
 #endif // CefC_Dtc
 
+//0.8.3
+/*--------------------------------------------------------------------------------------
+	Handles the received Interest message has T_SELECTIVE
+----------------------------------------------------------------------------------------*/
+static int									/* Returns a negative value if it fails 	*/
+cefnetd_incoming_selective_interest_process (
+	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
+	int faceid, 							/* Face-ID where messages arrived at		*/
+	int peer_faceid, 						/* Face-ID to reply to the origin of 		*/
+											/* transmission of the message(s)			*/
+	unsigned char* msg, 					/* received message to handle				*/
+	uint16_t payload_len, 					/* Payload Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+);
+#ifndef __PIN_NOT_USE__
+static int
+cefnetd_plugin_load (
+	CefT_Netd_Handle* hdl					/* cefnetd handle							*/
+);
+#endif
 /* NodeName Check */
 static int									/*  */
 cefnetd_nodename_check (
@@ -921,6 +983,24 @@ cefnetd_c3_fib_app_entry_search (
 
 #endif // CefC_C3
 
+#ifdef DEB_CCNINFO
+/*--------------------------------------------------------------------------------------
+	for debug
+----------------------------------------------------------------------------------------*/
+static void
+cefnetd_dbg_cpi_print (
+	CefT_Parsed_Ccninfo* pci
+);
+#endif
+
+//0.8.3
+static int
+cefnetd_keyid_get (
+	const unsigned char* msg, 
+	int msg_len, 
+	unsigned char *keyid_buff
+);
+
 
 /****************************************************************************************
  ****************************************************************************************/
@@ -986,11 +1066,27 @@ cefnetd_handle_create (
 	hdl->ccninfo_access_policy = CefC_Default_CcninfoAccessPolicy;
 	hdl->ccninfo_full_discovery = CefC_Default_CcninfoFullDiscovery;
 	strcpy(hdl->ccninfo_valid_alg ,CefC_Default_CcninfoValidAlg);
-	hdl->ccninfo_valid_type = CefC_T_ALG_INVALID;
+	hdl->ccninfo_valid_type = CefC_T_CRC32C;	/* ccninfo-05 */
 	strcpy(hdl->ccninfo_sha256_key_prfx ,CefC_Default_CcninfoSha256KeyPrfx);
 	hdl->ccninfo_reply_timeout = CefC_Default_CcninfoReplyTimeout;
 #endif // CefC_Ccninfo
-	
+
+	//0.8.3
+	hdl->IntrestRetrans			= CefC_IntRetrans_Type_RFC;
+	hdl->Selective_fwd			= CefC_Default_SelectiveForward;
+	hdl->SymbolicBack			= CefC_Default_SymbolicBackBuff;
+	hdl->IR_Congesion			= CefC_Default_IR_Congesion;
+	hdl->BW_Stat_interval		= CefC_Default_BANDWIDTH_STAT_INTERVAL;
+	hdl->Symbolic_max_lifetime	= CefC_Default_SYMBOLIC_LIFETIME;
+	hdl->Regular_max_lifetime	= CefC_Default_REGULAR_LIFETIME;
+	hdl->Ex_Cache_Access		= CefC_Default_CSMGR_ACCESS_RW;
+	strcpy( hdl->bw_stat_pin_name, "bw_stat" );
+	hdl->Buffer_Cache_Time		= CefC_Default_BUFFER_CACHE_TIME * 1000;
+	hdl->cefstatus_pipe_fd[0]	= -1;
+	hdl->cefstatus_pipe_fd[1]	= -1;
+	//202108
+	hdl->IR_Option				= 0;	//Not
+
 	/* Initialize the frame module 						*/
 	cef_client_config_dir_get (conf_path);
 	cef_frame_init ();
@@ -1055,6 +1151,27 @@ cefnetd_handle_create (
 	srand ((unsigned) time (NULL));
 	hdl->cefrt_seed = (uint8_t)(rand () + 1);
 	cef_log_write (CefC_Log_Info, "Creation the listen faces ... OK\n");
+
+	//0.8.3 libcefnetd_plugin
+	hdl->bw_stat_hdl = (CefT_Plugin_Bw_Stat*)malloc( sizeof(CefT_Plugin_Bw_Stat) );
+	memset( hdl->bw_stat_hdl, 0, sizeof(CefT_Plugin_Bw_Stat) );
+#ifndef __PIN_NOT_USE__
+	/* cefnetd.conf */
+	if ( strcmp( hdl->bw_stat_pin_name, "None" ) != 0 ) {
+		res = cefnetd_plugin_load(hdl);
+		if ( res < 0 ) {
+			/* NG */
+			cefnetd_handle_destroy (hdl);
+			return (NULL);
+		}
+		res = hdl->bw_stat_hdl->init( hdl->BW_Stat_interval );
+		if ( res < 0 ) {
+			/* NG */
+			cefnetd_handle_destroy (hdl);
+			return (NULL);
+		}
+	}
+#endif
 	
 	/* Creates and initialize FIB			*/
 	hdl->fib = cef_hash_tbl_create ((uint16_t) hdl->fib_max_size);
@@ -1069,7 +1186,7 @@ cefnetd_handle_create (
 	cefnetd_command_filter_init (hdl);
 	
 	/* Creates PIT 							*/
-	cef_pit_init (hdl->ccninfo_reply_timeout);
+	cef_pit_init (hdl->ccninfo_reply_timeout, hdl->Symbolic_max_lifetime, hdl->Regular_max_lifetime); //0.8.3
 	hdl->pit = cef_hash_tbl_create (hdl->pit_max_size);
 	hdl->pit_clean_t = cef_client_present_timeus_calc () + 1000000;
 	cef_log_write (CefC_Log_Info, "Creation PIT ... OK\n");
@@ -1101,6 +1218,10 @@ cefnetd_handle_create (
 	} else {
 		cef_log_write (CefC_Log_Info, "Not use Content Store\n");
 	}
+	/* RW or RO */
+	hdl->cs_stat->csmgr_access = hdl->Ex_Cache_Access;
+	/* BUFFER_CACHE_TIME */
+	hdl->cs_stat->buffer_cache_time = hdl->Buffer_Cache_Time;
 	
 	/* set send content rate 	*/
 	hdl->send_rate = (double)(8.0 / (double) hdl->fwd_rate);
@@ -1251,7 +1372,7 @@ cefnetd_handle_create (
 		hdl->My_Node_Name = malloc( sizeof(char) * strlen(addrstr) + 1 );
 		strcpy( hdl->My_Node_Name, addrstr );
 		/* Convert Name TLV */
-		strcpy( (char*)out_name, "ccn:/" );
+		strcpy( (char*)out_name, "ccnx:/" );
 		strcat( (char*)out_name, hdl->My_Node_Name );
 		res = cef_frame_conversion_uri_to_name ((char*)out_name, out_name_tlv);
 		if ( res < 0 ) {
@@ -1269,7 +1390,44 @@ cefnetd_handle_create (
 		}
 		cef_log_write (CefC_Log_Warn, "No NODE_NAME defined in cefnetd.conf; IP address is temporarily used as the node name.\n");
 	}
+
+	/*#####*/
+	{	/* cefstatus_thread */
+		int flags;
+		/* Create socket for communication between cednetd and memory cache */
+		if ( socketpair(AF_UNIX,SOCK_DGRAM, 0, hdl->cefstatus_pipe_fd) == -1 ) {
+			cefnetd_handle_destroy (hdl);
+			cef_log_write (CefC_Log_Error, "%s cefstatus pair socket creation error (%s)\n"
+							, __func__, strerror(errno));
+			return (NULL);
+	  	}
+		/* Set cefnetd side socket as non-blocking I/O */
+		if ( (flags = fcntl(hdl->cefstatus_pipe_fd[0], F_GETFL, 0) ) < 0) {
+			cefnetd_handle_destroy (hdl);
+			cef_log_write (CefC_Log_Error, "%s fcntl error (%s)\n"
+							, __func__, strerror(errno));
+			return (NULL);
+		}
+		flags |= O_NONBLOCK;
+		if (fcntl(hdl->cefstatus_pipe_fd[0], F_SETFL, flags) < 0) {
+			cefnetd_handle_destroy (hdl);
+			cef_log_write (CefC_Log_Error, "%s fcntl error (%s)\n"
+							, __func__, strerror(errno));
+			return (NULL);
+		}
+
+		if (pthread_create(&cefnetd_cefstatus_th, NULL
+				, &cefnetd_cefstatus_thread, (hdl)) == -1) {
+				cefnetd_handle_destroy (hdl);
+				cef_log_write (CefC_Log_Error
+							, "%s Failed to create the new thread(cefnetd_cefstatus_thread)\n"
+							, __func__);
+			return (NULL);
+		}
+	}
 	
+	/*#####*/
+
 	return (hdl);
 }
 /*--------------------------------------------------------------------------------------
@@ -1290,6 +1448,11 @@ cefnetd_handle_destroy (
 	cef_mb_plugin_destroy (hdl->plugin_hdl.mb);
 #endif // CefC_Mobility
 	cef_plugin_destroy (&(hdl->plugin_hdl));
+
+	//0.8.3
+	if ( hdl->bw_stat_hdl->destroy ) {
+		hdl->bw_stat_hdl->destroy();
+	}
 	
 #ifdef CefC_Neighbour
 	/* destroy neighbor management 	*/
@@ -1340,7 +1503,6 @@ cefnetd_handle_destroy (
 	/* Process for Android next running	*/
 	hdl = NULL;
 	stat_nopit_frames = 0;
-//	stat_nopit_frames = 0;
 	stat_rcv_size_cnt = 0;
 	stat_rcv_size_min = 65536;
 	stat_rcv_size_max = 0;
@@ -1543,7 +1705,8 @@ uint16_t
 cefnetd_ccninfo_check_relpy_size(
 	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
 	unsigned char* msg, 					/* Reply message							*/
-	uint16_t msg_len 						/* Length of this message			*/
+	uint16_t msg_len, 						/* Length of this message			*/
+	uint16_t ccninfo_flag					/* ccninfo_flag ccninfo-05 */
 ){
 	
 	struct fixed_hdr* 	fixed_hp;
@@ -1619,13 +1782,16 @@ cefnetd_ccninfo_check_relpy_size(
 		tlv_ptr->length = htons (new_dsc_len);
 		msg[CefC_O_Fix_Type] 			= CefC_PT_REPLY;
 		msg[CefC_O_Fix_Ccninfo_RetCode] 	= CefC_CtRc_NO_SPACE;
-		
+
+		if ( ccninfo_flag & CefC_CtOp_ReqValidation )	/* ccninfo-05 */
+		{
 		/* Validation */
 		if ((new_pkt_len + vald_len) <= CCNINFO_MAX_REPLY_SIZE
 			&& (hdl->ccninfo_valid_type != CefC_T_ALG_INVALID)) {
 			CefT_Ccninfo_TLVs tlvs;
 			tlvs.alg.valid_type = hdl->ccninfo_valid_type;
 			new_pkt_len = cef_frame_ccninfo_vald_create_for_reply (msg, &tlvs);
+		}
 		}
 		return (new_pkt_len);
 	}
@@ -1897,8 +2063,8 @@ cefnetd_input_from_local_process (
 	unsigned char buff[CefC_Max_Length];
 	unsigned char* rsp_msg;
 	struct pollfd send_fds[1];
-	
-	rsp_msg = calloc(1, CefC_Max_Length);
+	char	user_id[512];
+	rsp_msg = calloc(1, CefC_Max_Length*10);
 	
 	/* Obtains the FD for local face 	*/
 	sock = cef_face_get_fd_from_faceid (CefC_Faceid_Local);
@@ -1945,7 +2111,6 @@ cefnetd_input_from_local_process (
 	
 	/* Checks whether frame(s) arrivals from the active local faces */
 	for (i = 0 ; i < hdl->app_fds_num ; i++) {
-		memset (buff, 0, CefC_Max_Length);
 		len = recv (hdl->app_fds[i], buff, CefC_Max_Length, 0);
 		
 		if (len > 0) {
@@ -1996,7 +2161,7 @@ cefnetd_input_from_local_process (
 				i--;
 			} else {
 				cefnetd_input_message_process (
-						hdl, CefC_Faceid_Local, hdl->app_faces[i], buff, len);
+						hdl, CefC_Faceid_Local, hdl->app_faces[i], buff, len, user_id);
 			}
 		}
 		else {
@@ -2111,13 +2276,19 @@ cefnetd_input_from_local_process (
 	}
 	else {
 		struct pollfd fds[1];
+		int kerrno;
+		kerrno = errno;
 		fds[0].fd = hdl->babel_sock;
 		fds[0].events = POLLIN | POLLERR;
 		poll (fds, 1, 0);
 		if (fds[0].revents & (POLLIN | POLLHUP)) {
-			cef_face_close (hdl->babel_face);
-			hdl->babel_sock = -1;
-			hdl->babel_face = -1;
+			if((fds[0].revents == POLLIN) && (kerrno == EAGAIN || kerrno == EWOULDBLOCK)) {
+				; // NOP
+			} else {			
+				cef_face_close (hdl->babel_face);
+				hdl->babel_sock = -1;
+				hdl->babel_face = -1;
+			}
 		}
 	}
 	
@@ -2152,6 +2323,7 @@ cefnetd_input_app_reg_command (
 	} else {
 		sprintf (cnd_dbg_msg, "Unreg(PIT) the application name filter [");
 	}
+#if 0
 	{
 		int dbg_x;
 		
@@ -2160,6 +2332,17 @@ cefnetd_input_app_reg_command (
 		}
 		cef_dbg_write (CefC_Dbg_Fine, "%s ]\n", cnd_dbg_msg);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+		
+		for (dbg_x = 0 ; dbg_x < pm->name_len ; dbg_x++) {
+			len = len + sprintf (cnd_dbg_msg + len, " %02X", pm->name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Fine, "%s ]\n", cnd_dbg_msg);
+	}
+#endif
 #endif // CefC_Debug
 	
 	/* Max Check */
@@ -2251,7 +2434,7 @@ cefnetd_input_app_reg_command (
 				if ( strncmp( uri, CefC_C3_URI_Prefix, CefC_C3_URI_Prefix_Len ) == 0 ) {
 					entry = (CefT_C3_LOG*)cef_hash_tbl_item_get( hdl->c3_log_sum_fib, pm->name, pm->name_len );
 					if ( entry == NULL ) {
-						/* V‹K */
+						/* NEW */
 						/* Create FIB SUM */
 						entry = cefnetd_c3_create_fib_sum( hdl, pm->name, pm->name_len );
 						if ( entry == NULL ) {
@@ -2307,7 +2490,7 @@ cefnetd_input_app_reg_command (
 	} else if (poh->app_reg_f == CefC_App_RegPit) {
 		unsigned char tmp_msg[1024];
 		/* Searches a PIT entry matching this Command 	*/
-		pe = cef_pit_entry_lookup (hdl->app_pit, pm, poh);
+		pe = cef_pit_entry_lookup (hdl->app_pit, pm, poh, NULL, 0);
 		if (pe == NULL) {
 			char uri[2048];
 			cef_frame_conversion_name_to_string (pm->name, pm->name_len, uri, "ccn");
@@ -2315,10 +2498,10 @@ cefnetd_input_app_reg_command (
 			return (1);
 		}
 		/* Updates the information of down face that this Command arrived 	*/
-		cef_pit_entry_down_face_update (pe, faceid, pm, poh, tmp_msg);
+		cef_pit_entry_down_face_update (pe, faceid, pm, poh, tmp_msg, CefC_IntRetrans_Type_SUP);	//0.8.3
 	} else {
 		/* Searches a PIT entry matching this Command 	*/
-		pe = cef_pit_entry_search (hdl->app_pit, pm, poh);
+		pe = cef_pit_entry_search (hdl->app_pit, pm, poh, NULL, 0);
 		if (pe != NULL) {
 			cef_pit_entry_free (hdl->app_pit, pe);
 		}
@@ -2498,7 +2681,8 @@ cefnetd_babel_process (
 	uint16_t length;
 	int rcu, rct;
 	char uri[CefC_Max_Length];
-	int change_f;
+//	int change_f;
+	int change_f = 0;
 
 #ifdef	CefC_C3
 	int	c3_f = 0;
@@ -2690,6 +2874,7 @@ cefnetd_input_control_message (
 	int rc, change_f;
 	unsigned char name[CefC_Max_Length];
 	int name_len;
+	CefT_Cefstatus_Msg	cefstaus_msg;
 	
 	if (memcmp (&msg[CefC_Ctrl_Len], CefC_Ctrl_Kill, CefC_Ctrl_Kill_Len) == 0) {
 		
@@ -2707,7 +2892,13 @@ cefnetd_input_control_message (
 		return (-1);
 	} else if (
 		memcmp (&msg[CefC_Ctrl_Len], CefC_Ctrl_Status, CefC_Ctrl_Status_Len) == 0) {
-		res = cef_status_stats_output (hdl, rspp);
+//		res = cef_status_stats_output (hdl, rspp);
+		memset( &cefstaus_msg, 0, sizeof(CefT_Cefstatus_Msg) );
+		memcpy( cefstaus_msg.msg, CefC_Ctrl_Status, CefC_Ctrl_Status_Len );
+		cefstaus_msg.resp_fd = fd;
+		write(hdl->cefstatus_pipe_fd[0], &cefstaus_msg, sizeof(CefT_Cefstatus_Msg));
+		memset( &cefstaus_msg, 0, sizeof(CefT_Cefstatus_Msg) );
+		return (-1);
 	} else if (memcmp (&msg[CefC_Ctrl_Len], CefC_Ctrl_Route, CefC_Ctrl_Route_Len) == 0) {
 		index = CefC_Ctrl_Len + CefC_Ctrl_Route_Len;
 		if ((memcmp (&msg[index], root_user_name, CefC_Ctrl_User_Len) == 0) ||
@@ -2791,9 +2982,9 @@ cefnetd_udp_input_process (
 	unsigned char buff[CefC_Max_Length];
 
 	sas_p = &sas;
+	char user_id[512];	//0.8.3
 	
 	/* Receives the message(s) from the specified FD */
-	memset (buff, 0, CefC_Max_Length);
 	recv_len
 		= recvfrom (fd, buff, CefC_Max_Length, 0, (struct sockaddr*) &sas, &sas_len);
 	
@@ -2801,10 +2992,11 @@ cefnetd_udp_input_process (
 
 	/* Looks up the peer Face-ID 		*/
 	protocol = cef_face_get_protocol_from_fd (fd);
-	peer_faceid = cef_face_lookup_peer_faceid (sas_p/*&sas*/, sas_len, protocol);
+	peer_faceid = cef_face_lookup_peer_faceid (sas_p/*&sas*/, sas_len, protocol, user_id);	//0.8.3
 	if (peer_faceid < 0) {
 		return (-1);
 	}
+
 #ifdef __APPLE__
 	{
 		CefT_Face*	face;
@@ -2866,8 +3058,41 @@ cefnetd_udp_input_process (
 	}
 #endif
 
+#if 0
+{
+	if ( hdl->bw_stat_hdl->stat_tbl_index_get ) {
+		/* Check BW_STAT_I */
+		int		bw_stat_idx;
+		int		if_name_len;
+		char	if_name[128];
+		bw_stat_idx = cef_face_bw_stat_i_get( peer_faceid );
+#ifdef	__INTEREST__
+		fprintf (stderr, "[%s] peer_faceid:%d   bw_stat_idx:%d   Type:%d\n", __func__, peer_faceid, bw_stat_idx,
+							cef_face_type_get(peer_faceid) );
+#endif
+		if ( bw_stat_idx != -1 ) {
+			/* NOP */
+		} else {
+			if_name_len = cef_face_ip_route_get( user_id, if_name );
+#ifdef	__INTEREST__
+		fprintf (stderr, "[%s] if_name:%s\n", __func__, if_name );
+#endif
+			if ( if_name_len > 0 ) {
+				bw_stat_idx = hdl->bw_stat_hdl->stat_tbl_index_get( if_name );
+#ifdef	__INTEREST__
+		fprintf (stderr, "[%s] bw_stat_idx:%d\n", __func__, bw_stat_idx );
+#endif
+				if ( bw_stat_idx >= 0 ) {
+					cef_face_bw_stat_i_set( peer_faceid, bw_stat_idx );
+				}
+			}
+		}
+	}
+}
+#endif
+
 	/* Handles the received CEFORE message 	*/
-	cefnetd_input_message_process (hdl, faceid, peer_faceid, buff, (int) recv_len);
+	cefnetd_input_message_process (hdl, faceid, peer_faceid, buff, (int) recv_len, user_id);
 
 	return (1);
 }
@@ -2883,9 +3108,9 @@ cefnetd_tcp_input_process (
 ) {
 	int recv_len;
 	unsigned char buff[CefC_Max_Length];
+	char	user_id[512];
 
 	/* Receives the message(s) from the specified FD */
-	memset (buff, 0, CefC_Max_Length);
 	recv_len = read (fd, buff, CefC_Max_Length);
 
 	if (recv_len <= 0) {
@@ -2897,9 +3122,50 @@ cefnetd_tcp_input_process (
 		return (1);
 	}
 	// TBD: process for the special message
+
+#ifndef CefC_Android
+	unsigned char peer_node_id[16];
+	char		addrstr[256];
+	int id_len;
+	id_len = cef_face_node_id_get (faceid, peer_node_id);
+	if ( id_len == 4 ) {
+		inet_ntop (AF_INET, peer_node_id, addrstr, sizeof (addrstr));
+	} else if ( id_len == 16 ) {
+		inet_ntop (AF_INET6, peer_node_id, addrstr, sizeof (addrstr));
+	} else {
+		addrstr[0] = 0x00;
+	}
+#endif // CefC_Android
+
+#if 0
+{
+	if ( hdl->bw_stat_hdl->stat_tbl_index_get ) {
+		/* Check BW_STAT_I */
+		int		bw_stat_idx;
+		int		if_name_len;
+		char	if_name[128];
+		bw_stat_idx = cef_face_bw_stat_i_get( faceid );
+#ifdef	__INTEREST__
+	fprintf (stderr, "[%s] faceid:%d   bw_stat_idx:%d\n", __func__, faceid, bw_stat_idx );
+#endif
+		if ( bw_stat_idx != -1 ) {
+			/* NOP */
+		} else {
+			if_name_len = cef_face_ip_route_get( addrstr, if_name );
+			if ( if_name_len > 0 ) {
+				bw_stat_idx = hdl->bw_stat_hdl->stat_tbl_index_get( if_name );
+				if ( bw_stat_idx >= 0 ) {
+					cef_face_bw_stat_i_set( faceid, bw_stat_idx );
+				}
+			}
+		}
+	}
+}
+#endif
 	
+	strcpy( user_id, addrstr );
 	/* Handles the received CEFORE message 	*/
-	cefnetd_input_message_process (hdl, faceid, faceid, buff, recv_len);
+	cefnetd_input_message_process (hdl, faceid, faceid, buff, recv_len, user_id);
 
 	return (1);
 }
@@ -2925,7 +3191,7 @@ cefnetd_csm_input_process (
 		cef_log_write (CefC_Log_Warn, 
 			"csmgr is down or connection refused, so mode moves to no cache\n");
 		csmgr_sock_close (hdl->cs_stat);
-		hdl->cs_stat->cache_type = CefC_Cache_Type_None;
+//		hdl->cs_stat->cache_type = CefC_Cache_Type_None;
 	}
 #else
 	cef_log_write (CefC_Log_Error, "Invalid input from csmgr\n");
@@ -4029,7 +4295,8 @@ cefnetd_input_message_process (
 	int peer_faceid, 							/* Face-ID to reply to the origin of 	*/
 												/* transmission of the message(s)		*/
 	unsigned char* msg, 						/* the received message(s)				*/
-	int msg_size								/* size of received message(s)			*/
+	int msg_size,								/* size of received message(s)			*/
+	char* user_id
 ) {
 	CefT_Face* face;
 	unsigned char* wp;
@@ -4037,7 +4304,6 @@ cefnetd_input_message_process (
 	uint16_t fdv_payload_len;
 	uint16_t fdv_header_len;
 	int res;
-	unsigned char buff[CefC_Max_Length];
 
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finer, 
@@ -4077,14 +4343,14 @@ cefnetd_input_message_process (
 			} else {
 				(*cefnetd_incoming_msg_process[face->rcv_buff[1]])
 					(hdl, faceid, peer_faceid,
-							face->rcv_buff, fdv_payload_len, fdv_header_len);
+							face->rcv_buff, fdv_payload_len, fdv_header_len, user_id);
 			}
 			
 			/* Updates the receive buffer 		*/
 			move_len = fdv_payload_len + fdv_header_len;
+
 			wp = face->rcv_buff + move_len;
-			memcpy (buff, wp, face->len - move_len);
-			memcpy (face->rcv_buff, buff, face->len - move_len);
+			memmove (face->rcv_buff, wp, face->len - move_len);
 			face->len -= move_len;
 		}
 	}
@@ -4106,8 +4372,7 @@ cefnetd_input_message_from_csmgr_process (
 	uint16_t fdv_payload_len;
 	uint16_t fdv_header_len;
 	int res;
-	unsigned char buff[CefC_Max_Length];
-	
+	char	user_id[512];
 	/* Handles the received message(s) 		*/
 	while (msg_size > 0) {
 		/* Calculates the size of the message which have not been yet handled 	*/
@@ -4138,14 +4403,13 @@ cefnetd_input_message_from_csmgr_process (
 					hdl->cs_stat->rcv_buff[1]);
 			} else {
 				(*cefnetd_incoming_csmgr_msg_process[hdl->cs_stat->rcv_buff[1]])
-					(hdl, 0, 0, hdl->cs_stat->rcv_buff, fdv_payload_len, fdv_header_len);
+					(hdl, 0, 0, hdl->cs_stat->rcv_buff, fdv_payload_len, fdv_header_len, user_id);
 			}
 			
 			/* Updates the receive buffer 		*/
 			move_len = fdv_payload_len + fdv_header_len;
 			wp = hdl->cs_stat->rcv_buff + move_len;
-			memcpy (buff, wp, hdl->cs_stat->rcv_len - move_len);
-			memcpy (hdl->cs_stat->rcv_buff, buff, hdl->cs_stat->rcv_len - move_len);
+			memmove( hdl->cs_stat->rcv_buff, wp, hdl->cs_stat->rcv_len - move_len);
 			hdl->cs_stat->rcv_len -= move_len;
 		}
 	}
@@ -4336,7 +4600,8 @@ cefnetd_incoming_interest_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) {
 	CefT_Parsed_Message pm;
 	CefT_Parsed_Opheader poh;
@@ -4358,11 +4623,23 @@ cefnetd_incoming_interest_process (
 	int i;
 	int tp_plugin_res = CefC_Pi_All_Permission;
 	uint16_t* fip;
+
+	unsigned char buff[CefC_Max_Length];	//0.8.3
+	int		face_type;						//0.8.3
+	int		bw_stat_idx = -1;
+	int		if_name_len;
+	char	if_name[128];
+
 	
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finer, 
 		"Process the Interest (%d bytes)\n", payload_len + header_len);
 #endif // CefC_Debug
+	
+#ifdef	__INTEREST__
+	fprintf (stderr, "[%s] IN   faceid:%d Local:%d  peer_faceid:%d Local:%d\n\n", __func__, faceid, cef_face_is_local_face(faceid), 
+							peer_faceid,  cef_face_is_local_face(peer_faceid) );
+#endif
 	
 	if (payload_len + header_len > CefC_Max_Msg_Size) {
 #ifdef CefC_Debug
@@ -4370,12 +4647,107 @@ cefnetd_incoming_interest_process (
 #endif // CefC_Debug
 		return (-1);
 	}
-	
+
 	/* Checks the Validation 			*/
 	res = cef_valid_msg_verify (msg, payload_len + header_len);
 	if (res != 0) {
 		return (-1);
 	}
+
+	//0.8.3
+	if ( hdl->bw_stat_hdl->stat_tbl_index_get ) {
+		face_type = cef_face_type_get(peer_faceid);
+		if ( face_type == CefC_Face_Type_Local ) {
+#ifdef	__INTEREST__
+			fprintf( stderr, "[%s] peer_faceid:%d CefC_Face_Type_Local \n", __func__, peer_faceid );
+#endif
+			goto SKIP_BW_STAT_CHECK;
+		} else if ( face_type == CefC_Face_Type_Udp ) {
+			/* UDP */
+			/* Check BW_STAT_I */
+			bw_stat_idx = cef_face_bw_stat_i_get( peer_faceid );
+#ifdef	__INTEREST__
+			fprintf (stderr, "[%s] peer_faceid:%d   bw_stat_idx:%d   Type:%d\n", __func__, peer_faceid, bw_stat_idx,
+								cef_face_type_get(peer_faceid) );
+#endif
+			if ( bw_stat_idx != -1 ) {
+				/* NOP */
+			} else {
+#ifdef	__INTEREST__
+				fprintf( stderr, "[%s] user_id=%s \n", __FUNCTION__, user_id );
+#endif
+				if_name_len = cef_face_ip_route_get( user_id, if_name );
+#ifdef	__INTEREST__
+				fprintf( stderr, "[%s] if_name:%s\n", __func__, if_name );
+#endif
+				if ( if_name_len > 0 ) {
+					bw_stat_idx = hdl->bw_stat_hdl->stat_tbl_index_get( if_name );
+#ifdef	__INTEREST__
+					fprintf( stderr, "[%s] bw_stat_idx:%d\n", __func__, bw_stat_idx );
+#endif
+					if ( bw_stat_idx >= 0 ) {
+						cef_face_bw_stat_i_set( peer_faceid, bw_stat_idx );
+					}
+				}
+			}
+			/* UDP END */
+		} else if ( face_type == CefC_Face_Type_Tcp ) {
+			/* TCP */
+			/* Check BW_STAT_I */
+			bw_stat_idx = cef_face_bw_stat_i_get( faceid );
+#ifdef	__INTEREST__
+			fprintf (stderr, "[%s] faceid:%d   bw_stat_idx:%d\n", __func__, faceid, bw_stat_idx );
+#endif
+			if ( bw_stat_idx != -1 ) {
+				/* NOP */
+			} else {
+#ifdef __INTEREST__
+				fprintf (stderr, "[%s] faceid:%d   peer_node_id:%s\n", __func__, faceid, user_id );
+#endif
+				if_name_len = cef_face_ip_route_get( user_id, if_name );
+				if ( if_name_len > 0 ) {
+					bw_stat_idx = hdl->bw_stat_hdl->stat_tbl_index_get( if_name );
+#ifdef	__INTEREST__
+					fprintf (stderr, "[%s] faceid:%d   bw_stat_idx:%d\n", __func__, faceid, bw_stat_idx );
+#endif
+					if ( bw_stat_idx >= 0 ) {
+						cef_face_bw_stat_i_set( faceid, bw_stat_idx );
+					}
+				}
+			}
+		} else {
+			return (-1);
+		}
+	}
+
+	if ( bw_stat_idx != -1 ) {
+		if ( hdl->bw_stat_hdl->stat_get ) {
+			/* Check BW_STAT */
+			double	bw_stat;
+			bw_stat_idx = cef_face_bw_stat_i_get( peer_faceid );
+#ifdef	__INTEREST__
+			fprintf (stderr, "[%s] bw_stat_idx:%d\n", __func__, bw_stat_idx );
+#endif
+			bw_stat = hdl->bw_stat_hdl->stat_get( bw_stat_idx );
+#ifdef	__INTEREST__
+			fprintf (stderr, "\t bw_stat:%f\n", bw_stat );
+#endif
+			if ( bw_stat > hdl->IR_Congesion ) {
+				//Interest Return 0x06:Congestion
+#ifdef	__INTEREST__
+	fprintf (stderr, "\t Interest Return 0x06:Congestion\n" );
+#endif
+				res = cef_frame_interest_return_create( msg, payload_len + header_len, buff, CefC_IR_CONGESION );
+				if ( res < 0 ) {
+					return(-1);
+				}
+				//send Force
+				cef_face_frame_send_forced (peer_faceid, buff, res);
+				return(-1);
+			}
+		}
+	}
+SKIP_BW_STAT_CHECK:;
 	
 	/* Parses the received Interest 	*/
 	res = cef_frame_message_parse (
@@ -4385,6 +4757,26 @@ cefnetd_incoming_interest_process (
 		cef_dbg_write (CefC_Dbg_Fine, "Detects the invalid Interest\n");
 #endif // CefC_Debug
 		return (-1);
+	}
+
+	//0.8.3 HopLimit=0 IR 0x02
+	if (pm.hoplimit < 1) {
+		if ( pm.AppComp_num > 0 ) {
+			/* Free AppComp */
+			cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+		}
+		//Interest Return 0x02:HopLimit Exceeded
+#ifdef	__INTEREST__
+	fprintf (stderr, "\t Interest Return 0x02:HopLimit Exceeded SendForce\n" );
+#endif
+		if ( hdl->IR_Option != 0 ) {	//202108
+			res = cef_frame_interest_return_create( msg, payload_len + header_len, buff, CefC_IR_HOPLIMIT_EXCEEDED );
+			if ( res < 0 ) {
+				return(-1);
+			}
+			cef_face_frame_send_forced (peer_faceid, buff, res);
+		}	//202108
+		return(-1);
 	}
 
 #ifdef	CefC_C3
@@ -4435,7 +4827,7 @@ cefnetd_incoming_interest_process (
 								entry->c3_join_R++;
 							}
 							
-							pe = cef_pit_entry_search (hdl->pit, &pm, &poh);
+							pe = cef_pit_entry_search (hdl->pit, &pm, &poh, NULL, 0);
 							if ( pe == NULL ) {
 #ifdef CefC_Debug
 							{
@@ -4515,6 +4907,7 @@ cefnetd_incoming_interest_process (
 	}
 
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 //		unsigned char pubkey[CefC_Max_Length];
@@ -4527,6 +4920,21 @@ cefnetd_incoming_interest_process (
 		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
 //		cef_valid_get_pubkey (msg, pubkey);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+//		unsigned char pubkey[CefC_Max_Length];
+		
+		len = sprintf (cnd_dbg_msg, "Interest's Name [");
+		
+		for (dbg_x = 0 ; dbg_x < pm.name_len ; dbg_x++) {
+			len = len + sprintf (cnd_dbg_msg + len, " %02X", pm.name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
+//		cef_valid_get_pubkey (msg, pubkey);
+	}
+#endif
 #endif // CefC_Debug
 
 #ifdef CefC_Ser_Log
@@ -4554,8 +4962,27 @@ cefnetd_incoming_interest_process (
 		return (1);
 	}
 	
+	//0.8.3	Symbolic/Osymbilic Check PIT
+	if ( (pm.InterestType == CefC_PIT_TYPE_Sym)
+	   ) {
+		res = cef_pit_symbolic_pit_check( hdl->pit, &pm, &poh );
+		if ( res < 0 ) {
+			return (-1);
+		}
+	}
+	//0.8.3 Selective
+	if ( pm.InterestType == CefC_PIT_TYPE_Sel ) {
+		res = cefnetd_incoming_selective_interest_process (
+			hdl, faceid, peer_faceid, msg, payload_len, header_len, &pm, &poh);
+		if ( res < 0 ) {
+			return(-1);
+		}
+		return (1);
+	}
+	
+	
 	/* Searches a PIT entry matching this Interest 	*/
-	pe = cef_pit_entry_lookup (hdl->pit, &pm, &poh);
+	pe = cef_pit_entry_lookup (hdl->pit, &pm, &poh, NULL, 0);
 
 	if (pe == NULL) {
 		return (-1);
@@ -4567,7 +4994,26 @@ cefnetd_incoming_interest_process (
 #endif // CefC_ContentStore
 	
 	/* Updates the information of down face that this Interest arrived 	*/
-	pit_res = cef_pit_entry_down_face_update (pe, peer_faceid, &pm, &poh, msg);
+	pit_res = cef_pit_entry_down_face_update (pe, peer_faceid, &pm, &poh, msg, hdl->IntrestRetrans);	//0.8.3
+
+	//0.8.3 HopLimit==1
+	if (pm.hoplimit == 1) {
+		//Interest Return 0x02:HopLimit Exceeded
+#ifdef	__INTEREST__
+	fprintf (stderr, "\t Interest Return 0x02:HopLimit Exceeded HoldPIT\n" );
+#endif
+		if ( hdl->IR_Option != 0 ) {	//202108
+		res = cef_frame_interest_return_create( msg, payload_len + header_len, buff, CefC_IR_HOPLIMIT_EXCEEDED );
+			if ( res < 0 ) {
+				return(-1);
+			}
+			//Hold pe peer_faceid
+			res = cef_pit_interest_return_set( pe, &pm, &poh, peer_faceid, CefC_IR_HOPLIMIT_EXCEEDED, res, buff );
+			if ( res < 0 ) {
+				/* */
+			}
+		}	//202108
+	}
 	
 	/* Searches a FIB entry matching this Interest 		*/
 	if (pm.chnk_num_f) {
@@ -4722,11 +5168,8 @@ cefnetd_incoming_interest_process (
 		}
 		
 		/* Checks Content Store */
-		if (hdl->cs_stat->cache_type != CefC_Default_Cache_Type) {
-#if 0
-		if ((hdl->cs_stat->cache_type != CefC_Default_Cache_Type) && 
-			((poh.lifetime_f) && (poh.lifetime > 0))) {
-#endif			
+		if (hdl->cs_stat->cache_type != CefC_Default_Cache_Type) {	//#938
+			
 			/* Checks the temporary/local cache in cefnetd 		*/
 			unsigned char* cob = NULL;
 			cs_res = cef_csmgr_cache_lookup (hdl->cs_stat, peer_faceid, &pm, &poh, pe, &cob);
@@ -4789,10 +5232,7 @@ FORWARD_INTEREST:
 		}
 		
 		/* Checks Content Store */
-		if ((poh.lifetime_f) && (poh.lifetime > 0) && (pm.app_comp == CefC_T_APP_DTC)) {
-#if 0
-		if ((poh.lifetime_f) && (poh.lifetime > 0) && (pm.app_comp == CefC_T_APP_DTC)) {
-#endif
+		if ((pm.app_comp == CefC_T_APP_DTC)) {		//#938
 			/* Checks the temporary cache in cefnetd 		*/
 			unsigned char* cob = NULL;
 			cs_res = cef_csmgr_cache_lookup (hdl->cs_stat, peer_faceid, &pm, &poh, pe, &cob);
@@ -4881,7 +5321,54 @@ FORWARD_INTEREST:
 			);
 			return (1);
 		}
-		
+
+		//0.8.3
+		else {
+			if ((forward_interest_f) && (pit_res)) {
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "[%s] IR:NO_ROUTE\n", __func__ );
+#endif
+				//Interest Return 0x01:NO Route
+#ifdef	__INTEREST__
+	fprintf (stderr, "\t Interest Return 0x01:NO Route HoldPIT\n" );
+#endif
+				if ( hdl->IR_Option != 0 ) {	//202108
+					res = cef_frame_interest_return_create( msg, payload_len + header_len, buff, CefC_IR_NO_ROUTE);
+					if ( (hdl->cs_mode == 2) || (hdl->cs_mode == 3) ) {
+						//Hold pe peer_faceid
+						res = cef_pit_interest_return_set( pe, &pm, &poh, peer_faceid, CefC_IR_NO_ROUTE, res, buff );
+						if ( res < 0 ) {
+							/* */
+						}
+					} else {
+						/* IR Send */
+						cef_face_frame_send_forced (peer_faceid, buff, res);
+					}
+				}	//202108
+				return(-1);
+			}
+			else {	//20210628
+				//Interest Return 0x01:NO Route
+#ifdef	__INTEREST__
+	fprintf (stderr, "\t Interest Return 0x01:NO Route HoldPIT\n" );
+#endif
+				if ( hdl->IR_Option != 0 ) {	//202108
+					res = cef_frame_interest_return_create( msg, payload_len + header_len, buff, CefC_IR_NO_ROUTE);
+					if ( (hdl->cs_mode == 2) || (hdl->cs_mode == 3) ) {
+						//Hold pe peer_faceid
+						res = cef_pit_interest_return_set( pe, &pm, &poh, peer_faceid, CefC_IR_NO_ROUTE, res, buff );
+						if ( res < 0 ) {
+							/* */
+						}
+					} else {
+						/* IR Send */
+						cef_face_frame_send_forced (peer_faceid, buff, res);
+					}
+				}	//202108
+				return(-1);
+			}	//20210628
+		}
+
 #ifdef CefC_NdnPlugin
 		if ((hdl->plugin_hdl.ndn)->cef_int) {
 			if (pe) {
@@ -5020,7 +5507,7 @@ cefnetd_incoming_interest_with_symbolic_code_process (
 			pm->chnk_num_f 	= 1;
 			pm->chnk_num 	= trg_seq;
 			
-			pe = cef_pit_entry_lookup (hdl->pit, pm, poh);
+			pe = cef_pit_entry_lookup (hdl->pit, pm, poh, NULL, 0);
 			
 			if (pe == NULL) {
 				return (-1);
@@ -5031,7 +5518,7 @@ cefnetd_incoming_interest_with_symbolic_code_process (
 #endif // CefC_ContentStore
 			
 			/* Updates the information of down face that this Interest arrived 	*/
-			cef_pit_entry_down_face_update (pe, peer_faceid, pm, poh, msg);
+			cef_pit_entry_down_face_update (pe, peer_faceid, pm, poh, msg, hdl->IntrestRetrans);	//0.8.3
 			
 			for (n = 0 ; n < face_num ; n++) {
 				cef_pit_entry_up_face_update (pe, faceids[n], pm, poh);
@@ -5045,11 +5532,7 @@ cefnetd_incoming_interest_with_symbolic_code_process (
 			}
 			
 			/* Checks Content Store */
-			if (hdl->cs_stat->cache_type != CefC_Default_Cache_Type) {
-#if 0
-			if ((hdl->cs_stat->cache_type != CefC_Default_Cache_Type) &&
-				((poh->lifetime_f) && (poh->lifetime > 0))) {
-#endif
+			if (hdl->cs_stat->cache_type != CefC_Default_Cache_Type) {		//#938
 				
 				/* Checks dnface reply flag */
 				res = cef_csmgr_rep_f_check (pe, peer_faceid);
@@ -5122,12 +5605,12 @@ cefnetd_incoming_interest_with_symbolic_code_process (
 	
 	/* Obtains Face-ID(s) to forward the Interest */
 	if (fe) {
-		pe = cef_pit_entry_lookup (hdl->pit, pm, poh);
+		pe = cef_pit_entry_lookup (hdl->pit, pm, poh, NULL, 0);
 		
 		if (pe == NULL) {
 			return (-1);
 		}
-		cef_pit_entry_down_face_update (pe, peer_faceid, pm, poh, msg);
+		cef_pit_entry_down_face_update (pe, peer_faceid, pm, poh, msg, hdl->IntrestRetrans);	//0.8.3
 		
 		/* Updates the T_INNOVATIVE and T_NUMBER 		*/
 		if (response_num > 0) {
@@ -5181,7 +5664,8 @@ cefnetd_incoming_object_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) {
 	CefT_Parsed_Message pm;
 	CefT_Parsed_Opheader poh;
@@ -5200,11 +5684,22 @@ cefnetd_incoming_object_process (
 	CefT_Rx_Elem elem;
 	int i;
 	int tp_plugin_res = CefC_Pi_All_Permission;
+#ifndef	CefC_Nwproc
+	//0.8.3
+	int	hit_with_chunk_f;
+	hit_with_chunk_f = 0;
+#endif
+	uint16_t pkt_len = 0;	//0.8.3
+	
 	
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finer, 
 		"Process the Content Object (%d bytes)\n", payload_len + header_len);
 #endif // CefC_Debug
+
+#ifdef	__SYMBOLIC__
+	fprintf( stderr, "[%s] IN msg (%d bytes) \n", __func__, payload_len + header_len );
+#endif
 	
 	if (payload_len + header_len > CefC_Max_Msg_Size) {
 #ifdef CefC_Debug
@@ -5213,10 +5708,15 @@ cefnetd_incoming_object_process (
 
 		return (-1);
 	}
-	
+
+	pkt_len = payload_len + header_len;	//0.8.3
+
 	/* Checks the Validation 			*/
 	res = cef_valid_msg_verify (msg, payload_len + header_len);
 	if (res != 0) {
+#ifdef	__VALID_NG__
+		fprintf( stderr, "[%s] Validation NG\n", __func__ );
+#endif
 		return (-1);
 	}
 	
@@ -5291,6 +5791,7 @@ cefnetd_incoming_object_process (
 
 
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 //		unsigned char pubkey[CefC_Max_Length];
@@ -5303,6 +5804,21 @@ cefnetd_incoming_object_process (
 		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
 //		cef_valid_get_pubkey (msg, pubkey);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+//		unsigned char pubkey[CefC_Max_Length];
+		
+		len = sprintf (cnd_dbg_msg, "Object's Name [");
+		
+		for (dbg_x = 0 ; dbg_x < pm.name_len ; dbg_x++) {
+			len = len + sprintf (cnd_dbg_msg + len, " %02X", pm.name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
+//		cef_valid_get_pubkey (msg, pubkey);
+	}
+#endif
 #endif // CefC_Debug
 	
 	/* Checks whether this Object is the command or not */
@@ -5387,7 +5903,7 @@ SKIP_CACHE:
 						pm.name_wo_cid, pm.name_wo_cid_len, &pm, &poh);
 			}
 #else // CefC_Nwproc
-			pe = cef_pit_entry_search (hdl->app_pit, &pm, &poh);
+			pe = cef_pit_entry_search_with_chunk (hdl->app_pit, &pm, &poh);	//0.8.3
 #endif // CefC_Nwproc
 		} else {
 			if (pit_idx == 1) {
@@ -5398,15 +5914,99 @@ SKIP_CACHE:
 				pe = cef_pit_entry_search_specified_name (hdl->pit,
 								pm.name_wo_cid, pm.name_wo_cid_len, &pm, &poh, 1);
 #else // CefC_Nwproc
-				pe = cef_pit_entry_search (hdl->pit, &pm, &poh);
+				pe = cef_pit_entry_search_with_chunk (hdl->pit, &pm, &poh);	//0.8.3
 #endif // CefC_Nwproc
 			}
 		}
+
+#ifdef	CefC_Nwproc
 		if (pe == NULL) {
 			continue;
 		}
+#else
+		if ((pe == NULL) && (pit_idx == 0)) {
+#ifdef	__SYMBOLIC__
+	fprintf( stderr, "\t pe:NULL pit_idx:%d \n", pit_idx );
+#endif
+			continue;
+		} else if ((pe == NULL) && (pit_idx == 1)) {
+			hit_with_chunk_f = 0;	//0.8.3
+#ifdef	__SYMBOLIC__
+	fprintf( stderr, "\t pe:NULL pit_idx:%d \n", pit_idx );
+#endif
+		} else if ((pe) && (pit_idx == 1)){
+			hit_with_chunk_f = 1;	//0.8.3
+#ifdef	__SYMBOLIC__
+	fprintf( stderr, "\t pe:NOT NULL pit_idx:%d \n", pit_idx );
+#endif
+		}
+#endif
 
 		if (pe) {
+			//0.8.3
+			if ( pe->COBHR_len > 0 ) {
+				/* CobHash */
+				SHA256_CTX		ctx;
+				uint16_t		CobHash_index;
+				uint16_t		CobHash_len;
+				unsigned char 	hash[SHA256_DIGEST_LENGTH];
+
+				CobHash_index = header_len;
+				CobHash_len   = payload_len;
+				SHA256_Init (&ctx);
+				SHA256_Update (&ctx, &msg[CobHash_index], CobHash_len);
+				SHA256_Final (hash, &ctx);
+#ifdef	__RESTRICT__
+{
+	int hidx;
+	char	hash_dbg[1024];
+
+	printf ( "%s\n", __func__ );
+	sprintf (hash_dbg, "PIT CobHash [");
+	for (hidx = 0 ; hidx < 32 ; hidx++) {
+		sprintf (hash_dbg, "%s %02X", hash_dbg, pe->COBHR_selector[hidx]);
+	}
+	sprintf (hash_dbg, "%s ]\n", hash_dbg);
+	printf( "%s", hash_dbg );
+
+	sprintf (hash_dbg, "OBJ CobHash [");
+	for (hidx = 0 ; hidx < 32 ; hidx++) {
+		sprintf (hash_dbg, "%s %02X", hash_dbg, pe->COBHR_selector[hidx]);
+	}
+	sprintf (hash_dbg, "%s ]\n", hash_dbg);
+	printf( "%s", hash_dbg );
+}
+#endif
+
+				if ( memcmp(pe->COBHR_selector, hash, 32) == 0 ) {
+					/* OK */
+				} else {
+					/* NG */
+					if ( pm.AppComp_num > 0 ) {
+						/* Free AppComp */
+						cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+					}
+					return (-1);
+				}
+			}
+			if ( pe->KIDR_len > 0 ) {
+				/* KeyIdRest */
+				int keyid_len;
+				unsigned char keyid_buff[32];
+				keyid_len = cefnetd_keyid_get( msg, pkt_len, keyid_buff );
+				if ( (keyid_len == 32) && (memcmp(pe->KIDR_selector, keyid_buff, 32) == 0) ) {
+					/* OK */
+				} else {
+					/* NG */
+					if ( pm.AppComp_num > 0 ) {
+						/* Free AppComp */
+						cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+					}
+					return (-1);
+				}
+			}
+			
+//		if (pe) {
 			face = &(pe->dnfaces);
 			
 			while (face->next) {
@@ -5425,12 +6025,13 @@ SKIP_CACHE:
 				(*((hdl->plugin_hdl.ndn))->cef_cob)(
 					hdl->plugin_hdl.ndn, msg, payload_len + header_len, &pm, &poh);
 			}
-#endif // CefC_NdnPlugin
+//#endif // CefC_NdnPlugin
 			if ( pm.AppComp_num > 0 ) {
 				/* Free AppComp */
 				cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
 			}
 			return (-1);
+#endif // CefC_NdnPlugin
 		}
 
 #ifdef CefC_Mobility
@@ -5506,6 +6107,7 @@ SKIP_CACHE:
 				if (pe->stole_f) {
 					cef_pit_entry_free (hdl->pit, pe);
 				}
+
 				if(pit_idx == 0) {
 					if ( pm.AppComp_num > 0 ) {
 						/* Free AppComp */
@@ -5514,6 +6116,45 @@ SKIP_CACHE:
 					return (1);
 				}
 			}
+
+//0.8.3	S
+#ifndef	CefC_Nwproc
+#ifdef	__SYMBOLIC__
+	fprintf( stderr, "\t CKP-010 \n" );
+#endif
+				if(pit_idx == 1) {
+					for (i = 0; i < face_num; i++)
+						faceids[i] = 0;
+					face_num = 0;
+					pe = NULL;
+					pe = cef_pit_entry_search_without_chunk (hdl->pit, &pm, &poh);
+					if ( pe == NULL ) {
+						/* NOP */
+					} else {
+						//Symbolic/Osyimbolic
+						face = &(pe->dnfaces);
+			
+						while (face->next) {
+							face = face->next;
+							faceids[face_num] = face->faceid;
+							face_num++;
+						}
+						if (face_num > 0) {
+							if ( (pe->PitType == CefC_PIT_TYPE_Sym) && (hit_with_chunk_f == 0 || hit_with_chunk_f == 1) ) {
+								if ( (pe->Last_chunk_num - hdl->SymbolicBack) <= pm.chnk_num ) {
+									cefnetd_object_forward (hdl, faceids, face_num, msg,
+										payload_len, header_len, &pm, &poh, pe);
+									if ( pe->Last_chunk_num < pm.chnk_num ) {
+										pe->Last_chunk_num = pm.chnk_num;
+									}
+								}
+							}
+						}
+					}
+				}
+#endif
+//0.8.3	E
+			
 		}
 	
 		for (i = 0; i < face_num; i++)
@@ -5539,9 +6180,266 @@ cefnetd_incoming_intreturn_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) {
-	// TODO
+	//0.8.3
+	CefT_Parsed_Message pm;
+	CefT_Parsed_Opheader poh;
+	CefT_Pit_Entry* pe = NULL;
+#ifndef CefC_Nwproc
+	int loop_max = 2;						/* For App(0), Trans(1)						*/
+#else // CefC_Nwproc
+	int loop_max = 3;						/* For App(0), Retrans(1), Trans(2)			*/
+	CefT_Face* rcvd_face;
+#endif // CefC_Nwproc
+	int pit_idx = 0;
+	int res;
+	uint16_t faceids[CefC_Fib_UpFace_Max];
+	uint16_t face_num = 0;
+	CefT_Down_Faces* face;
+	int i;
+	int tp_plugin_res = CefC_Pi_All_Permission;
+#ifndef	CefC_Nwproc
+
+#endif
+	
+
+	//202108
+	if ( hdl->IR_Option == 0 ) {
+		return( -1 );
+	}
+	
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Finer, 
+		"Process the Interest Return (%d bytes)\n", payload_len + header_len);
+#endif // CefC_Debug
+	
+	if (payload_len + header_len > CefC_Max_Msg_Size) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Interest Return is too large\n");
+#endif // CefC_Debug
+
+		return (-1);
+	}
+	
+	/* Checks the Validation 			*/
+	res = cef_valid_msg_verify (msg, payload_len + header_len);
+	if (res != 0) {
+		return (-1);
+	}
+	
+	res = cef_frame_message_parse (
+					msg, payload_len, header_len, &poh, &pm, CefC_PT_INTRETURN);
+	if (res < 0) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Detects the invalid Interest Return\n");
+#endif // CefC_Debug
+		if ( pm.AppComp_num > 0 ) {
+			/* Free AppComp */
+			cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+		}
+		return (-1);
+	}
+
+#ifdef	CefC_C3
+	{
+	if ( pm.org.c3_f != CefC_NOT_C3 ) {
+		if ( hdl->c3_log == 1 ) {
+			CefT_C3_LOG* entry;
+			CefT_AppComp*	AppComp_p;
+			CefT_AppComp*	next_AppComp_p;
+			int				pd_idx;
+
+			entry = (CefT_C3_LOG*)cefnetd_c3_log_sum_fib_entry_search( hdl->c3_log_sum_fib, pm.name, pm.name_len );
+			if ( entry == NULL ) {
+				/* Logical contradiction */
+				cef_log_write (CefC_Log_Warn, "cefnetd_incoming_intreturn_process() C3_hash Logical contradiction.\n");
+				if ( pm.AppComp_num > 0 ) {
+					/* Free AppComp */
+					cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+				}
+				return( -1 );
+			} else {
+				switch ( pm.org.c3_f ) {
+					case	CefC_C3_JOIN:
+						if ( pm.org.longlife_f == 1 ) {
+							entry->c3_join_L++;
+						} else {
+							entry->c3_join_R++;
+						}
+						break;
+					case	CefC_C3_LEAVE:
+						entry->c3_leave++;
+						break;
+					case	CefC_C3_PUBLISH:
+						entry->c3_publish++;
+						if ( pm.AppComp_num > 0 ) {
+							AppComp_p = pm.AppComp;
+							next_AppComp_p = NULL;
+							while( AppComp_p ) {
+								next_AppComp_p = (CefT_AppComp*)AppComp_p->next_p;
+								pd_idx = AppComp_p->app_comp - T_APP;
+								if ( pd_idx >= CefC_C3_LOG_TAPP_MAX-1 ) {
+									entry->c3_publish_data[CefC_C3_LOG_TAPP_MAX-1]++;
+								} else {
+									entry->c3_publish_data[pd_idx]++;
+								}
+								AppComp_p = next_AppComp_p;
+							}
+						}
+						break;
+				}
+			}
+		}
+	}
+	}
+#endif	// CefC_C3
+
+#ifdef CefC_Debug
+#if 0
+	{
+		int dbg_x;
+//		unsigned char pubkey[CefC_Max_Length];
+		
+		sprintf (cnd_dbg_msg, "Interest Return's Name [");
+		
+		for (dbg_x = 0 ; dbg_x < pm.name_len ; dbg_x++) {
+			sprintf (cnd_dbg_msg, "%s %02X", cnd_dbg_msg, pm.name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
+//		cef_valid_get_pubkey (msg, pubkey);
+	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+//		unsigned char pubkey[CefC_Max_Length];
+		
+		len = sprintf (cnd_dbg_msg, "Interest Return's Name [");
+		
+		for (dbg_x = 0 ; dbg_x < pm.name_len ; dbg_x++) {
+			len = len + sprintf (cnd_dbg_msg + len, " %02X", pm.name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
+//		cef_valid_get_pubkey (msg, pubkey);
+	}
+#endif
+#endif // CefC_Debug
+	
+#ifdef CefC_Nwproc
+	/* Obtains the face structure corresponding to the received Face-ID 	*/
+	rcvd_face = cef_face_get_face_from_faceid (faceid);
+	if (rcvd_face->local_f) {
+		pe = cef_pit_entry_search_specified_name_for_app (hdl->app_pit, 
+					pm.name_wo_cid, pm.name_wo_cid_len, &pm, &poh);
+		if (pe != NULL) {
+			CefT_Down_Faces* dnface = &(pe->dnfaces);
+			while (dnface->next) {
+				dnface = dnface->next;
+				/* This object was received from the local face,			*/
+				/* and was received from External Processing Part,			*/
+				/* so do not cache to Content Store.						*/
+				/* And do not search FIB for App in subsequent processing.	*/
+				if (dnface->faceid == peer_faceid) {
+					pit_idx = 1;
+					goto SKIP_CACHE;
+				}
+			}
+		}
+	}
+#endif // CefC_Nwproc
+
+	/* Searches a PIT entry matching this InterestReturn 	*/	
+	/* Initialize the loop counter */
+	pit_idx = 0;
+
+#ifdef CefC_Nwproc
+SKIP_CACHE:
+#endif // CefC_Nwproc
+
+	for (; pit_idx < loop_max; pit_idx++) {
+		if (pit_idx == 0) {
+#ifdef CefC_Nwproc
+			if (pe == NULL) {
+				pe = cef_pit_entry_search_specified_name_for_app (hdl->app_pit, 
+						pm.name_wo_cid, pm.name_wo_cid_len, &pm, &poh);
+			}
+#else // CefC_Nwproc
+			pe = cef_pit_entry_search (hdl->app_pit, &pm, &poh, NULL, 0);
+#endif // CefC_Nwproc
+		} else {
+			if (pit_idx == 1) {
+#ifdef CefC_Nwproc
+				pe = cef_pit_entry_search_specified_name (hdl->pit,
+								pm.name, pm.name_len, &pm, &poh, 0);
+			} else {
+				pe = cef_pit_entry_search_specified_name (hdl->pit,
+								pm.name_wo_cid, pm.name_wo_cid_len, &pm, &poh, 1);
+#else // CefC_Nwproc
+				pe = cef_pit_entry_search (hdl->pit, &pm, &poh, NULL, 0);
+#endif // CefC_Nwproc
+			}
+		}
+		if (pe == NULL) {
+			continue;
+		}
+
+		if (pe) {
+			face = &(pe->dnfaces);
+			
+			while (face->next) {
+				face = face->next;
+				faceids[face_num] = face->faceid;
+				face_num++;
+			}
+#ifdef CefC_Innovate_Debug
+			fprintf (stderr, "# HIT PIT : %u\n", pm.chnk_num);
+#endif // CefC_Innovate_Debug
+		} else {
+			if ( pm.AppComp_num > 0 ) {
+				/* Free AppComp */
+				cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+			}
+			return (-1);
+		}
+
+		/*--------------------------------------------------------------------
+			Forwards the Interest Return
+		----------------------------------------------------------------------*/
+		if (tp_plugin_res & CefC_Pi_Object_Send) {
+			if (face_num > 0) {
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Finer, "Forward the Interest Return cefnetd(s)\n");
+#endif // CefC_Debug
+				cefnetd_object_forward (hdl, faceids, face_num, msg,
+					payload_len, header_len, &pm, &poh, pe);
+					
+				if (pe->stole_f) {
+					cef_pit_entry_free (hdl->pit, pe);
+				}
+
+				if(pit_idx == 0) {
+					if ( pm.AppComp_num > 0 ) {
+						/* Free AppComp */
+						cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+					}
+					return (1);
+				}
+
+			}
+		}
+	
+		for (i = 0; i < face_num; i++)
+			faceids[i] = 0;
+		face_num = 0;
+		pe = NULL;
+	}
+	if ( pm.AppComp_num > 0 ) {
+		/* Free AppComp */
+		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+	}
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -5590,6 +6488,7 @@ cefnetd_incoming_piggyback_process (
 		return (-1);
 	}
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 		
@@ -5600,6 +6499,19 @@ cefnetd_incoming_piggyback_process (
 		}
 		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+		
+		len = sprintf (cnd_dbg_msg, "Piggyback Interest's Name [");
+		
+		for (dbg_x = 0 ; dbg_x < pm.name_len ; dbg_x++) {
+			len = len + sprintf (cnd_dbg_msg+ len, " %02X", pm.name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
+	}
+#endif
 #endif // CefC_Debug
 	
 #ifdef CefC_ContentStore
@@ -5618,7 +6530,7 @@ cefnetd_incoming_piggyback_process (
 		pm.name_len -= (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
 	}
 	
-	pe = cef_pit_entry_search (hdl->pit, &pm, &poh);
+	pe = cef_pit_entry_search (hdl->pit, &pm, &poh, NULL, 0);
 	
 	if (pe) {
 		face = &(pe->dnfaces);
@@ -5653,7 +6565,8 @@ cefnetd_incoming_pingreq_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) {
 #ifdef CefC_Cefping
 	CefT_Parsed_Message pm;
@@ -5703,6 +6616,7 @@ cefnetd_incoming_pingreq_process (
 		return (-1);
 	}
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 		
@@ -5713,6 +6627,19 @@ cefnetd_incoming_pingreq_process (
 		}
 		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+		
+		len = sprintf (cnd_dbg_msg, "Ping Request's Name [");
+		
+		for (dbg_x = 0 ; dbg_x < pm.name_len ; dbg_x++) {
+			len = len + sprintf (cnd_dbg_msg + len, " %02X", pm.name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
+	}
+#endif
 #endif // CefC_Debug
 	
 #ifdef CefC_ContentStore
@@ -5814,14 +6741,14 @@ cefnetd_incoming_pingreq_process (
 	}
 	
 	/* Searches a PIT entry matching this request 	*/
-	pe = cef_pit_entry_lookup (hdl->pit, &pm, &poh);
+	pe = cef_pit_entry_lookup (hdl->pit, &pm, &poh, NULL, 0);
 	
 	if (pe == NULL) {
 		return (-1);
 	}
 	
 	/* Updates the information of down face that this request arrived 	*/
-	res = cef_pit_entry_down_face_update (pe, peer_faceid, &pm, &poh, msg);
+	res = cef_pit_entry_down_face_update (pe, peer_faceid, &pm, &poh, msg, CefC_IntRetrans_Type_SUP);
 	
 	/* Forwards the received Cefping Request */
 	if (res != 0) {
@@ -5844,7 +6771,8 @@ cefnetd_incoming_pingrep_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) {
 #ifdef CefC_Cefping
 	CefT_Parsed_Message pm;
@@ -5882,6 +6810,7 @@ cefnetd_incoming_pingrep_process (
 		return (-1);
 	}
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 		
@@ -5892,10 +6821,23 @@ cefnetd_incoming_pingrep_process (
 		}
 		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+		
+		len = sprintf (cnd_dbg_msg, "Ping Response's Name [");
+		
+		for (dbg_x = 0 ; dbg_x < pm.name_len ; dbg_x++) {
+			len = len + sprintf (cnd_dbg_msg + len, " %02X", pm.name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
+	}
+#endif
 #endif // CefC_Debug
 	
 	/* Searches a PIT entry matching this replay 	*/
-	pe = cef_pit_entry_search (hdl->pit, &pm, &poh);
+	pe = cef_pit_entry_search (hdl->pit, &pm, &poh, NULL, 0);
 	
 	if (pe) {
 		face = &(pe->dnfaces);
@@ -5931,7 +6873,8 @@ cefnetd_incoming_ccninforeq_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) {
 #ifdef CefC_Ccninfo
 	CefT_Parsed_Message pm;
@@ -5949,13 +6892,19 @@ cefnetd_incoming_ccninforeq_process (
 	struct timeval t;
 	uint16_t* fip;
 	unsigned int responder_mtu;
+	// ccninfo-03
+	CefT_Parsed_Ccninfo	pci;
+	CEF_FRAME_SKIPHOP_T	w_skiphop;
+	unsigned char ccninfo_pit[1024];
+	int			  ccninfo_pit_len;
+	int			  detect_loop = 0;
 	
 #ifndef CefC_Android
 	unsigned char peer_node_id[16];
 	unsigned char node_id[16];
 #endif // CefC_Android
 	
-	unsigned char stamp_node_id[16] = {0};
+	unsigned char stamp_node_id[16] = {0};	/* Not Use */
 	int id_len = -1;
 
 	pkt_len = header_len + payload_len;
@@ -5964,12 +6913,23 @@ cefnetd_incoming_ccninforeq_process (
 	cef_dbg_write (CefC_Dbg_Finer, 
 		"Process the Ccninfo Request (%d bytes)\n", payload_len + header_len);
 #endif // CefC_Debug
+
+#ifdef	DEB_CCNINFO
+	printf( "[%s] Ccninfo Request (%d bytes)\n",
+			"cefnetd_incoming_ccninforeq_process", payload_len + header_len );
+#endif
 	
 	/* Check the message size 		*/
 	if (payload_len + header_len > CefC_Max_Msg_Size) {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Ccninfo Request is too large\n");
 #endif // CefC_Debug
+
+#ifdef	DEB_CCNINFO
+		fprintf( stderr, "[%s] return(-1) Ccninfo Request is too large\n",
+				"cefnetd_incoming_ccninforeq_process" );
+#endif
+
 		return (-1);
 	}
 
@@ -5988,26 +6948,50 @@ cefnetd_incoming_ccninforeq_process (
 		/* Free AppComp */
 		cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
 	}
-
 	if (res < 0) {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Detects the invalid Ccninfo Request\n");
 #endif // CefC_Debug
 		return (-1);
 	}
+
+
+	/* Parses the received Ccninfo ccninfo-03	*/
+	res = cef_frame_ccninfo_parse (msg, &pci);
+	if (res < 0) {
+		cef_frame_ccninfo_parsed_free (&pci);
+		return(-1);
+	}
+#ifdef DEB_CCNINFO
+	cefnetd_dbg_cpi_print ( &pci );
+#endif
+
+	/* ccninfo-03 Loop check */
+	res = cefnetd_ccninfo_loop_check( hdl, &pci );
+	if ( res < 0 ) {
+		/* Detect Loop */
+		detect_loop = 1;
+	} else {
+		detect_loop = 0;
+	}
+	
+
 	/* Check HopLimit */
 	if (pm.hoplimit < 1) {
+		cef_frame_ccninfo_parsed_free (&pci);
 		return (-1);
 	}
 	if (pm.hoplimit <= poh.skip_hop) {
+		cef_frame_ccninfo_parsed_free (&pci);
 		return (-1);
 	}
 
 	/* Set information used in authentication & authorization */
-	memcpy (hdl->ccninfousr_node_id, poh.node_id, poh.id_len);
-	hdl->ccninfousr_id_len = poh.id_len;
+	memcpy (hdl->ccninfousr_node_id, pci.node_id, pci.id_len);
+	hdl->ccninfousr_id_len = pci.id_len;
 
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 		
@@ -6018,6 +7002,19 @@ cefnetd_incoming_ccninforeq_process (
 		}
 		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+		
+		len = sprintf (cnd_dbg_msg, "Ccninfo Request's Name [");
+		
+		for (dbg_x = 0 ; dbg_x < pm.name_len ; dbg_x++) {
+			len = len + sprintf (cnd_dbg_msg + len, " %02X", pm.name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
+	}
+#endif
 #endif // CefC_Debug
 	
 #ifdef DEB_CCNINFO	
@@ -6054,19 +7051,12 @@ cefnetd_incoming_ccninforeq_process (
 	responder_mtu = hdl->top_nodeid_mtu;
 
 #endif // CefC_Android
-	
 	new_header_len 
-//		= header_len + CefC_S_TLF + id_len + CefC_S_ReqArrivalTime;
 		= header_len + CefC_S_TLF + hdl->My_Node_Name_TLV_len + CefC_S_ReqArrivalTime;
 	
 	if (poh.skip_hop == 0) {
 		if (new_header_len <= CefC_Max_Header_Size) {
-			gettimeofday (&t, NULL);
-			pkt_len = cef_frame_ccninfo_req_add_stamp (
-//							msg, payload_len + header_len, stamp_node_id, id_len, t);
-							msg, payload_len + header_len, hdl->My_Node_Name_TLV, hdl->My_Node_Name_TLV_len, t);
-			header_len 	= msg[CefC_O_Fix_HeaderLength];
-			payload_len = pkt_len - header_len;
+			/* NOP */
 		} else {
 			return_code = CefC_CtRc_NO_SPACE;
 #ifdef DEB_CCNINFO	
@@ -6085,6 +7075,7 @@ cefnetd_incoming_ccninforeq_process (
 						 , &(hdl->ccninfo_rcvdpub_key_bi));
 	if (res != 0) {
 		if (poh.skip_hop != 0) {
+			cef_frame_ccninfo_parsed_free (&pci);
 			return (-1);
 		} else {
 			return_code = CefC_CtRc_INVALID_REQUEST;
@@ -6096,7 +7087,7 @@ cefnetd_incoming_ccninforeq_process (
 		return_code = CefC_CtRc_ADMIN_PROHIB;
 		goto SEND_REPLY;
 	}
-	if (hdl->ccninfo_full_discovery == 1 /* Not Allow */
+	if (hdl->ccninfo_full_discovery == 0 /* Not Allow ccninfo-03 */
 		&& poh.ccninfo_flag & CefC_CtOp_FullDisCover) {
 		return_code = CefC_CtRc_ADMIN_PROHIB;
 		goto SEND_REPLY;
@@ -6137,12 +7128,18 @@ cefnetd_incoming_ccninforeq_process (
 #endif //DEB_CCNINFO
 		
 			if (fip) {
-				if (!(poh.ccninfo_flag & CefC_CtOp_Cache)) {
-					return_code = CefC_CtRc_NO_ERROR;
-					goto SEND_REPLY;
+				/* Check Validations ccninfo-05 */
+				if ( poh.ccninfo_flag & CefC_CtOp_ReqValidation ) {
+					if ( hdl->ccninfo_valid_type == CefC_T_ALG_INVALID ) {
+						/* Invalid */
+						return_code = CefC_CtRc_INVALID_REQUEST;
+						goto SEND_REPLY;
+					}
 				}
+				/* ccninfo-05 */
 				cefnetd_FHR_Reply_process(hdl, peer_faceid, msg, payload_len, header_len
-											, ((CefT_App_Reg*)fip)->name, ((CefT_App_Reg*)fip)->name_len);
+											, ((CefT_App_Reg*)fip)->name, ((CefT_App_Reg*)fip)->name_len, &poh);
+				cef_frame_ccninfo_parsed_free (&pci);
 				return (0);
 			} else {
 				forward_req_f = 1;
@@ -6176,6 +7173,7 @@ cefnetd_incoming_ccninforeq_process (
 						hdl, peer_faceid, msg, payload_len, header_len, &pm, &poh);
 					
 					if (res > 0) {
+						cef_frame_ccninfo_parsed_free (&pci);
 						return (1);
 					}
 					forward_req_f = 1;
@@ -6190,6 +7188,11 @@ cefnetd_incoming_ccninforeq_process (
 	if ((forward_req_f == 1) && (pm.hoplimit == 1)) {
 		forward_req_f = 0;
 		return_code = CefC_CtRc_NO_INFO;
+	}
+	
+	/* Detect Loop? */
+	if ( detect_loop == 1 ) {
+		goto SEND_REPLY;
 	}
 	
 	if (forward_req_f) {
@@ -6211,21 +7214,46 @@ cefnetd_incoming_ccninforeq_process (
 			face_num = cef_fib_forward_faceid_select (fe, peer_faceid, faceids);
 			
 			/* Searches a PIT entry matching this request 	*/
-			pe = cef_pit_entry_lookup (hdl->pit, &pm, &poh);
+			/* Create PIT for ccninfo ccninfo-03 */
+			memset( ccninfo_pit, 0x00, 1024 );
+			ccninfo_pit_len = cefnetd_ccninfo_pit_create( hdl, &pci, ccninfo_pit, CCNINFO_REQ, 0 );
+			pe = cef_pit_entry_search (hdl->pit, &pm, &poh, ccninfo_pit, ccninfo_pit_len);
+			if ( pe != NULL ) {
+				/* Alredy passed request */
+				cef_frame_ccninfo_parsed_free (&pci);
+				return(-1);
+			}
+			
+			pe = cef_pit_entry_lookup (hdl->pit, &pm, &poh, ccninfo_pit, ccninfo_pit_len);
 			
 			if (pe == NULL) {
+				cef_frame_ccninfo_parsed_free (&pci);
 				return (-1);
 			}
 			
 			/* Updates the information of down face that this request arrived 	*/
-			res = cef_pit_entry_down_face_update (pe, peer_faceid, &pm, &poh, msg);
+			res = cef_pit_entry_down_face_update (pe, peer_faceid, &pm, &poh, msg, CefC_IntRetrans_Type_SUP);
 			
 			/* Forwards the received Ccninfo Request */
 			if (res != 0) {
+				/* ccninfo-05 */
+				if (poh.skip_hop > 0) {
+					/* NOP */
+				} else {
+					gettimeofday (&t, NULL);
+					pkt_len = cef_frame_ccninfo_req_add_stamp (
+									msg, payload_len + header_len, hdl->My_Node_Name_TLV, hdl->My_Node_Name_TLV_len, t);
+					header_len 	= msg[CefC_O_Fix_HeaderLength];
+					payload_len = pkt_len - header_len;
+				}
+				/* ccninfo-05 */
 				/* Updates the skip hop 					*/
 				if (poh.skip_hop > 0) {
 					poh.skip_hop--;
-					msg[poh.skip_hop_offset] = poh.skip_hop;
+//					msg[poh.skip_hop_offset] = poh.skip_hop;
+					w_skiphop.sh_4bit = poh.skip_hop;
+					w_skiphop.fl_4bit = 0;
+					memcpy(&msg[poh.skip_hop_offset], &w_skiphop, 1);
 				}
 				pm.hoplimit--;
 				msg[CefC_O_Fix_HopLimit] = pm.hoplimit;
@@ -6244,9 +7272,11 @@ cefnetd_incoming_ccninforeq_process (
 					hdl, faceids, face_num, peer_faceid, msg,
 					payload_len, header_len, &pm, &poh, pe, fe);
 			}
+			cef_frame_ccninfo_parsed_free (&pci);
 			return (1);
 		} else {
 			if (poh.skip_hop > 0) {
+				cef_frame_ccninfo_parsed_free (&pci);
 				return (1);
 			}
 			return_code = CefC_CtRc_NO_ROUTE;
@@ -6254,6 +7284,51 @@ cefnetd_incoming_ccninforeq_process (
 	}
 
 SEND_REPLY:;
+#ifdef	DEB_CCNINFO
+	printf( "[%s] SEND_REPLY\n",
+			"cefnetd_incoming_ccninforeq_process" );
+#endif
+	/* ccninfo-05 */
+	switch ( return_code ) {
+		case	CefC_CtRc_NO_ERROR:
+			if ( detect_loop == 1 ) {
+				gettimeofday (&t, NULL);
+				pkt_len = cef_frame_ccninfo_req_add_stamp (
+								msg, payload_len + header_len, hdl->My_Node_Name_TLV, hdl->My_Node_Name_TLV_len, t);
+				header_len 	= msg[CefC_O_Fix_HeaderLength];
+				payload_len = pkt_len - header_len;
+			}
+			break;
+		case	CefC_CtRc_NO_SPACE:
+			break;
+		default:
+			gettimeofday (&t, NULL);
+			pkt_len = cef_frame_ccninfo_req_add_stamp (
+							msg, payload_len + header_len, hdl->My_Node_Name_TLV, hdl->My_Node_Name_TLV_len, t);
+			header_len 	= msg[CefC_O_Fix_HeaderLength];
+			payload_len = pkt_len - header_len;
+			break;
+	}
+	
+	if ( return_code != CefC_CtRc_NO_SPACE ) {
+		if ( poh.ccninfo_flag & CefC_CtOp_ReqValidation ) {
+			if ( hdl->ccninfo_valid_type == CefC_T_ALG_INVALID ) {
+				return_code = CefC_CtRc_INVALID_REQUEST;
+			} else {
+				/* NOP */
+			}
+		} else {
+			/* NOP */
+		}
+	}
+	/* ccninfo-05 */
+	/* ccninfo-03 */
+	/* Loop? */
+	if ( detect_loop == 1 ) {
+		return_code |= CefC_CtRc_FATAL_ERROR;
+	}
+	/* ccninfo-03 */
+
 	/* Remove the Valation-related TLV from the message */
 	pkt_len = cef_valid_remove_valdsegs_fr_msg_forccninfo (msg, pkt_len);
 	/* Set PacketType and Return Code 		*/
@@ -6264,6 +7339,7 @@ SEND_REPLY:;
 	/*----------------------------------------------------------*/
 	/* Validations	 											*/
 	/*----------------------------------------------------------*/
+	if ( poh.ccninfo_flag & CefC_CtOp_ReqValidation )
 	{
 		CefT_Ccninfo_TLVs tlvs;
 	
@@ -6274,11 +7350,12 @@ SEND_REPLY:;
 	}
 	/* Check Ccninfo Relpy size										*/
 	/*   NOTE: When oversize, create a reply message of NO_SPECE	*/
-	pkt_len = cefnetd_ccninfo_check_relpy_size(hdl, msg, pkt_len);
+	pkt_len = cefnetd_ccninfo_check_relpy_size(hdl, msg, pkt_len, poh.ccninfo_flag);
 
 	/* Returns a Ccninfo Reply with error return code 		*/
 	cef_face_frame_send_forced (peer_faceid, msg, pkt_len);
 	
+	cef_frame_ccninfo_parsed_free (&pci);
 #endif // CefC_Ccninfo
 	
 	return (1);
@@ -6306,10 +7383,19 @@ cefnetd_external_cache_seek (
 	uint16_t name_len;
 	uint16_t msg_len;
 	uint16_t pkt_len;
+	uint16_t pld_len_new;
 	struct tlv_hdr pyld_tlv_hdr;
 	struct fixed_hdr* fix_hdr;
 	struct tlv_hdr* tlv_hp;
 	struct tlv_hdr* name_tlv_hdr;
+//	struct value32_tlv value32_tlv;	/* for T_DISC_REPLY */
+	uint8_t rtn_cd;
+	struct ccninfo_req_block req_blk;	/* for T_DISC_REPLY ccninfo-05 */
+
+#ifdef	DEB_CCNINFO
+	printf( "[%s] IN payload_len(%d) + header_len(%d) = %d\n",
+			"cefnetd_external_cache_seek", payload_len, header_len, payload_len + header_len );
+#endif
 
 	/* Remove the Valation-related TLV from the message */
 	payload_len = cef_valid_remove_valdsegs_fr_msg_forccninfo (msg, payload_len+header_len)
@@ -6333,6 +7419,40 @@ cefnetd_external_cache_seek (
 		return (0);
 	}
 	
+#ifdef DEB_CCNINFO
+{
+	int dbg_x;
+	fprintf (stderr, "res = %d [ ", res);
+	for (dbg_x = 0 ; dbg_x < res ; dbg_x++) {
+		fprintf (stderr, "%02x ", buff[dbg_x]);
+	}
+	fprintf (stderr, "]\n");
+}
+#endif //DEB_CCNINFO
+
+	/* Check Validations */
+	if ( poh->ccninfo_flag & CefC_CtOp_ReqValidation ) {
+		if ( hdl->ccninfo_valid_type == CefC_T_ALG_INVALID ) {
+			/* Invalid */
+			rtn_cd = CefC_CtRc_INVALID_REQUEST;
+			res = 0;
+#ifdef DEB_CCNINFO
+	printf( "\t000 rtn_cd = CefC_CtRc_INVALID_REQUEST\n");
+#endif //DEB_CCNINFO
+		} else {
+			rtn_cd = CefC_CtRc_NO_ERROR;
+#ifdef DEB_CCNINFO
+	printf( "\t001 rtn_cd = CefC_CtRc_NO_ERROR\n");
+#endif //DEB_CCNINFO
+		}
+	} else {
+		rtn_cd = CefC_CtRc_NO_ERROR;
+#ifdef DEB_CCNINFO
+	printf( "\t002 rtn_cd = CefC_CtRc_NO_ERROR\n");
+#endif //DEB_CCNINFO
+	}
+
+
 	/* Returns a Ccninfo Reply 			*/
 	if (res) {
 		if (poh->ccninfo_flag & CefC_CtOp_Cache) {
@@ -6351,15 +7471,58 @@ cefnetd_external_cache_seek (
 			}
 			
 			/* Sets type and length of T_DISC_REPLY 		*/
-
 			pyld_tlv_hdr.type 	 = htons (CefC_T_DISC_REPLY);
-			pyld_tlv_hdr.length  = htons (pld_len);
+			/* pld_len + R_ArrTime + NodeID */
+//JK			pld_len_new = CefC_S_TLF + CefC_S_ReqArrivalTime + hdl->My_Node_Name_TLV_len + pld_len;
+			pld_len_new = CefC_S_ReqArrivalTime + hdl->My_Node_Name_TLV_len + pld_len;
+#ifdef DEB_CCNINFO
+		printf( "\t010 pld_len_new = %d(%x)\n", pld_len_new, pld_len_new);
+#endif //DEB_CCNINFO
+			pyld_tlv_hdr.length  = htons (pld_len_new);
 			memcpy (&msg[payload_len + header_len], &pyld_tlv_hdr, sizeof (struct tlv_hdr));
-			memcpy (&msg[payload_len + header_len + CefC_S_TLF], buff, pld_len);
-			
+			index = payload_len + header_len;
+#ifdef DEB_CCNINFO
+		printf( "\t011 index = %d(%x)\n", index, index);
+#endif //DEB_CCNINFO
+			index += CefC_S_TLF;
+#ifdef DEB_CCNINFO
+		printf( "\t011-1 index = %d(%x)\n", index, index);
+#endif //DEB_CCNINFO
+			{	/* set 32bit-NTP time */
+		    	struct timespec tv;
+				uint32_t ntp32b;
+				clock_gettime(CLOCK_REALTIME, &tv);
+				ntp32b = ((tv.tv_sec + 32384) << 16) + ((tv.tv_nsec << 7) / 1953125);
+				req_blk.req_arrival_time 	= htonl (ntp32b);
+				memcpy (&msg[index], &req_blk, sizeof (struct ccninfo_req_block));
+//JK				index += CefC_S_TLF + CefC_S_ReqArrivalTime;
+				index += CefC_S_ReqArrivalTime;
+#ifdef DEB_CCNINFO
+		printf( "\t012 index = %d(%x)\n", index, index);
+#endif //DEB_CCNINFO
+			}
+			/* NODE ID */
+			memcpy ( &msg[index], hdl->My_Node_Name_TLV, hdl->My_Node_Name_TLV_len );
+			index += hdl->My_Node_Name_TLV_len;
+#ifdef DEB_CCNINFO
+		printf( "\t013 index = %d(%x)\n", index, index);
+#endif //DEB_CCNINFO
+			payload_len += CefC_S_TLF + CefC_S_ReqArrivalTime + hdl->My_Node_Name_TLV_len;
+#ifdef DEB_CCNINFO
+		printf( "\t014 payload_len = %d(%x)\n", payload_len, payload_len);
+#endif //DEB_CCNINFO
+			memcpy (&msg[index], buff, pld_len);
+
 			/* Sets ICN message length 	*/
-			pkt_len = payload_len + header_len + CefC_S_TLF + pld_len;
+			pkt_len = payload_len + header_len + pld_len;
+//JK			pkt_len = payload_len + header_len + CefC_S_TLF + pld_len;
+#ifdef DEB_CCNINFO
+		printf( "\t015 pkt_len = %d(%x)\n", pkt_len, pkt_len);
+#endif //DEB_CCNINFO
 			msg_len = pkt_len - (header_len + CefC_S_TLF);
+#ifdef DEB_CCNINFO
+		printf( "\t016 msg_len = %d(%x)\n", msg_len, msg_len);
+#endif //DEB_CCNINFO
 			
 			tlv_hp = (struct tlv_hdr*) &msg[header_len];
 			tlv_hp->length = htons (msg_len);
@@ -6367,17 +7530,54 @@ cefnetd_external_cache_seek (
 			/* Updates PacketLength and HeaderLength 		*/
 			fix_hdr = (struct fixed_hdr*) msg;
 			fix_hdr->type 	  = CefC_PT_REPLY;
-			fix_hdr->reserve1 = CefC_CtRc_NO_ERROR;
+			fix_hdr->reserve1 = rtn_cd;
 			fix_hdr->pkt_len  = htons (pkt_len);
 		} else {
+			pld_len = (uint16_t) 0;
+			index   = 0;
+			/* Sets type and length of T_DISC_REPLY 		*/
+			pyld_tlv_hdr.type 	 = htons (CefC_T_DISC_REPLY);
+			/* R_ArrTime + NodeID */
+			pld_len_new = CefC_S_ReqArrivalTime + hdl->My_Node_Name_TLV_len;
+			pyld_tlv_hdr.length  = htons (pld_len_new);
+			memcpy (&msg[payload_len + header_len], &pyld_tlv_hdr, sizeof (struct tlv_hdr));
+			index = payload_len + header_len;
+			index += CefC_S_TLF;
+			{	/* set 32bit-NTP time */
+		    	struct timespec tv;
+				uint32_t ntp32b;
+				clock_gettime(CLOCK_REALTIME, &tv);
+				ntp32b = ((tv.tv_sec + 32384) << 16) + ((tv.tv_nsec << 7) / 1953125);
+				req_blk.req_arrival_time 	= htonl (ntp32b);
+				memcpy (&msg[index], &req_blk, sizeof (struct ccninfo_req_block));
+//JK				index += CefC_S_TLF + CefC_S_ReqArrivalTime;
+				index += CefC_S_ReqArrivalTime;
+			}
+			/* NODE ID */
+			memcpy ( &msg[index], hdl->My_Node_Name_TLV, hdl->My_Node_Name_TLV_len );
+			index += hdl->My_Node_Name_TLV_len;
+			payload_len += CefC_S_TLF + CefC_S_ReqArrivalTime + hdl->My_Node_Name_TLV_len;
+
+			/* Sets ICN message length 	*/
+//JK			pkt_len = payload_len + header_len + CefC_S_TLF;
+			pkt_len = payload_len + header_len + pld_len;
+//JK			pkt_len = payload_len + header_len + CefC_S_TLF + pld_len;
+			msg_len = pkt_len - (header_len + CefC_S_TLF);
+			
+			tlv_hp = (struct tlv_hdr*) &msg[header_len];
+			tlv_hp->length = htons (msg_len);
+			/* ccninfo-05 */
 			fix_hdr = (struct fixed_hdr*) msg;
 			fix_hdr->type 	  = CefC_PT_REPLY;
-			fix_hdr->reserve1 = CefC_CtRc_NO_ERROR;
+			fix_hdr->reserve1 = rtn_cd;
 			pkt_len  		  = fix_hdr->pkt_len;
 		}	
+		
+		
 		/*----------------------------------------------------------*/
 		/* Validations	 											*/
 		/*----------------------------------------------------------*/
+		if ( poh->ccninfo_flag & CefC_CtOp_ReqValidation )
 		{
 			CefT_Ccninfo_TLVs tlvs;
 		
@@ -6386,19 +7586,31 @@ cefnetd_external_cache_seek (
 				pkt_len = cef_frame_ccninfo_vald_create_for_reply (msg, &tlvs);
 			}
 		}
+
 		/* Check Ccninfo Relpy size										*/
 		/*   NOTE: When oversize, create a reply message of NO_SPECE	*/
-		pkt_len = cefnetd_ccninfo_check_relpy_size(hdl, msg, pkt_len);
+		pkt_len = cefnetd_ccninfo_check_relpy_size(hdl, msg, pkt_len, poh->ccninfo_flag);
+#ifdef DEB_CCNINFO
+		printf( "\t020 pkt_len = %d(%x)\n", pkt_len, pkt_len);
+#endif //DEB_CCNINFO
 		
 #ifdef CefC_Debug
 			cef_dbg_write (CefC_Dbg_Finest, "Ccninfo response is follow:\n");
 		cef_dbg_buff_write (CefC_Dbg_Finest, msg, pkt_len);
 #endif // CefC_Debug
 		cef_face_frame_send_forced (peer_faceid, msg, pkt_len);
+#ifdef	DEB_CCNINFO
+	printf( "[%s] Return(1)\n",
+			"cefnetd_external_cache_seek" );
+#endif
 		
 		return (1);
 	}
 	
+#ifdef	DEB_CCNINFO
+	printf( "[%s] Return(0)\n",
+			"cefnetd_external_cache_seek" );
+#endif
 	return (0);
 }
 #endif // CefC_Ccninfo
@@ -6416,7 +7628,8 @@ cefnetd_FHR_Reply_process(
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
 	const unsigned char* name,				/* Report name								*/
-	uint32_t name_len						/* Report name length						*/
+	uint32_t name_len,						/* Report name length						*/
+	CefT_Parsed_Opheader* poh
 ){
 	unsigned char rply_sub_block[CefC_Max_Length] = {0};
 	uint16_t index = 0;
@@ -6429,25 +7642,39 @@ cefnetd_FHR_Reply_process(
 	uint16_t msg_len;
 	uint16_t pkt_len;
 	struct fixed_hdr* fix_hdr;
+	uint16_t pld_len_new;
+	uint16_t pld_len;
+	struct ccninfo_req_block req_blk;	/* for T_DISC_REPLY ccninfo-05 */
+
+#ifdef	DEB_CCNINFO
+	printf( "[%s] IN payload_len(%d) + header_len(%d) = %d\n",
+			"cefnetd_FHR_Reply_process", payload_len, header_len, payload_len + header_len );
+#endif
 	
 	/* Remove the Valation-related TLV from the message */
 	payload_len = cef_valid_remove_valdsegs_fr_msg_forccninfo (msg, payload_len+header_len)
 				  - header_len;
 
+	if (!(poh->ccninfo_flag & CefC_CtOp_Cache)) {
+		pld_len = 0;
+		goto SKIP_REP_BLK;
+	}
 	name_tlv_hdr.type = htons (CefC_T_NAME);
 	
 	rec_index = index;
 	index += CefC_S_TLF;
-	rep_blk.cont_size 	= htonl (0);
-	rep_blk.cont_cnt 	= htonl (0);
-	rep_blk.rcv_int 	= htonl (0);
-	rep_blk.first_seq 	= htonl (0);
-	rep_blk.last_seq 	= htonl (0);
-	rep_blk.cache_time 	= htonl (0);
-	rep_blk.remain_time	= htonl (0);
+	//ccninfo-05
+	rep_blk.cont_size 	= htonl (UINT32_MAX);
+	rep_blk.cont_cnt 	= htonl (UINT32_MAX);
+	rep_blk.rcv_int 	= htonl (UINT32_MAX);
+	rep_blk.first_seq 	= htonl (UINT32_MAX);
+	rep_blk.last_seq 	= htonl (UINT32_MAX);
+	rep_blk.cache_time 	= htonl (UINT32_MAX);
+	rep_blk.remain_time	= htonl (UINT32_MAX);
 	
 	memcpy (&rply_sub_block[index], &rep_blk, sizeof (struct ccninfo_rep_block));
 	index += sizeof (struct ccninfo_rep_block);
+
 	/* Name 				*/
 	name_tlv_hdr.length = htons (name_len);
 	memcpy (&rply_sub_block[index], &name_tlv_hdr, sizeof (struct tlv_hdr));
@@ -6458,16 +7685,39 @@ cefnetd_FHR_Reply_process(
 	rply_tlv_hdr.type = htons (CefC_T_DISC_CONTENT_OWNER);
 	rply_tlv_hdr.length = htons (index - (rec_index + CefC_S_TLF));
 	memcpy (&rply_sub_block[rec_index], &rply_tlv_hdr, sizeof (struct tlv_hdr));
-		
+	pld_len = index;
+
+SKIP_REP_BLK:;
 		
 	/* Sets type and length of T_DISC_REPLY 		*/
 	pyld_tlv_hdr.type 	 = htons (CefC_T_DISC_REPLY);
-	pyld_tlv_hdr.length  = htons (index);
+	/* ccninfo-05 */
+	/* pld_len + R_ArrTime + NodeID */
+	pld_len_new = CefC_S_ReqArrivalTime + hdl->My_Node_Name_TLV_len + pld_len;
+	pyld_tlv_hdr.length  = htons (pld_len_new);
 	memcpy (&msg[payload_len + header_len], &pyld_tlv_hdr, sizeof (struct tlv_hdr));
-	memcpy (&msg[payload_len + header_len + CefC_S_TLF], rply_sub_block, index);
+	index = payload_len + header_len;
+	index += CefC_S_TLF;
+	{	/* set 32bit-NTP time */
+    	struct timespec tv;
+		uint32_t ntp32b;
+		clock_gettime(CLOCK_REALTIME, &tv);
+		ntp32b = ((tv.tv_sec + 32384) << 16) + ((tv.tv_nsec << 7) / 1953125);
+		req_blk.req_arrival_time 	= htonl (ntp32b);
+		memcpy (&msg[index], &req_blk, sizeof (struct ccninfo_req_block));
+		index += CefC_S_ReqArrivalTime;
+	}
+	/* NODE ID */
+	memcpy ( &msg[index], hdl->My_Node_Name_TLV, hdl->My_Node_Name_TLV_len );
+	index += hdl->My_Node_Name_TLV_len;
+	payload_len += CefC_S_TLF + CefC_S_ReqArrivalTime + hdl->My_Node_Name_TLV_len;
+
+	if ( pld_len > 0 ) {
+		memcpy (&msg[index], rply_sub_block, pld_len);
+	}
 	
 	/* Sets ICN message length 	*/
-	pkt_len = payload_len + header_len + CefC_S_TLF + index;
+	pkt_len = payload_len + header_len + pld_len;
 	msg_len = pkt_len - (header_len + CefC_S_TLF);
 	
 	tlv_hp = (struct tlv_hdr*) &msg[header_len];
@@ -6492,6 +7742,7 @@ cefnetd_FHR_Reply_process(
 	/*----------------------------------------------------------*/
 	/* Validations	 											*/
 	/*----------------------------------------------------------*/
+	if ( poh->ccninfo_flag & CefC_CtOp_ReqValidation )
 	{
 		CefT_Ccninfo_TLVs tlvs;
 	
@@ -6503,7 +7754,7 @@ cefnetd_FHR_Reply_process(
 	
 	/* Check Ccninfo Relpy size										*/
 	/*   NOTE: When oversize, create a reply message of NO_SPECE	*/
-	pkt_len = cefnetd_ccninfo_check_relpy_size(hdl, msg, pkt_len);
+	pkt_len = cefnetd_ccninfo_check_relpy_size(hdl, msg, pkt_len, poh->ccninfo_flag);
 	
 #ifdef DEB_CCNINFO	
 {
@@ -6531,7 +7782,8 @@ cefnetd_incoming_ccninforep_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) {
 #ifdef CefC_Ccninfo
 	
@@ -6542,6 +7794,10 @@ cefnetd_incoming_ccninforep_process (
 	uint16_t faceids[CefC_Fib_UpFace_Max];
 	uint16_t face_num = 0;
 	CefT_Down_Faces* face;
+	// ccninfo-03
+	CefT_Parsed_Ccninfo	pci;
+	unsigned char ccninfo_pit[1024];
+	int			  ccninfo_pit_len;
 #ifdef DEB_CCNINFO	
 {
 	int dbg_x;
@@ -6556,6 +7812,11 @@ cefnetd_incoming_ccninforep_process (
 	cef_dbg_write (CefC_Dbg_Finer, 
 		"Process the Ccnifno Response (%d bytes)\n", payload_len + header_len);
 #endif // CefC_Debug
+
+#ifdef	DEB_CCNINFO
+	fprintf( stderr, "[%s] Ccninfo Response (%d bytes)\n",
+			"cefnetd_incoming_ccninforep_process", payload_len + header_len );
+#endif
 	
 	/* Check the message size 		*/
 	if (payload_len + header_len > CefC_Max_Msg_Size) {
@@ -6566,6 +7827,9 @@ cefnetd_incoming_ccninforep_process (
 	}
 	/* Check Access Policy */
 	if (hdl->ccninfo_access_policy == 2 /* Do not allow access */) {
+#ifdef	DEB_CCNINFO
+		fprintf( stderr, "\t(hdl->ccninfo_access_policy == 2 /* Do not allow access */) return(0)\n" );
+#endif
 		return (0);
 	}
 
@@ -6580,9 +7844,27 @@ cefnetd_incoming_ccninforep_process (
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Detects the invalid Ccninfo Response\n");
 #endif // CefC_Debug
+#ifdef	DEB_CCNINFO
+		fprintf( stderr, "\tDetects the invalid Ccninfo Response return(-1)\n" );
+#endif
 		return (-1);
 	}
+
+	/* Parses the received Ccninfo ccninfo-03	*/
+	res = cef_frame_ccninfo_parse (msg, &pci);
+	if (res < 0) {
+#ifdef	DEB_CCNINFO
+		fprintf( stderr, "\t(res < 0)cef_frame_ccninfo_parse() return(-1)\n" );
+#endif
+		cef_frame_ccninfo_parsed_free (&pci);
+		return(-1);
+	}
+#ifdef DEB_CCNINFO
+	cefnetd_dbg_cpi_print ( &pci );
+#endif
+
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 		
@@ -6593,10 +7875,32 @@ cefnetd_incoming_ccninforep_process (
 		}
 		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+		
+		len = sprintf (cnd_dbg_msg, "Ccninfo Response's Name [");
+		
+		for (dbg_x = 0 ; dbg_x < pm.name_len ; dbg_x++) {
+			len = len + sprintf (cnd_dbg_msg + len, " %02X", pm.name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
+	}
+#endif
 #endif // CefC_Debug
 	
+	/* Create PIT for ccninfo ccninfo-03 */
+	memset( ccninfo_pit, 0x00, 1024 );
+	ccninfo_pit_len = cefnetd_ccninfo_pit_create( hdl, &pci, ccninfo_pit, CCNINFO_REP, 1 );
+	
 	/* Searches a PIT entry matching this replay 	*/
-	pe = cef_pit_entry_search (hdl->pit, &pm, &poh);
+	pe = cef_pit_entry_search (hdl->pit, &pm, &poh, ccninfo_pit, ccninfo_pit_len);
+	if ( pe == NULL ) {
+		memset( ccninfo_pit, 0x00, 1024 );
+		ccninfo_pit_len = cefnetd_ccninfo_pit_create( hdl, &pci, ccninfo_pit, CCNINFO_REP, 0 );
+		pe = cef_pit_entry_search (hdl->pit, &pm, &poh, ccninfo_pit, ccninfo_pit_len);
+	}
 
 	if (pe) {
 		face = &(pe->dnfaces);
@@ -6606,6 +7910,7 @@ cefnetd_incoming_ccninforep_process (
 			face_num++;
 		}
 	} else {
+		cef_frame_ccninfo_parsed_free (&pci);
 		return (-1);
 	}
 
@@ -6622,6 +7927,7 @@ cefnetd_incoming_ccninforep_process (
 	if (pe->stole_f) {
 		cef_pit_entry_free (hdl->pit, pe);
 	}
+	cef_frame_ccninfo_parsed_free (&pci);
 #endif // CefC_Ccninfo
 	return (1);
 }
@@ -6637,7 +7943,8 @@ cefnetd_incoming_csmgr_interest_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) {
 	/* NOP */;
 	return (1);
@@ -6653,7 +7960,8 @@ cefnetd_incoming_csmgr_object_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) {
 	CefT_Parsed_Message pm;
 	CefT_Parsed_Opheader poh;
@@ -6668,12 +7976,22 @@ cefnetd_incoming_csmgr_object_process (
 	uint16_t faceids[CefC_Fib_UpFace_Max];
 	uint16_t face_num = 0;
 	CefT_Down_Faces* face;
+#ifndef	CefC_Nwproc
+	//0.8.3
+	int	hit_with_chunk_f;
+	hit_with_chunk_f = 0;
+#endif
+	uint16_t pkt_len = 0;	//0.8.3
 	
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finer, 
 		"Process the Content Object (%d bytes) from csmgr\n", payload_len + header_len);
 	cef_dbg_buff_write (CefC_Dbg_Finest, msg, payload_len + header_len);
 #endif // CefC_Debug
+
+#ifdef	__SYMBOLIC__
+	fprintf( stderr, "[%s] IN Object (%d bytes) from csmgr\n", __func__, payload_len + header_len );
+#endif
 
 	/*--------------------------------------------------------------------
 		Parses the Object message
@@ -6685,6 +8003,18 @@ cefnetd_incoming_csmgr_object_process (
 
 		return (-1);
 	}
+
+	pkt_len = payload_len + header_len;	//0.8.3
+
+	/* Checks the Validation 			*/
+	res = cef_valid_msg_verify (msg, payload_len + header_len);
+	if (res != 0) {
+#ifdef	__VALID_NG__
+		fprintf( stderr, "[%s] Validation NG\n", __func__ );
+#endif
+		return (-1);
+	}
+
 	res = cef_frame_message_parse (
 					msg, payload_len, header_len, &poh, &pm, CefC_PT_OBJECT);
 	if ( pm.AppComp_num > 0 ) {
@@ -6699,7 +8029,11 @@ cefnetd_incoming_csmgr_object_process (
 
 		return (-1);
 	}
+#ifdef	__SYMBOLIC__
+	fprintf( stderr, "\t IN Object Chunk:%u \n", pm.chnk_num );
+#endif
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 		
@@ -6710,6 +8044,19 @@ cefnetd_incoming_csmgr_object_process (
 		}
 		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+		
+		len = sprintf (cnd_dbg_msg, "Object's Name [");
+		
+		for (dbg_x = 0 ; dbg_x < pm.name_len ; dbg_x++) {
+			len = len + sprintf (cnd_dbg_msg + len, " %02X", pm.name[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finer, "%s ]\n", cnd_dbg_msg);
+	}
+#endif
 #endif // CefC_Debug
 	
 	/*--------------------------------------------------------------------
@@ -6745,7 +8092,7 @@ cefnetd_incoming_csmgr_object_process (
 			pe = cef_pit_entry_search_specified_name_for_app (hdl->app_pit, 
 								pm.name_wo_cid, pm.name_wo_cid_len, &pm, &poh);
 #else // CefC_Nwproc
-			pe = cef_pit_entry_search (hdl->app_pit, &pm, &poh);
+			pe = cef_pit_entry_search_with_chunk (hdl->app_pit, &pm, &poh);	//0.8.3
 #endif // CefC_Nwproc
 		} else {
 			if (j == 1) {
@@ -6756,15 +8103,102 @@ cefnetd_incoming_csmgr_object_process (
 				pe = cef_pit_entry_search_specified_name (hdl->pit,
 								pm.name_wo_cid, pm.name_wo_cid_len, &pm, &poh, 1);
 #else // CefC_Nwproc
-				pe = cef_pit_entry_search (hdl->pit, &pm, &poh);
+				pe = cef_pit_entry_search_with_chunk (hdl->pit, &pm, &poh);	//0.8.3
 #endif // CefC_Nwproc
 			}
 		}
+#ifdef	CefC_Nwproc
 		if (pe == NULL) {
 			continue;
 		}
+#else
+		if ((pe == NULL) && (j == 0)) {
+			continue;
+		} else if ((pe == NULL) && (j == 1)) {
+			hit_with_chunk_f = 0;	//0.8.3
+		} else if ((pe) && (j == 1)){
+			hit_with_chunk_f = 1;	//0.8.3
+		}
+#endif
 
 		if (pe) {
+#ifndef	CefC_Nwproc
+			if(j == 1) {
+				hit_with_chunk_f = 1;	//0.8.3
+			}
+#endif
+			//0.8.3
+			if ( pe->COBHR_len > 0 ) {
+				/* CobHash */
+				SHA256_CTX		ctx;
+				uint16_t		CobHash_index;
+				uint16_t		CobHash_len;
+				unsigned char 	hash[SHA256_DIGEST_LENGTH];
+
+				CobHash_index = header_len;
+				CobHash_len   = payload_len;
+				SHA256_Init (&ctx);
+				SHA256_Update (&ctx, &msg[CobHash_index], CobHash_len);
+				SHA256_Final (hash, &ctx);
+
+#ifdef	__RESTRICT__
+{
+	int hidx;
+	char	hash_dbg[1024];
+
+	printf ( "%s\n", __func__ );
+	sprintf (hash_dbg, "PIT CobHash [");
+	for (hidx = 0 ; hidx < 32 ; hidx++) {
+		sprintf (hash_dbg, "%s %02X", hash_dbg, pe->COBHR_selector[hidx]);
+	}
+	sprintf (hash_dbg, "%s ]\n", hash_dbg);
+	printf( "%s", hash_dbg );
+
+	sprintf (hash_dbg, "OBJ CobHash [");
+	for (hidx = 0 ; hidx < 32 ; hidx++) {
+		sprintf (hash_dbg, "%s %02X", hash_dbg, pe->COBHR_selector[hidx]);
+	}
+	sprintf (hash_dbg, "%s ]\n", hash_dbg);
+	printf( "%s", hash_dbg );
+}
+#endif
+				if ( memcmp(pe->COBHR_selector, hash, 32) == 0 ) {
+					/* OK */
+#ifdef	__RESTRICT__
+					printf ( "%s, CobHash OK\n", __func__ );
+#endif
+				} else {
+					/* NG */
+					if ( pm.AppComp_num > 0 ) {
+						/* Free AppComp */
+						cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+					}
+					return (-1);
+				}
+			}
+#ifdef	__RESTRICT__
+			printf ( "%s, pe->KIDR_len:%d OK\n", __func__, pe->KIDR_len );
+#endif
+			if ( pe->KIDR_len > 0 ) {
+				/* KeyIdRest */
+				int keyid_len;
+				unsigned char keyid_buff[32];
+				keyid_len = cefnetd_keyid_get( msg, pkt_len, keyid_buff );
+				if ( (keyid_len == 32) && (memcmp(pe->KIDR_selector, keyid_buff, 32) == 0) ) {
+					/* OK */
+#ifdef	__RESTRICT__
+					printf ( "%s, KeiId OK\n", __func__ );
+#endif
+				} else {
+					/* NG */
+					if ( pm.AppComp_num > 0 ) {
+						/* Free AppComp */
+						cef_frame_app_components_free ( pm.AppComp_num, pm.AppComp );
+					}
+					return (-1);
+				}
+			}
+
 			face = &(pe->dnfaces);
 			while (face->next) {
 				face = face->next;
@@ -6778,6 +8212,7 @@ cefnetd_incoming_csmgr_object_process (
 		----------------------------------------------------------------------*/
 		if (face_num > 0) {
 #ifdef CefC_Debug
+#if 0
 			{
 				int dbg_x;
 				
@@ -6789,6 +8224,20 @@ cefnetd_incoming_csmgr_object_process (
 				cef_dbg_write (CefC_Dbg_Finer, "%s\n", cnd_dbg_msg);
 			}
 			cef_dbg_write (CefC_Dbg_Finer, "Forward the Content Object to cefnetd(s)\n");
+#else
+			{
+				int dbg_x;
+				int len = 0;
+				
+				len = sprintf (cnd_dbg_msg, "Recorded PIT Faces:");
+				
+				for (dbg_x = 0 ; dbg_x < face_num ; dbg_x++) {
+					len = len + sprintf (cnd_dbg_msg + len, " %d", faceids[dbg_x]);
+				}
+				cef_dbg_write (CefC_Dbg_Finer, "%s\n", cnd_dbg_msg);
+			}
+			cef_dbg_write (CefC_Dbg_Finer, "Forward the Content Object to cefnetd(s)\n");
+#endif
 #endif // CefC_Debug
 
 			cefnetd_object_forward (hdl, faceids, face_num, msg,
@@ -6797,11 +8246,49 @@ cefnetd_incoming_csmgr_object_process (
 			if (pe->stole_f) {
 				cef_pit_entry_free (hdl->pit, pe);
 			}
-			
+
 			if(j == 0) {
 				return (1);
 			}
 		}
+
+//0.8.3	S
+#ifndef	CefC_Nwproc
+			if(j == 1) {
+				for (i = 0; i < face_num; i++)
+					faceids[i] = 0;
+				face_num = 0;
+				pe = NULL;
+				pe = cef_pit_entry_search_without_chunk (hdl->pit, &pm, &poh);
+				if ( pe == NULL ) {
+					/* NOP */
+				} else {
+					//Symbolic/Osyimbolic
+					face = &(pe->dnfaces);
+			
+					while (face->next) {
+						face = face->next;
+						faceids[face_num] = face->faceid;
+						face_num++;
+					}
+					if (face_num > 0) {
+						if ( (pe->PitType == CefC_PIT_TYPE_Sym) && (hit_with_chunk_f == 0 || hit_with_chunk_f == 1) ) {
+#ifdef	__SYMBOLIC__
+	fprintf( stderr, "\t pe->Last_chunk_num:%ld   pm.chnk_num:%u \n", pe->Last_chunk_num, pm.chnk_num );
+#endif
+							if ( (pe->Last_chunk_num - hdl->SymbolicBack) <= pm.chnk_num ) {
+								cefnetd_object_forward (hdl, faceids, face_num, msg,
+									payload_len, header_len, &pm, &poh, pe);
+								if ( pe->Last_chunk_num < pm.chnk_num ) {
+									pe->Last_chunk_num = pm.chnk_num;
+								}
+							}
+						}
+					}
+				}
+			}
+#endif
+//0.8.3	E
 
 		for (i = 0; i < face_num; i++)
 			faceids[i] = 0;
@@ -6822,7 +8309,8 @@ cefnetd_incoming_csmgr_ccninforeq_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) {
 	/* NOP */;
 	return (1);
@@ -6838,7 +8326,8 @@ cefnetd_incoming_csmgr_pingreq_process (
 											/* transmission of the message(s)			*/
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len						/* Header Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	char*	user_id
 ) {
 	/* NOP */;
 	return (1);
@@ -6851,22 +8340,25 @@ static int									/* Returns a negative value if it fails 	*/
 cefnetd_config_read (
 	CefT_Netd_Handle* hdl					/* cefnetd handle							*/
 ) {
-	char 	ws[1024];
+//	char 	ws[1024];
+	char 	ws[2048];
+	char 	ws_w[1024];
 	FILE*	fp = NULL;
 	char 	buff[1024];
 	char 	pname[64];
 	int 	res;
+	double 	res_dbl;
 
 	/* Obtains the directory path where the cefnetd's config file is located. */
-	cef_client_config_dir_get (ws);
+	cef_client_config_dir_get (ws_w);
 
-	if (mkdir (ws, 0777) != 0) {
+	if (mkdir (ws_w, 0777) != 0) {
 		if (errno == ENOENT) {
 			cef_log_write (CefC_Log_Error, "<Fail> cefnetd_config_read (mkdir)\n");
 			return (-1);
 		}
 	}
-	sprintf (ws, "%s/cefnetd.conf", ws);
+	sprintf (ws, "%s/cefnetd.conf", ws_w);
 
 	/* Opens the cefnetd's config file. */
 	fp = fopen (ws, "r");
@@ -7032,8 +8524,8 @@ cefnetd_config_read (
 			hdl->ccninfo_full_discovery =  res;
 		}
 		else if (strcasecmp (pname, CefC_ParamName_CcninfoValidAlg) == 0) {
-			if (!(strcmp(ws, "NONE") == 0 || strcmp(ws, "crc32") == 0 || strcmp(ws, "sha256") == 0)) {
-				cef_log_write (CefC_Log_Warn, "CCNINFO_VALID_ALG must be NONE, crc32 or sha256.\n");
+			if (!(strcmp(ws, "None") == 0 || strcmp(ws, "crc32") == 0 || strcmp(ws, "sha256") == 0)) {
+				cef_log_write (CefC_Log_Warn, "CCNINFO_VALID_ALG must be None, crc32 or sha256.\n");
 				return (-1);
 			}
 			strcpy(hdl->ccninfo_valid_alg ,ws);
@@ -7065,7 +8557,7 @@ cefnetd_config_read (
 				hdl->My_Node_Name = malloc( sizeof(char) * res + 1 );
 				strcpy( hdl->My_Node_Name, (char*)out_name );
 				/* Convert Name TLV */
-				strcpy( (char*)out_name, "ccn:/" );
+				strcpy( (char*)out_name, "ccnx:/" );
 				strcat( (char*)out_name, hdl->My_Node_Name );
 				res = cef_frame_conversion_uri_to_name ((char*)out_name, out_name_tlv);
 				if ( res < 0 ) {
@@ -7129,15 +8621,119 @@ cefnetd_config_read (
 			res = atoi(ws);
 			if ( res <= 0 ) {
 				cef_log_write (CefC_Log_Warn, "CEF_C3_LOG_PERIOD must be higher than 0.\n");
+				return (-1);
 			}
 			hdl->c3_log_period = res;
 		}
 #endif // CefC_C3
+//8.0.3
+		else if ( strcasecmp (pname, CefC_ParamName_InterestRetrans) == 0 ) {
+			if ( strcasecmp( ws, CefC_Default_InterestRetrans ) == 0 ) {
+				hdl->IntrestRetrans = CefC_IntRetrans_Type_RFC;
+			}
+			else if ( strcasecmp( ws, "SUPPRESSIVE" ) == 0 ) {
+				hdl->IntrestRetrans = CefC_IntRetrans_Type_SUP;
+			}
+			else {
+				cef_log_write (CefC_Log_Warn, "INTEREST_RETRANSMISSION must be RFC8569 or SUPPRESSIVE.\n");
+				return (-1);
+			}
+		}
+		else if ( strcasecmp (pname, CefC_ParamName_SelectiveForward) == 0 ) {
+			res = atoi(ws);
+			if ( (res != 0) && (res != 1) ) {
+				cef_log_write (CefC_Log_Warn, "SELECTIVE_FORWARDING must be 0 or 1.\n");
+				return (-1);
+			}
+			hdl->Selective_fwd = res;
+		}
+		else if ( strcasecmp (pname, CefC_ParamName_SymbolicBackBuff) == 0 ) {
+			res = atoi(ws);
+			if ( res < 0 ) {
+				cef_log_write (CefC_Log_Warn, "SYMBOLIC_BACKBUFFER must be higher than 0.\n");
+				return (-1);
+			}
+			hdl->SymbolicBack = res;
+		}
+		else if ( strcasecmp (pname, CefC_ParamName_BANDWIDTH_INTVAL) == 0 ) {
+			res = atoi(ws);
+			if ( res < 0 ) {
+				cef_log_write (CefC_Log_Warn, "BANDWIDTH_STAT_INTERVAL must be higher than 0.\n");
+				return (-1);
+			}
+			hdl->BW_Stat_interval = res;
+		}
+		else if ( strcasecmp (pname, CefC_ParamName_SYMBOLIC_LIFETIME) == 0 ) {
+			res = atoi(ws);
+			if ( res < 0 ) {
+				cef_log_write (CefC_Log_Warn, "SYMBOLIC_INTEREST_MAX_LIFETIME must be higher than 0.\n");
+				return (-1);
+			}
+			hdl->Symbolic_max_lifetime = res * 1000;
+		}
+		else if ( strcasecmp (pname, CefC_ParamName_REGULAR_LIFETIME) == 0 ) {
+			res = atoi(ws);
+			if ( res < 0 ) {
+				cef_log_write (CefC_Log_Warn, "REGULAR_INTEREST_MAX_LIFETIME must be higher than 0.\n");
+				return (-1);
+			}
+			hdl->Regular_max_lifetime = res * 1000;
+		}
+		else if ( strcasecmp (pname, CefC_ParamName_IR_Congesion) == 0 ) {
+			res_dbl = atof( ws );
+			if ( res_dbl <= 0.0 ) {
+				cef_log_write (CefC_Log_Warn
+				               , "INTEREST_RETURN_CONGESTION_THRESHOLD must be higher than or equal to 0.\n");
+				return (-1);
+			}
+			hdl->IR_Congesion = res_dbl;
+		}
+		else if ( strcasecmp (pname, CefC_ParamName_BW_STAT_PLUGIN) == 0 ) {
+			strcpy( hdl->bw_stat_pin_name, "None" );
+		}
+		else if ( strcasecmp (pname, CefC_ParamName_CSMGR_ACCESS) == 0 ) {
+			if ( strcasecmp( ws, "RW" ) == 0 ) {
+				hdl->Ex_Cache_Access = CefC_Default_CSMGR_ACCESS_RW;
+			}
+			else if ( strcasecmp( ws, "RO" ) == 0 ) {
+				hdl->Ex_Cache_Access = CefC_Default_CSMGR_ACCESS_RO;
+			}
+			else {
+				cef_log_write (CefC_Log_Warn, "CSMGR_ACCESS must RW or RO.\n");
+				return (-1);
+			}
+		}
+		else if ( strcasecmp (pname, CefC_ParamName_BUFFER_CACHE_TIME) == 0 ) {
+			res = atoi(ws);
+			if ( res < 0 ) {
+				cef_log_write (CefC_Log_Warn, "BUFFER_CACHE_TIME be higher than or equal to 0.\n");
+				return (-1);
+			}
+			hdl->Buffer_Cache_Time = res * 1000;
+		}
+		//202108
+#ifdef	CefC_INTEREST_RETURN
+		else if ( strcasecmp (pname, CefC_ParamName_IR_Option) == 0 ) {
+			res = atoi(ws);
+			if ( (res == 0 ) || (res == 1) ){
+				
+			} else {
+				cef_log_write (CefC_Log_Warn, "ENABLE_INTEREST_RETURN must 0 or 1.\n");
+				return (-1);
+			}
+			hdl->IR_Option = res;
+		}
+#endif	//CefC_INTREST_RETURN
 		else {
 			/* NOP */;
 		}
 	}
 	fclose (fp);
+
+	//202108
+	if ( hdl->IR_Option == 0 ) {
+		strcpy( hdl->bw_stat_pin_name, "None" );
+	}
 
 #ifdef CefC_C3
 	if ( hdl->c3_log_dir == NULL ) {
@@ -7154,6 +8750,22 @@ cefnetd_config_read (
 	cef_dbg_write (CefC_Dbg_Fine, "FIB_SIZE_APP = %d\n", hdl->app_fib_max_size);
 	cef_dbg_write (CefC_Dbg_Fine, "FORWARDING_INFO_STRATEGY = %d\n"
 								, hdl->forwarding_info_strategy);
+
+	cef_dbg_write (CefC_Dbg_Fine, "INTEREST_RETRANSMISSION = %s\n", 
+					(hdl->IntrestRetrans == CefC_IntRetrans_Type_RFC) ? "RFC8569" : "SUPPRESSIVE" );
+	cef_dbg_write (CefC_Dbg_Fine, "SELECTIVE_FORWARDING    = %d\n", hdl->Selective_fwd);
+	cef_dbg_write (CefC_Dbg_Fine, "SYMBOLIC_BACKBUFFER     = %d\n", hdl->SymbolicBack);
+	cef_dbg_write (CefC_Dbg_Fine, "INTEREST_RETURN_CONGESTION_THRESHOLD = %f\n", hdl->IR_Congesion);
+	cef_dbg_write (CefC_Dbg_Fine, "BANDWIDTH_STAT_INTERVAL = %d\n", hdl->BW_Stat_interval);
+	cef_dbg_write (CefC_Dbg_Fine, "SYMBOLIC_INTEREST_MAX_LIFETIME = %d\n", hdl->Symbolic_max_lifetime);
+	cef_dbg_write (CefC_Dbg_Fine, "REGULAR_INTEREST_MAX_LIFETIME = %d\n", hdl->Regular_max_lifetime);
+	cef_dbg_write (CefC_Dbg_Fine, "CSMGR_ACCESS = %s\n", 
+					(hdl->Ex_Cache_Access == CefC_Default_CSMGR_ACCESS_RW) ? "RW" : "RO" );
+	cef_dbg_write (CefC_Dbg_Fine, "BUFFER_CACHE_TIME    = %d\n", hdl->Buffer_Cache_Time);
+	cef_dbg_write (CefC_Dbg_Fine, "BANDWIDTH_STAT_PLUGIN = %s\n", hdl->bw_stat_pin_name);
+	//202108
+	cef_dbg_write (CefC_Dbg_Fine, "ENABLE_INTEREST_RETURN = %d\n", hdl->IR_Option);
+
 #ifdef CefC_Ccninfo
 	cef_dbg_write (CefC_Dbg_Fine, "CCNINFO_ACCESS_POLICY = %d\n" 
 								, hdl->ccninfo_access_policy);
@@ -7186,7 +8798,7 @@ cefnetd_config_read (
 #ifdef CefC_Nwproc
 	if (hdl->forwarding_info_strategy == 0) {
 		cef_log_write (CefC_Log_Warn
-	               , "NWPROC is enabled  but FORWARDING_INFO_STRATEGY is the default setting.\n");
+	               , "NWPROC is enabled but FORWARDING_INFO_STRATEGY is the default setting.\n");
 	}
 #endif // CefC_Nwproc
 	return (1);
@@ -7480,7 +9092,7 @@ cefnetd_pit_cleanup (
 	int end_index;
 	int end_flag = 0;
 	int pit_num = cef_hash_tbl_item_num_get(hdl->pit);
-	
+
 	if (nowt > hdl->pit_clean_t) {
 		end_index = hdl->pit_clean_i;
 		
@@ -7497,6 +9109,9 @@ cefnetd_pit_cleanup (
 			hdl->pit_clean_i++;
 			
 			if (pe != NULL) {
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "[%s] cef_pit_clean()\n", __func__ );
+#endif	
 				
 				cef_pit_clean (hdl->pit, pe);
 				clean_num++;
@@ -7547,6 +9162,9 @@ cefnetd_pit_cleanup (
 					}
 					}
 #endif
+#ifdef	__PIT_CLEAN__
+	fprintf( stderr, "[%s] cef_pit_entry_free()\n", __func__ );
+#endif	
 					cef_pit_entry_free (hdl->pit, pe);
 				}
 			} else {
@@ -7897,13 +9515,21 @@ cefnetd_cefcache_object_process (
 	uint16_t faceids[CefC_Fib_UpFace_Max];
 	uint16_t face_num = 0;
 	CefT_Down_Faces* face;
-	
+#ifndef	CefC_Nwproc
+	//0.8.3
+	int	hit_with_chunk_f;
+	hit_with_chunk_f = 0;
+#endif
+
 	chp = (struct fixed_hdr*) msg;
 	pkt_len = ntohs (chp->pkt_len);
 	hdr_len = chp->hdr_len;
 	payload_len = pkt_len - hdr_len;
 	header_len 	= hdr_len;
 	
+#ifdef	__SYMBOLIC__
+	fprintf( stderr, "[%s] IN Msg (%d bytes) \n", __func__, payload_len + header_len );
+#endif
 
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finer, 
@@ -7939,7 +9565,7 @@ cefnetd_cefcache_object_process (
 			pe = cef_pit_entry_search_specified_name_for_app (hdl->app_pit, 
 								pm.name_wo_cid, pm.name_wo_cid_len, &pm, &poh);
 #else // CefC_Nwproc
-			pe = cef_pit_entry_search (hdl->app_pit, &pm, &poh);
+			pe = cef_pit_entry_search (hdl->app_pit, &pm, &poh, NULL, 0);
 #endif // CefC_Nwproc
 		} else {
 			if (j == 1) {
@@ -7950,15 +9576,95 @@ cefnetd_cefcache_object_process (
 				pe = cef_pit_entry_search_specified_name (hdl->pit,
 								pm.name_wo_cid, pm.name_wo_cid_len, &pm, &poh, 1);
 #else // CefC_Nwproc
-				pe = cef_pit_entry_search (hdl->pit, &pm, &poh);
+				pe = cef_pit_entry_search_with_chunk (hdl->pit, &pm, &poh);	//0.8.3
 #endif // CefC_Nwproc
 			}
 		}
+#ifdef	CefC_Nwproc
 		if (pe == NULL) {
 			continue;
 		}
+#else
+		if ((pe == NULL) && (j == 0)) {
+			continue;
+		} else if ((pe == NULL) && (j == 1)) {
+			hit_with_chunk_f = 0;	//0.8.3
+		} else if ((pe) && (j == 1)){
+			hit_with_chunk_f = 1;	//0.8.3
+		}
+#endif
 
 		if (pe) {
+#ifndef	CefC_Nwproc
+#ifdef	__SYMBOLIC__
+			fprintf( stderr, "\t hit_with_chunk_f = 1\n" );
+#endif
+#endif
+			//0.8.3
+			if ( pe->COBHR_len > 0 ) {
+				/* CobHash */
+				SHA256_CTX		ctx;
+				uint16_t		CobHash_index;
+				uint16_t		CobHash_len;
+				unsigned char 	hash[SHA256_DIGEST_LENGTH];
+
+				CobHash_index = header_len;
+				CobHash_len   = payload_len;
+				SHA256_Init (&ctx);
+				SHA256_Update (&ctx, &msg[CobHash_index], CobHash_len);
+				SHA256_Final (hash, &ctx);
+				if ( memcmp(pe->COBHR_selector, hash, 32) == 0 ) {
+					/* OK */
+#ifdef	__RESTRICT__
+printf( "%s CobHash OK\n", __func__ );
+#endif
+				} else {
+					/* NG */
+#ifdef	__RESTRICT__
+printf( "%s CobHash NG\n", __func__ );
+#endif
+					return (-1);
+				}
+			}
+#ifdef	__RESTRICT__
+printf( "%s pe->KIDR_len:%d\n", __func__, pe->KIDR_len );
+#endif
+			if ( pe->KIDR_len > 0 ) {
+				/* KeyIdRest */
+				int keyid_len;
+				unsigned char keyid_buff[32];
+				keyid_len = cefnetd_keyid_get( msg, pkt_len, keyid_buff );
+#ifdef	__RESTRICT__
+				{
+					printf( "%s\n", __func__ );
+					int dbg_x;
+					fprintf (stderr, "pe->KIDR_selector [ ");
+					for (dbg_x = 0 ; dbg_x < 32 ; dbg_x++) {
+						fprintf (stderr, "%02x ", pe->KIDR_selector[dbg_x]);
+					}
+					fprintf (stderr, "]\n");
+
+					fprintf (stderr, "keyid_buff [ ");
+					for (dbg_x = 0 ; dbg_x < 32 ; dbg_x++) {
+						fprintf (stderr, "%02x ", keyid_buff[dbg_x]);
+					}
+					fprintf (stderr, "]\n");
+				}
+#endif
+				if ( (keyid_len == 32) && (memcmp(pe->KIDR_selector, keyid_buff, 32) == 0) ) {
+					/* OK */
+#ifdef	__RESTRICT__
+printf( "%s KeyIdRest OK\n", __func__ );
+#endif
+				} else {
+					/* NG */
+#ifdef	__RESTRICT__
+printf( "%s KeyIdRest NG\n", __func__ );
+#endif
+					return (-1);
+				}
+			}
+
 			face = &(pe->dnfaces);
 			while (face->next) {
 				face = face->next;
@@ -7971,7 +9677,11 @@ cefnetd_cefcache_object_process (
 			Forwards the Content Object
 		----------------------------------------------------------------------*/
 		if (face_num > 0) {
+#ifdef	__SYMBOLIC__
+			fprintf( stderr, "\t face_num:%d\n", face_num );
+#endif
 #ifdef CefC_Debug
+#if 0
 			{
 				int dbg_x;
 				
@@ -7983,6 +9693,20 @@ cefnetd_cefcache_object_process (
 				cef_dbg_write (CefC_Dbg_Finer, "%s\n", cnd_dbg_msg);
 			}
 			cef_dbg_write (CefC_Dbg_Finer, "Forward the Content Object to cefnetd(s)\n");
+#else
+			{
+				int dbg_x;
+				int len = 0;
+				
+				len = sprintf (cnd_dbg_msg, "Recorded PIT Faces:");
+				
+				for (dbg_x = 0 ; dbg_x < face_num ; dbg_x++) {
+					len = len + sprintf (cnd_dbg_msg + len, " %d", faceids[dbg_x]);
+				}
+				cef_dbg_write (CefC_Dbg_Finer, "%s\n", cnd_dbg_msg);
+			}
+			cef_dbg_write (CefC_Dbg_Finer, "Forward the Content Object to cefnetd(s)\n");
+#endif
 #endif // CefC_Debug
 
 			cefnetd_object_forward (hdl, faceids, face_num, msg,
@@ -7996,6 +9720,56 @@ cefnetd_cefcache_object_process (
 				return (1);
 			}
 		}
+#ifdef	__SYMBOLIC__
+			fprintf( stderr, "\t j:%d\n", j );
+#endif
+
+//0.8.3	S
+#ifndef	CefC_Nwproc
+			if(j == 1) {
+				for (i = 0; i < face_num; i++)
+					faceids[i] = 0;
+				face_num = 0;
+				pe = NULL;
+				pe = cef_pit_entry_search_without_chunk (hdl->pit, &pm, &poh);
+				if ( pe == NULL ) {
+					/* NOP */
+#ifdef	__SYMBOLIC__
+				fprintf( stderr, "\t pe == NULL\n" );
+#endif
+				} else {
+#ifdef	__SYMBOLIC__
+				fprintf( stderr, "\t pe != NULL\n" );
+#endif
+					//Symbolic/Osyimbolic
+					face = &(pe->dnfaces);
+			
+					while (face->next) {
+						face = face->next;
+						faceids[face_num] = face->faceid;
+						face_num++;
+					}
+					if (face_num > 0) {
+						if ( (pe->PitType == CefC_PIT_TYPE_Sym) && (hit_with_chunk_f == 0 || hit_with_chunk_f == 1) ) {
+#ifdef	__SYMBOLIC__
+							fprintf( stderr, "\t pe->Last_chunk_num:%ld   hdl->SymbolicBack:%d\n", pe->Last_chunk_num, hdl->SymbolicBack );
+#endif
+							if ( (pe->Last_chunk_num - hdl->SymbolicBack) <= pm.chnk_num ) {
+								cefnetd_object_forward (hdl, faceids, face_num, msg,
+									payload_len, header_len, &pm, &poh, pe);
+								if ( pe->Last_chunk_num < pm.chnk_num ) {
+									pe->Last_chunk_num = pm.chnk_num;
+#ifdef	__SYMBOLIC__
+							fprintf( stderr, "\t pe->Last_chunk_num:%ld\n", pe->Last_chunk_num );
+#endif
+								}
+							}
+						}
+					}
+				}
+			}
+#endif
+//0.8.3	E
 
 		for (i = 0; i < face_num; i++)
 			faceids[i] = 0;
@@ -8048,8 +9822,212 @@ cefnetd_nodename_check (
 	return( strlen(ot_p) );
 }
 
+#ifdef CefC_Ccninfo
+static	int
+cefnetd_ccninfo_loop_check(
+	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
+	CefT_Parsed_Ccninfo* pci
+) {
+	
+	CefT_Ccninfo_Rpt*	rpt_p;		/* Report block */
+	int					rpt_idx;
+	unsigned char		chk_node_name[1024];
 
+#ifdef	DEB_CCNINFO
+	fprintf( stderr, "%s Entry\n", "cefnetd_ccninfo_loop_check()" );
+	fprintf( stderr, "\t pci->rpt_blk_num=%d \n", pci->rpt_blk_num );
+#endif
 
+	if ( pci->rpt_blk_num == 0 ) {
+		return( 0 );
+	}
+	
+	rpt_p = pci->rpt_blk;
+	for ( rpt_idx = 0; rpt_idx < pci->rpt_blk_num; rpt_idx++ ) {
+		memset( chk_node_name, 0x00, 1024 );
+		memcpy( chk_node_name, &rpt_p->node_id[0], rpt_p->id_len);
+		if ( memcmp( chk_node_name, hdl->My_Node_Name_TLV, hdl->My_Node_Name_TLV_len ) == 0 ) {
+			/* Detect Loop */
+#ifdef	DEB_CCNINFO
+			fprintf( stderr, "\t Detect Loop pci->rpt_blk_num=%d \n", pci->rpt_blk_num );
+#endif
+			return( -1 );
+		}
+		rpt_p = rpt_p->next;
+	}
+	
+	return( 0 );
+}
+
+static int
+cefnetd_ccninfo_pit_create(
+	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
+	CefT_Parsed_Ccninfo* pci,
+	unsigned char* ccninfo_pit,
+	int		req_or_rep,
+	int		skip_option
+) {
+
+	
+	int	wp = 0;
+	unsigned char	tmp_buff[2048];
+	CefT_Ccninfo_Rpt*	rpt_p;		/* Report block */
+	int					rpt_idx;
+	int					find_my_node = 0;
+	int					top_node = 0;
+	int					is_skip = 0;
+	
+	memset( tmp_buff, 0x00, 2048 );
+	
+
+#ifdef	DEB_CCNINFO
+	fprintf( stderr, "%s Entry\n", "cefnetd_ccninfo_pit_create()" );
+#endif
+	rpt_p = pci->rpt_blk;
+
+	if ( pci->rpt_blk_num == 0 ) {
+#ifdef	DEB_CCNINFO
+		fprintf( stderr, "\t pci->rpt_blk_num=%d SKIP_CONCAT\n", pci->rpt_blk_num );
+#endif
+		goto SKIP_CONCAT;
+	}
+
+	if ( pci->id_len == rpt_p->id_len ) {
+		if ( memcmp(&pci->node_id[0], &rpt_p->node_id[0], pci->id_len) == 0 ) {
+			/* Req eq Top. NoSkip */
+		} else {
+			is_skip = 1;
+		}
+	} else {
+		is_skip = 1;
+	}
+
+	find_my_node = 0;
+	for ( rpt_idx = 0; rpt_idx < pci->rpt_blk_num; rpt_idx++ ) {
+		if ( memcmp( &rpt_p->node_id[0], hdl->My_Node_Name_TLV, hdl->My_Node_Name_TLV_len ) == 0 ) {
+			find_my_node = 1;
+			if ( rpt_idx == 0 ) {
+				top_node = 1;
+			}
+		}
+		rpt_p = rpt_p->next;
+	}
+
+	if ( (req_or_rep == CCNINFO_REP) && (find_my_node != 1) ) {
+#ifdef	DEB_CCNINFO
+		fprintf( stderr, "\t Reply NotFound MyNode SKIP_CONCAT\n" );
+#endif
+		goto SKIP_CONCAT;
+	}
+
+	if ( req_or_rep == CCNINFO_REP ) {
+		if ( pci->ret_code == 0x00 ) {
+			/* Normal */
+		} else if ( pci->ret_code >= 0x80 ) {
+			if ( is_skip == 0 ) {
+				/* Normal */
+			} else {
+				if ( top_node == 1 ) {
+					/* Normal */
+				} else {
+					if ( skip_option == 1 ) {
+						/* Special */
+#ifdef	DEB_CCNINFO
+						fprintf( stderr, "\t 0x80 Special-1 SKIP_CONCAT\n" );
+#endif
+						goto SKIP_CONCAT;
+					}
+				}
+			}
+		}
+	}
+
+	rpt_p = pci->rpt_blk;
+
+#ifdef	DEB_CCNINFO
+	fprintf( stderr, "\t 000 pci->rpt_blk_num=%d\n", pci->rpt_blk_num );
+#endif
+	for ( rpt_idx = 0; rpt_idx < pci->rpt_blk_num; rpt_idx++ ) {
+#ifdef	DEB_CCNINFO
+		fprintf( stderr, "\t 000-1 rpt_idx=%d\n", rpt_idx );
+#endif
+		if ( req_or_rep == CCNINFO_REP ) {
+			/* Reply */
+			if ( memcmp( &rpt_p->node_id[0], hdl->My_Node_Name_TLV, hdl->My_Node_Name_TLV_len ) == 0 ) {
+#ifdef	DEB_CCNINFO
+				fprintf( stderr, "\t 000-2 Break\n" );
+#endif
+				break;
+			}
+		}
+		
+		memcpy( &tmp_buff[wp], &rpt_p->node_id[0], rpt_p->id_len );
+		wp += rpt_p->id_len;
+		rpt_p = rpt_p->next;
+	}
+
+SKIP_CONCAT:;
+	
+#ifdef	DEB_CCNINFO
+	fprintf( stderr, "\t 001 wp=%d\n", wp );
+#endif
+	/* Content Name */
+	memcpy( &tmp_buff[wp], pci->disc_name, pci->disc_name_len );
+	wp += pci->disc_name_len;
+#ifdef	DEB_CCNINFO
+	fprintf( stderr,"\t 002 wp=%d\n", wp );
+#endif
+#ifdef	DEB_CCNINFO
+	{
+		int	jj;
+		int	tmp_len;
+		tmp_len = wp;
+		fprintf( stderr, "cefnetd_ccninfo_pit_create() wp=%d\n", wp );
+		for (jj = 0 ; jj < tmp_len ; jj++) {
+			if ( jj != 0 ) {
+				if ( jj%32 == 0 ) {
+				fprintf( stderr, "\n" );
+				}
+			}
+			fprintf( stderr, "%02x ", tmp_buff[jj] );
+		}
+		fprintf( stderr, "\n" );
+	}
+#endif
+
+	/* hash */
+	MD5 ( (unsigned char*)tmp_buff, wp, ccninfo_pit );
+#ifdef	DEB_CCNINFO
+	fprintf( stderr, "\t 003\n" );
+#endif
+	/* RequestID */
+	memcpy( &ccninfo_pit[MD5_DIGEST_LENGTH], &pci->req_id, sizeof(uint16_t) );
+#ifdef	DEB_CCNINFO
+	fprintf( stderr, "\t 004\n" );
+#endif
+
+#ifdef	DEB_CCNINFO
+	{
+		int	ii;
+		int	tmp_len;
+		tmp_len = MD5_DIGEST_LENGTH + sizeof(uint16_t);
+		fprintf( stderr, "cefnetd_ccninfo_pit_create() pit_len=%d\n", tmp_len );
+		for (ii = 0 ; ii < tmp_len ; ii++) {
+			if ( ii != 0 ) {
+				if ( ii%32 == 0 ) {
+				fprintf( stderr, "\n" );
+				}
+			}
+			fprintf( stderr, "%02x ", ccninfo_pit[ii] );
+		}
+		fprintf( stderr, "\n" );
+	}
+#endif
+
+	return( MD5_DIGEST_LENGTH + sizeof(uint16_t) );
+}
+
+#endif	//CefC_Ccninfo
 
 
 #ifdef CefC_C3
@@ -8520,4 +10498,512 @@ cefnetd_c3_fib_app_entry_search (
 }
 
 #endif // CefC_C3
+
+#ifdef DEB_CCNINFO
+/*--------------------------------------------------------------------------------------
+	for debug
+----------------------------------------------------------------------------------------*/
+static void
+cefnetd_dbg_cpi_print (
+	CefT_Parsed_Ccninfo* pci
+) {
+	int aaa, bbb;
+	CefT_Ccninfo_Rpt* rpt_p;
+	CefT_Ccninfo_Rep* rep_p;
+	
+	fprintf(stderr, "----- cef_frame_ccninfo_parse -----\n");
+	fprintf(stderr, "PacketType                : 0x%02x\n", pci->pkt_type);
+	fprintf(stderr, "ReturnCode                : 0x%02x\n", pci->ret_code);
+	fprintf(stderr, "  --- Request Block ---\n");
+	fprintf(stderr, "  Request ID              : %u\n", pci->req_id);
+	fprintf(stderr, "  SkipHopCount            : %u\n", pci->skip_hop);
+	fprintf(stderr, "  Flags                   : 0x%02x V(%c) F(%c), O(%c), C(%c)\n", pci->ccninfo_flag,
+						(pci->ccninfo_flag & CefC_CtOp_ReqValidation) ? 'o': 'x',
+						(pci->ccninfo_flag & CefC_CtOp_FullDisCover) ? 'o': 'x',
+						(pci->ccninfo_flag & CefC_CtOp_Publisher)    ? 'o': 'x',
+						(pci->ccninfo_flag & CefC_CtOp_Cache)        ? 'o': 'x');
+	fprintf(stderr, "  Request Arrival Time    : %u\n", pci->req_arrival_time);
+	fprintf(stderr, "  Node Identifier         : ");
+	for (aaa=0; aaa<pci->id_len; aaa++)
+		fprintf(stderr, "%02x ", pci->node_id[aaa]);
+	fprintf(stderr, "\n");
+	fprintf(stderr, "  --- Report Block ---(%d)\n", pci->rpt_blk_num);
+	rpt_p = pci->rpt_blk;
+	for (bbb=0; bbb<pci->rpt_blk_num; bbb++) {
+		fprintf(stderr, "  [%d]\n", bbb);
+		fprintf(stderr, "    Request Arrival Time  : %u\n", rpt_p->req_arrival_time);
+		fprintf(stderr, "    Node Identifier       : ");
+		for (aaa=0; aaa<rpt_p->id_len; aaa++)
+			fprintf(stderr, "%02x ", rpt_p->node_id[aaa]);
+		fprintf(stderr, "\n");
+		rpt_p = rpt_p->next;
+	}
+	fprintf(stderr, "  --- Discovery ---\n");
+	fprintf(stderr, "  Name                    : ");
+	for (aaa=0; aaa<pci->disc_name_len; aaa++)
+		fprintf(stderr, "%02x ", pci->disc_name[aaa]);
+	fprintf(stderr, "(%d)\n", pci->disc_name_len);
+
+	if ( pci->reply_node_len > 0 ) {
+	fprintf(stderr, "  --- Reply Node ---\n");
+	fprintf(stderr, "    Request Arrival Time  : %u\n", pci->reply_req_arrival_time);
+	fprintf(stderr, "    Node Identifier       : ");
+	for (aaa=0; aaa<pci->reply_node_len; aaa++)
+		fprintf(stderr, "%02x ", pci->reply_reply_node[aaa]);
+	fprintf(stderr, "\n");
+	}
+
+	fprintf(stderr, "  --- Reply Block ---(%d)\n", pci->rep_blk_num);
+	rep_p = pci->rep_blk;
+	for (bbb=0; bbb<pci->rep_blk_num; bbb++) {
+		fprintf(stderr, "  [%d]\n", bbb);
+		fprintf(stderr, "    Content Type          : %s\n", 
+			(rep_p->rep_type == CefC_T_DISC_CONTENT) ? "T_DISC_CONTENT" : "T_DISC_CONTENT_OWNER");
+		fprintf(stderr, "    Object Size           : %u\n", rep_p->obj_size);
+		fprintf(stderr, "    Object Count          : %u\n", rep_p->obj_cnt);
+		fprintf(stderr, "    # Received Interest   : %u\n", rep_p->rcv_interest_cnt);
+		fprintf(stderr, "    First Seqnum          : %u\n", rep_p->first_seq);
+		fprintf(stderr, "    Last Seqnum           : %u\n", rep_p->last_seq);
+		fprintf(stderr, "    Elapsed Cache Time    : %u\n", rep_p->cache_time);
+		fprintf(stderr, "    Remain Cache Lifetime : %u\n", rep_p->lifetime);
+		fprintf(stderr, "    Name                  : ");
+		for (aaa=0; aaa<rep_p->rep_name_len; aaa++)
+			fprintf(stderr, "%02x ", rep_p->rep_name[aaa]);
+		fprintf(stderr, "(%d)\n", rep_p->rep_name_len);
+		rep_p = rep_p->next;
+	}
+}
+#endif
+
+//0.8.3
+/*--------------------------------------------------------------------------------------
+	Handles the received Interest message has T_SELECTIVE
+----------------------------------------------------------------------------------------*/
+static int									/* Returns a negative value if it fails 	*/
+cefnetd_incoming_selective_interest_process (
+	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
+	int faceid, 							/* Face-ID where messages arrived at		*/
+	int peer_faceid, 						/* Face-ID to reply to the origin of 		*/
+											/* transmission of the message(s)			*/
+	unsigned char* msg, 					/* received message to handle				*/
+	uint16_t payload_len, 					/* Payload Length of this message			*/
+	uint16_t header_len,					/* Header Length of this message			*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+) {
+	CefT_Pit_Entry* pe = NULL;
+	CefT_Fib_Entry* fe = NULL;
+	uint16_t faceids[CefC_Fib_UpFace_Max];
+	uint16_t face_num = 0;
+	unsigned char trg_name[CefC_Max_Length];
+	struct value32_tlv value32_fld;
+	uint16_t org_name_len;
+	uint16_t trg_name_len;
+	unsigned char 	org_name[CefC_Max_Length];
+	int pit_res;
+	int pit_res_first;
+
+#if defined(CSMFILE)
+	int	interest_to_csm	= 0;
+#endif
+
+	uint64_t		first_chunk;
+	uint64_t		l;
+
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] IN\n", __func__ );
+#endif
+
+	//First Chunk Number to CefC_Select_Cob_Num : RegPIT & CS_MODE=2 Interest to Csmgrd
+	first_chunk = (uint64_t)pm->org.first_chunk;
+
+	org_name_len = pm->name_len;
+	memcpy (org_name, pm->name, pm->name_len);
+	memcpy (trg_name, pm->name, pm->name_len);
+	
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] CKP-010\n", __func__ );
+#endif
+	/* InterestType */
+	pm->InterestType = CefC_PIT_TYPE_Reg;
+	for ( l = 0; l < CefC_Select_Cob_Num; l++ ) {
+		/* Max check */
+		if ( first_chunk == UINT32_MAX ) {
+			/* Warning */
+#ifdef	__SELECTIVE__
+			fprintf( stderr, "[%s] return(-1)\n", __func__ );
+#endif
+			return(-1);
+		}
+
+		/* set Chunk Number */
+		trg_name_len = org_name_len;
+		value32_fld.type   = htons (CefC_T_CHUNK);
+		value32_fld.length = htons (CefC_S_ChunkNum);
+		value32_fld.value  = htonl ((uint32_t)first_chunk);
+		memcpy (&trg_name[trg_name_len], &value32_fld, sizeof (struct value32_tlv));
+		trg_name_len += sizeof (struct value32_tlv);
+		pm->name_len = trg_name_len;
+		memcpy (pm->name, trg_name, trg_name_len);
+		pm->chnk_num_f 	= 1;
+		pm->chnk_num 	= (uint32_t)first_chunk;
+
+		/* Searches a PIT entry matching this Interest 	*/
+		pe = cef_pit_entry_lookup (hdl->pit, pm, poh, NULL, 0);
+		if (pe == NULL) {
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] CKP-020\n", __func__ );
+#endif
+			return (-1);
+		}
+
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] CKP-011\n", __func__ );
+#endif
+		/* Updates the information of down face that this Interest arrived 	*/
+		pit_res = cef_pit_entry_down_face_update (pe, peer_faceid, pm, poh, msg, hdl->IntrestRetrans);
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] CKP-012\n", __func__ );
+#endif
+		if ( l == 0 ) {
+			pit_res_first = pit_res;
+		}
+		
+#if defined(CSMFILE)
+		if ( interest_to_csm != 0 ) {
+			goto SKIP_INTEREST;
+		}
+#endif
+		
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] CKP-013\n", __func__ );
+#endif
+
+		if ( hdl->Selective_fwd == CefC_Selet_FWD_ON ) {
+			goto SKIP_INTEREST;
+		}
+
+#ifdef CefC_ContentStore
+		/*--------------------------------------------------------------------
+			Content Store
+		----------------------------------------------------------------------*/
+		/* Checks Content Store */
+		if (hdl->cs_stat->cache_type != CefC_Default_Cache_Type) {
+			/* Checks the temporary/local cache in cefnetd 		*/
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] CKP-014\n", __func__ );
+#endif
+			unsigned char* cob = NULL;
+			int cs_res = -1;
+			cs_res = cef_csmgr_cache_lookup (hdl->cs_stat, peer_faceid, pm, poh, pe, &cob);
+			if (cs_res < 0) {
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] CKP-015\n", __func__ );
+#endif
+#ifdef	CefC_Conpub
+				if (hdl->cs_stat->cache_type != CefC_Cache_Type_ExConpub){
+#endif	//CefC_Conpub
+					/* Cache does not exist in the temporary cache in cefnetd, 		*/
+					/* so inquiries to the csmgr 									*/
+					cef_csmgr_excache_lookup (hdl->cs_stat, peer_faceid, pm, poh, pe);
+#if defined(CSMFILE)
+					interest_to_csm	= 1;
+#endif
+
+#ifdef	CefC_Conpub
+				}
+#endif	//CefC_Conpub
+			} else {
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Finer, 
+					"Return the Content Object from the buffer/local cache\n");
+#endif // CefC_Debug
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] CKP-016\n", __func__ );
+#endif
+				cefnetd_cefcache_object_process (hdl, cob); 
+			}
+		}
+#endif
+
+		/* Update first_chunk */
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] CKP-018\n", __func__ );
+#endif
+
+SKIP_INTEREST:;
+		first_chunk++;
+	}
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] CKP-090\n", __func__ );
+#endif
+	
+	pm->name_len = org_name_len;
+	memcpy (pm->name, org_name, pm->name_len);
+	
+	//hdl->Selective_fwd==CefC_Selet_FWD_ON : NextHop
+	if ( pit_res_first != 0 ) {
+		if ( hdl->Selective_fwd == CefC_Selet_FWD_ON ) {
+			/* Searches a FIB entry matching this Interest 		*/
+			fe = cef_fib_entry_search (hdl->fib, pm->name, pm->name_len);
+			/* Obtains Face-ID(s) to forward the Interest */
+			if (fe) {
+				face_num = cef_fib_forward_faceid_select (fe, peer_faceid, faceids);
+			}
+			if (face_num > 0) {
+				cefnetd_interest_forward (
+					hdl, faceids, face_num, peer_faceid, msg,
+					payload_len, header_len, pm, poh, pe, fe
+				);
+			}
+		}
+	}
+#ifdef	__SELECTIVE__
+	fprintf( stderr, "[%s] OUT\n", __func__ );
+#endif
+	
+	return (1);
+}
+#ifndef __PIN_NOT_USE__
+static int
+cefnetd_plugin_load (
+	CefT_Netd_Handle* hdl					/* cefnetd handle							*/
+) {
+	int (*func)(CefT_Plugin_Bw_Stat*);
+	char func_name[256] = {0};
+	
+	/* Open library */
+	hdl->mod_lib = dlopen (CefnetdC_Plugin_Library_Name, RTLD_LAZY);
+	if (hdl->mod_lib == NULL) {
+		cef_log_write (CefC_Log_Error, "%s\n", dlerror ());
+		return (-1);
+	}
+	
+	/* Load plugin */
+	sprintf (func_name, "cefnetd_%s_plugin_load", hdl->bw_stat_pin_name);
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Fine, "Plugin name = %s.\n", func_name);
+#endif // CefC_Debug
+	func = dlsym (hdl->mod_lib, (const char*)func_name);
+	if (func == NULL) {
+		cef_log_write (CefC_Log_Error, "%s\n", dlerror ());
+		/* close library */
+		dlclose (hdl->mod_lib);
+		return (-1);
+	}
+
+	/* Load functions */
+	if ((func) (hdl->bw_stat_hdl) != 0) {
+		cef_log_write (CefC_Log_Error, "Initialize function is not set.\n");
+		dlclose (hdl->mod_lib);
+		return (-1);
+	}
+	
+	return( 0 );
+}
+#endif
+static int
+cefnetd_keyid_get (
+	const unsigned char* msg, 
+	int msg_len, 
+	unsigned char *keyid_buff
+) {
+	struct fixed_hdr* 	fixed_hp;
+	struct tlv_hdr* 	tlv_ptr;
+	
+	uint16_t 	index;
+	uint16_t 	pkt_len;
+	uint16_t 	hdr_len;
+	uint16_t 	val_len;
+	uint16_t 	type, alg_type;
+	uint16_t 	alg_offset = 0;
+	uint16_t 	t_keyid_offset = 0;
+	uint16_t 	t_keyid_len = 0;
+	uint16_t 	t_keyid_type = 0;
+#ifdef	__RESTRICT__
+		printf( "\n\n%s IN\n", __func__ );
+#endif
+	
+	/* Obtains header length and packet length 		*/
+	fixed_hp = (struct fixed_hdr*) msg;
+	pkt_len  = ntohs (fixed_hp->pkt_len);
+	if (pkt_len != msg_len) {
+#ifdef	__RESTRICT__
+		printf( "\t (pkt_len:%d != msg_len:%d)\n", pkt_len, msg_len );
+#endif
+		return (-1);
+	}
+	hdr_len = fixed_hp->hdr_len;
+	
+	/* Obtains CCN message size 		*/
+	tlv_ptr = (struct tlv_hdr*) &msg[hdr_len];
+	val_len = ntohs (tlv_ptr->length);
+	if (hdr_len + CefC_S_TLF + val_len == pkt_len) {
+#ifdef	__RESTRICT__
+		printf( "\t (hdr_len:%d + CefC_S_TLF:%d + val_len:%d == pkt_len:%d)\n", hdr_len, CefC_S_TLF, val_len, pkt_len);
+#endif
+		return (0);
+	}
+	index = hdr_len + CefC_S_TLF + val_len;
+	
+	/* Checks Validation Algorithm TLVs 	*/
+	alg_offset = index;
+#ifdef	__RESTRICT__
+		printf( "\t alg_offset:%d index:%d\n", alg_offset, index );
+#endif
+	tlv_ptr = (struct tlv_hdr*) &msg[alg_offset];
+	type = ntohs (tlv_ptr->type);
+	if (type != CefC_T_VALIDATION_ALG) {
+#ifdef	__RESTRICT__
+		printf( "\t (type != CefC_T_VALIDATION_ALG)\n" );
+#endif
+		return (-1);
+	}
+	
+	val_len = ntohs (tlv_ptr->length);
+#ifdef	__RESTRICT__
+		printf( "\t val_len:%d\n", val_len );
+#endif
+	if (index + CefC_S_TLF + val_len >= pkt_len) {
+#ifdef	__RESTRICT__
+		printf( "\t (index + CefC_S_TLF + val_len >= pkt_len)\n" );
+#endif
+		return (-1);
+	}
+	index += CefC_S_TLF;
+#ifdef	__RESTRICT__
+		printf( "\t alg_offset:%d index:%d\n", alg_offset, index );
+#endif
+	
+	/* Checks Algorithm Type 		*/
+	tlv_ptr = (struct tlv_hdr*) &msg[index];
+	alg_type = ntohs (tlv_ptr->type);
+
+	if ( alg_type != CefC_T_RSA_SHA256 ) {
+		return (-1);
+	}
+	
+	/* T_KEYID */
+	t_keyid_offset = index + 4;
+	tlv_ptr = (struct tlv_hdr*) &msg[t_keyid_offset];
+	t_keyid_type = ntohs (tlv_ptr->type);
+	t_keyid_len  = ntohs (tlv_ptr->length);
+#ifdef	__RESTRICT__
+		printf( "\t t_keyid_offset:%d t_keyid_type:%d t_keyid_len:%d\n", t_keyid_offset, t_keyid_type,t_keyid_len );
+#endif
+	
+	if ( t_keyid_type != CefC_T_KEYID ) {
+		return (-1);
+	}
+	if ( t_keyid_len != 32 ) {
+		return (-1);
+	}
+	t_keyid_offset += CefC_S_TLF;
+	memcpy( keyid_buff, &msg[t_keyid_offset], 32 );
+	
+	return ( t_keyid_len );
+
+}
+
+
+void *
+cefnetd_cefstatus_thread (
+	void *p
+) {
+	CefT_Netd_Handle*	cefned_hdl;
+	int 				read_fd = -1;
+	struct pollfd 		poll_fds[1];
+	CefT_Cefstatus_Msg	in_msg;
+	int					in_msg_len;
+	char				msg[CefC_Max_Length];
+	int					resp_fd = -1;
+	int					res;
+	unsigned char*		rsp_msg = NULL;
+	struct pollfd		send_fds[1];
+
+	cefned_hdl = (CefT_Netd_Handle*)p;
+	
+	read_fd = cefned_hdl->cefstatus_pipe_fd[1];
+	
+	pthread_t self_thread = pthread_self();
+	pthread_detach(self_thread);
+
+	memset(&poll_fds, 0, sizeof(poll_fds));
+	poll_fds[0].fd = read_fd;
+	poll_fds[0].events = POLLIN | POLLERR;
+	
+#if 0
+	uint64_t	dev_cnt = 0;
+#endif
+	while (1){
+#if 0
+	dev_cnt++;
+	if ( (dev_cnt % 100000) == 0 ) {
+		printf( "[%s]   dev_cnt:"FMTU64" \n", __func__, dev_cnt );
+	}
+#endif
+	
+	    poll(poll_fds, 1, 1000);
+	    if (poll_fds[0].revents & POLLIN) {
+			if((in_msg_len = read(read_fd, &in_msg, sizeof(CefT_Cefstatus_Msg))) < 1){
+				continue;
+			}
+
+			strcpy( msg, (char*)in_msg.msg );
+			resp_fd = in_msg.resp_fd;
+
+			if ( strncmp( msg, CefC_Ctrl_Status, CefC_Ctrl_Status_Len) == 0) {
+				rsp_msg = calloc(1, CefC_Max_Length*10);
+				res = cef_status_stats_output (cefned_hdl, &rsp_msg);
+
+				if (res > 0) {
+					send_fds[0].fd = resp_fd;
+					send_fds[0].events = POLLOUT | POLLERR;
+					if (poll (send_fds, 1, 0) > 0) {
+						if (send_fds[0].revents & (POLLERR | POLLNVAL | POLLHUP)) {
+							cef_log_write (CefC_Log_Warn, 
+								"Failed to send to Local peer (%d)\n", send_fds[0].fd);
+						} else {
+							{
+								int	fblocks;
+								int rem_size;
+								int counter;
+								int fcntlfl;
+								fcntlfl = fcntl (resp_fd, F_GETFL, 0);
+								fcntl (resp_fd, F_SETFL, fcntlfl & ~O_NONBLOCK);
+								fblocks = res / 65535;
+								rem_size = res % 65535;
+								for (counter=0; counter<fblocks; counter++){
+									send (resp_fd, &rsp_msg[counter*65535], 65535, 0);
+								}
+								if (rem_size != 0){
+									send (resp_fd, &rsp_msg[fblocks*65535], rem_size, 0);
+								}
+								fcntl (resp_fd, F_SETFL, fcntlfl | O_NONBLOCK);
+							}
+						}
+					}
+				}
+				if ( rsp_msg != NULL ) {
+					free( rsp_msg );
+					rsp_msg = NULL;
+				}
+			} else {
+				/* Erroe */
+			}
+
+			if ( rsp_msg != NULL ) {
+				free( rsp_msg );
+				rsp_msg = NULL;
+			}
+			memset( msg, 0, CefC_Max_Length );
+			resp_fd = -1;
+		}
+
+	}
+
+	pthread_exit (NULL);
+	return 0;
+
+}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -82,8 +82,8 @@ typedef struct {
 static uint32_t 			crc_table[256];
 static CefT_Hash_Handle		key_table;
 static CefT_Keys* 			default_key_entry = NULL;
-static char					ccninfo_sha256_prvkey_path[PATH_MAX];
-static char					ccninfo_sha256_pubkey_path[PATH_MAX];
+static char					ccninfo_sha256_prvkey_path[PATH_MAX*2];
+static char					ccninfo_sha256_pubkey_path[PATH_MAX*2];
 unsigned char* 				ccninfo_sha256_pub_key_bi;
 int 						ccninfo_sha256_pub_key_bi_len;
 RSA*  						ccninfo_sha256_pub_key;
@@ -1315,7 +1315,8 @@ cef_valid_sha256_keypass_ccninfoRT(
 	char 	ws[1024];
 	char 	pname[1024];
 	int 	res;
-	char	key_prfx[PATH_MAX];
+//	char	key_prfx[PATH_MAX];
+	char	key_prfx[2048];
 	
 	strcpy(key_prfx, "ccninfo_rt");
 	
@@ -1509,3 +1510,5 @@ cef_valid_trim_line_string (
 
 	return (equal_f);
 }
+
+

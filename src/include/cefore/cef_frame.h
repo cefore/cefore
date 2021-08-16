@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -56,7 +56,8 @@
 /*------------------------------------------------------------------*/
 /* Maximum Sizes													*/
 /*------------------------------------------------------------------*/
-#define CefC_Max_Msg_Size			8192		/* Maximum Message Size (8 Kbytes) 		*/
+#define CefC_Max_Msg_Size			65535		/* Maximum Message Size (64Kbytes) 		*/
+
 #define CefC_Max_Header_Size 		255			/* Maximum Header Size 					*/
 #define CefC_Max_Node_Id 			1025
 #define CefC_Max_Stamp_Num 			20
@@ -142,19 +143,23 @@
 #define CefC_T_OBJHASHRESTR			0x0003		/* ContentObjectHashRestriction			*/
 #define CefC_T_PAYLDTYPE			0x0005		/* PayloadType							*/
 #define CefC_T_EXPIRY				0x0006		/* ExpiryTime 							*/
-#define CefC_T_DISC_REPLY			0x0007		/* CCNinfo Reply Block					*/
+#define CefC_T_DISC_REQ				0x0007		/* CCNinfo Request Block ccninfo-05		*/
+#define CefC_T_DISC_REPLY			0x0008		/* CCNinfo Reply Block ccninfo-05		*/
 #define CefC_T_ENDCHUNK				0x000C		/* EndChunkNumber						*/
 #define CefC_T_MSG_TLV_NUM			0x000D
 #define CefC_T_ORG					0x0FFF		/* Vendor Specific Information			*/
 
 /*----- Reply sub-block TLVs of T_DISC_REPLY	-----*/
 #define CefC_T_DISC_CONTENT			0x0000		/* Type for cache						*/
-#define CefC_T_DISC_CONTENT_OWNER	0x0001		/* Type for FHR							*/
+#define CefC_T_DISC_CONTENT_PUBLISHER	0x0001		/* Type for FHR							*/
+#define CefC_T_DISC_CONTENT_OWNER	CefC_T_DISC_CONTENT_PUBLISHER
 
 /*----- Organization-Specific TLVs -----*/
 #define CefC_T_SYMBOLIC				0x0001		/* Symbolic Interest					*/
 #define CefC_T_LONGLIFE				0x0002		/* Long Life Interest					*/
+#define CefC_T_SELECTIVE			0x8003		/* Selective Interest					*/
 #define CefC_T_SER_LOG				0x8009		/* Serial Logging						*/
+#define CefC_T_OSYMBOLIC			0x000a		/* Osymbolic Interest	0.8.3 NONPUB	*/
 
 /*------------------------------------------------------------------*/
 /* Name Segment Type												*/
@@ -223,14 +228,16 @@
 #define CefC_T_OPT_INTLIFE			0x0001		/* Interest Lifetime 					*/
 #define CefC_T_OPT_CACHETIME		0x0002		/* Recommended Cache Time (RCT) 		*/
 #define CefC_T_OPT_MSGHASH			0x0003		/* Message Hash							*/
-#define CefC_T_OPT_DISC_REQ			0x0008		/* Ccninfo Request Block				*/
+//#define CefC_T_OPT_DISC_REQ			0x0008		/* Ccninfo Request Block ccninfo-05	*/
+#define CefC_T_OPT_DISC_REQHDR		0x0008		/* Ccninfo Request Header Block	ccninfo-05 */
 #define CefC_T_OPT_DISC_REPORT		0x0009		/* Ccninfo Report Block					*/
 #define CefC_T_OPT_PING_REQ			0x000A		/* Cefping Request Block				*/
 #define CefC_T_OPT_TLV_NUM			0x000B
 
 #define CefC_T_OPT_ORG				0x0FFF		/* Vendor Specific Information			*/
 #define CefC_T_OPT_SYMBOLIC			0x1001		/* Symbolic Interest					*/
-#define CefC_T_OPT_TRANSPORT		0x1002		/* Transport Plugin Variant				*/
+// #920 #define CefC_T_OPT_TRANSPORT		0x1002		/* Transport Plugin Variant				*/
+#define CefC_T_OPT_TRANSPORT		0x8004		/* Transport Plugin Variant				*/
 #define CefC_T_OPT_EFI				0x1003		/* External Function Invocation			*/
 #define CefC_T_OPT_IUR				0x1004		/* Interest User Request				*/
 #define CefC_T_OPT_USR_TLV_NUM		0x1005
@@ -285,6 +292,7 @@
 #define CefC_CtOp_FullDisCover 		0x04
 #define CefC_CtOp_Cache 			0x01
 #define CefC_CtOp_Publisher			0x02
+#define CefC_CtOp_ReqValidation		0x08	/* ccninfo-05 */
 
 /* Sets to Scheme Name of Request Block 	*/
 #define CefC_CtSn_Ccnx 				0x00
@@ -314,7 +322,21 @@
 #define		CefC_C3_LEAVE			2
 #define		CefC_C3_PUBLISH			3
 
-
+#if 0
+//0.8.3
+/*------------------------------------------------------------------*/
+/* INTERESTRETURN Type			 									*/
+/*------------------------------------------------------------------*/
+#define	CefC_IR_NO_ROUTE			0x01
+#define	CefC_IR_HOPLIMIT_EXCEEDED	0x02
+#define	CefC_IR_NO_RESOURCE			0x03
+#define	CefC_IR_PATH_ERROR			0x04
+#define	CefC_IR_PROHIBITED			0x05
+#define	CefC_IR_CONGESION			0x06
+#define	CefC_IR_MTU_TOO_LAREG		0x07
+#define	CefC_IR_UNSUPPORTED_COBHASH 0x08
+#define	CefC_IR_MALFORMED_INTEREST	0x09
+#endif
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
@@ -325,6 +347,7 @@
 struct cef_app_frame {
 	uint32_t        version;
 	uint32_t        type;
+	uint8_t			returncode;
 	uint64_t        actual_data_len;	/* version~payload_len							*/
 										/* + name_len + payload_len + length of trailer	*/
 										/*	length of trailer: sizeof(MagicNo)			*/
@@ -344,6 +367,7 @@ struct cef_app_request {
 	unsigned char*  name;
 	uint16_t        name_len;
 	uint16_t        total_segs_len;					/* total length of T_NAMESEGMENT part	*/
+	uint16_t		chnk_num_f;						/* Offset of Chunk Number 				*/
 	uint32_t        chunk_num;
 	unsigned char   data_entity[CefC_Max_Length];	/* Variable length data(name)			*/
 } __attribute__((__packed__));
@@ -408,11 +432,23 @@ struct value64_tlv {
 	uint64_t 	value;
 } __attribute__((__packed__));
 
+#if 0
 struct ccninfo_req_block {
 	uint16_t 	req_id;
 	uint8_t 	skiphop;
 	uint8_t 	flag;
 	uint32_t	req_arrival_time;
+} __attribute__((__packed__));
+#endif
+
+struct ccninfo_req_block {
+	uint32_t	req_arrival_time;
+} __attribute__((__packed__));
+
+struct ccninfo_reqhdr_block {		/* ccninfo-05 */
+	uint16_t 	req_id;
+	uint8_t 	skiphop;
+	uint8_t 	flag;
 } __attribute__((__packed__));
 
 struct ccninfo_rep_block {
@@ -473,6 +509,13 @@ typedef struct {
 	uint16_t 	tp_variant;							/* Transport Variant 				*/
 	uint8_t 	tp_length;							/* length of value field 			*/
 	unsigned char tp_value[CefC_Max_Header_Size];	/* value field 						*/
+	
+	//0.8.3
+	uint16_t 			selective_f;			/* value of CefC_T_SELECTIVE Sub TLV */
+	uint32_t			req_num;
+	uint32_t			first_chunk;
+	uint32_t			last_chunk;
+	uint16_t 			osymbolic_f;			/* value of CefC_T_OSYMBOLIC Sub TLV NONPUB */
 	
 	/***** External Function Invocation *****/
 	// TBD
@@ -550,6 +593,14 @@ typedef struct {
 	/***** Validation Algorithm TLV 	*****/
 	CefT_Valid_Alg_TLVs 	alg;
 	
+	//0.8.3
+	/***** KeyIdRestriction *****/
+	uint8_t					KeyIdRest_f;			/* KeyIdRestriction */
+	unsigned char			KeyIdRestSel[32];
+	/***** ObjHashRestriction *****/
+	uint8_t					CobHRest_f;				/* ObjHashRestriction */
+	unsigned char			CobHash[32];
+	
 } CefT_Interest_TLVs;
 
 /*--------------------------------------------------------------*/
@@ -588,6 +639,16 @@ typedef struct {
 	uint16_t				AppComp_num;			/* Number of Application Components */
 	CefT_AppComp*			AppComp;
 
+	//0.8.3
+	/***** KeyIdRestriction *****/
+	uint8_t					KeyIdRest_f;			/* KeyIdRestriction */
+//	unsigned char			KeyId[32];
+//	uint16_t 				pubkey_len;
+//	unsigned char 			pubkey[CefC_Max_Length];
+	
+	/***** ObjHashRestriction *****/
+	uint8_t					CobHRest_f;				/* ObjHashRestriction */
+	unsigned char			CobHash[32];
 	
 } CefT_Object_TLVs;
 
@@ -644,6 +705,13 @@ typedef struct CefT_Org_Params {
 
 	uint8_t 				symbolic_f;				/* Symbolic Interest 				*/
 	uint8_t 				longlife_f;				/* Long Life Interest 				*/
+
+	//0.8.3
+	uint8_t 				selective_f;			/* Selectieve Interest 				*/
+	uint32_t				req_chunk;
+	uint32_t				first_chunk;
+	uint32_t				last_chunk;
+	uint8_t 				osymbolic_f;			/* Osymbolic Interest 	NINPUB		*/
 
 #ifdef CefC_Ser_Log
 	unsigned char*			sl_offset;				/* Serial Log offset				*/
@@ -790,6 +858,18 @@ typedef struct {
 	/***** Organization-Specific Parameters	*****/
 	CefT_Org_Params org;
 	
+	//0.8.3
+	/***** for more infomation	*****/
+	int				InterestType;				/* for PIT marking */
+	/***** KeyIdRester *****/
+	uint16_t		KeyIdRester_f;				/* Offset of KeyIdRester				*/
+	uint16_t		KeyIdRester_sel_len;		/* Length of KeyIdRester_selector		*/
+	unsigned char 	KeyIdRester_selector[32];	/* KeyIdRester_selector					*/
+	/***** ObjHashRester *****/
+	uint16_t		ObjHash_f;					/* Offset of ObjHashRester				*/
+	uint16_t		ObjHash_len;				/* Length of ObjHash					*/
+	unsigned char 	ObjHash[32];				/* ObjHash								*/
+
 } CefT_Parsed_Message;
 
 /*--------------------------------------------------------------*/
@@ -847,8 +927,15 @@ typedef struct {
 	uint8_t				rep_blk_num;
 	CefT_Ccninfo_Rep*	rep_blk;				/* Report block TLV								*/
 	CefT_Ccninfo_Rep*	rep_blk_tail;
+	uint32_t			reply_req_arrival_time;	/* Request Arrival Time of Request Block		*/
+	uint16_t 			reply_node_len;
+	unsigned char*   	reply_reply_node;		/* Node Identifier(e.g. IPv4 address)			*/
 } CefT_Parsed_Ccninfo;
 
+typedef struct {
+	uint8_t fl_4bit: 4;
+	uint8_t sh_4bit: 4;
+} CEF_FRAME_SKIPHOP_T;
 
 /**
  * Clap Corner
@@ -875,11 +962,11 @@ typedef struct {
 #define T_NAME            0x0000
 #define T_MESSAGEMENT     0x0001
 #define T_CHUNK           0x0010
-#define T_APP             0x1000   // T_APP=0x1XXX XXXは000-FFF
+#define T_APP             0x1000   // T_APP=0x1XXX XXX 000-FFF
 #define T_APP_0           0x1000   // T_APP:0
 #define T_APP_1           0x1001   // T_APP:1
 #define T_APP_2           0x1002   // T_APP:2
-// 間を省略します
+//
 #define T_APP_4095        0x1FFF   // T_APP:4095
 
 // End Chunk
@@ -929,8 +1016,8 @@ struct c3_name {
 	uint16_t                type;       // T_NAME(0x0000)
 	uint16_t                length;
 	struct c3_name_segment  segments[MAX_NAME_SEGMENTS];
-	struct c3_number         datatype;  // typeはT_APP:1-T_APP:4095 (0x1001-0x1FFF)
-	struct c3_number         chunk;     // typeはT_CHUNK(0x0010)
+	struct c3_number         datatype;  // type T_APP:1-T_APP:4095 (0x1001-0x1FFF)
+	struct c3_number         chunk;     // type T_CHUNK(0x0010)
 } __attribute__((__packed__));
 
 // Vendor TLV
@@ -1058,6 +1145,11 @@ cef_frame_interest_create (
 ----------------------------------------------------------------------------------------*/
 int 										/* Length of Content Object message 		*/
 cef_frame_object_create (
+	unsigned char* buff, 					/* buffer to set Content Object				*/
+	CefT_Object_TLVs* tlvs					/* Parameters to set Content Object 		*/
+);
+int 										/* Length of Content Object message 		*/
+cef_frame_object_create_for_csmgrd (
 	unsigned char* buff, 					/* buffer to set Content Object				*/
 	CefT_Object_TLVs* tlvs					/* Parameters to set Content Object 		*/
 );
@@ -1329,6 +1421,18 @@ cef_frame_input_uri_pre_check2(
 void
 cef_frame_app_components_free(  uint16_t		AppComp_num,
 								 CefT_AppComp*	AppComp
+);
+
+//0.8.3
+/*--------------------------------------------------------------------------------------
+	Creates the Interest Return from the specified Parameters
+----------------------------------------------------------------------------------------*/
+int 										/* Length of Interest Return Message		*/
+cef_frame_interest_return_create (
+	unsigned char* msg, 					/* Input Interest msg						*/
+	uint16_t msg_len, 
+	unsigned char* buff, 					/* buffer to set Interest Return			*/
+	uint8_t	IR_type							/* Interest Return 							*/
 );
 
 #endif // __CEF_FRAME_HEADER__

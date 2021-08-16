@@ -22,6 +22,14 @@
 #LOCAL_SOCK_ID=0
 
 #
+# The maximum number of cached Cobs.
+# This value must be between 1 and  68,719,476,735(0xFFFFFFFFF) inclusive.
+# It can also be specified in 16 digits.
+# (e.g.: 0xFF)
+#
+#CACHE_CAPACITY=819200
+
+#
 # Type of CS space used by csmgrd.
 #  filesystem : UNIX filesystem
 #  memory     : Memory
@@ -30,8 +38,23 @@
 
 #
 # Type of cache policy by cache plugin.
+# If None is specified, no caching policy is used.
 #
 #CACHE_ALGORITHM=libcsmgrd_lru
+
+#
+# The average name size of Cob processed by the cache policy.
+# Used for out-of-memory checking when the cache policy is applied.
+# This Value must be between 100 and 8000 inclusive.
+#
+#CACHE_ALGO_NAME_SIZE=256
+
+#
+# The average size of Cob processed by the cache policy.
+# Used for out-of-memory checking when the cache policy is applied.
+# This Value must be between 500 and 65535 inclusive.
+#
+#CACHE_ALGO_COB_SIZE=2048
 
 #
 # Check interval for expired content/Cob in csmgrd (ms).
@@ -39,6 +62,12 @@
 # 86400000 (24 hours).
 #
 #CACHE_INTERVAL=10000
+
+#
+# Directory name. Only applicable for filesystem cache.
+# The default is $CEFORE_DIR/cefore.
+#
+#CACHE_PATH=
 
 #
 # RCT (ms) if RCT is not specified in transmitted Cob. 
@@ -60,18 +89,6 @@
 # However, because of security risks, this ALL configuration is NOT recommended.
 #
 #ALLOW_NODE=127.0.0.1
-
-#
-# Directory name. Only applicable for filesystem cache.
-# The default is $CEFORE_DIR/cefore.
-#
-#CACHE_PATH=
-
-#
-# The maximum number of cached Cobs.
-# This value must be higher than 0 and lower than 819,200.
-#
-#CACHE_CAPACITY=65536
 
 # Debug log level
 #

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -84,6 +84,10 @@ int main (
 		if (strcmp (work_arg, "-d") == 0) {
 			if (i + 1 == argc) {
 				cef_log_write (CefC_Log_Error, "[-d] has no parameter.\n");
+				exit (1);
+			}
+			if ( strlen(argv[i + 1]) > PATH_MAX ) {
+				cef_log_write (CefC_Log_Error, "[-d] parameter is too long.\n");
 				exit (1);
 			}
 			strcpy (file_path, argv[i + 1]);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,8 @@
 #include <signal.h>
 #include <limits.h>
 #include <sys/time.h>
+#include <time.h>
+#include <sys/stat.h>
 
 #include <cefore/cef_define.h>
 #include <cefore/cef_frame.h>
@@ -54,9 +56,11 @@
  ****************************************************************************************/
 
 #define CefC_Putfile_Max 					512000
-#define CefC_RateMbps_Max				 	32.0
+//#define CefC_RateMbps_Max				 	32.0
+#define CefC_RateMbps_Max				 	100000000.0
 #define CefC_RateMbps_Min				 	0.001	/* 1Kbps */
 
+//#define TO_CSMGRD // Enable to connect directly to Csmgrd
 
 /****************************************************************************************
  Structures Declaration
@@ -91,6 +95,11 @@ print_usage (
 	void
 );
 
+int bnum = 0;
+#if 1 //+++++@@@@@ DUMMY FILE
+	int dummy_f 		= 0;
+	uint32_t dummy_sum	= 0;
+#endif //-----@@@@@ DUMMY FILE
 /****************************************************************************************
  ****************************************************************************************/
 int main (
@@ -100,10 +109,12 @@ int main (
 	int res;
 	unsigned char buff[CefC_Max_Length];
 	CefT_Object_TLVs params;
-	int seqnum = 0;
+	uint64_t seqnum = 0;
 	char uri[1024];
+	struct stat statBuf;
 	
 	char filename[1024];
+	FILE* fp;
 	double interval;
 	long interval_us;
 	static struct timeval now_t;
@@ -121,9 +132,10 @@ int main (
 	unsigned char* 	work_buff = NULL;
 	uint32_t 		work_buff_idx = 0;
 	int 			cob_len;
-	unsigned char 	cob_buff[CefC_Max_Length];
+	unsigned char 	cob_buff[CefC_Max_Length*2];
+	unsigned char   wbuff[CefC_Max_Length*2];
 	
-	int int_rate;
+	long int int_rate;
 	long sending_time_us;
 	
 	/***** flags 		*****/
@@ -139,10 +151,15 @@ int main (
 	int valid_f 	= 0;
 	
 	/***** parameters 	*****/
-	uint16_t cache_time 	= 300;
+	uint64_t cache_time 	= 300;
 	uint64_t expiry 		= 3600;
 	double rate 			= 5.0;
 	int block_size 			= 1024;
+#if 1 //+++++@@@@@ DUMMY FILE
+	uint64_t dummy_para;			/* dummy file size (KByte) */
+	uint64_t dummy_size;
+	uint64_t dummy_sent_size	= 0;
+#endif //-----@@@@@ DUMMY FILE
 	
 	/*------------------------------------------
 		Checks specified options
@@ -163,7 +180,28 @@ int main (
 		if (work_arg == NULL || work_arg[0] == 0) {
 			break;
 		}
-		
+#if 1 //+++++@@@@@ DUMMY FILE		
+		if (strcmp (work_arg, "-D") == 0) {
+			if (file_f) {
+				fprintf (stdout, "ERROR: [-D] is duplicated.");
+				print_usage ();
+				return (-1);
+			}
+			if (i + 1 == argc) {
+				fprintf (stdout, "ERROR: [-D] has no parameter.\n");
+				print_usage ();
+				return (-1);
+			}
+			work_arg = argv[i + 1];
+			dummy_para = (uint64_t)strtoull (work_arg, NULL, 10);
+			fprintf (stdout, "[cefputfile] dummy_para   = "FMTU64"\n", dummy_para);
+			dummy_size = dummy_para;
+			dummy_size = dummy_size * 1024;
+			fprintf (stdout, "[cefputfile] dummy_size   = "FMTU64"\n", dummy_size);
+			dummy_f++;
+			i++;
+		} else 
+#endif //-----@@@@@ DUMMY FILE		
 		if (strcmp (work_arg, "-f") == 0) {
 			if (file_f) {
 				fprintf (stdout, "ERROR: [-f] is duplicated.");
@@ -199,7 +237,7 @@ int main (
 				rate = CefC_RateMbps_Max;
 			}
 			
-			int_rate = (int)(rate * 1000.0);
+			int_rate = (long int)(rate * 1000.0);
 			rate = (double)int_rate / 1000.0;
 			
 			rate_f++;
@@ -218,12 +256,21 @@ int main (
 			work_arg = argv[i + 1];
 			block_size = atoi (work_arg);
 			
+#if 0 //+++++@@@@@@ VALIABLE MSGLEN
 			if (block_size < 60) {
 				block_size = 60;
 			}
 			if (block_size > 1460) {
 				block_size = 1460;
 			}
+#else
+			if (block_size < 1) {
+				block_size = 1;
+			}
+			if (block_size > 65000) {
+				block_size = 65000;
+			}
+#endif  //-----@@@@@@ VALIABLE MSGLEN
 			blocks_f++;
 			i++;
 		} else if (strcmp (work_arg, "-e") == 0) {
@@ -240,7 +287,7 @@ int main (
 			work_arg = argv[i + 1];
 			expiry = atoi (work_arg);
 			
-			if ((expiry < 1) || (expiry > 86400)) {
+			if ((expiry < 1) || (expiry > 31536000)) {
 				expiry = 0;
 			}
 			expiry_f++;
@@ -259,7 +306,7 @@ int main (
 			work_arg = argv[i + 1];
 			cache_time = atoi (work_arg);
 			
-			if ((cache_time < 0) || (cache_time > 65535)) {
+			if ((cache_time < 0) || (cache_time > 31536000)) {
 				cache_time = 10;
 			}
 			cachet_f++;
@@ -294,6 +341,12 @@ int main (
 			}
 			if (i + 1 == argc) {
 				fprintf (stderr, "ERROR: [-d] has no parameter.\n");
+				print_usage ();
+				return (-1);
+			}
+			//202108
+			if (strlen(argv[i + 1]) > PATH_MAX) {
+				fprintf (stderr, "ERROR: [-d] parameter is too long.\n");
 				print_usage ();
 				return (-1);
 			}
@@ -349,7 +402,7 @@ int main (
 			}
 			res = strlen (work_arg);
 			
-			if (res >= 1204) {
+			if (res >= 1024) {
 				fprintf (stdout, "ERROR: uri is too long.\n");
 				print_usage ();
 				return (-1);
@@ -398,6 +451,14 @@ int main (
 		strncpy (filename, uri + res, i);
 		filename[i] = '\0';
 	}
+	if (dummy_f == 1) {
+		if (cachet_f == 0) {
+			cache_time 	= 31536000;
+		}
+		if (expiry_f == 0) {
+			expiry 		= 31536000;
+		}
+	}
 	if (nsg_f == 1) {
 		cache_time 	= 0;
 		expiry 		= 10;
@@ -434,7 +495,8 @@ int main (
 		Sets Expiry Time and RCT
 	--------------------------------------------*/
 	gettimeofday (&now_t, NULL);
-	now_ms = now_t.tv_sec * 1000 + now_t.tv_usec / 1000;
+//#832	now_ms = now_t.tv_sec * 1000 + now_t.tv_usec / 1000;
+	now_ms = now_t.tv_sec * 1000llu + now_t.tv_usec / 1000llu;	//#832
 	
 	params.opt.cachetime_f 	= 1;
 	params.opt.cachetime 	= now_ms + cache_time * 1000;
@@ -448,13 +510,28 @@ int main (
 	/*------------------------------------------
 		Checks the input file
 	--------------------------------------------*/
-	FILE* fp = fopen (filename, "rb");
-	fprintf (stdout, "[cefputfile] Checking the input file ... ");
-	if (fp == NULL) {
-		fprintf (stdout, "ERROR: the specified input file can not be opened.\n");
-		exit (1);
+	if (dummy_f == 0) {
+		if (stat(filename, &statBuf) == 0) {
+		} else {
+			fprintf (stdout, "ERROR: the specified input file stat can not get.\n");
+			exit (1);
+		}
+		fp = fopen (filename, "rb");
+		fprintf (stdout, "[cefputfile] Checking the input file ... ");
+		if (fp == NULL) {
+			fprintf (stdout, "ERROR: the specified input file can not be opened.\n");
+			exit (1);
+		}
+		fprintf (stdout, "OK\n");
+	} else {
+		unsigned int seed;
+		seed = dummy_para;
+		for (int i=0; i<strlen (uri); i++) {
+			seed += (unsigned int)uri[i];
+		}
+		srand((unsigned int) seed); 
+		statBuf.st_size = dummy_size;
 	}
-	fprintf (stdout, "OK\n");
 	
 	/*------------------------------------------
 		Set Validation Alglithm
@@ -473,7 +550,11 @@ int main (
 		Connects to CEFORE
 	--------------------------------------------*/
 	fprintf (stdout, "[cefputfile] Connect to cefnetd ... ");
+#ifndef TO_CSMGRD
 	fhdl = cef_client_connect ();
+#else
+	fhdl = cef_client_connect_to_csmgrd ();
+#endif
 	if (fhdl < 1) {
 		fprintf (stdout, "ERROR: cefnetd is not running.\n");
 		exit (1);
@@ -482,10 +563,14 @@ int main (
 	
 	app_running_f = 1;
 	fprintf (stdout, "[cefputfile] URI         = %s\n", uri);
-	fprintf (stdout, "[cefputfile] File        = %s\n", filename);
+	if (dummy_f == 1) {
+		fprintf (stdout, "[cefputfile] Dummy File  = "FMTU64" KByte\n", dummy_para);
+	} else {		
+		fprintf (stdout, "[cefputfile] File        = %s\n", filename);
+	}
 	fprintf (stdout, "[cefputfile] Rate        = %.3f Mbps\n", rate);
 	fprintf (stdout, "[cefputfile] Block Size  = %d Bytes\n", block_size);
-	fprintf (stdout, "[cefputfile] Cache Time  = %d sec\n", cache_time);
+	fprintf (stdout, "[cefputfile] Cache Time  = "FMTU64" sec\n", cache_time);
 	fprintf (stdout, "[cefputfile] Expiration  = "FMTU64" sec\n", expiry);
 	
 	/*------------------------------------------
@@ -511,16 +596,141 @@ int main (
 		cob_len = 0;
 		
 		while (work_buff_idx < 1) {
-			
-			res = fread (buff, sizeof (unsigned char), block_size, fp);
+			if(dummy_f == 0){
+				res = fread (buff, sizeof (unsigned char), block_size, fp);
+				if(seqnum > UINT32_MAX){
+					res = 0;
+				}
+		
+			} else {
+
+				if ((dummy_size - dummy_sent_size) >= block_size){
+			        res = block_size; 
+				} else if ((dummy_size - dummy_sent_size) < block_size) {
+		    	    res = dummy_size - dummy_sent_size;
+				} else {
+			        res = 0; 
+				}
+				if(seqnum > UINT32_MAX){
+					res = 0;
+				}
+				dummy_sent_size += res;
+				unsigned char rv;
+				for(int i=0; i<res; i++){
+					rv = (unsigned char)rand() % 255;
+					buff[i] = rv;
+					dummy_sum += (unsigned char)rv;
+				}	
+			}
 			cob_len = 0;
 			
 			if (res > 0) {
 				memcpy (params.payload, buff, res);
 				params.payload_len = (uint16_t) res;
-				params.chnk_num = seqnum;
+				params.chnk_num = (uint32_t)seqnum;
 				
+				if ( (stat_send_bytes + res) == statBuf.st_size ) {
+					params.end_chunk_num_f = 1;
+					params.end_chunk_num = seqnum;
+				}
+#ifndef TO_CSMGRD
 				cob_len = cef_frame_object_create (cob_buff, &params);
+#else
+				cob_len = cef_frame_object_create_for_csmgrd (wbuff, &params);
+{
+	uint16_t	payload_len;
+	uint16_t	header_len;
+	uint16_t	pkt_len;
+	uint16_t	hdr_len;
+	int res;
+	CefT_Parsed_Message pm;
+	CefT_Parsed_Opheader poh;
+	uint16_t index = 0;
+	uint16_t value16;
+	uint32_t value32;
+	uint64_t value64;
+	int chunk_field_len = CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum;
+	uint16_t value16_namelen;
+	struct in_addr node;
+	uint64_t nowt = cef_client_present_timeus_get ();
+
+{	
+	struct cef_hdr {
+		uint8_t 	version;
+		uint8_t 	type;
+		uint16_t 	pkt_len;
+		uint8_t		hoplimit;
+		uint8_t		reserve1;
+		uint8_t		reserve2;
+		uint8_t 	hdr_len;
+	} __attribute__((__packed__));
+	struct		cef_hdr* chp;
+	chp = (struct cef_hdr*) wbuff;
+	pkt_len = ntohs (chp->pkt_len);
+	hdr_len = chp->hdr_len;
+}
+	payload_len = pkt_len - hdr_len;
+	header_len 	= hdr_len;
+
+	/* Creates Upload Request message 		*/
+	/* set header */
+	cob_buff[CefC_O_Fix_Ver]  = CefC_Version;
+	cob_buff[CefC_O_Fix_Type] = 0x03/*** CefC_Csmgr_Msg_Type_UpReq ***/;
+	index += 4 /*** CefC_Csmgr_Msg_HeaderLen ***/;
+		
+	/* set payload length */
+	value16 = htons (params.payload_len);
+	memcpy (cob_buff + index, &value16, CefC_S_Length);
+	index += CefC_S_Length;
+		
+	/* set cob message */
+	value16 = htons (cob_len);
+	memcpy (cob_buff + index, &value16, CefC_S_Length);
+	memcpy (cob_buff + index + CefC_S_Length, wbuff, cob_len);
+	index += CefC_S_Length + cob_len;
+		
+	/* set cob name */
+		value16_namelen = params.name_len;
+		value16 = htons (value16_namelen);
+		memcpy (cob_buff + index, &value16, CefC_S_Length);
+		memcpy (cob_buff + index + CefC_S_Length, params.name, value16_namelen);
+		index += CefC_S_Length + value16_namelen;
+		
+	/* set chunk num */
+	value32 = htonl (params.chnk_num);
+	memcpy (cob_buff + index, &value32, CefC_S_ChunkNum);
+	index += CefC_S_ChunkNum;
+		
+	/* set cache time */
+	value64 = cef_client_htonb (params.opt.cachetime*1000);
+	memcpy (cob_buff + index, &value64, CefC_S_Cachetime);
+	index += CefC_S_Cachetime;
+		
+	/* set expiry */
+	value64 = cef_client_htonb (params.expiry*1000);
+	memcpy (cob_buff + index, &value64, CefC_S_Expiry);
+	index += CefC_S_Expiry;
+	/* get address */
+	/* check local face flag */
+	node.s_addr = 0;
+	/* set address */
+	memcpy (cob_buff + index, &node, sizeof (struct in_addr));
+	index += sizeof (struct in_addr);
+	
+	/* set Length */
+	value16 = htons (index);
+	memcpy (cob_buff + CefC_O_Length, &value16, CefC_S_Length);
+
+	cob_len = index;
+
+}
+#endif
+				//0.8.3
+				if ( cob_len < 0 ) {
+					fprintf (stdout, "ERROR: Content Object frame size over(%d).\n", cob_len*(-1));
+					fprintf (stdout, "       Try shortening the block size specification.\n");
+					exit (1);
+				}
 				
 				if (work_buff_idx + cob_len <= CefC_Putfile_Max) {
 					memcpy (&work_buff[work_buff_idx], cob_buff, cob_len);
@@ -551,7 +761,11 @@ int main (
 		next_tus = now_tus + interval_us + sending_time_us + (next_tus - now_tus2);
 		
 		if (work_buff_idx > 0) {
+#ifndef TO_CSMGRD
 			cef_client_message_input (fhdl, work_buff, work_buff_idx);
+#else
+/*//@@@@@@@@@*/			cef_client_message_input (fhdl, work_buff, work_buff_idx);
+#endif
 			work_buff_idx = 0;
 		} else {
 			break;
@@ -568,7 +782,9 @@ int main (
 		}
 	}
 	gettimeofday (&end_t, NULL);
-	fclose (fp);
+	if (dummy_f == 0) {
+		fclose (fp);
+	}
 	if (work_buff) {
 		free (work_buff);
 	}
@@ -622,10 +838,18 @@ post_process (
 		fprintf (stdout, "[cefputfile] Duration   = %.3f sec\n", diff_t_dbl + 0.0009);
 		send_bits = stat_send_bytes * 8;
 		thrpt = (double)(send_bits) / diff_t_dbl;
-		fprintf (stdout, "[cefputfile] Throughput = %d bps\n", (int)thrpt);
+#ifndef TO_CSMGRD
+//		fprintf (stdout, "[cefputfile] Throughput = %d bps\n", (int)thrpt);
+		fprintf (stdout, "[cefputfile] Throughput = %lu bps\n", (unsigned long)thrpt);
+#else
+		fprintf (stdout, "[cefputfile] Throughput = %lu bps\n", (unsigned long)thrpt);
+#endif
 	} else {
 		fprintf (stdout, "[cefputfile] Duration   = 0.000 sec\n");
 	}
+if(dummy_f == 1){
+		fprintf (stdout, "[cefputfile] Dummy Sum  = %u\n", dummy_sum);
+}
 	
 	exit (0);
 }

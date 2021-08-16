@@ -15,7 +15,7 @@
 @SET_MAKE@
 
 #
-# Copyright (c) 2016-2020, National Institute of Information and Communications
+# Copyright (c) 2016-2021, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -193,7 +193,8 @@ am__define_uniq_tagged_files = \
 ETAGS = etags
 CTAGS = ctags
 DIST_SUBDIRS = cefgetstream cefputstream cefgetfile cefputfile \
-	cefgetchunk cefping ccninfo csmgr
+	cefgetchunk cefgetfile_sec cefputfile_sec cefping ccninfo \
+	csmgr
 am__DIST_COMMON = $(srcdir)/Makefile.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 am__relativize = \
@@ -340,7 +341,8 @@ top_srcdir = @top_srcdir@
 
 # load sub directry
 SUBDIRS = cefgetstream cefputstream cefgetfile cefputfile cefgetchunk \
-	$(am__append_1) $(am__append_2) $(am__append_3)
+	cefgetfile_sec cefputfile_sec $(am__append_1) $(am__append_2) \
+	$(am__append_3)
 all: all-recursive
 
 .SUFFIXES:

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,7 +42,6 @@
 #include <limits.h>
 #include <netinet/in.h>
 
-
 #include <cefore/cef_csmgr.h>
 #include <cefore/cef_csmgr_stat.h>
 
@@ -50,8 +49,6 @@
 #include <cefore/cef_ccninfo.h>
 #endif // CefC_Ccninfo
 #include <cefore/cef_log.h>
-
-
 
 /****************************************************************************************
  Macros
@@ -71,9 +68,9 @@
 typedef struct {
 
 	/********** Receive Content Object		***********/
-	unsigned char	msg[CefC_Max_Msg_Size];		/* Message								*/
+	unsigned char*	msg;						/* Message								*/
 	uint16_t		msg_len;					/* Message length						*/
-	unsigned char	name[CefC_Max_Msg_Size];	/* Content name							*/
+	unsigned char*	name;						/* Content name							*/
 	uint16_t		name_len;					/* Content name length					*/
 	uint16_t		pay_len;					/* Payload length						*/
 	uint32_t		chnk_num;					/* Chunk num							*/
@@ -84,7 +81,6 @@ typedef struct {
 	uint64_t		ins_time;					/* Insert time(use mem cache only)		*/
 
 } CsmgrdT_Content_Entry;
-
 
 typedef struct CsmgrdT_Plugin_Interface {
 	/* Initialize process */
@@ -175,8 +171,6 @@ typedef struct CsmgrdT_Lib_Interface {
  Global Variables
  ****************************************************************************************/
 
-
-
 /****************************************************************************************
  Function Declarations
  ****************************************************************************************/
@@ -189,20 +183,8 @@ typedef struct CsmgrdT_Lib_Interface {
 		cs_in->cache_item_puts = (fc_cache_item_puts); \
 		cs_in->ac_cnt_inc = (fc_ac_cnt_inc); \
 		cs_in->content_lifetime_get = (fc_lifetime_get); \
-	} while(0)
+	} while (0)
 
-/*--------------------------------------------------------------------------------------
-	Function to Create Cob message
-----------------------------------------------------------------------------------------*/
-void
-csmgrd_plugin_cob_msg_create (
-	unsigned char* buff,						/* created message						*/
-	uint16_t* buff_len,							/* Length of message					*/
-	unsigned char* msg,							/* Content Object						*/
-	uint16_t msg_len,							/* Length of Content Object				*/
-	uint32_t chnk_num,							/* Chunk number							*/
-	int faceid									/* faceid								*/
-);
 /*--------------------------------------------------------------------------------------
 	Function to Send Cob message
 ----------------------------------------------------------------------------------------*/
@@ -248,6 +230,17 @@ cef_csmgr_con_entry_create (
 	unsigned char* buff,						/* receive message						*/
 	int buff_len,								/* message length						*/
 	CsmgrdT_Content_Entry* entry
+);
+/*--------------------------------------------------------------------------------------
+	Check for excessive or insufficient memory resources  for cache algorithm library
+----------------------------------------------------------------------------------------*/
+int
+csmgrd_cache_algo_availability_check (
+	uint64_t	capacity,
+	char*		algo,
+	int			name_size,
+	int			cob_size,
+	char*		cs_type
 );
 
 void

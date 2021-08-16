@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,9 +39,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
-#ifdef CefC_Android
+//#ifdef CefC_Android			//20210408
 #include <inttypes.h>
-#endif // CefC_Android
+//#endif // CefC_Android		//20210408
 
 /****************************************************************************************
  Macros
@@ -60,7 +60,8 @@
 #   error "Unknown Apple platform"
 #endif // TARGET_IPHONE_SIMULATOR
 
-#define FMTU64 		"%llu"
+//#define FMTU64 		"%llu"	//20210408
+#define FMTU64 		"%"PRIu64
 #define FMTLINT 	"%03d"
 
 #else // __APPLE__
@@ -68,7 +69,8 @@
 #ifdef CefC_Android
 #define FMTU64 		"%"PRIu64
 #else // CefC_Android
-#define FMTU64 		"%lu"
+//#define FMTU64 		"%lu"	//20210408
+#define FMTU64 		"%"PRIu64
 #define FMTLINT 	"%03ld"
 #endif // CefC_Android
 
@@ -97,6 +99,7 @@
 #define CefC_Node_Type_Router			0x04
 
 #define CefC_Max_Length					65535
+#define CefC_Max_Block					57344
 
 /*************** Prameter Names ***************/
 #define CefC_ParamName_PortNum			"PORT_NUM"
@@ -122,8 +125,22 @@
 #define CefC_ParamName_C3Log_Dir		"CEF_C3_LOG_DIR"
 #define CefC_ParamName_C3log_Period		"CEF_C3_LOG_PERIOD"
 #define	CefC_C3_LOG_TAPP_MAX			32
-#define	CefC_C3_URI_Prefix				"ccn:/ClapCorner"
+#define	CefC_C3_URI_Prefix				"ccnx:/ClapCorner"
 #define	CefC_C3_URI_Prefix_Len			strlen(CefC_C3_URI_Prefix)
+//0.8.3
+#define	CefC_ParamName_InterestRetrans	"INTEREST_RETRANSMISSION"
+#define	CefC_ParamName_SelectiveForward	"SELECTIVE_FORWARDING"
+#define	CefC_ParamName_SymbolicBackBuff	"SYMBOLIC_BACKBUFFER"
+#define	CefC_ParamName_IR_Congesion		"INTEREST_RETURN_CONGESTION_THRESHOLD"
+#define	CefC_ParamName_BANDWIDTH_INTVAL	"BANDWIDTH_STAT_INTERVAL"
+#define	CefC_ParamName_SYMBOLIC_LIFETIME "SYMBOLIC_INTEREST_MAX_LIFETIME"
+#define	CefC_ParamName_REGULAR_LIFETIME	"REGULAR_INTEREST_MAX_LIFETIME"
+#define CefC_ParamName_BW_STAT_PLUGIN	"BANDWIDTH_STAT_PLUGIN"
+#define CefC_ParamName_CSMGR_ACCESS		"CSMGR_ACCESS"
+#define CefC_ParamName_BUFFER_CACHE_TIME	"BUFFER_CACHE_TIME"
+#define CefC_ParamName_LOCAL_CACHE_DEFAULT_RCT	"LOCAL_CACHE_DEFAULT_RCT"
+//202108
+#define CefC_ParamName_IR_Option		"ENABLE_INTEREST_RETURN"
 
 #ifdef CefC_Ser_Log
 #define CefC_ParamName_Log_Size			"SER_LOG_SIZE"
@@ -157,11 +174,22 @@
 #define	CefC_Default_FibAppSize			64
 #define	CefC_PitAppSize_MAX				1025
 #define	CefC_FibAppSize_MAX				1024000
+//0.8.3
+#define CefC_Default_InterestRetrans	"RFC8569"
+#define CefC_Default_SelectiveForward	1
+#define CefC_Default_SymbolicBackBuff	100
+#define CefC_Default_IR_Congesion		90.0
+#define CefC_Default_BANDWIDTH_STAT_INTERVAL	1
+#define CefC_Default_SYMBOLIC_LIFETIME	4000
+#define CefC_Default_REGULAR_LIFETIME	2000
+#define CefC_Default_CSMGR_ACCESS_RW	0
+#define CefC_Default_CSMGR_ACCESS_RO	1
+#define CefC_Default_BUFFER_CACHE_TIME	10000
 
 #ifdef CefC_Ccninfo
 #define CefC_Default_CcninfoAccessPolicy	0
 #define CefC_Default_CcninfoFullDiscovery	0
-#define CefC_Default_CcninfoValidAlg		"NONE"
+#define CefC_Default_CcninfoValidAlg		"crc32"		/* ccninfo-05 */
 #define CefC_Default_CcninfoSha256KeyPrfx	"cefore"
 #define CefC_Default_CcninfoReplyTimeout	4
 #endif // CefC_Ccninfo
@@ -184,6 +212,37 @@
 #define CefC_NWP_CID_Prefix			";CID="
 #define CefC_NWP_CID_Prefix_Len		(sizeof (CefC_NWP_CID_Prefix) - 1)	/* Except terminating characters */
 #endif // CefC_Nwproc
+
+//0.8.3
+#define	CefC_IntRetrans_Type_RFC	0
+#define	CefC_IntRetrans_Type_SUP	1
+#define	CefC_Selet_FWD_OFF			0
+#define	CefC_Selet_FWD_ON			1
+#define	CefC_PIT_TYPE_Reg	0
+#define	CefC_PIT_TYPE_Sym	1
+#define	CefC_PIT_TYPE_Sel	2
+#define	CefC_Select_Cob_Num	256
+#define	CefC_MANIFEST_NAME	"/manifest"
+#define	CefC_MANIFEST_REC_MAX	200
+
+//0.8.3
+/*------------------------------------------------------------------*/
+/* INTERESTRETURN Type			 									*/
+/*------------------------------------------------------------------*/
+#define	CefC_IR_TYPE_NUM			9
+#define	CefC_IR_NO_ROUTE			0x01
+#define	CefC_IR_HOPLIMIT_EXCEEDED	0x02
+#define	CefC_IR_NO_RESOURCE			0x03
+#define	CefC_IR_PATH_ERROR			0x04
+#define	CefC_IR_PROHIBITED			0x05
+#define	CefC_IR_CONGESION			0x06
+#define	CefC_IR_MTU_TOO_LAREG		0x07
+#define	CefC_IR_UNSUPPORTED_COBHASH 0x08
+#define	CefC_IR_MALFORMED_INTEREST	0x09
+
+//0.8.3	NONPUBLIC
+#define	CefC_PIT_TYPE_Osym	9
+
 
 
 #ifdef CefC_DebugOld

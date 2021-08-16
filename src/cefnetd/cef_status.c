@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,8 @@
  */
 
 #define __CEF_STATUS_SOURECE__
+
+//#define	__DEV_RSP_LEN__
 
 /****************************************************************************************
  Include Files
@@ -130,7 +132,8 @@ cef_status_stats_output (
 	int  fret = 0;
 	(*rspp)[0] = 0;
 	rsp_bufp = (char*) *rspp;
-	rsp_buf_size = CefC_Max_Length;
+//	rsp_buf_size = CefC_Max_Length;
+	rsp_buf_size = CefC_Max_Length*10;
 	
 	switch (hdl->node_type) {
 		case CefC_Node_Type_Receiver: {
@@ -206,7 +209,7 @@ cef_status_stats_output (
 		goto endfunc;
 	}
 #endif
-	
+
 	/* output Face	*/
 	sprintf (work_str, "Faces :");
 	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
@@ -215,7 +218,7 @@ cef_status_stats_output (
 	if ((fret=cef_status_face_output ()) != 0){
 		goto endfunc;
 	}
-	
+
 	/* output FIB	*/
 	sprintf (work_str, "FIB(App) :");
 	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
@@ -224,6 +227,7 @@ cef_status_stats_output (
 	if ((fret=cef_status_app_forward_output (&hdl->app_reg)) != 0){
 		goto endfunc;
 	}
+
 	sprintf (work_str, "FIB :");
 	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
 		goto endfunc;
@@ -292,7 +296,7 @@ cef_status_face_output (
 
 	char face_info[65535] = {0};
 	int face_info_index = 0;
-	char work_str[CefC_Max_Length];
+	char work_str[CefC_Max_Length*2];
 	int fret = 0;
 
 	/* get socket table	*/
@@ -451,7 +455,7 @@ cef_status_forward_output (
 	int res = 0;
 	char face_info[65535] = {0};
 	int face_info_index = 0;
-	char work_str[CefC_Max_Length];
+	char work_str[CefC_Max_Length*2];
 	int fret = 0;
 
 
@@ -540,7 +544,7 @@ cef_status_pit_output (
 	uint16_t name_index;
 	struct tlv_hdr* thdr;
 	uint16_t chunknum_f;
-	char work_str[CefC_Max_Length];
+	char work_str[CefC_Max_Length*2];
 	int fret = 0;
 	
 	/* get table num		*/
@@ -673,13 +677,16 @@ cef_status_app_forward_output (
 	};
 
 	struct App_Reg* entry = NULL;
-	uint32_t index = 0;
+//	uint32_t index = 0;
 	int table_num = 0;
 	int i = 0;
 	char uri[65535] = {0};
 	int res = 0;
-	char work_str[CefC_Max_Length];
+	char work_str[CefC_Max_Length*2];
 	int fret = 0;
+
+	CefT_Hash* ht = (CefT_Hash*)(*handle);	//20210104
+	int		elem_cnt = 0;
 
 	/* get table num		*/
 	table_num = cef_hash_tbl_item_num_get (*handle);
@@ -696,33 +703,30 @@ cef_status_app_forward_output (
 		return (-1);
 	}
 
-	/* output table		*/
-	for (i = 0; i < table_num; i++) {
-		entry = (struct App_Reg*) cef_hash_tbl_elem_get (*handle, &index);
-		if (entry == NULL) {
+	for ( i = 0; i < ht->elem_max; i++ ) {
+//		if (ht->tbl[i].klen != 0 && ht->tbl[i].klen != -1) {
+		if (ht->tbl[i].klen > 0) {
+			entry = (struct App_Reg*)ht->tbl[i].elem;
+			elem_cnt++;
+			res = cef_frame_conversion_name_to_uri (entry->name, entry->name_len, uri);
+			if (res < 0) {
+				continue;
+			}
+			/* output uri	*/
+			sprintf (work_str, "  %s\n", uri);
+			
 			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
 				return (-1);
 			}
-			break;
+			/* output faces	*/
+			sprintf (work_str, "    Faces : %d\n", entry->faceid);
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (-1);
+			}
+			if ( elem_cnt >= table_num ) {
+				break;
+			}
 		}
-		res = cef_frame_conversion_name_to_uri (entry->name, entry->name_len, uri);
-		if (res < 0) {
-			continue;
-		}
-		/* output uri	*/
-		sprintf (work_str, "  %s\n", uri);
-		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
-			return (-1);
-		}
-		memset (uri, 0, sizeof(uri));
-
-		/* output faces	*/
-		sprintf (work_str, "    Faces : %d\n", entry->faceid);
-		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
-			return (-1);
-		}
-		
-		index++;
 	}
 
 	return (0);
@@ -869,16 +873,36 @@ static int
 cef_status_add_output_to_rsp_buf(
 	char* buff
 ) {
-	
-	if ((strlen(rsp_bufp)+strlen(buff)) >= (rsp_buf_size-1)){
-		void *new = realloc(rsp_bufp, rsp_buf_size+CefC_Max_Length);
+
+#if 1
+	int		rsp_buf_len = strlen(rsp_bufp);
+	int		buff_len	= strlen(buff);
+
+	if ( (rsp_buf_len + buff_len) >= ( rsp_buf_size - 1) ) {
+		void *new = realloc(rsp_bufp, rsp_buf_size+(CefC_Max_Length*10));
 		if (new == NULL) {
+			free( rsp_bufp );
+			rsp_bufp = NULL;
 			return(-1);
 		}
 		rsp_bufp = new;
-		rsp_buf_size += CefC_Max_Length;
+		rsp_buf_size += (CefC_Max_Length*10);
+	}
+	strncpy( rsp_bufp + rsp_buf_len, buff, buff_len+1 );
+	
+	
+#else
+	if ((strlen(rsp_bufp)+strlen(buff)) >= (rsp_buf_size-1)){
+		void *new = realloc(rsp_bufp, rsp_buf_size+(CefC_Max_Length*10));
+		if (new == NULL) {
+			free( rsp_bufp );
+			return(-1);
+		}
+		rsp_bufp = new;
+		rsp_buf_size += (CefC_Max_Length*10);
 	}
 	strcat(rsp_bufp, buff);
-	
+#endif
+
 	return(0);
 }

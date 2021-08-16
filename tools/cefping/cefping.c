@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -465,6 +465,11 @@ cp_parse_parameters (
 				cp_usage_output ("error: [-d] has no parameter.\n");
 				return (-1);
 			}
+			//202108
+			if (strlen(argv[i + 1]) > PATH_MAX) {
+				cp_usage_output ("error: [-d] parameter is too long.\n");
+				return (-1);
+			}
 			work_arg = argv[i + 1];
 			strcpy (conf_path, work_arg);
 			dir_path_f++;
@@ -508,8 +513,8 @@ cp_parse_parameters (
 				cp_usage_output ("error: prefix is invalid.");
 				return (-1);
 			}
-			if (res < 5/* require longer than Type + Length */) {
-				cp_usage_output ("error: prefix MUST NOT be ccn:/");
+			if (res < 6/* require longer than Type + Length */) {
+				cp_usage_output ("error: prefix MUST NOT be ccnx:/");
 				return (-1);
 			}
 			params.name_len = res;

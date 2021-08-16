@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -306,6 +306,33 @@ typedef struct {
 	CefT_Mp_Handle 		tx_que_mp;					/* Memory Pool for CefT_Tx_Elem 	*/
 	
 } CefT_Plugin_Handle;
+
+//0.8.3
+/*---------------------------------------------------------
+	Plugin Interface for libcefnetd_plugin
+-----------------------------------------------------------*/
+typedef struct _CefT_Plugin_Bw_Stat {
+	/* Initialize process */
+	int (*init)(int congesion_threshold);
+	
+	/* Destroy process */
+	void (*destroy)(void);
+	
+	/* Congesion status get */
+	double (*stat_get)(int if_idx);
+	
+	/* Get Table Index */
+	int (*stat_tbl_index_get)(char* ip_str);
+} CefT_Plugin_Bw_Stat;
+
+#if 0
+typedef struct CefnetdT_Plugin_Interface {
+	/* Bandwidth Stat Interface */
+	CefT_Plugin_Bw_Stat*	bw_stat_if;
+
+} CefnetdT_Plugin_Interface;
+#endif
+
 
 /****************************************************************************************
 	Function declaration

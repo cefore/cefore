@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -53,17 +53,15 @@
 #include <cefore/cef_ccninfo.h>
 #include <cefore/cef_log.h>
 
-
 /****************************************************************************************
  Macros
  ****************************************************************************************/
 
 #define CsmgrT_Name_Max					65536
-#define CsmgrT_Stat_Max					8192
-#define CsmgrT_Map_Max					4096
+#define CsmgrT_Stat_Max					1000000
 #define CsmgrC_Invalid	 				0
 
-#define CsmgrT_Stat_Seq_Max 			(CsmgrT_Map_Max * 64 - 1)
+#define CsmgrT_Add_Maps					1000
 
 /****************************************************************************************
  Structure Declarations
@@ -73,20 +71,37 @@ typedef size_t CsmgrT_Stat_Handle;
 
 typedef struct CsmgrT_Stat {
 	
-	uint32_t 			hash;
-	uint16_t 			index;
+	uint32_t 			index;
 	unsigned char 		*name;
 	uint16_t 			name_len;
 	uint64_t 			con_size;
+	/* FILE/DB Cob size information */
+	uint32_t			cob_size;
+	uint32_t			last_cob_size;
+	uint32_t			last_chnk_num;
+	
 	uint64_t 			cob_num;
 	uint64_t 			access;
-	uint64_t 			cob_map[CsmgrT_Map_Max];
+
+	uint64_t 			*cob_map;
+	uint32_t			map_max;
+
 	uint64_t 			expiry;
 	uint64_t 			cached_time;
 	uint32_t 			min_seq;
 	uint32_t 			max_seq;
 	struct in_addr 		node;
 	int 				expire_f;
+	
+	/* FILE cache record size information */
+	uint32_t			file_msglen;
+	uint32_t			detect_chnkno;
+
+	/* Bulk sent information */
+	uint32_t 			tx_seq;
+	uint32_t 			tx_num;
+	uint64_t			tx_time;
+
 	struct CsmgrT_Stat*	next;
 } CsmgrT_Stat;
 
@@ -109,6 +124,15 @@ csmgr_stat_handle_destroy (
 	CsmgrT_Stat_Handle hdl
 );
 /*--------------------------------------------------------------------------------------
+	Check if content information exists
+----------------------------------------------------------------------------------------*/
+CsmgrT_Stat* 
+csmgr_stat_content_info_is_exist (
+	CsmgrT_Stat_Handle hdl, 
+	const unsigned char* name, 
+	uint16_t name_len
+);
+/*--------------------------------------------------------------------------------------
 	Access the content information
 ----------------------------------------------------------------------------------------*/
 CsmgrT_Stat* 
@@ -117,6 +141,16 @@ csmgr_stat_content_info_access (
 	const unsigned char* name, 
 	uint16_t name_len
 );
+/*--------------------------------------------------------------------------------------
+	Confirm existence of the content information
+----------------------------------------------------------------------------------------*/
+CsmgrT_Stat* 
+csmgr_stat_content_is_exist (
+	CsmgrT_Stat_Handle hdl, 
+	const unsigned char* name, 
+	uint16_t name_len
+);
+
 /*--------------------------------------------------------------------------------------
 	Obtain the content information
 ----------------------------------------------------------------------------------------*/
@@ -135,6 +169,16 @@ csmgr_stat_content_info_gets (
 	const unsigned char* name, 
 	uint16_t name_len, 
 	int partial_match_f, 
+	CsmgrT_Stat* ret[]
+);
+/*--------------------------------------------------------------------------------------
+	Obtain the content information
+----------------------------------------------------------------------------------------*/
+int 
+csmgr_stat_content_info_gets_for_RM (
+	CsmgrT_Stat_Handle hdl, 
+	const unsigned char* name, 
+	uint16_t name_len, 
 	CsmgrT_Stat* ret[]
 );
 /*--------------------------------------------------------------------------------------
@@ -203,7 +247,7 @@ csmgr_stat_content_info_delete (
 void 
 csmgr_stat_cache_capacity_update (
 	CsmgrT_Stat_Handle hdl, 
-	uint32_t capacity
+	uint64_t capacity
 );
 /*--------------------------------------------------------------------------------------
 	Update content expire time
@@ -218,21 +262,21 @@ csmgr_stat_content_lifetime_update (
 /*--------------------------------------------------------------------------------------
 	Obtains the number of cached content
 ----------------------------------------------------------------------------------------*/
-uint16_t 
+uint32_t
 csmgr_stat_cached_con_num_get (
 	CsmgrT_Stat_Handle hdl
 );
 /*--------------------------------------------------------------------------------------
 	Obtains the number of cached cob
 ----------------------------------------------------------------------------------------*/
-uint32_t 
+uint64_t 
 csmgr_stat_cached_cob_num_get (
 	CsmgrT_Stat_Handle hdl
 );
 /*--------------------------------------------------------------------------------------
 	Obtains the Cache capacity
 ----------------------------------------------------------------------------------------*/
-uint32_t 
+uint64_t 
 csmgr_stat_cache_capacity_get (
 	CsmgrT_Stat_Handle hdl
 );
@@ -294,6 +338,8 @@ csmgr_stat_cob_remove_for_pub (
 		 csmgr_stat_handle_destroy(hdl)
 #define csmgrd_stat_content_info_access(hdl, name, name_len) \
 		 csmgr_stat_content_info_access(hdl, name, name_len)
+#define csmgrd_stat_content_info_is_exist(hdl, name, name_len) \
+		 csmgr_stat_content_info_is_exist(hdl, name, name_len)
 #define csmgrd_stat_content_info_get(hdl, name, name_len) \
 		 csmgr_stat_content_info_get(hdl, name, name_len)
 #define csmgrd_stat_content_info_gets(hdl, name, name_len, partial_match_f, retARY) \
@@ -330,6 +376,8 @@ csmgr_stat_cob_remove_for_pub (
 		  csmgr_stat_handle_destroy(hdl)
 #define conpubd_stat_content_info_access(hdl, name, name_len) \
 		  csmgr_stat_content_info_access(hdl, name, name_len)
+#define conpubd_stat_content_info_is_exist(hdl, name, name_len) \
+		 csmgr_stat_content_info_is_exist(hdl, name, name_len)
 #define conpubd_stat_content_info_get(hdl, name, name_len) \
 		  csmgr_stat_content_info_get_for_pub(hdl, name, name_len)
 #define conpubd_stat_content_info_gets(hdl, name, name_len, partial_match_f, retARY) \

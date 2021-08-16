@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -60,7 +60,7 @@
 
 typedef struct _Ceft_RxWnd {
 	
-	uint32_t 				seq;
+	uint64_t 				seq;
 	uint8_t 				flag;
 	unsigned char 			buff[CefC_Max_Length];
 	int 					frame_size;
@@ -117,7 +117,7 @@ int main (
 	uint64_t now_time;
 	uint64_t end_time;
 	uint64_t val;
-	uint32_t diff_seq;
+	uint64_t diff_seq;
 	int send_cnt = 0;
 	int i;
 	char*	work_arg;
@@ -146,9 +146,13 @@ int main (
 	int dir_path_f 		= 0;
 	int port_num_f 		= 0;
 	int valid_f 		= 0;
+	//0.8.3
+	int blk_mode_f		= 0;
+	int blk_mode_val	= 0;	//BLOCK
 	
 	/***** state variavles 	*****/
 	uint32_t 	sv_max_seq 		= UINT_MAX - 1;
+	int			sg_lifetime		= 4;
 	
 	memset (&params, 0, sizeof (CefT_Interest_TLVs));
 	
@@ -202,6 +206,12 @@ int main (
 				print_usage ();
 				return (-1);
 			}
+			//202108
+			if (strlen(argv[i + 1]) > PATH_MAX) {
+				fprintf (stderr, "ERROR: [-d] parameter is too long.\n");
+				print_usage ();
+				return (-1);
+			}
 			work_arg = argv[i + 1];
 			strcpy (conf_path, work_arg);
 			dir_path_f++;
@@ -220,6 +230,29 @@ int main (
 			work_arg = argv[i + 1];
 			port_num = atoi (work_arg);
 			port_num_f++;
+			i++;
+		//0.8.3
+		} else if (strcmp (work_arg, "-l") == 0) {
+			if (port_num_f) {
+				fprintf (stderr, "ERROR: [-l] is duplicated.\n");
+				print_usage ();
+				return (-1);
+			}
+			if (i + 1 == argc) {
+				fprintf (stderr, "ERROR: [-l] has no parameter.\n");
+				print_usage ();
+				return (-1);
+			}
+			work_arg = argv[i + 1];
+			blk_mode_val = atoi (work_arg);
+			if ( (blk_mode_val == 0) || (blk_mode_val == 1) ) {
+				/* OK */
+			} else {
+				fprintf (stderr, "ERROR: block_mode is 0 or 1.\n");
+				print_usage ();
+				return (-1);
+			}
+			blk_mode_f++;
 			i++;
 		} else if (strcmp (work_arg, "-m") == 0) {
 			if (max_seq_f) {
@@ -248,15 +281,15 @@ int main (
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-z] has no parameter.\n");
-				print_usage ();
-				return (-1);
-			}
-			work_arg = argv[i + 1];
-			if (strcmp (work_arg, "sg")) {
-				fprintf (stderr, "ERROR: [-z] has the invalid parameter.\n");
-				print_usage ();
-				return (-1);
+				
+			} else {
+				work_arg = argv[i + 1];
+				sg_lifetime = atoi (work_arg);
+				if ( sg_lifetime < 0 ) {
+					fprintf (stderr, "ERROR: [-z] has the invalid parameter.(Lifetime > 0)\n");
+					print_usage ();
+					return(-1);
+				}
 			}
 			nsg_flag++;
 			i++;
@@ -386,7 +419,7 @@ int main (
 	
 	if (nsg_flag) {
 		params.opt.symbolic_f		= CefC_T_LONGLIFE;
-		params.opt.lifetime 		= 10000;
+		params.opt.lifetime 		= sg_lifetime * 1000;	//0.8.3
 	} else {
 		params.opt.symbolic_f		= CefC_T_OPT_REGULAR;
 		params.opt.lifetime 		= CefC_Default_LifetimeSec * 1000;
@@ -471,6 +504,7 @@ int main (
 		res = cef_client_read (fhdl, &buff[index], CefC_AppBuff_Size - index);
 		
 		if (res > 0) {
+
 			res += index;
 			
 			/* Updates the jitter 		*/
@@ -499,19 +533,22 @@ int main (
 				res = cef_client_payload_get_with_info (buff, res, &app_frame);
 				
 				if (app_frame.version == CefC_App_Version) {
+
+					/* InterestReturn */
+					if ( (uint8_t)app_frame.type == CefC_PT_INTRETURN ) {
+						fprintf (stderr, "[cefgetstream] Incomplete\n");
+						fprintf (stderr, 
+								"[cefgetstream] "
+								"Received Interest Return(Type:%02x)\n", app_frame.returncode);
+						app_running_f = 0;
+						goto IR_RCV;
+					}
+
 					
 					if (nsg_flag) {
 						stat_recv_frames++;
 						stat_recv_bytes += app_frame.payload_len;
-//+++++ 2019/07/12: TIX #902 +++++
-#if !defined(JK_NONBLOCK) && !defined(JK_BLOCK) 
-						fwrite (app_frame.payload, 
-							sizeof (unsigned char), app_frame.payload_len, stdout);
-						gettimeofday (&t, NULL);
-						now_time = cef_client_covert_timeval_to_us (t);
-						end_time = now_time + 1000000;
-#elif defined(JK_NONBLOCK)
-						{
+						if ( blk_mode_val == 1 ) {	//NONBLOCK
 							int val;
 							if (stat_recv_frames == 1) {
 								if ((val = fcntl(1, F_GETFL, 0)) < 0) {
@@ -523,20 +560,14 @@ int main (
 									exit(1);
 								}
 							}
+							write (1, app_frame.payload, app_frame.payload_len);
+						} else {	//BLOCK
+							fwrite (app_frame.payload, 
+								sizeof (unsigned char), app_frame.payload_len, stdout);
+							gettimeofday (&t, NULL);
+							now_time = cef_client_covert_timeval_to_us (t);
+							end_time = now_time + 1000000;
 						}
-						write (1, app_frame.payload, app_frame.payload_len);
-#elif defined(JK_BLOCK)
-						fwrite (app_frame.payload, 
-							sizeof (unsigned char), app_frame.payload_len, stdout);
-						gettimeofday (&t, NULL);
-						now_time = cef_client_covert_timeval_to_us (t);
-						end_time = now_time + 1000000;
-#else
-//	fprintf(stderr, "JK: ERROR\n");
-	exit(1);
-#endif
-//----- 2019/07/12: TIX #902 -----
-
 					} else {
 						
 						/* Inserts the received frame to the buffer 	*/
@@ -574,7 +605,7 @@ int main (
 							fwrite (rxwnd->buff, 
 								sizeof (unsigned char), rxwnd->frame_size, stdout);
 							
-							if (rxwnd->seq == sv_max_seq) {
+							if (rxwnd->seq == UINT32_MAX) {
 								fprintf (stderr, 
 									"[cefgetstream] "
 									"Received the specified number of chunk\n");
@@ -596,7 +627,7 @@ int main (
 							
 							/* Sends an interest with the next chunk number 	*/
 							params.chunk_num = rxwnd_tail->seq;
-							if (params.chunk_num <= sv_max_seq) {
+							if (params.chunk_num <= UINT32_MAX) {
 								cef_client_interest_input (fhdl, &params);
 							}
 						}
@@ -625,6 +656,7 @@ int main (
 				break;
 			}
 		}
+IR_RCV:;
 	}
 	
 	if (nsg_flag) {
@@ -646,7 +678,7 @@ print_usage (
 ) {
 	
 	fprintf (stderr, "\nUsage: cefgetstream\n\n");
-	fprintf (stderr, "  cefgetstream uri [-o] [-m chunks] [-v valid_algo] [-d config_file_dir] [-p port_num] [-z sg]\n\n");
+	fprintf (stderr, "  cefgetstream uri [-o] [-m chunks] [-v valid_algo] [-d config_file_dir] [-p port_num] [-z Lifetime] [-l block_mode]\n\n");
 	fprintf (stderr, "  uri               Specify the URI.\n");
 	fprintf (stderr, "  -o                Specify this option, if you require the content\n"
 	                 "                    that the owner is caching\n");
@@ -658,7 +690,9 @@ print_usage (
 	fprintf (stderr, 
 		"  port_num          Port Number\n");
 	fprintf (stderr, 
-		"  -z sg             Send Long Life Intereset\n\n");
+		"  Lifetime       Send Long Life Intereset Lifetime\n\n");
+	fprintf (stderr, 
+		"  block_mode     0:BLOCK    1:NONBLOCK\n");
 }
 
 static void

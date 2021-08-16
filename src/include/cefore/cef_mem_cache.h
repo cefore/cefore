@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -131,7 +131,6 @@ typedef struct {
 /****************************************************************************************
  Global Variables
  ****************************************************************************************/
-
 
 /****************************************************************************************
  Function Declarations

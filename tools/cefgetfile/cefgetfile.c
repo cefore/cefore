@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -63,7 +63,7 @@
 
 typedef struct _Ceft_RxWnd {
 	
-	uint32_t 				seq;
+	uint64_t 				seq;
 	uint8_t 				flag;
 	unsigned char 			buff[CefC_Max_Length];
 	int 					frame_size;
@@ -88,6 +88,8 @@ CefT_Client_Handle fhdl;
 FILE* fp = NULL;
 int rcv_ng_f = 0;
 
+static uint32_t dummy_sum = 0;
+static int dummy_f = 0;
 
 /****************************************************************************************
  Static Function Declaration
@@ -125,9 +127,10 @@ int main (
 	uint64_t end_time;
 	uint64_t val;
 	uint32_t chnk_num = 0;
-	uint32_t diff_seq;
+	uint64_t diff_seq;
 	int send_cnt = 0;
 	int i;
+	int j;
 	char*	work_arg;
 	
 	char 	conf_path[PATH_MAX] = {0};
@@ -158,7 +161,8 @@ int main (
 	int valid_f 		= 0;
 	
 	/***** state variavles 	*****/
-	uint32_t 	sv_max_seq 		= UINT_MAX - 1;
+	uint32_t 	sv_max_seq 		= UINT32_MAX - 1;
+	int64_t		end_chunk_num	= -1;
 	
 	memset (&params, 0, sizeof (CefT_Interest_TLVs));
 	
@@ -196,6 +200,9 @@ int main (
 			}
 			work_arg = argv[i + 1];
 			strcpy (fpath, work_arg);
+			if (strcmp (fpath, "_DUMMY") == 0){
+				dummy_f = 1;
+			}
 			file_f++;
 			i++;
 		} else if (strcmp (work_arg, "-s") == 0) {
@@ -224,6 +231,12 @@ int main (
 			}
 			if (i + 1 == argc) {
 				fprintf (stderr, "ERROR: [-d] has no parameter.\n");
+				print_usage ();
+				return (-1);
+			}
+			//202108
+			if (strlen(argv[i + 1]) > PATH_MAX) {
+				fprintf (stderr, "ERROR: [-d] parameter is too long.\n");
 				print_usage ();
 				return (-1);
 			}
@@ -328,7 +341,7 @@ int main (
 			}
 			res = strlen (work_arg);
 			
-			if (res >= 1204) {
+			if (res >= 1024) {
 				fprintf (stdout, "ERROR: uri is too long.\n");
 				print_usage ();
 				return (-1);
@@ -347,7 +360,7 @@ int main (
 	if (file_f == 0) {
 		/* Use the last string in the URL */
 		res = strlen (uri);
-		if (res >= 1204) {
+		if (res >= 1024) {
 			fprintf (stdout, "ERROR: uri is too long.\n");
 			print_usage ();
 			return (-1);
@@ -406,10 +419,12 @@ int main (
 	}
 	fprintf (stdout, "OK\n");
 	fprintf (stdout, "[cefgetfile] Checking the output file ... ");
-	fp = fopen (fpath, "wb");
-	if (fp == NULL) {
-		fprintf (stdout, "ERROR: Specified output file can not be opend.\n");
-		exit (1);
+	if (dummy_f == 0) {
+		fp = fopen (fpath, "wb");
+		if (fp == NULL) {
+			fprintf (stdout, "ERROR: Specified output file can not be opend.\n");
+			exit (1);
+		}
 	}
 	params.name_len = res;
 	fprintf (stdout, "OK\n");
@@ -446,7 +461,7 @@ int main (
 	
 	if (nsg_flag) {
 		params.opt.symbolic_f		= CefC_T_LONGLIFE;
-		params.opt.lifetime 		= 10000;
+		params.opt.lifetime 		= 4000;
 	} else {
 		params.opt.symbolic_f		= CefC_T_OPT_REGULAR;
 		params.opt.lifetime 		= CefC_Default_LifetimeSec * 1000;
@@ -533,6 +548,7 @@ int main (
 		res = cef_client_read (fhdl, &buff[index], CefC_AppBuff_Size - index);
 		
 		if (res > 0) {
+			
 			res += index;
 			
 			/* Updates the jitter 		*/
@@ -561,12 +577,36 @@ int main (
 				res = cef_client_payload_get_with_info (buff, res, &app_frame);
 				
 				if (app_frame.version == CefC_App_Version) {
+
+					/* InterestReturn */
+					if ( (uint8_t)app_frame.type == CefC_PT_INTRETURN ) {
+						fprintf (stdout, "[cefgetfile] Incomplete\n");
+										fprintf (stdout, 
+											"[cefgetfile] "
+											"Received Interest Return(Type:%02x)\n", app_frame.returncode);
+						app_running_f = 0;
+						rcv_ng_f = 1;
+						goto IR_RCV;
+					}
+
+					if ( app_frame.end_chunk_num >= 0 ) {
+						end_chunk_num = app_frame.end_chunk_num;
+						end_chunk_num++;	/* 0 Origin */
+					}
 					
 					if (nsg_flag) {
 						stat_recv_frames++;
 						stat_recv_bytes += app_frame.payload_len;
-						fwrite (app_frame.payload, 
-							sizeof (unsigned char), app_frame.payload_len, fp);
+						if (dummy_f == 0) {
+							fwrite (app_frame.payload, 
+								sizeof (unsigned char), app_frame.payload_len, fp);
+						} else {
+							for (j=0; j<app_frame.payload_len; j++) {
+								unsigned char v;
+								v = app_frame.payload[j];
+								dummy_sum = dummy_sum + (uint32_t)v;
+							}
+						}
 					} else {
 						/* Inserts the received frame to the buffer 	*/
 						if ((app_frame.chunk_num < rxwnd_head->seq) || 
@@ -602,10 +642,24 @@ int main (
 							stat_recv_frames++;
 							stat_recv_bytes += app_frame.payload_len;
 							
-							fwrite (rxwnd->buff, 
-								sizeof (unsigned char), rxwnd->frame_size, fp);
+							if (dummy_f == 0) {
+								fwrite (rxwnd->buff, 
+									sizeof (unsigned char), rxwnd->frame_size, fp);
+							} else {
+								for (j=0; j<rxwnd->frame_size; j++) {
+									unsigned char v;
+									v = rxwnd->buff[j];
+									dummy_sum = dummy_sum + (uint32_t)v;
+								}
+							}
 							
-							if (rxwnd->seq == sv_max_seq) {
+							if ( stat_recv_frames == end_chunk_num ) {
+								fprintf (stdout, "[cefgetfile] Complete\n");
+								app_running_f = 0;
+								goto IR_RCV;
+							}
+							
+							if (rxwnd->seq == UINT32_MAX /*sv_max_seq*/) {
 								fprintf (stdout, 
 									"[cefgetfile] "
 									"Received the specified number of chunk\n");
@@ -627,7 +681,7 @@ int main (
 							
 							/* Sends an interest with the next chunk number 	*/
 							params.chunk_num = rxwnd_tail->seq;
-							if (params.chunk_num <= sv_max_seq) {
+							if (params.chunk_num <=  UINT32_MAX /* sv_max_seq+1 */) {
 								cef_client_interest_input (fhdl, &params);
 							}
 						}
@@ -694,17 +748,28 @@ int main (
 				end_time = now_time;
 			}
 		}
+IR_RCV:;	
 	}
 	
 	if (nsg_flag) {
 		if (index > 0) {
+			if (dummy_f == 0) {
 			fwrite (buff, index, 1, fp);
+			} else {
+				for (j=0; j<index; j++) {
+					unsigned char v;
+					v = buff[j];
+					dummy_sum = dummy_sum + (uint32_t)v;
+				}
+			}
 		}
 		params.opt.lifetime = 0;
 		cef_client_interest_input (fhdl, &params);
 	}
 	
-	fclose (fp);
+	if (dummy_f == 0) {
+		fclose (fp);
+	}
 	if (rcv_ng_f) {
 		remove(fpath);
 	}
@@ -765,7 +830,7 @@ post_process (
 			fprintf (stdout, "[cefgetfile] Duration  = %.3f sec\n", diff_t_dbl + 0.0009);
 			recv_bits = stat_recv_bytes * 8;
 			thrpt = (double)(recv_bits) / diff_t_dbl;
-			fprintf (stdout, "[cefgetfile] Throughput = %d bps\n", (int)thrpt);
+			fprintf (stdout, "[cefgetfile] Throughput = "FMTU64" bps\n", (uint64_t)thrpt);
 		} else {
 			fprintf (stdout, "[cefgetfile] Duration  = 0.000 sec\n");
 		}
@@ -776,6 +841,9 @@ post_process (
 			fprintf (stdout, "[cefgetfile] Jitter (Max) = "FMTU64" us\n", stat_jitter_max);
 			fprintf (stdout, "[cefgetfile] Jitter (Var) = "FMTU64" us\n"
 				, (stat_jitter_sq_sum / stat_recv_frames) - (jitter_ave * jitter_ave));
+			if (dummy_f == 1) {
+				fprintf (stdout, "[cefgetfile] Dummy_Sum = %u\n", dummy_sum);
+			}
 		}
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -113,7 +113,7 @@ cef_log_init2 (
 	int cefnetd_f
 ) {
 	char* 	wp;
-	char 	file_path[PATH_MAX];
+	char 	file_path[PATH_MAX*2];
 	FILE* 	fp;
 	char	buff[1024];
 	char 	ws[1024];

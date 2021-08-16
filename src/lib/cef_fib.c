@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,8 @@
  */
 
 #define __CEF_FIB_SOURECE__
+
+//#define	__FIB_DEV__
 
 /****************************************************************************************
  Include Files
@@ -167,6 +169,7 @@ cef_fib_entry_search (
 
 		if (entry != NULL) {
 #ifdef CefC_Debug
+#if 0
 			{
 				int dbg_x;
 				
@@ -176,6 +179,18 @@ cef_fib_entry_search (
 				}
 				cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
 			}
+#else
+			{
+				int dbg_x;
+				int len = 0;
+				
+				len = sprintf (fib_dbg_msg, "[fib] matched to the entry [");
+				for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
+					len = len + sprintf (fib_dbg_msg + len, " %02X", entry->key[dbg_x]);
+				}
+				cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
+			}
+#endif
 #endif // CefC_Debug
 			return (entry);
 		}
@@ -214,6 +229,7 @@ cef_fib_forward_faceid_get (
 		i++;
 	}
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 		
@@ -222,6 +238,18 @@ cef_fib_forward_faceid_get (
 		}
 		cef_dbg_write (CefC_Dbg_Finest, "%s\n", fib_dbg_msg);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+		
+		for (dbg_x = 0 ; dbg_x < i ; dbg_x++) {
+			len = len + sprintf (fib_dbg_msg + len, " %d", faceids[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finest, "%s\n", fib_dbg_msg);
+	}
+
+#endif
 #endif // CefC_Debug
 	return (i);
 }
@@ -259,6 +287,7 @@ cef_fib_forward_faceid_select (
 		}
 	}
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 		
@@ -269,6 +298,18 @@ cef_fib_forward_faceid_select (
 		}
 		cef_dbg_write (CefC_Dbg_Finest, "%s\n", fib_dbg_msg);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+		
+		len = sprintf (fib_dbg_msg, "[fib] Select Faces:");
+		for (dbg_x = 0 ; dbg_x < i ; dbg_x++) {
+			len = len + sprintf (fib_dbg_msg + len, " %d", faceids[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finest, "%s\n", fib_dbg_msg);
+	}
+#endif
 #endif // CefC_Debug
 	
 	return (i);
@@ -286,6 +327,7 @@ cef_fib_faceid_remove (
 	CefT_Fib_Face* prev = face;
 	int remove_f = 0;
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 		
@@ -296,6 +338,18 @@ cef_fib_faceid_remove (
 		}
 		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
 	}
+#else
+	{
+		int dbg_x;
+		int len = 0;
+		
+		len = sprintf (fib_dbg_msg, "[fib] Remove Face#%d from [", faceid);
+		for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
+			len = len + sprintf (fib_dbg_msg + len, " %02X", entry->key[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
+	}
+#endif
 #endif // CefC_Debug
 	
 	while (face->next) {
@@ -333,6 +387,7 @@ cef_fib_faceid_insert (
 	CefT_Fib_Face* face = &(entry->faces);
 	
 #ifdef CefC_Debug
+#if 0
 	{
 		int dbg_x;
 		
@@ -343,6 +398,19 @@ cef_fib_faceid_insert (
 		}
 		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
 	}
+#else 
+	{
+		int dbg_x;
+		int len = 0;
+		
+		len = sprintf (fib_dbg_msg, "[fib] Insert Face#%d to [", faceid);
+		for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
+			len = len + sprintf (fib_dbg_msg + len, " %02X", entry->key[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
+	}
+
+#endif
 #endif // CefC_Debug
 	
 	while (face->next) {
@@ -439,7 +507,9 @@ static int									/* Returns a negative value if it fails 	*/
 cef_fib_config_file_read (
 	CefT_Hash_Handle fib					/* FIB										*/
 ) {
-	char 	ws[1024];
+//	char 	ws[1024];
+	char 	ws[2048];
+	char 	ws_w[1024];
 	FILE*	fp = NULL;
 	char 	buff[65600];	/* 65535(max length of name) + 64 */
 	char 	uri[CefC_Max_Length];
@@ -451,9 +521,12 @@ cef_fib_config_file_read (
 	CefT_Fib_Entry* entry;
 	int 	i, addr_num;
 	
-	cef_client_config_dir_get (ws);
+//	cef_client_config_dir_get (ws);
 	
-	sprintf (ws, "%s/cefnetd.fib", ws);
+//	sprintf (ws, "%s/cefnetd.fib", ws);
+	cef_client_config_dir_get (ws_w);
+	
+	sprintf (ws, "%s/cefnetd.fib", ws_w);
 	
 	fp = fopen (ws, "r");
 	if (fp == NULL) {
@@ -528,6 +601,11 @@ cef_fib_config_file_read (
 			cef_log_write (CefC_Log_Info, 
 				"Creation the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n", 
 				uri, prot, addr[i], faceid);
+
+#ifdef __FIB_DEV__
+			fprintf( stderr, "[%s] Creation the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n",
+				__func__, uri, prot, addr[i], faceid);
+#endif
 			
 			cef_fib_set_faceid_to_entry (entry, faceid, CefC_Fib_Entry_Static);
 		}
@@ -1183,11 +1261,13 @@ cef_fib_info_get (
 	uint32_t index;
 	int table_num;
 	int i;
-	char uri[CefC_Max_Length];
+//	char uri[CefC_Max_Length];
+	char uri[8192];
 	CefT_Fib_Face* fib_face;
 	int res;
 	int cmp_len;
-	char face_info[CefC_Max_Length];
+//	char face_info[CefC_Max_Length];
+	char face_info[8192];
 	uint8_t def_name_f = 0;
 	char work_buff[CefC_Max_Length];
 	

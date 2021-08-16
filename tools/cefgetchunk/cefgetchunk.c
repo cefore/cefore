@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -152,6 +152,12 @@ int main (
 				print_usage ();
 				return (-1);
 			}
+			//202108
+			if (strlen(argv[i + 1]) > PATH_MAX) {
+				fprintf (stderr, "ERROR: [-d] parameter is too long.\n");
+				print_usage ();
+				return (-1);
+			}
 			work_arg = argv[i + 1];
 			strcpy (conf_path, work_arg);
 			dir_path_f++;
@@ -280,6 +286,17 @@ int main (
 				res = cef_client_payload_get_with_info (buff, res, &app_frame);
 				
 				if (app_frame.version == CefC_App_Version) {
+
+					/* InterestReturn */
+					if ( (uint8_t)app_frame.type == CefC_PT_INTRETURN ) {
+						fprintf (stdout, "[cefgetfile] Incomplete\n");
+										fprintf (stdout, 
+											"[cefgetfile] "
+											"Received Interest Return(Type:%02x)\n", app_frame.returncode);
+						app_running_f = 0;
+						goto IR_RCV;				
+					}
+
 					if (app_frame.chunk_num == params.chunk_num) {
 						fprintf (stderr, "[cefgetchunk] Get a requested Cob #%u\n", 
 							app_frame.chunk_num);
@@ -302,6 +319,7 @@ int main (
 				index = 0;
 			}
 		}
+IR_RCV:;	
 	}
 	
 	if (time_out_f) {

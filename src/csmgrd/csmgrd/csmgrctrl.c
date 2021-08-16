@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,8 +49,6 @@
 #include <cefore/cef_client.h>
 #include <cefore/cef_log.h>
 
-
-
 /****************************************************************************************
  Macros
  ****************************************************************************************/
@@ -61,13 +59,9 @@
  Structures Declaration
  ****************************************************************************************/
 
-
-
 /****************************************************************************************
  State Variables
  ****************************************************************************************/
-
-
 
 /****************************************************************************************
  Static Function Declaration
@@ -150,6 +144,11 @@ main (
 				cef_log_write (CefC_Log_Error, "[-d] has no parameter.\n");
 				return (-1);
 			}
+			//202108
+			if (strlen(argv[i + 1]) > PATH_MAX) {
+				cef_log_write (CefC_Log_Error, "[-d] parameter is too long.\n");
+				return (-1);
+			}
 			strcpy (file_path, argv[i + 1]);
 			dir_path_f++;
 			i++;
@@ -229,7 +228,16 @@ csctrl_select_port (
 		return (port_num);
 	}
 	if (config_file_dir[0] != 0x00) {
+#if 0 //+++++ GCC v9 +++++
 		sprintf (file_path, "%s/csmgrd.conf", config_file_dir);
+#else 
+		int		rc;
+		rc = snprintf (file_path, sizeof(file_path), "%s/csmgrd.conf", config_file_dir);
+		if (rc < 0) {
+			cef_log_write (CefC_Log_Error, "Config file dir path too long(%s)\n", config_file_dir);
+			return (-1);
+		}
+#endif //----- GCC v9 -----
 	} else {
 		wp = getenv (CefC_CEFORE_DIR);
 		if (wp != NULL && wp[0] != 0) {

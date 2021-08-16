@@ -1,6 +1,14 @@
 autom4te.cache/
 config.*
 
+*.a
+*.la
+*.lai
+*.lo
+*.so
+*.so.0
+*.so.0.0.0
+*.so.0.0.0T
 *.o
 *.Po
 *.Plo
@@ -11,6 +19,7 @@ config/
 !config/Makefile.am
 !config/Makefile.in
 
+.dirstamp
 Makefile
 stamp-h1
 libtool
@@ -21,15 +30,25 @@ src/cefnetd/cefnetd
 src/lib/libcefore.a
 src/plugin/libcef_plugin.a
 
-tools/ccninfo
-tools/cefgetchunk
-tools/cefgetfile
-tools/cefgetstream
-tools/cefputstream
-tools/cefputfile
-tools/cefputstream
+tools/csmgr/csmgrstatus
+tools/ccninfo/ccninfo
+tools/cefgetchunk/cefgetchunk
+tools/cefgetfile/cefgetfile
+tools/cefgetstream/cefgetstream
+tools/cefputstream/cefputstream
+tools/cefputfile/cefputfile
+tools/cefputstream/cefputstream
+tools/cefgetfile_sec/cefgetfile_sec
+tools/cefputfile_sec/cefputfile_sec
 
 utils/cefnetdstart
 utils/cefnetdstop
 utils/cefroute
 utils/cefstatus
+utils/csmgrdstart
+utils/csmgrdstop
+
+src/csmgrd/csmgrd/csmgrctrl
+src/csmgrd/csmgrd/csmgrd
+src/csmgrd/csmgrd/.libs/csmgrctrl
+src/csmgrd/csmgrd/.libs/csmgrd

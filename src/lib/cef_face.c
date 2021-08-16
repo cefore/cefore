@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,11 @@
 
 #define __CEF_FACE_SOURECE__
 
+#define		CEF_FACE_SEND_USLEEP	100000
+#define		CEF_FACE_SEND_TIMEOUT	10000
+
+//#define	__INTEREST__
+
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
@@ -52,12 +57,15 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
-
+#if 0
 #define CefC_Face_Type_Num			4
 #define CefC_Face_Type_Invalid		0x00
 #define CefC_Face_Type_Tcp			0x01
 #define CefC_Face_Type_Udp			0x02
 #define CefC_Face_Type_Local		0x03
+#endif
+
+#define	DEMO_RETRY_NUM	10
 
 /****************************************************************************************
  Structures Declaration
@@ -191,8 +199,17 @@ cef_face_init (
 	
 	face_tbl = (CefT_Face*) malloc (sizeof (CefT_Face) * max_tbl_size);
 	memset (face_tbl, 0, sizeof (CefT_Face) * max_tbl_size);
+
+#if 0
 	for (i = 0; i < max_tbl_size; i++)
 		face_tbl[i].ifindex = -1;
+#else
+	//0.8.3
+	for (i = 0; i < max_tbl_size; i++) {
+		face_tbl[i].ifindex = -1;
+		face_tbl[i].bw_stat_i = -1;	//0.8.3
+	}
+#endif
 	sock_tbl = cef_hash_tbl_create ((uint16_t) max_tbl_size);
 	
 	local_sock_path_len = cef_client_local_sock_name_get (local_sock_path);
@@ -279,7 +296,8 @@ cef_face_search_faceid (
 		return (entry->faceid);
 	}
 	if (prot_index == CefC_Face_Type_Tcp) {
-		char dest_usr_id[512];
+//		char dest_usr_id[512];
+		char dest_usr_id[1024];
 		sprintf(dest_usr_id, "%s:1", usr_id);
 		entry = (CefT_Sock*) cef_hash_tbl_item_get (
 				sock_tbl, (const unsigned char*) dest_usr_id, strlen (dest_usr_id));
@@ -336,7 +354,8 @@ int											/* Peer Face-ID 							*/
 cef_face_lookup_peer_faceid (
 	struct addrinfo* sas, 					/* sockaddr_storage structure				*/
 	socklen_t sas_len,						/* length of sockaddr_storage				*/
-	int protocol
+	int protocol,
+	char* user_id							//0.8.3
 ) {
 	char 	name[NI_MAXHOST];
 	int 	result;
@@ -359,6 +378,8 @@ cef_face_lookup_peer_faceid (
 	entry = (CefT_Sock*) cef_hash_tbl_item_get (
 									sock_tbl,
 									(const unsigned char*) peer_id, strlen (peer_id));
+	strcpy( user_id, usr_id );	//0.8.3
+	
 	if (entry) {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Finest, 
@@ -454,6 +475,8 @@ cef_face_close (
 		face_tbl[faceid].index 		= 0;
 		face_tbl[faceid].fd 		= 0;
 		face_tbl[faceid].protocol 	= CefC_Face_Type_Invalid;
+		face_tbl[faceid].ifindex 	= -1;	//0.8.3
+		face_tbl[faceid].bw_stat_i 	= -1;	//0.8.3
 		close (entry->sock);
 		free (entry);
 	}
@@ -501,6 +524,8 @@ cef_face_down (
 			"[face] Down the Face#%d (FD#%d)\n", faceid, face_tbl[entry->faceid].fd);
 #endif // CefC_Debug
 		face_tbl[faceid].fd = 0;
+		face_tbl[faceid].ifindex 	= -1;	//0.8.3
+		face_tbl[faceid].bw_stat_i 	= -1;	//0.8.3
 	}
 	
 	return (1);
@@ -965,8 +990,10 @@ cef_face_accept_connect (
 	int index;
 	char ip_str[256];
 	char port_str[256];
-	char peer_str[256];
-	char src_peer_str[256];
+//	char peer_str[256];
+//	char src_peer_str[256];
+	char peer_str[1024];
+	char src_peer_str[1024];
 
 #ifdef CefC_Neighbour
 	int msg_len;
@@ -998,7 +1025,9 @@ cef_face_accept_connect (
 	}
 	
 	/* Looks up the source node's information from the source table 	*/
-	sprintf (peer_str, "%s:%d", ip_str, CefC_Face_Type_Tcp);
+/*JK 20210624*/	sprintf (peer_str, "%s:%d", ip_str, CefC_Face_Type_Tcp);
+//*JK 20210624*/	sprintf (peer_str, "%s:%s:%d", ip_str, port_str, CefC_Face_Type_Tcp);
+
 	entry = (CefT_Sock*) cef_hash_tbl_item_get (
 							sock_tbl, (const unsigned char*) peer_str, strlen (peer_str));
 	
@@ -1064,6 +1093,24 @@ cef_face_accept_connect (
 	face_tbl[faceid].index = index;
 	face_tbl[faceid].fd = entry->sock;
 	face_tbl[faceid].protocol = CefC_Face_Type_Tcp;
+
+#if 0
+	{
+    struct sockaddr_in s;
+    socklen_t sz = sizeof(s);
+    char dst_ip[NI_MAXHOST] = {0};
+    char dst_port[NI_MAXHOST] = {0};
+    memset (&s, 0, sz);
+    memset (dst_ip, 0, sizeof(dst_ip));
+    memset (dst_port, 0, sizeof(dst_port));
+    getsockname(entry->sock, (struct sockaddr *)&s, &sz);
+    getnameinfo (entry->ai_addr, entry->ai_addrlen,
+                 dst_ip, sizeof(dst_ip), dst_port, sizeof(dst_port),
+                            NI_NUMERICHOST);
+    fprintf(stderr, "==========[%s] DST(%s:%s) SRC(%s:%d)==========\n", 
+    		__FUNCTION__, dst_ip, dst_port, inet_ntoa(s.sin_addr), ntohs(s.sin_port));
+	}
+#endif
 
 #ifdef CefC_Neighbour
 	
@@ -1294,16 +1341,155 @@ cef_face_frame_send_forced (
 	}
 	
 	if (face_tbl[faceid].local_f) {
-		send (entry->sock, msg, msg_len, 0);
+		int	send_count = 0;
+		res = 0;  
+    	unsigned char* p = msg;
+    	int len = msg_len;
+		fd_set fds, writefds;
+		int n;
+		struct timeval timeout;
+
+		res = send (entry->sock, msg, msg_len, 0);
+		if ( res <= 0 ) {
+			return;
+		}
+		len -= res;  
+		p += res;
+		send_count++;
+
+		while( len > 0 ){
+			timeout.tv_sec  = 0;
+			timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
+			FD_ZERO (&writefds);
+			FD_SET (entry->sock, &writefds);
+			memcpy (&fds, &writefds, sizeof (fds));
+			n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
+			if (n > 0) {
+				if (FD_ISSET (entry->sock, &fds)) {
+					res = send (entry->sock, msg, msg_len, 0);
+					if(res > 0) {
+						len -= res;  
+						p += res;
+					} else {
+						if ( errno == EAGAIN ) {
+							usleep(CEF_FACE_SEND_USLEEP);
+						}
+					}
+					send_count++;
+				}
+			} else {
+				if ( send_count == 0 ) {
+					break;
+				} else if ( send_count > DEMO_RETRY_NUM ) {
+					break;
+				}
+				send_count++;
+				if ( errno == EAGAIN ) {
+					usleep(CEF_FACE_SEND_USLEEP);
+				}
+			}
+		}
 	} else {
 		if (face_tbl[faceid].protocol != CefC_Face_Type_Tcp) {
-			sendto (entry->sock, msg, msg_len
-					, 0, entry->ai_addr, entry->ai_addrlen);
-		} else {
-			res = write (entry->sock, msg, msg_len);
-			if (res < 0) {
-				cef_face_close (faceid);
+		int	send_count = 0;
+		res = 0;  
+    	unsigned char* p = msg;
+    	int len = msg_len;
+		fd_set fds, writefds;
+		int n;
+		struct timeval timeout;
+
+			res = sendto (entry->sock, msg, msg_len
+							, 0, entry->ai_addr, entry->ai_addrlen);
+			if ( res <= 0 ) {
+				return;
 			}
+			len -= res;  
+			p += res;
+			send_count++;
+
+		while( len > 0 ){
+			timeout.tv_sec  = 0;
+			timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
+			FD_ZERO (&writefds);
+			FD_SET (entry->sock, &writefds);
+			memcpy (&fds, &writefds, sizeof (fds));
+			n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
+			if (n > 0) {
+				if (FD_ISSET (entry->sock, &fds)) {
+					res = sendto (entry->sock, msg, msg_len
+							, 0, entry->ai_addr, entry->ai_addrlen);
+					if(res > 0) {
+						len -= res;  
+						p += res;
+					} else {
+						if ( errno == EAGAIN ) {
+							usleep(CEF_FACE_SEND_USLEEP);
+						}
+					}
+					send_count++;
+				}
+			} else {
+				if ( send_count == 0 ) {
+					break;
+				} else if ( send_count > DEMO_RETRY_NUM ) {
+					break;
+				}
+				send_count++;
+				if ( errno == EAGAIN ) {
+					usleep(CEF_FACE_SEND_USLEEP);
+				}
+			}
+		}
+	} else {
+		int	send_count = 0;
+		res = 0;  
+    	unsigned char* p = msg;
+    	int len = msg_len;
+		fd_set fds, writefds;
+		int n;
+		struct timeval timeout;
+
+			res = write (entry->sock, msg, msg_len);
+			if ( res <= 0 ) {
+				return;
+			}
+			len -= res;  
+			p += res;
+			send_count++;
+
+		while( len > 0 ){
+			timeout.tv_sec  = 0;
+			timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
+			FD_ZERO (&writefds);
+			FD_SET (entry->sock, &writefds);
+			memcpy (&fds, &writefds, sizeof (fds));
+			n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
+			if (n > 0) {
+				if (FD_ISSET (entry->sock, &fds)) {
+					res = write (entry->sock, msg, msg_len);
+					if(res > 0) {
+						len -= res;  
+						p += res;
+					} else {
+						if ( errno == EAGAIN ) {
+							usleep(CEF_FACE_SEND_USLEEP);
+						}
+					}
+					send_count++;
+				}
+			} else {
+				if ( send_count == 0 ) {
+					break;
+				} else if ( send_count > DEMO_RETRY_NUM ) {
+					break;
+				}
+				send_count++;
+				if ( errno == EAGAIN ) {
+					usleep(CEF_FACE_SEND_USLEEP);
+				}
+			}
+		}
 		}
 	}
 
@@ -1332,21 +1518,141 @@ cef_face_object_send (
 	}
 	
 	if (face_tbl[faceid].local_f) {
-		send (entry->sock, msg, msg_len, 0);
-	} else {
-		if (face_tbl[faceid].protocol != CefC_Face_Type_Tcp) {
-			sendto (entry->sock, msg, msg_len
-					, 0, entry->ai_addr, entry->ai_addrlen);
-		} else {
-			res = write (entry->sock, msg, msg_len);
-			if (res < 0) {
-				if ((errno != EAGAIN) && (errno != EWOULDBLOCK)) {	//#834
-					cef_face_close (faceid);
+		int	send_count = 0;
+		res = 0;  
+    	unsigned char* p = msg;
+    	int len = msg_len;
+		fd_set fds, writefds;
+		int n;
+		struct timeval timeout;
+
+		res = send (entry->sock, msg, msg_len, 0);
+		if ( res <= 0 ) {
+				return( -1 );
+		}
+		len -= res;  
+		p += res;
+		send_count++;
+
+		while( len > 0 ){
+			timeout.tv_sec  = 0;
+			timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
+			FD_ZERO (&writefds);
+			FD_SET (entry->sock, &writefds);
+			memcpy (&fds, &writefds, sizeof (fds));
+			n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
+			if (n > 0) {
+				if (FD_ISSET (entry->sock, &fds)) {
+					res = send (entry->sock, msg, msg_len, 0);
+					if(res > 0) {
+						len -= res;  
+						p += res;
+					} else {
+						if ( errno == EAGAIN ) {
+							usleep(CEF_FACE_SEND_USLEEP);
+						}
+					}
+					send_count++;
+				}
+			} else {
+				if ( send_count == 0 ) {
+					break;
+				} else if ( send_count > DEMO_RETRY_NUM ) {
+					break;
+				}
+				send_count++;
+				if ( errno == EAGAIN ) {
+					usleep(CEF_FACE_SEND_USLEEP);
 				}
 			}
 		}
+	} else {
+		if (face_tbl[faceid].protocol != CefC_Face_Type_Tcp) {
+		int	send_count = 0;
+		res = 0;  
+    	unsigned char* p = msg;
+    	int len = msg_len;
+		fd_set fds, writefds;
+		int n;
+		struct timeval timeout;
+
+		while( len > 0 ){
+			timeout.tv_sec  = 0;
+			timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
+			FD_ZERO (&writefds);
+			FD_SET (entry->sock, &writefds);
+			memcpy (&fds, &writefds, sizeof (fds));
+			n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
+			if (n > 0) {
+				if (FD_ISSET (entry->sock, &fds)) {
+					res = sendto (entry->sock, msg, msg_len
+							, 0, entry->ai_addr, entry->ai_addrlen);
+					if(res > 0) {
+						len -= res;  
+						p += res;
+					} else {
+						if ( errno == EAGAIN ) {
+							usleep(CEF_FACE_SEND_USLEEP);
+						}
+					}
+					send_count++;
+				}
+			} else {
+				if ( send_count == 0 ) {
+					break;
+				} else if ( send_count > DEMO_RETRY_NUM ) {
+					break;
+				}
+				send_count++;
+				if ( errno == EAGAIN ) {
+					usleep(CEF_FACE_SEND_USLEEP);
+				}
+			}
+		}
+	} else {
+		int	send_count = 0;
+		res = 0;  
+    	unsigned char* p = msg;
+    	int len = msg_len;
+		fd_set fds, writefds;
+		int n;
+		struct timeval timeout;
+
+		while( len > 0 ){
+			timeout.tv_sec  = 0;
+			timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
+			FD_ZERO (&writefds);
+			FD_SET (entry->sock, &writefds);
+			memcpy (&fds, &writefds, sizeof (fds));
+			n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
+			if (n > 0) {
+				if (FD_ISSET (entry->sock, &fds)) {
+					res = write (entry->sock, msg, msg_len);
+					if(res > 0) {
+						len -= res;  
+						p += res;
+					} else {
+						if ( errno == EAGAIN ) {
+							usleep(CEF_FACE_SEND_USLEEP);
+						}
+					}
+					send_count++;
+				}
+			} else {
+				if ( send_count == 0 ) {
+					break;
+				} else if ( send_count > DEMO_RETRY_NUM ) {
+					break;
+				}
+				send_count++;
+				if ( errno == EAGAIN ) {
+					usleep(CEF_FACE_SEND_USLEEP);
+				}
+			}
+		}
+		}
 	}
-	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -1503,6 +1809,7 @@ cef_face_neighbor_info_get (
 	int res;
 	CefT_Face* face;
 	char prot_str[3][16] = {"invalid", "tcp", "udp"};
+	int	info_buff_len = 0;	//gcc v9
 	
 	/* get table num		*/
 	info_buff[0] = 0x00;
@@ -1538,8 +1845,13 @@ cef_face_neighbor_info_get (
 			index++;
 			continue;
 		}
+#if 0
 		sprintf (info_buff, "%sfaceid = %d %s %s:%d\n", 
 			info_buff, sock->faceid, prot_str[sock->protocol], node, sock->port_num);
+#else
+		info_buff_len = info_buff_len + sprintf (info_buff + info_buff_len, "faceid = %d %s %s:%d\n", 
+			sock->faceid, prot_str[sock->protocol], node, sock->port_num);
+#endif
 		index++;
 	}
 	return (strlen (info_buff));
@@ -1917,6 +2229,12 @@ RETRY:;
 		
 		if (create_f) {
 			*create_f = 1;
+#ifdef	__INTEREST__
+		fprintf( stderr,
+			"[face] Creation the new Face#%d (FD#%d) for %s:%s\n", 
+			entry->faceid, face_tbl[entry->faceid].fd, usr_id, port_str);
+#endif
+
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Finer, 
 			"[face] Creation the new Face#%d (FD#%d) for %s:%s\n", 
@@ -2031,6 +2349,7 @@ cef_face_unused_faceid_search (
 			continue;
 		}
 		assigned_faceid = i + 1;
+		face_tbl[i].local_f = 0;	//20120712
 		return (i);
 	}
 
@@ -2039,6 +2358,8 @@ cef_face_unused_faceid_search (
 			continue;
 		}
 //		assigned_faceid = i + 1;
+		assigned_faceid = i + 1;	//20120712
+		face_tbl[i].local_f = 0;	//20120712
 		return (i);
 	}
 	assigned_faceid = CefC_Face_Reserved;
@@ -2090,3 +2411,82 @@ cef_face_sock_entry_destroy (
 	}
 	free (entry);
 }
+
+//0.8.3
+/*--------------------------------------------------------------------------------------
+	Obtains the bw_stat_i get of the specified face
+----------------------------------------------------------------------------------------*/
+int 
+cef_face_bw_stat_i_get (
+	uint16_t faceid 
+) {
+	return (face_tbl[faceid].bw_stat_i);
+}
+/*--------------------------------------------------------------------------------------
+	Obtains the bw_stat_i set of the specified face
+----------------------------------------------------------------------------------------*/
+int 
+cef_face_bw_stat_i_set (
+	uint16_t faceid,
+	int		 index
+) {
+#ifdef	__INTEREST__
+		fprintf (stderr, "%s faceid:%d   index:%d\n", __func__, faceid, index );
+#endif
+	face_tbl[faceid].bw_stat_i = index;
+	return(0);
+}
+
+/*--------------------------------------------------------------------------------------
+	Obtains the ip route get of the specified ip_addr
+----------------------------------------------------------------------------------------*/
+int
+cef_face_ip_route_get (
+	char*	ip_addr_str,
+	char*	if_name
+) {
+	int		len = 0;
+    FILE* fp;
+    char  buf[1024];
+    char  cmd_buf[128];
+	
+#ifndef CefC_MACOS
+	char*	keyword = "dev";
+	char fld01[128], fld02[128], fld03[128], fld04[128],
+		 fld05[128], fld06[128], fld07[128];
+
+	sprintf( cmd_buf, "ip route get %s", ip_addr_str );
+    if ((fp = popen(cmd_buf, "r")) != NULL) {
+        while (fgets(buf, sizeof(buf), fp) != NULL) {
+			if ( strstr( buf, keyword ) != NULL ) {
+				sscanf (buf, "%s %s %s %s %s %s %s",
+						fld01, fld02, fld03, fld04,
+						fld05, fld06, fld07);
+				strcpy( if_name, fld03 );
+				len = strlen( if_name );
+	            break;
+	        }
+        }
+    }
+    pclose(fp);
+#else // CefC_MACOS
+	char*	keyword = "interface:";
+	char fld01[128], fld02[128];
+
+	sprintf( cmd_buf, "route -n get %s", ip_addr_str );
+    if ((fp = popen(cmd_buf, "r")) != NULL) {
+        while (fgets(buf, sizeof(buf), fp) != NULL) {
+ 			if ( strstr( buf, keyword ) != NULL ) {
+				sscanf (buf, "%s %s", fld01, fld02);
+				strcpy( if_name, fld02 );
+				len = strlen( if_name );
+	            break;
+	        }
+        }
+    }
+    pclose(fp);
+#endif
+	return(len);
+}
+
+

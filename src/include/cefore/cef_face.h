@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -110,6 +110,7 @@ typedef struct {
 	uint8_t 		protocol;
 	uint32_t 		seqnum;
 	int 			ifindex;
+	int				bw_stat_i;	//0.8.3
 } CefT_Face;
 
 /********** Neighbor Management				**********/
@@ -133,6 +134,15 @@ typedef struct {
  Global Variables
  ****************************************************************************************/
 
+/****************************************************************************************
+ Macros
+ ****************************************************************************************/
+
+#define CefC_Face_Type_Num			4
+#define CefC_Face_Type_Invalid		0x00
+#define CefC_Face_Type_Tcp			0x01
+#define CefC_Face_Type_Udp			0x02
+#define CefC_Face_Type_Local		0x03
 
 
 /****************************************************************************************
@@ -246,7 +256,8 @@ int											/* Peer Face-ID 							*/
 cef_face_lookup_peer_faceid (
 	struct addrinfo* sas, 					/* sockaddr_storage structure				*/
 	socklen_t sas_len,						/* length of sockaddr_storage				*/
-	int protocol
+	int protocol,
+	char* usr_id							//0.8.3
 );
 /*--------------------------------------------------------------------------------------
 	Looks up and creates the Face from the specified string of destination address
@@ -391,4 +402,30 @@ cef_face_info_get (
 	char* face_info, 
 	uint16_t faceid
 );
+
+//0.8.3
+/*--------------------------------------------------------------------------------------
+	Obtains the bw_stat_i get of the specified face
+----------------------------------------------------------------------------------------*/
+int 
+cef_face_bw_stat_i_get (
+	uint16_t faceid
+);
+/*--------------------------------------------------------------------------------------
+	Obtains the bw_stat_i set of the specified face
+----------------------------------------------------------------------------------------*/
+int 
+cef_face_bw_stat_i_set (
+	uint16_t faceid,
+	int		 index
+);
+/*--------------------------------------------------------------------------------------
+	Obtains the ip route get of the specified ip_addr
+----------------------------------------------------------------------------------------*/
+int
+cef_face_ip_route_get (
+	char*	ip_addr_str,
+	char*	if_name
+);
+
 #endif // __CEF_FACE_HEADER__

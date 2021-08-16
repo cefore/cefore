@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -267,8 +267,11 @@ void
 cef_plugin_config_read (
 	void 
 ) {
-	char 	ws[1024];
-	char 	dirpath[1024];
+//	char 	ws[1024];
+	char 	ws[2048];
+	char 	ws_w[1024];
+//	char 	dirpath[1024];
+	char 	dirpath[2048];
 	FILE*	fp;
 	char 	buff[1032];
 	char 	work[1032];
@@ -280,19 +283,19 @@ cef_plugin_config_read (
 	
 	/* Obtains the directory path where the plugin.conf file is located. */
 #ifndef CefC_Android
-	cef_client_config_dir_get (ws);
+	cef_client_config_dir_get (ws_w);
 #else // CefC_Android
 	/* Android local cache storage is data/data/package_name/	*/
-	cef_android_conf_path_get (ws);
+	cef_android_conf_path_get (ws_w);
 #endif // CefC_Android
 	
-	if (mkdir (ws, 0777) != 0) {
+	if (mkdir (ws_w, 0777) != 0) {
 		if (errno == ENOENT) {
 			return;
 		}
 	}
 	
-	sprintf (dirpath, "%s/plugin", ws);
+	sprintf (dirpath, "%s/plugin", ws_w);
 	
 	if (mkdir (dirpath, 0777) != 0) {
 		if (errno == ENOENT) {
@@ -300,7 +303,7 @@ cef_plugin_config_read (
 		}
 	}
 	
-	sprintf (ws, "%s/plugin.conf", ws);
+	sprintf (ws, "%s/plugin.conf", ws_w);
 
 	/* Opens the cefnetd's config file. */
 	fp = fopen (ws, "r");
@@ -475,8 +478,10 @@ cef_plugin_log_init (
 ) {
 	CefT_List* lp 		= NULL;
 	char* value_str 	= NULL;
-	char fname1[1024];
-	char fname2[1024];
+//	char fname1[1024];
+//	char fname2[1024];
+	char fname1[2048];
+	char fname2[2048];
 	char fpath[1024];
 	int i;
 	

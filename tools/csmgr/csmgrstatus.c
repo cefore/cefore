@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -222,8 +222,9 @@ main (
 		name_len = cef_frame_conversion_uri_to_name (uri, tmp_name);
 		if (name_len < 0) {
 			fprintf (stderr, "ERROR : URI is Invalid (%s)\n", uri);
+			return (0);
 		}
-		if (name_len == 4) { /* uri is ccn:/ */
+		if (name_len == 4) { /* uri is ccnx:/ */
 			name_len = 0;
 		}
 	} else {
@@ -360,7 +361,7 @@ output_result (
 	}
 	memcpy (&stat_hdr, &frame[0], sizeof (struct CefT_Csmgr_Status_Hdr));
 	stat_hdr.node_num 	= ntohs (stat_hdr.node_num);
-	stat_hdr.con_num 	= ntohs (stat_hdr.con_num);
+	stat_hdr.con_num 	= ntohl (stat_hdr.con_num);
 	
 	fprintf (stderr, "*****   Connection Status Report   *****\n");
 	fprintf (stderr, "All Connection Num             : %d\n\n", stat_hdr.node_num);

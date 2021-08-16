@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, National Institute of Information and Communications
+ * Copyright (c) 2016-2021, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -99,6 +99,10 @@ typedef struct CefT_Down_Faces {
 		Variables related to Content Store
 	----------------------------------------------*/
 	uint8_t			reply_f;				/* Reply Content Flag. To stop Interest	 	*/
+	//0.8.3
+	uint8_t				IR_Type;			/* InterestReturn Type 						*/
+	unsigned int 		IR_len;				/* Length of IR_msg 						*/
+	unsigned char* 		IR_msg;				/* InterestReturn msg 						*/
 
 } CefT_Down_Faces;
 
@@ -136,6 +140,15 @@ typedef struct {
 	uint64_t			nonce;				/* Nonce 									*/
 	uint64_t 			adv_lifetime_us;	/* Advertised lifetime 						*/
 	uint64_t 			drp_lifetime_us;
+	//0.8.3
+	uint8_t				hoplimit;			/* Hop Limit of Forwarding Interest 		*/
+	int					PitType;			/* PitType									*/
+	int64_t				Last_chunk_num;		/* Last Forward Object Chunk Number 		*/
+	unsigned int 		KIDR_len;			/* KIDR_selector Len 						*/
+	unsigned char* 		KIDR_selector;		/* KeyIdRestriction selector				*/
+	unsigned int 		COBHR_len;			/* COBHR_selector Len 						*/
+	unsigned char* 		COBHR_selector;		/* ContentObjectHashRestriction selector 	*/
+	
 #ifdef CefC_Dtc
 	/*--------------------------------------------
 		Variables related to Cefore-DTC
@@ -160,7 +173,9 @@ typedef struct {
 	Initialize the PIT module
 ----------------------------------------------------------------------------------------*/
 void cef_pit_init (
-	uint32_t reply_timeout			/* PIT lifetime(seconds) at "full discovery request" */
+	uint32_t reply_timeout,        /* PIT lifetime(seconds) at "full discovery request" */
+	uint32_t symbolic_max_lt,       /* Symbolic Interest max Lifetime 0.8.3             */
+	uint32_t regular_max_lt         /* Regular Interest max Lifetime 0.8.3              */
 );
 /*--------------------------------------------------------------------------------------
 	Looks up and creates a PIT entry matching the specified Name
@@ -170,6 +185,8 @@ cef_pit_entry_lookup (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
 	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+	, unsigned char* ccninfo_pit,			/* pit name for ccninfo ccninfo-03			*/
+	int	ccninfo_pit_len						/* ccninfo pit length						*/
 );
 /*--------------------------------------------------------------------------------------
 	Searches a PIT entry matching the specified Name
@@ -179,6 +196,8 @@ cef_pit_entry_search (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
 	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+	, unsigned char* ccninfo_pit,			/* pit name for ccninfo ccninfo-03			*/
+	int	ccninfo_pit_len						/* ccninfo pit length						*/
 );
 /*--------------------------------------------------------------------------------------
 	Searches a PIT entry matching the specified Name
@@ -219,7 +238,8 @@ cef_pit_entry_down_face_update (
 	uint16_t faceid,						/* Face-ID									*/
 	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
 	CefT_Parsed_Opheader* poh,				/* Parsed Option Header						*/
-	unsigned char* msg 						/* cefore packet 							*/
+	unsigned char* msg,						/* cefore packet 							*/
+	int		 Resend_method					/* Resend method 0.8.3						*/
 );
 /*--------------------------------------------------------------------------------------
 	Looks up and creates the specified Up Face entry
@@ -311,4 +331,48 @@ cef_pit_dtc_entry_read (
 	void
 );
 #endif // CefC_Dtc
+
+//0.8.3
+/*--------------------------------------------------------------------------------------
+	Symbolic PIT Check
+----------------------------------------------------------------------------------------*/
+int
+cef_pit_symbolic_pit_check (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+);
+/*--------------------------------------------------------------------------------------
+	Searches a PIT entry matching the specified Name with chunk number
+----------------------------------------------------------------------------------------*/
+CefT_Pit_Entry* 							/* a PIT entry								*/
+cef_pit_entry_search_with_chunk (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+);
+/*--------------------------------------------------------------------------------------
+	Searches a PIT entry matching the specified Name without chunk number
+----------------------------------------------------------------------------------------*/
+CefT_Pit_Entry* 							/* a PIT entry								*/
+cef_pit_entry_search_without_chunk (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh				/* Parsed Option Header						*/
+);
+
+/*--------------------------------------------------------------------------------------
+	Set InterestReturn Info to DownFace
+----------------------------------------------------------------------------------------*/
+int
+cef_pit_interest_return_set (
+	CefT_Pit_Entry* entry, 					/* PIT entry 								*/
+	CefT_Parsed_Message* pm, 				/* Parsed CEFORE message					*/
+	CefT_Parsed_Opheader* poh,				/* Parsed Option Header						*/
+	uint16_t faceid, 						/* Face-ID									*/
+	uint8_t				IR_Type,			/* InterestReturn Type 						*/
+	unsigned int 		IR_len,				/* Length of IR_msg 						*/
+	unsigned char* 		IR_msg				/* InterestReturn msg 						*/
+) ;
+
 #endif // __CEF_PIT_HEADER__
