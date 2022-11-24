@@ -42,7 +42,8 @@ endif # CEFDBG_ENABLE
 # check csmgr
 if CSMGR_ENABLE
 AM_CFLAGS+=-DCefC_ContentStore
-AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c 
+#AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c 
+AM_CSOURCES+=cef_csmgr.c
 endif
 
 # check cefping
@@ -67,10 +68,20 @@ AM_CSOURCES+=cef_mem_cache.c cef_csmgr.c cef_csmgr_stat.c
 endif # CACHE_ENABLE
 
 
+# check conpub
+if CONPUB_ENABLE
+AM_CFLAGS+=-DCefC_Conpub
+#AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c
+AM_CSOURCES+=cef_csmgr.c
+endif # CONPUB_ENABLE
 
 if SAMPTP_ENABLE
 AM_CFLAGS+=-DCefC_Plugin_Samptp
 endif # SAMPTP_ENABLE
+
+
+AM_CSOURCES+=cef_csmgr_stat.c
+
 
 
 lib_LIBRARIES=libcefore.a

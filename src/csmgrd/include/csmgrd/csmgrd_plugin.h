@@ -79,21 +79,23 @@ typedef struct {
 	struct in_addr	node;						/* Node address							*/
 	
 	uint64_t		ins_time;					/* Insert time(use mem cache only)		*/
-
+	unsigned char*	version;					/* version								*/
+	uint16_t		ver_len;					/* Length of version					*/
 } CsmgrdT_Content_Entry;
 
 typedef struct CsmgrdT_Plugin_Interface {
 	/* Initialize process */
-	int (*init)(CsmgrT_Stat_Handle);
+	int (*init)(CsmgrT_Stat_Handle, int);		//0.8.3c
 	
 	/* Destroy process */
-	void (*destroy)(void);
+//0.8.3c	void (*destroy)(void);
+	void (*destroy)(int);		//0.8.3c
 	
 	/* Check expiry */
 	void (*expire_check)(void);
 	
 	/* Get Cob Entry */
-	int (*cache_item_get)(unsigned char*, uint16_t, uint32_t, int);
+	int (*cache_item_get)(unsigned char*, uint16_t, uint32_t, int, unsigned char*, uint16_t);
 	
 	/* Put contents */
 	int (*cache_item_puts)(unsigned char*, int);

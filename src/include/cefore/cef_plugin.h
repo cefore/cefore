@@ -97,6 +97,11 @@
 #define CefC_Pi_Object_Match 			0x0010
 #define CefC_Pi_All_Permission 			0x0015
 
+/*---------------------------------------------------------
+	Forwarding Strategy Plugin
+-----------------------------------------------------------*/
+#define CefC_FwdStrPlg_Max_NameLen		64
+
 
 /****************************************************************************************
  Structures Declaration
@@ -332,6 +337,50 @@ typedef struct CefnetdT_Plugin_Interface {
 
 } CefnetdT_Plugin_Interface;
 #endif
+
+/*---------------------------------------------------------
+	Forwarding Strategy Plugin
+-----------------------------------------------------------*/
+typedef struct CefT_FwdStrtgy_Param {
+
+	uint16_t*				faceids;			/* I/C  */
+	uint16_t				faceid_num;			/* I/C  */
+	int						peer_faceid;		/* I    */
+	unsigned char*			msg;				/* I/C  */
+	uint16_t				payload_len;		/* I/C  */
+	uint16_t				header_len;			/* I/C  */
+	CefT_Parsed_Message*	pm;					/* I/C  */
+	CefT_Parsed_Opheader*	poh;				/* I/C  */
+	CefT_Pit_Entry*			pe;					/* I/C  */
+	CefT_Fib_Entry*			fe;					/* I/C  */
+
+	uint64_t*				cnt_send_frames;	/* I/C: Pointer of variable in Cefnetd handle              */
+												/*      for Count the number of frames sent in the Plugin. */
+												/*      "Tx Interest" or "Tx ContentObject"                */
+	uint64_t*				cnt_send_types;		/* I  : Count by Interest type */
+
+} CefT_FwdStrtgy_Param;
+
+typedef struct _CefT_Plugin_Fwd_Strtgy {
+	/* Initialize process */
+	int (*init)(void);
+	
+	/* Destroy process */
+	void (*destroy)(void);
+	
+	/* Forward Interest */
+	void (*fwd_int)(CefT_FwdStrtgy_Param* fwdstr);
+	
+	/* Forward ContentObject */
+	void (*fwd_cob)(CefT_FwdStrtgy_Param* fwdstr);
+	
+	/* Forward CcninfoReq */
+	void (*fwd_ccninforeq)(CefT_FwdStrtgy_Param* fwdstr, int authNZ, uint32_t fulldcv_f);
+	
+	/* Forward CefpingReq */
+	void (*fwd_cefpingreq)(CefT_FwdStrtgy_Param* fwdstr);
+	
+} CefT_Plugin_Fwd_Strtgy;
 
 
 /****************************************************************************************

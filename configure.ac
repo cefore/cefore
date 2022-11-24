@@ -5,7 +5,7 @@ dnl
 dnl  project setting
 dnl
 AC_PREREQ([2.69])
-AC_INIT([cefore], [0.8.3a], [])
+AC_INIT([cefore], [0.9.0b], [])
 AC_CONFIG_AUX_DIR(autotools)
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
@@ -141,6 +141,17 @@ AC_ARG_ENABLE(
 )
 AM_CONDITIONAL(CACHE_ENABLE, test x"${enable_cache}" = xyes)
 
+dnl
+dnl  check conpubd and tools
+dnl
+AC_ARG_ENABLE(
+  conpub,
+  AS_HELP_STRING([--enable-conpub], [conpub (default no)]),
+  [enable_conpub=yes],
+  [enable_conpub=no]
+)
+AM_CONDITIONAL(CONPUB_ENABLE, test x"${enable_conpub}" = xyes)
+
 
 AC_CONFIG_FILES([
   Makefile
@@ -150,6 +161,8 @@ AC_CONFIG_FILES([
   src/include/cefore/Makefile
   src/lib/Makefile
   src/plugin/Makefile
+  src/dlplugin/Makefile
+  src/dlplugin/fwd_strategy/Makefile
   utils/Makefile
   config/Makefile
   tools/Makefile
@@ -160,6 +173,7 @@ AC_CONFIG_FILES([
   tools/cefgetfile_sec/Makefile
   tools/cefputfile_sec/Makefile
   tools/cefgetchunk/Makefile
+  tools/cefgetcontent/Makefile
 ])
 
 dnl
@@ -179,6 +193,7 @@ AM_COND_IF(
       src/csmgrd/lib/Makefile
       src/csmgrd/include/Makefile
       src/csmgrd/include/csmgrd/Makefile
+      tools/cefput_verify/Makefile
   ])
 ])
 
@@ -208,6 +223,22 @@ dnl
 AM_COND_IF(
   [CACHE_ENABLE], 
   [AC_CONFIG_FILES([
+  ])
+])
+
+dnl
+dnl  check conpubd and tools
+dnl
+AM_COND_IF(
+  [CONPUB_ENABLE],
+  [AC_CONFIG_FILES([
+      src/conpubd/Makefile
+      src/conpubd/conpubd/Makefile
+      src/conpubd/plugin/Makefile
+      src/conpubd/lib/Makefile
+      src/conpubd/include/Makefile
+      src/conpubd/include/conpubd/Makefile
+      tools/conpub/Makefile
   ])
 ])
 

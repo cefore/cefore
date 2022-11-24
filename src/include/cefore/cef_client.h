@@ -66,6 +66,7 @@
 #define CefC_App_RegPrefix			0x03		/* for prefix match 					*/
 #define CefC_App_RegPit				0x04
 #define CefC_App_DeRegPit			0x05
+#define CefC_Dev_RegPit				0x06
 
 #define CefC_Unset_Port 			0
 #define CefC_Unset_Id 				NULL

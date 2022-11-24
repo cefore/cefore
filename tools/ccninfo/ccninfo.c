@@ -912,6 +912,10 @@ ct_parse_parameters (
 				ct_usage_output ("error: [-d] has no parameter.\n");
 				return (-1);
 			}
+			if (strlen(argv[i + 1]) > PATH_MAX) {
+				ct_usage_output ("error: [-d] parameter is too long.\n");
+				return (-1);
+			}
 			work_arg = argv[i + 1];
 			strcpy (conf_path, work_arg);
 			dir_path_f++;

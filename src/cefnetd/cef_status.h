@@ -60,11 +60,13 @@
 /****************************************************************************************
  Function Declarations
  ****************************************************************************************/
-int 
+int
 cef_status_stats_output (
 	CefT_Netd_Handle* hdl,						/* cefnetd handle						*/
-	unsigned char** rspp
+	unsigned char** rspp,
+	uint16_t output_opt_f
 );
+
 int
 cef_status_stats_output_pit (
 	CefT_Netd_Handle* hdl						/* cefnetd handle						*/

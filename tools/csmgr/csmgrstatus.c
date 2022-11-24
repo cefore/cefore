@@ -114,11 +114,13 @@ main (
 	uint32_t msg_len, rcvd_size;
 	int rc;
 	int blocks;
+	uint8_t option = CefC_Csmgr_Stat_Opt_None;
 
 	/***** flags 		*****/
 	int host_f 			= 0;
 	int port_f 			= 0;
 	int uri_f 			= 0;
+	int clear_f 		= 0;
 
 	/***** state variavles 	*****/
 	uint16_t index 		= 0;
@@ -162,6 +164,13 @@ main (
 			strcpy (port_str, work_arg);
 			port_f++;
 			i++;
+		} else if (strcmp (work_arg, "-c") == 0) {
+			if (clear_f) {
+				fprintf (stderr, "csmgrstatus: [ERROR] clear option is duplicated.");
+				print_usage ();
+				return (-1);
+			}
+			clear_f++;
 		} else {
 
 			work_arg = argv[i];
@@ -206,8 +215,22 @@ main (
 		fprintf (stderr, "ERROR : connect to csmgrd\n");
 		return (0);
 	}
+	if (clear_f != 0 && uri_f == 0) {
+		fprintf (stderr, "csmgrstatus: [ERROR] uri to be cleared is not specified.");
+		print_usage ();
+		return (0);
+	}
 	cef_frame_init ();
 	
+/* =====================================================================
+                          1                   2                   3
+      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+     +---------------+---------------+---------------+---------------+
+     |    Version    |  PacketType   |         PacketLength          |
+     +---------------+---------------+---------------+---------------+
+     |     Option    |                   Name(URI)                   /
+     +---------------+---------------+---------------+---------------+
+   ===================================================================== */
 	/* Create Upload Request message	*/
 	/* set header	*/
 	buff[CefC_O_Fix_Ver]  = CefC_Version;
@@ -215,6 +238,12 @@ main (
 	buff[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_Status;
 	index += CefC_Csmgr_Msg_HeaderLen;
 
+	/* set option */
+	if (clear_f) {
+		option |= CefC_Csmgr_Stat_Opt_Clear;
+	}
+	buff[index] = option;
+	index++;
 	/* set uri flag	*/
 	memcpy (buff + index, &uri_value, sizeof (uint8_t));
 	index += sizeof (uint8_t);
@@ -355,6 +384,7 @@ output_result (
 	char get_uri[65535];
 	uint32_t index = 0;
 	int con_no = 0;
+	unsigned char version[65535];
 	
 	if (frame_size < sizeof (struct CefT_Csmgr_Status_Hdr)) {
 		fprintf (stderr, "Received the invalid response\n");
@@ -377,9 +407,11 @@ output_result (
 		memcpy (&stat_rep, &frame[index], sizeof (struct CefT_Csmgr_Status_Rep));
 		stat_rep.con_size 		= cef_client_ntohb (stat_rep.con_size);
 		stat_rep.access 		= cef_client_ntohb (stat_rep.access);
+		stat_rep.req_count 		= cef_client_ntohb (stat_rep.req_count);
 		stat_rep.freshness 		= cef_client_ntohb (stat_rep.freshness);
 		stat_rep.elapsed_time 	= cef_client_ntohb (stat_rep.elapsed_time);
 		stat_rep.name_len 		= ntohs (stat_rep.name_len);
+		stat_rep.ver_len 		= ntohs (stat_rep.ver_len);
 		index += sizeof (struct CefT_Csmgr_Status_Rep);
 		
 		if (frame_size - index < stat_rep.name_len) {
@@ -387,19 +419,34 @@ output_result (
 		}
 		memcpy (name, &frame[index], stat_rep.name_len);
 		index += stat_rep.name_len;
+		if (stat_rep.ver_len) {
+			memcpy (version, &frame[index], stat_rep.ver_len);
+			index += stat_rep.ver_len;
+		}
 		
 		if (stat_rep.name_len > 0) {
 			cef_frame_conversion_name_to_uri (name, stat_rep.name_len, get_uri);
 			fprintf (stderr, "[%d]\n", con_no);
-			fprintf (stderr, "  Content Name : %s\n", get_uri);
-			fprintf (stderr, "  Content Size : %llu Bytes\n", (unsigned long long)stat_rep.con_size);
-			fprintf (stderr, "  Access Count : %llu\n", (unsigned long long)stat_rep.access);
-			if (stat_rep.freshness) {
-				fprintf (stderr, "  Freshness    : %llu Sec\n", (unsigned long long)stat_rep.freshness);
+			fprintf (stderr, "  Content Name  : %s\n", get_uri);
+			if (stat_rep.ver_len) {
+				fprintf (stderr, "  Version       : ");
+				for (int i = 0; i < stat_rep.ver_len; i++) {
+					if (isprint (version[i])) fprintf (stderr, "%c", version[i]);
+					else fprintf (stderr, "%02x", version[i]);
+				}
+				fprintf (stderr, "\n");
 			} else {
-				fprintf (stderr, "  Freshness    : Permanent\n");
+				fprintf (stderr, "  Version       : None\n");
 			}
-			fprintf (stderr, "  Elapsed Time : %llu Sec\n", (unsigned long long)stat_rep.elapsed_time);
+			fprintf (stderr, "  Content Size  : %llu Bytes\n", (unsigned long long)stat_rep.con_size);
+			fprintf (stderr, "  Cache Hit     : %llu\n", (unsigned long long)stat_rep.access);
+			fprintf (stderr, "  Request Count : %llu\n", (unsigned long long)stat_rep.req_count);
+			if (stat_rep.freshness) {
+				fprintf (stderr, "  Freshness     : %llu Sec\n", (unsigned long long)stat_rep.freshness);
+			} else {
+				fprintf (stderr, "  Freshness     : Permanent\n");
+			}
+			fprintf (stderr, "  Elapsed Time  : %llu Sec\n", (unsigned long long)stat_rep.elapsed_time);
 			fprintf (stderr, "\n");
 			con_no++;
 		}
@@ -416,7 +463,7 @@ print_usage (
 ) {
 	fprintf (stderr,
 		"\nUsage: csmgrstatus\n\n"
-		"  csmgrstatus [uri] [-h host] [-p port]\n\n"
+		"  csmgrstatus [uri] [-h host] [-p port] [-c]\n\n"
 		"  uri    Name prefix of the content to output.\n"
 		"  host   Specify the host identifier (e.g., IP address) on which csmgrd \n"
 		"         is running. The default value is localhost (i.e., 127.0.0.1).\n"

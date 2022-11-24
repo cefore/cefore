@@ -1,11 +1,127 @@
-# Cefore  
-## About Cefore
----
-Cefore is a software platform that enables CCN-like communications. Cefore consists of (1) "cefnetd" daemon, which implements the CCN's basic function such as CCN Interest/Data handling, and FIB and Pending Interest Table (PIT) management, (2) "csmgrd" daemon, which implements Content Store, (3) arbitrary plugin library implementations that extend cefnetd's or csmgrd's functionalities, and (4) network tools/commands and sample applications. Cefore can run on top of Ubuntu, Raspbian Jessie, macOS, and Android.   
+# Cefore
 
-## License
----  
-Copyright (c) 2016-2019, National Institute of Information and Communications Technology (NICT). All rights reserved.  
+## 1. Overview
+
+Cefore is a software platform that enables ICN-based communications using CCNx-1.0 messages defined in [RFC8569](https://www.rfc-editor.org/rfc/rfc8569.html) and [RFC8609](https://www.rfc-editor.org/rfc/rfc8609.html). Cefore consists of (1) "cefnetd" daemon, which implements the CCN's basic function such as CCN Interest/Data handling, and FIB and Pending Interest Table (PIT) management, (2) "csmgrd" daemon, which implements Content Store, (3) arbitrary plugin library implementations that extend cefnetd's or csmgrd's functionalities, and (4) network tools/commands and sample applications.   
+
+### 1.1. Environments
+
+ Cefore (ver. 0.9.0) can run on top of Linux (Ubuntu) and macOS as the following table. At least 4 GB of memory (RAM) and 4 CPU cores are required to run csmgrd (Content Store manager daemon).
+
+### 1.2. Components
+
+ Cefore consists of the functions listed in the following table. Some functions can be enabled or disabled during the build, and when starting the forwarding daemon. All components except "Standard" are referred to as "--enable-xxxxx" when running a configure command. Standard components are installed by default. See "2.1.2. Build" and other documents for more detail.
+
+| Name/Item    | Type    | Option   | Description                                 |
+| ------------ | ------- | -------- | ------------------------------------------- |
+| cefnetd      | daemon  | Standard | Forwarding daemon                           |
+| cefnetdstart | utility | Standard | Utility of starting cefnetd                 |
+| cefnetdstop  | utility | Standard | Utility of stopping cefnetd                 |
+| cefstatus    | utility | Standard | Utility of showing cefnetd status on stdout |
+| cefroute     | utility | Standard | Utility of set up cefnetd FIB               |
+| cefctrl      | tool    | Standard | Function called by cefnetdstop, cefstatus, and cefroute |
+| cefgetchunk  | tool    | Standard | Obtain the specified Cob and show the payload on stdout |
+| cefputfile   | tool    | Standard | Convert the file to Named Cobs and transmit them to Cefore |
+| cefgetfile   | tool    | Standard | Create file from content received by Cefore |
+| cefputstream | tool    | Standard | Convert the stream received from stdin to Named Cobs and transmit them to Cefore |
+| cefgetstream | tool    | Standard | Display the stream received by Cefore on stdout |
+| cefputfile_sec | tool  | develop  | Obtain security content from Cefore and output it as a file |
+| cefgetfile_sec | tool  | develop	| Convert a file to Named Cob with security features and input it into Cefore |
+| cefping      | tool    | cefping  | cefping                                     |
+| cefinfo      | tool    | cefinfo  | cefinfo (aka ccninfo)                       |
+| csmgrd       | daemon  | csmgr    | Content Store manager daemon                |
+| csmgrdstart  | utility | csmgr    | Utility of starting csmgr daemon            |
+| csmgrdstop   | utility | csmgr    | Utility of stopping csmgr daemon            |
+| csmgrstatus  | utility | csmgr    | Utility of showing csmgrd status on stdout  |
+| Sample Transport | plugin | samptp | Sample transport plugin library            |
+| NDN Plugin   | plugin  | ndn      | NDN plugin library (experimental)           |
+| cefore.lua   | application | Standard | Wireshark's LUA script file             |
+
+
+## 2. Installation
+
+The installation procedure of Cefore is summarized as follows. Please replace "x.x.x" in this guide with the version of Cefore to be installed.  
+
+### 2.1. Required libraries
+Install the libraries required for the Cefore installation. For example, to install OpenSSL on Ubuntu:
+
+`sudo apt-get install libssl-dev`
+
+On macOS, OpenSSL is installed in a different location. If you are using homebrew, you will need to run "brew install openssl" and set the indicated path and flag when you run configure as in "2.1.2. Build".
+
+`brew install openssl`
+
+
+#### 2.1.1. Extract archive
+After downloading the Cefore archive, "cefore-x.x.x.zip", from [Cefore home page](https://cefore.net), extract it to any directory you want and go to the "cefore-x.x.x" directory. Replace "x.x.x" in the text with the version of the Cefore you want to install.
+
+`unzip cefore-x.x.x.zip`  
+`cd cefore-x.x.x`
+
+#### 2.1.2. Build
+Run configure first. The following options are available for configure command:
+
+| Option           | Description                                      |
+|:---------------- |:------------------------------------------------ |
+| --enable-csmgr   | Enable Content Store managed by csmgr daemon.    |
+| --enable-cefping | Enable cefping tool.                             |
+| --enable-cefinfo | Enable cefinfo tool (aka CCNinfo).               |
+| --enable-cache   | Enable cefnetd's local cache.                    |
+| --enable-ndn     | Enable NDN plugin library (experimental).        |
+| --enable-debug   | Enable debug mode (Attn: show lots of messages). |
+
+Specify the installation directory. The default installation directory is "$CEFORE_DIR/sbin" for daemons such as cefnetd, "$CEFORE_DIR/bin" for utilities such as cefnetdstart and tools such as cefgetfile, and "$CEFORE_DIR/cefore" for configuration files such as cefnetd.conf. The default for the environment variable CEFORE_DIR is "/usr/local." Set the installation directory to the environment variable, CEFORE_DIR, if you want to change the installation directory.
+
+If you changed the CEFORE_DIR environment variable, run autoconf and automake.
+
+`autoconf`  
+`automake`
+
+If autoconf is not installed, install automake. The automake package also includes autoconf.
+
+`sudo apt-get install automake` (Ubuntu)  
+`brew install automake` (macOS)
+
+To build with minimal configuration, run configure without specifying options.
+
+`./configure`
+
+If you installed OpenSSL using homebrew on macOS, you need to run configure as follows.
+
+`export PATH="/usr/local/opt/openssl/bin:$PATH"`
+
+`./configure opssl_header_path=/usr/local/opt/openssl/include/ LDFLAGS='-L/usr/local/opt/openssl/lib' CPPFLAGS='-I/usr/local/opt/openssl/include'`
+
+To build cefping and csmgr daemon, you need to specify these options:  
+
+`./configure --enable-cefping --enable-csmgr`
+
+After the configure command completes successfully, run "make" and "make install". "make install" must be run with sudo.
+
+`make`  
+`sudo make install`
+
+If csmgr daemon is installed, the shared libraries must be recognized. If /etc/ld.so.conf does not contain $CEFORE_DIR/lib, add the path and run ldconfig.
+
+`sudo ldconfig`
+
+That's all for the installation!
+
+## 2.2. Configuration Manual
+
+[This document](doc/Configuration.md) is the configuration manual of Cefore software. Users do not need to configure/change any parameters in the configuration files if they run Cefore daemons with the default values.
+
+## 2.3. Daemon Manual
+
+[This document](doc/Daemon.md) describes how to run cefnetd daemon, which is a forwarding daemon, and csmgrd daemon, which is a daemon enabling in-network cache using its on-memory or own UNIX filesystem. Users can run csmgrd daemon if they build csmgrd as well as cefnetd.
+
+## 2.4. Tool Manual
+
+[This document](doc/Tools.md) describes the tools and utilities included in Cefore software package.
+
+## 3. License
+
+Copyright (c) 2016-2022, National Institute of Information and Communications Technology (NICT). All rights reserved.  
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
@@ -13,100 +129,3 @@ Redistribution and use in source and binary forms, with or without modification,
 3. Neither the name of the NICT nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.  
 
 THIS SOFTWARE IS PROVIDED BY THE NICT AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE NICT OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-
-
-## Installation
----  
-The installation procedure of Cefore is summarized as follows. Please replace "x.x.x" in this guide with the version of Cefore to be installed.  
-
-### Prerequisite library installation
-Firstly, the prerequisite libraries for Cefore installation should be installed.E.g., to install OpenSSL on Ubuntu.  
-> *sudo apt-get install libssl-dev*
-
-#### Decompression of Cefore archive
-Decompress the Cefore's archive "cefore-x.x.x.tar.gz" to an arbitrary directory. When you decompress it, "cefore-x.x.x" directory will be created. After extracting, please move to "cefore-x.x.x" directory.
-> *unzip cefore-x.x.x.zip*  
-> *cd cefore-x.x.x*
-
-#### Build
-Run configure command. The following options can be specified for the configuration.  
-| Options | Descriptions |
-|:--|:--|
-| --enable-csmgr | Install csmgr daemon. |
-| --enable-cefping | Install cefping tool. |
-| --enable-cefinfo | Install cefinfo tool. |
-| --enable-ndn | Install NDN plugin function. |
-| --enable-samptp | Enable the sample transport plugin. |
-
-Specify the installation directory. The default installation directory is "$CEFORE_DIR/sbin" for cefnetd and csmgrd, "$CEFORE_DIR/bin" for utilities such as cefnetdstart and tools such as cefgetfile. The default environment variable CEFORE_DIR is "/usr/local". If you use the default installation directory, you do not need to configure this environment variable. The installation directory in the environment variable CEFORE_DIR is only when you change the installation directory.
-
-If you change the environment variable CEFORE_DIR, please execute autoconf and automake.  
-> *autoconf*  
-> *automake*  
-
-If you are building with minimum configuration, run configure without specifying any options.  
-> *./configure*  
-
-To enable cefping and csmgr, run configure as follows.  
-> *./configure --enable-cefping --enable-csmgr*  
-
-After configure completes successfully, run make and install.  
-> *make*  
-> *sudo make install*  
-
-
-
-## Test in a small-scale network
----
-
-Cefore experiments can be done in a small-scale network as shown in the following figure. For this small network, however, at least three PCs/VMs should be set up to make them act as consumer, router, and publisher.  
-
-<PC1 (consumer):10.0.1.1>===<PC2 (router):10.0.1.2>===<PC3 (publicher):10.0.1.3>  
-
-### Prepare the configuration file
-Prepare the configuration files. If you start cefnetd (by entering "cefnetdstart" command on the terminal) without any configuration file, the three default configuration files (cefnetd.conf, cefnetd.fib, and plugin.conf) will be created. If you build csmgrd as well, the default csmgrd.conf will be also created. These created configuration files are all with comment (# at the beginning of each line), and in this state, all parameters will set as the default. Delete the leftmost # character of the parameter and change the value if you want to change the default value. At least you may want to configure some cefnetd's parameters in cefnetd.conf, such as USE_CACHE and CSMGR_NODE, and configure csmgrd's parameters in csmgrd.conf if Content Store is used. In order to enable the CS function at PC3 (router), you usually need to configure CACHE_TYPE and ALLOW_NODE in its csmgrd.conf.
-
-### Route setting
-Before starting cefnetd, set up its FIB by creating the FIB configuration file (cefnetd.fib). The following examples are two cefnetd.fib files to set up PC1's FIB and PC2's FIB, respectively. Since PC3 does not send Interest to any node, PC3's FIB is not needed.
-
-PC1 cefnetd.fib  
-> *ccn:/example udp 10.0.1.2*
-
-PC2 cefnetd.fib  
-> *ccn:/example udp 10.0.1.3*
-
-If you want to set up FIB manually after cefnetd's startup, it is also possible to set up FIB with the cefroute utility, such as,  
-> *cefroute add ccn:/example udp 10.0.1.2*
-
-### Tune kernel parameters
-Before starting cefnetd, it is recommended to tune the several kernel parameters (for Linux and Raspbian) as follows.
-> *sudo sysctl -w net.core.rmem_default=10000000*
-> *sudo sysctl -w net.core.wmem_default=10000000*
-> *sudo sysctl -w net.core.rmem_max=10000000*
-> *sudo sysctl -w net.core.wmem_max=10000000*
-
-For macOS, the following commands tune the kernel parameters to run cefnetd.
-> *sudo sysctl -w net.local.stream.sendspace=2000000*
-> *sudo sysctl -w net.local.stream.recvspace=2000000*
-
-### Start cefnetd
-Enter cefnetdstart at the terminal on each node to start cefnetd. Then enter cefstatus at the terminal to confirm whether it is running.  
-> *cefnetdstart*
-
-### Show cefnetd's status on standard-out
-Enter cefstatus at the terminal.
-> *cefstatus*
-
-### Start csmgrd
-Enter csmgrd (with "&" for background) at the terminal on PC3 and start csmgrd. Then enter csmgrstatus at the terminal and confirm whether it is running.  
-> *csmgrd*
-
-### Cache file at PC3 (publisher)
-Cache a file in the PC3's content store. Enter cefputfile at PC3 terminal. The following is an example of the content with the URI of ccn:/example/file and the file to be cached as in.txt. 
-> *cefputfile ccn:/example/file -f in.txt*
-
-### Retrieve data from the cache with PC1 (publisher)
-Confirm the content cached on PC3 at PC1. Enter cefgetfile at the terminal on PC1. The following is an example to retrieve the content whose URI is ccn:/example/file (same as the URI used for caching on PC 3).  
-
-> *cefgetfile ccn:/example/file out.txt*

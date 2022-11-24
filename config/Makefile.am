@@ -27,8 +27,8 @@
 # SUCH DAMAGE.
 #
 
-EXTRA_DIST=cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def cefnetd.key.def default-private-key.pem default-public-key.pem ccninfo_rt-private-key.pem ccninfo_rt-public-key.pem ccninfo_user-private-key.pem ccninfo_user-public-key.pem
-CEF_CONF=cefnetd.conf cefnetd.fib csmgrd.conf plugin.conf cefnetd.key default-private-key default-public-key ccninfo_rt-private-key ccninfo_rt-public-key ccninfo_user-private-key ccninfo_user-public-key
+EXTRA_DIST=cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def cefnetd.key.def default-private-key.pem default-public-key.pem ccninfo_rt-private-key.pem ccninfo_rt-public-key.pem ccninfo_user-private-key.pem ccninfo_user-public-key.pem conpubd.conf.def
+CEF_CONF=cefnetd.conf cefnetd.fib csmgrd.conf plugin.conf cefnetd.key default-private-key default-public-key ccninfo_rt-private-key ccninfo_rt-public-key ccninfo_user-private-key ccninfo_user-public-key conpubd.conf
 INSTALLDIR=$(CEFORE_DIR_PATH)/cefore
 CCNINFORTDIR=$(CEFORE_DIR_PATH)/cefore/.ccninfo
 CCNINFOUSERDIR=$(HOME)/.ccninfo
@@ -78,6 +78,14 @@ cefnetd.key: cefnetd.key.def
 default-private-key: default-private-key.pem
 	@if [ -f $(@:=.pem) ]; then \
 		cat $(@:=.pem) >> $@; \
+		chmod 644 $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+
+conpubd.conf: conpubd.conf.def
+	@if [ -f $(@:=.def) ]; then \
+		cat $(@:=.def) >> $@; \
 		chmod 644 $@; \
 	else \
 		echo "***" You may need to rerun ./configure in the src directory. >&2; \
@@ -169,6 +177,9 @@ install:
 	fi
 	@if [ ! -f $(CCNINFOUSERDIR)/ccninfo_user-public-key ]; then \
 		cp -p ccninfo_user-public-key $(CCNINFOUSERDIR)/ccninfo_user-public-key; \
+	fi
+	@if [ ! -f $(INSTALLDIR)/conpubd.conf ]; then \
+		cp -p conpubd.conf $(INSTALLDIR)/conpubd.conf; \
 	fi
 	
 

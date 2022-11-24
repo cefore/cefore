@@ -67,11 +67,11 @@ endif # NDNPLUGIN_ENABLE
 bin_PROGRAMS=$(CEF_NETD_BIN_PROGRAM)
 
 # set cefnetd option
-cefnetd_LDFLAGS=-L$(top_srcdir)/src/lib/ -L$(top_srcdir)/src/plugin/ -lpthread
+cefnetd_LDFLAGS=-L$(top_srcdir)/src/lib/ -L$(top_srcdir)/src/plugin/ -L$(top_srcdir)/src/dlplugin/fwd_strategy/ -lpthread
 if LINUX
 cefnetd_LDFLAGS+=-pthread
 endif # LINUX
-cefnetd_LDADD=-lcef_plugin -lcefore -lssl -lcrypto -ldl
+cefnetd_LDADD=-lcef_plugin -lcefnetd_fwd_plugin -lcefore -lssl -lcrypto -ldl
 
 cefnetd_CFLAGS=$(CEF_NETD_CFLAGS)
 cefnetd_SOURCES=cef_main.c cef_node.c cef_sched.c cef_netd.c cef_status.c cef_netd.h cef_status.h
@@ -88,6 +88,11 @@ cefctrl_SOURCES=cef_ctrl.c cef_netd.h
 if CEFDBG_ENABLE
 cefctrl_CFLAGS+=-DCefC_Debug
 endif # CEFDBG_ENABLE
+
+# check cache
+if CACHE_ENABLE
+cefctrl_CFLAGS+=-DCefC_CefnetdCache
+endif # CACHE_ENABLE
 
 
 DESTDIR=$(CEFORE_DIR_PATH)

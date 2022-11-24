@@ -120,7 +120,9 @@
 #define CefC_Csmgr_Msg_Type_RCCH		0x12		/* Type Retrieve cache chunk		*/
 #define CefC_Csmgr_Msg_Type_SCDL		0x13		/* Type Delete cache				*/
 #define CefC_Csmgr_Msg_Type_PreCcninfo	0x14		/* Type Prepare Ccninfo message		*/
-#define CefC_Csmgr_Msg_Type_Num			0x15
+#define CefC_Csmgr_Msg_Type_ContInfo	0x15		/* Type Get Contents Information	*/
+#define CefC_Csmgr_Msg_Type_Num			0x16
+//#define CefC_Csmgr_Msg_Type_Num			0x15
 
 #define CefC_Csmgr_Cob_Exist			0x00		/* Type Content is exist			*/
 #define CefC_Csmgr_Cob_NotExist			0x01		/* Type Content is not exist		*/
@@ -149,6 +151,12 @@
 #define CefC_Csmgr_Stat_Mtu				65535
 
 /*------------------------------------------------------------------*/
+/* Macros for csmgr status option									*/
+/*------------------------------------------------------------------*/
+#define CefC_Csmgr_Stat_Opt_None		0x00
+#define CefC_Csmgr_Stat_Opt_Clear		0x01
+
+/*------------------------------------------------------------------*/
 /* Macros for Massage Buffer										*/
 /*------------------------------------------------------------------*/
 #define CefC_Csmgr_Buff_Max 			100000000
@@ -171,8 +179,18 @@ typedef enum {
 #define CefC_CnpbStatus_Date				0x0003
 #define CefC_CnpbStatus_Expiry				0x0004
 #define CefC_CnpbStatus_Interest			0x0005
-#define CefC_CnpbStatus_Hash				0x0006
+//#define CefC_CnpbStatus_Hash				0x0006
+#define CefC_CnpbStatus_Version				0x0006
 #define CefC_CnpbStatus_ValidAlg			0x0007
+
+/*------------------------------------------------------------------*/
+/* Macros for compare version										*/
+/*------------------------------------------------------------------*/
+#define CefC_CV_Inconsistent				-1000
+#define CefC_CV_Same						0
+#define CefC_CV_Newest_1stArg				1
+#define CefC_CV_Newest_2ndArg				-1
+
 
 /****************************************************************************************
  Structure Declarations
@@ -233,12 +251,14 @@ typedef struct {
 typedef struct {
 
 	/********** Content Object Information			***********/
-	unsigned char	msg[CefC_Max_Msg_Size];		/* Receive message						*/
-	uint16_t		msg_len;					/* Length of message 					*/
-	uint32_t		chunk_num;					/* Chunk Num							*/
+//20210824	unsigned char	msg[CefC_Max_Msg_Size];		/* Receive message						*/
+/*0.8.3c*/	unsigned char*	msg;			/* Receive message						*/
+	uint16_t		msg_len;				/* Length of message 					*/
+	uint32_t		chunk_num;				/* Chunk Num							*/
 	uint64_t		expiry;
 	uint64_t		cache_time;
-	
+	unsigned char*	version;				/* Version								*/
+	uint16_t		ver_len;				/* Length of Version					*/
 } CefT_Cob_Entry;
 
 /***** Insert to data of CefT_Cs_Tx_Elem_Cob	*****/
@@ -284,9 +304,11 @@ struct CefT_Csmgr_Status_Rep {
 	
 	uint64_t 		con_size;
 	uint64_t 		access;
+	uint64_t 		req_count;
 	uint64_t 		freshness;
 	uint64_t 		elapsed_time;
 	uint16_t 		name_len;
+	uint16_t 		ver_len;
 	
 } __attribute__((__packed__));
 
@@ -612,6 +634,30 @@ cef_csmgr_dtc_item_put (
 void *
 cef_csmgr_send_to_csmgrd_thread (
 	void *p
+);
+
+/*--------------------------------------------------------------------------------------
+	Incoming ContInfo Check Request message
+----------------------------------------------------------------------------------------*/
+int
+cef_csmgr_content_info_get (
+	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
+	char* name,								/* Content name								*/
+	uint16_t name_len,						/* Name length								*/
+	char* range,							/* Cache Range								*/
+	uint16_t range_len,						/* Range length								*/
+	char** info
+);
+
+/*--------------------------------------------------------------------------------------
+	Compare ver1 and ver2
+----------------------------------------------------------------------------------------*/
+int
+cef_csmgr_cache_version_compare (
+	unsigned char* ver1,
+	uint16_t vlen1,
+	unsigned char* ver2,
+	uint16_t vlen2
 );
 
 #endif // __CEF_CSMGR_HEADER__

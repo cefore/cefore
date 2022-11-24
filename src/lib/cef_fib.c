@@ -33,6 +33,7 @@
 #define __CEF_FIB_SOURECE__
 
 //#define	__FIB_DEV__
+//#define	__FIB_METRIC_DEV__
 
 /****************************************************************************************
  Include Files
@@ -106,7 +107,8 @@ static void
 cef_fib_set_faceid_to_entry (
 	CefT_Fib_Entry* entry,
 	int faceid, 
-	uint8_t type
+	uint8_t type,							//0.8.3c
+	CefT_Fib_Metric*	fib_metric			//0.8.3c
 );
 static int
 cef_fib_route_add (
@@ -114,7 +116,8 @@ cef_fib_route_add (
 	uint8_t prot,							/* Protocol									*/
 	char* host,								/* Host Address								*/
 	char* uri,								/* URI										*/
-	uint8_t type							/* CefC_Fib_Entry_XXX						*/
+	uint8_t type,							/* CefC_Fib_Entry_XXX				0.8.3c	*/
+	CefT_Fib_Metric*	fib_metric			//0.8.3c
 );
 /*--------------------------------------------------------------------------------------
 	Delete route in FIB
@@ -607,7 +610,8 @@ cef_fib_config_file_read (
 				__func__, uri, prot, addr[i], faceid);
 #endif
 			
-			cef_fib_set_faceid_to_entry (entry, faceid, CefC_Fib_Entry_Static);
+//0.8.3c			cef_fib_set_faceid_to_entry (entry, faceid, CefC_Fib_Entry_Static);
+			cef_fib_set_faceid_to_entry (entry, faceid, CefC_Fib_Entry_Static, NULL);	//0.8.3c
 		}
 	}
 
@@ -769,7 +773,8 @@ static void
 cef_fib_set_faceid_to_entry (
 	CefT_Fib_Entry* entry,
 	int faceid, 
-	uint8_t type
+	uint8_t type,							//0.8.3c
+	CefT_Fib_Metric*	fib_metric			//0.8.3c
 ) {
 	CefT_Fib_Face* face = &(entry->faces);
 
@@ -785,6 +790,21 @@ cef_fib_set_faceid_to_entry (
 	face->next->faceid = faceid;
 	face->next->type = type;
 	face->next->next = NULL;
+	face->next->tx_int = 0;
+	face->next->tx_int_types[0] = 0;
+	face->next->tx_int_types[1] = 0;
+	face->next->tx_int_types[2] = 0;
+	if ( fib_metric == NULL ) {
+		face->next->metric.cost = 0;
+		face->next->metric.dummy_metric = 0;
+	} else {
+		face->next->metric.cost = fib_metric->cost;
+		face->next->metric.dummy_metric = fib_metric->dummy_metric;
+	}
+#ifdef	__FIB_METRIC_DEV__
+	fprintf( stderr, "[%s] face->next->metric.cost:%d   face->next->metric.dummy_metric:%d \n",
+							__func__, face->next->metric.cost, face->next->metric.dummy_metric );
+#endif
 
 	return;
 }
@@ -828,6 +848,10 @@ cef_fib_entry_create (
 	entry->klen = name_len;
 	entry->faces.faceid = -1;
 	entry->faces.next = NULL;
+	entry->rx_int = 0;
+	entry->rx_int_types[0] = 0;
+	entry->rx_int_types[1] = 0;
+	entry->rx_int_types[2] = 0;
 
 	return (entry);
 }
@@ -903,7 +927,8 @@ cef_fib_route_msg_read (
 	unsigned char* msg, 					/* the received message(s)					*/
 	int msg_size,							/* size of received message(s)				*/
 	uint8_t type,							/* CefC_Fib_Entry_XXX						*/
-	int* rc 								/* 0x01=New Entry, 0x02=Free Entry 			*/
+	int* rc, 								/* 0x01=New Entry, 0x02=Free Entry 0.8.3c	*/
+	CefT_Fib_Metric*	fib_metric
 ) {
 	uint8_t op;
 	uint8_t prot;
@@ -961,7 +986,7 @@ cef_fib_route_msg_read (
 	
 	name_len = cef_frame_conversion_uri_to_name ((const char*) uri, name);
 	if ((name_len < 0) || (name_len > CefC_Max_Length)) {
-		cef_log_write (CefC_Log_Warn, "Invalid URI\n", uri);
+		cef_log_write (CefC_Log_Error, "Invalid URI\n", uri);
 		return (-1);
 	}
 	bentry = cef_hash_tbl_item_get(fib, name, name_len);
@@ -1000,7 +1025,8 @@ cef_fib_route_msg_read (
 			continue;
 		}
 		if (op == CefC_Fib_Route_Ope_Add) {
-			res = cef_fib_route_add (fib, prot, host, uri, type);
+//0.8.3c			res = cef_fib_route_add (fib, prot, host, uri, type);
+			res = cef_fib_route_add (fib, prot, host, uri, type, fib_metric);	//0.8.3c
 		} else if (op == CefC_Fib_Route_Ope_Del) {
 			res = cef_fib_route_del (fib, prot, host, uri, type);
 		}
@@ -1085,7 +1111,7 @@ cef_fib_name_get_from_route_msg (
 	
 	name_len = cef_frame_conversion_uri_to_name ((const char*) uri, name);
 	if ((name_len < 0) || (name_len > CefC_Max_Length)) {
-		cef_log_write (CefC_Log_Warn, "Invalid URI\n", uri);
+		cef_log_write (CefC_Log_Error, "Invalid URI\n", uri);
 		return (-1);
 	}
 	
@@ -1100,7 +1126,8 @@ cef_fib_route_add (
 	uint8_t prot,							/* Protocol									*/
 	char* host,								/* Host Address								*/
 	char* uri,								/* URI										*/
-	uint8_t type							/* CefC_Fib_Entry_XXX						*/
+	uint8_t type,							/* CefC_Fib_Entry_XXX				0.8.3c	*/
+	CefT_Fib_Metric*	fib_metric			//0.8.3c
 ) {
 	int faceid;
 	int res;
@@ -1110,7 +1137,7 @@ cef_fib_route_add (
 	/* lookup Face-ID */
 	faceid = cef_face_lookup_faceid_from_addrstr (host, prot_str[prot]);
 	if (faceid < 0) {
-		cef_log_write (CefC_Log_Warn, 
+		cef_log_write (CefC_Log_Error, 
 			"Failed to create Face:ID=%s, Prot=%s\n", host, prot_str[prot]);
 		return (-1);
 	}
@@ -1118,7 +1145,7 @@ cef_fib_route_add (
 	/* translation the string uri to Name TLV */
 	res = cef_frame_conversion_uri_to_name ((const char*)uri, name);
 	if ((res < 0) || (res > CefC_Max_Length)) {
-		cef_log_write (CefC_Log_Warn, "Invalid URI\n", uri);
+		cef_log_write (CefC_Log_Error, "Invalid URI\n", uri);
 		return (-1);
 	}
 	
@@ -1126,7 +1153,7 @@ cef_fib_route_add (
 	entry = (CefT_Fib_Entry*) cef_hash_tbl_item_get (fib, name, res);
 	if (entry == NULL) {
 		if(cef_hash_tbl_item_num_get(fib) == cef_hash_tbl_def_max_get(fib)) {
-			cef_log_write (CefC_Log_Warn, 
+			cef_log_write (CefC_Log_Error, 
 				"FIB table is full(FIB_SIZE = %d)\n", cef_hash_tbl_def_max_get(fib));
 			return (-1);
 		}
@@ -1139,7 +1166,7 @@ cef_fib_route_add (
 		"Insert the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n", 
 		uri, prot_str[prot], host, faceid);
 	
-	cef_fib_set_faceid_to_entry (entry, faceid, type);
+	cef_fib_set_faceid_to_entry (entry, faceid, type, fib_metric);
 
 	if (res == CefC_Fib_Default_Len) {
 		default_entry = entry;
@@ -1168,7 +1195,7 @@ cef_fib_route_del (
 	name_len = cef_frame_conversion_uri_to_name ((const char*)uri, name);
 	
 	if ((name_len < 0) || (name_len > CefC_Max_Length)) {
-		cef_log_write (CefC_Log_Warn, "Invalid URI\n", uri);
+		cef_log_write (CefC_Log_Error, "Invalid URI\n", uri);
 		return (-1);
 	}
 	
@@ -1176,7 +1203,7 @@ cef_fib_route_del (
 	fib_entry = (CefT_Fib_Entry*) cef_hash_tbl_item_get (fib, name, name_len);
 	if (fib_entry == NULL) {
 		/* URI not found */
-		cef_log_write (CefC_Log_Warn, "%s is not registered in FIB\n", uri);
+		cef_log_write (CefC_Log_Error, "%s is not registered in FIB\n", uri);
 		return (-1);
 	}
 	
@@ -1193,12 +1220,12 @@ cef_fib_route_del (
 					"Remove the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n", 
 					uri, prot_str[prot], host, faceid);
 			} else {
-				cef_log_write (CefC_Log_Warn, 
+				cef_log_write (CefC_Log_Error, 
 					"%s (%s) is not registered in FIB entry [ %s ]\n", 
 					host, prot_str[prot], uri);
 			}
 		} else {
-			cef_log_write (CefC_Log_Warn, 
+			cef_log_write (CefC_Log_Error, 
 				"%s (%s) is not registered in the Face Table\n", 
 				host, prot_str[prot]);
 		}

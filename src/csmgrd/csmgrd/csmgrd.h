@@ -123,6 +123,12 @@ typedef struct {
 	/********** excache Status			***********/
 	uint32_t		interval;					/* Interval that to check cache			*/
 	
+	/********** NodeID (IP Address) 0.8.3c ***********/
+	unsigned char 		top_nodeid[16];
+	uint16_t 			top_nodeid_len;
+	char*				My_Node_Id;			/* Node ID								*/
+	int					First_Node_f;		/* */
+	
 } CefT_Csmgrd_Handle;
 
 /****************************************************************************************

@@ -41,6 +41,12 @@ CEF_UTIL+=csmgrdstart csmgrdstop
 endif # CSMGR_ENABLE
 
 
+# check conpubd 
+if CONPUB_ENABLE
+EXTRA_DIST+=conpubdstart.sh conpubdstop.sh
+SCRIPTSRC+=conpubdstart.sh conpubdstop.sh
+CEF_UTIL+=conpubdstart conpubdstop
+endif # CONPUB_ENABLE
 
 default all: $(CEF_UTIL)
 
@@ -100,6 +106,25 @@ csmgrdstop: csmgrdstop.sh
 	fi
 endif # CSMGR_ENABLE
 
+if CONPUB_ENABLE
+conpubdstart: conpubdstart.sh
+	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
+		echo "# !"$(SH) > $@; \
+		cat $(@:=.sh) >> $@; \
+		chmod +x $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+
+conpubdstop: conpubdstop.sh
+	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
+		echo "# !"$(SH) > $@; \
+		cat $(@:=.sh) >> $@; \
+		chmod +x $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+endif # CONPUB_ENABLE
 
 install:
 	for i in $(CEF_UTIL) ""; do test -z "$$i" || install $$i $(INSTALLDIR); done

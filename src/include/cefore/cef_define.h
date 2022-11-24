@@ -39,6 +39,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <ctype.h>
 //#ifdef CefC_Android			//20210408
 #include <inttypes.h>
 //#endif // CefC_Android		//20210408
@@ -115,7 +116,7 @@
 #define CefC_ParamName_Babel			"USE_CEFBABEL"
 #define CefC_ParamName_Babel_Route		"CEFBABEL_ROUTE"
 #define CefC_ParamName_Cs_Mode			"CS_MODE"
-#define CefC_ParamName_ForwardingInfoStrategy	"FORWARDING_INFO_STRATEGY"
+#define CefC_ParamName_Forwarding_Strategy	"FORWARDING_STRATEGY"
 //2020
 #define CefC_ParamName_Node_Name		"NODE_NAME"
 #define CefC_ParamName_PitSize_App		"PIT_SIZE_APP"
@@ -141,6 +142,9 @@
 #define CefC_ParamName_LOCAL_CACHE_DEFAULT_RCT	"LOCAL_CACHE_DEFAULT_RCT"
 //202108
 #define CefC_ParamName_IR_Option		"ENABLE_INTEREST_RETURN"
+#define CefC_ParamName_IR_Enabled		"ENABLED_RETURN_CODE"
+//20220311
+#define CefC_ParamName_SELECTIVE_MAX	"SELECTIVE_INTEREST_MAX_RANGE"
 
 #ifdef CefC_Ser_Log
 #define CefC_ParamName_Log_Size			"SER_LOG_SIZE"
@@ -168,7 +172,7 @@
 #define CefC_Default_NbrThread			3
 #define CefC_Default_LifetimeSec		2
 #define CefC_Default_LifetimeUs			2000000
-#define CefC_Default_ForwardingInfoStrategy	0
+#define CefC_Default_ForwardingStrategy	"default"
 //2020
 #define	CefC_Default_PitAppSize			64
 #define	CefC_Default_FibAppSize			64
@@ -218,7 +222,7 @@
 #define	CefC_IntRetrans_Type_SUP	1
 #define	CefC_Selet_FWD_OFF			0
 #define	CefC_Selet_FWD_ON			1
-#define	CefC_PIT_TYPE_Reg	0
+#define	CefC_PIT_TYPE_Rgl	0
 #define	CefC_PIT_TYPE_Sym	1
 #define	CefC_PIT_TYPE_Sel	2
 #define	CefC_Select_Cob_Num	256
@@ -240,10 +244,23 @@
 #define	CefC_IR_UNSUPPORTED_COBHASH 0x08
 #define	CefC_IR_MALFORMED_INTEREST	0x09
 
-//0.8.3	NONPUBLIC
-#define	CefC_PIT_TYPE_Osym	9
 
+//0.8.3c S
+#define	CefC_DB_LOCK			"LOCK"
+#define	CefC_DB_STAT_TBL		"DB_STAT_TBL"
+#define	CefC_DB_STAT_TBL_BODY	"DB_STAT_TBL_BODY"
+#define	CefC_DB_STAT_RCD		"DB_STAT_RCD"
+#define CefC_DB_COB_MAP_n		"DB_COB_MAP_%d"
+#define	CefC_DB_CSMGRD_TBL		"CSMGRD_TBL"
+#define	CefC_DB_CSMGRD_TBL_BODY	"CSMGRD_TBL_BODY"
 
+#define	CefC_REDIS_IP			"REDIS_IP"
+#define	CefC_REDIS_PORT			"REDIS_PORT"
+//0.8.3c E
+//20220311
+#define	CefC_SELECTIVE_MIN			1
+#define	CefC_SELECTIVE_MAX			2048
+#define	CefC_Default_SELECTIVE_MAX	512
 
 #ifdef CefC_DebugOld
 /****************************************************************************************

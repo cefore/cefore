@@ -159,7 +159,8 @@
 #define CefC_T_LONGLIFE				0x0002		/* Long Life Interest					*/
 #define CefC_T_SELECTIVE			0x8003		/* Selective Interest					*/
 #define CefC_T_SER_LOG				0x8009		/* Serial Logging						*/
-#define CefC_T_OSYMBOLIC			0x000a		/* Osymbolic Interest	0.8.3 NONPUB	*/
+#define	CefC_T_VERSION				0x800B		/* T_VERSION Type 0..8.3c				*/
+#define CefC_T_PUTVERIFY			0x800C		/* PutVerify Type						*/
 
 /*------------------------------------------------------------------*/
 /* Name Segment Type												*/
@@ -256,6 +257,7 @@
 #define CefC_T_OPT_APP_REG_P		0x1003		/* Accept prefix match of Name			*/
 #define CefC_T_OPT_APP_PIT_REG		0x1004		/* Register Name in PIT					*/
 #define CefC_T_OPT_APP_PIT_DEREG	0x1005		/* DeRegister Name in PIT				*/
+#define CefC_T_OPT_DEV_REG_PIT		0x1006		/* Register Name in PIT (develop)		*/
 
 /*----- TLVs for use in the CefC_T_OPT_MSGHASH TLV -----*/
 #define CefC_T_OPT_MH_INVALID		0x0000		/* Invalid								*/
@@ -337,6 +339,13 @@
 #define	CefC_IR_UNSUPPORTED_COBHASH 0x08
 #define	CefC_IR_MALFORMED_INTEREST	0x09
 #endif
+
+/*------------------------------------------------------------------*/
+/* Option for PutVerify		 										*/
+/*------------------------------------------------------------------*/
+#define CefC_CpvOp_ContInfoMsg		0x15
+#define CefC_CpvOp_FibRegMsg		0x16
+
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
@@ -353,6 +362,12 @@ struct cef_app_frame {
 										/*	length of trailer: sizeof(MagicNo)			*/
 	unsigned char*  name;
 	uint16_t        name_len;
+	uint8_t			version_f;
+	uint16_t		ver_len;
+	unsigned char	ver_value[CefC_Max_Length];
+	uint8_t			putverify_f;
+	uint8_t			putverify_msgtype;
+	uint16_t		chunk_num_f;					/* chunk_num 0:No 1:Yes				*/
 	uint32_t        chunk_num;
 	int64_t			end_chunk_num;
 	unsigned char*  payload;
@@ -370,6 +385,9 @@ struct cef_app_request {
 	uint16_t		chnk_num_f;						/* Offset of Chunk Number 				*/
 	uint32_t        chunk_num;
 	unsigned char   data_entity[CefC_Max_Length];	/* Variable length data(name)			*/
+	uint8_t			version_f;						/* 0.8.3c */
+	uint16_t		ver_len;						/* 0.8.3c */
+	unsigned char	ver_value[CefC_Max_Length];		/* 0.8.3c */
 } __attribute__((__packed__));
 
 struct cef_app_hdr {
@@ -461,6 +479,8 @@ struct ccninfo_rep_block {
 	uint32_t 	remain_time;
 } __attribute__((__packed__));
 
+
+
 /*--------------------------------------------------------------*/
 /* Parameters to set Option Header of Interest/Object	 		*/
 /*--------------------------------------------------------------*/
@@ -478,7 +498,9 @@ typedef struct {
 	// TBD
 	
 	/***** Vendor Specific Information	*****/
-	// TBD
+	uint8_t				version_f;				/* 0.8.3c */
+	uint16_t			ver_len;				/* 0.8.3c */
+	unsigned char		version[CefC_Max_Length];/* 0.8.3c */
 	
 	/***** Cefping						*****/
 	uint16_t			responder_f;		/* flag to set Responder Identifier 		*/
@@ -514,8 +536,13 @@ typedef struct {
 	uint16_t 			selective_f;			/* value of CefC_T_SELECTIVE Sub TLV */
 	uint32_t			req_num;
 	uint32_t			first_chunk;
+	uint8_t				last_chunk_f;			//0.8.3c
 	uint32_t			last_chunk;
-	uint16_t 			osymbolic_f;			/* value of CefC_T_OSYMBOLIC Sub TLV NONPUB */
+	
+	uint8_t				putverify_f;			/* If it is not 0, T_PUTVERIFY is set	*/
+	uint8_t				putverify_msgtype;		/* message type in T_PUTVERIFY Value	*/
+	uint32_t 			putverify_sseq;
+	uint32_t 			putverify_eseq;
 	
 	/***** External Function Invocation *****/
 	// TBD
@@ -710,8 +737,17 @@ typedef struct CefT_Org_Params {
 	uint8_t 				selective_f;			/* Selectieve Interest 				*/
 	uint32_t				req_chunk;
 	uint32_t				first_chunk;
+	uint8_t 				last_chunk_f;			/* 0.8.3c */
 	uint32_t				last_chunk;
-	uint8_t 				osymbolic_f;			/* Osymbolic Interest 	NINPUB		*/
+
+	uint8_t					version_f;				/* 0.8.3c */
+	uint16_t				ver_len;				/* 0.8.3c */
+	unsigned char			content_ver[CefC_Max_Length];	/* 0.8.3c */
+
+	uint8_t					putverify_f;			/* If it is not 0, T_PUTVERIFY is set	*/
+	uint8_t					putverify_msgtype;		/* message type in T_PUTVERIFY Value	*/
+	uint32_t 				putverify_sseq;
+	uint32_t 				putverify_eseq;
 
 #ifdef CefC_Ser_Log
 	unsigned char*			sl_offset;				/* Serial Log offset				*/
@@ -849,6 +885,7 @@ typedef struct {
 	uint16_t		discreply_len;				/* Length of Disc Reply 				*/
 	
 	/***** Metadata TLV		*****/
+	int				expiry_f;					/* *0.8.3c */
 	uint64_t		expiry;						/* The time at which the Payload		*/
 												/* expires [unit: ms]					*/
 	
@@ -897,6 +934,9 @@ typedef struct ccninfo_rep {
 	unsigned char*		rep_name;				/* Name 										*/
 	uint16_t			rep_name_len;			/* Length of Name 								*/
 	
+	unsigned char*		rep_range;				/* range(reply)									*/
+	uint16_t			rep_range_len;			/* length of range(reply)						*/
+	
 	struct ccninfo_rep*	next;
 } CefT_Ccninfo_Rep;
 
@@ -930,6 +970,12 @@ typedef struct {
 	uint32_t			reply_req_arrival_time;	/* Request Arrival Time of Request Block		*/
 	uint16_t 			reply_node_len;
 	unsigned char*   	reply_reply_node;		/* Node Identifier(e.g. IPv4 address)			*/
+	
+	/***** put_verify *****/
+	uint8_t				putverify_f;
+	uint8_t				putverify_msgtype;		/* message type									*/
+	uint32_t 			putverify_sseq;			/* start chunk number							*/
+	uint32_t 			putverify_eseq;			/* end chunk number								*/
 } CefT_Parsed_Ccninfo;
 
 typedef struct {
@@ -995,7 +1041,7 @@ struct c3_name_segment {
 
 // 
 struct c3_number {
-    uint16_t     type;                  // T_CHUNK(0x0010) T_ENDCHUNK(0x000C)、
+    uint16_t     type;                  // T_CHUNK(0x0010) T_ENDCHUNK(0x000C)
 	                                    // T_APP:1-T_APP:4095(0x1001-0x1FFF)
 	uint16_t     length;                // 1-4
 	uint8_t      data[MAX_NUM_SIZE];    // 

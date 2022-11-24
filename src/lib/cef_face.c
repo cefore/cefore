@@ -392,7 +392,7 @@ cef_face_lookup_peer_faceid (
 	
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finer, 
-		"[face] Creation the new Face#%d for %s\n", faceid, peer_id);
+		"[face] Creation the new Face#%d for %s.\n", faceid, peer_id);
 #endif // CefC_Debug
 	
 	return (faceid);
@@ -990,8 +990,6 @@ cef_face_accept_connect (
 	int index;
 	char ip_str[256];
 	char port_str[256];
-//	char peer_str[256];
-//	char src_peer_str[256];
 	char peer_str[1024];
 	char src_peer_str[1024];
 
@@ -999,6 +997,7 @@ cef_face_accept_connect (
 	int msg_len;
 	unsigned char buff[CefC_Max_Length];
 #endif
+
 	
 	sa = (struct sockaddr_storage*) malloc (sizeof (struct sockaddr_storage));
 	memset (sa, 0, sizeof (struct sockaddr_storage));
@@ -1023,11 +1022,11 @@ cef_face_accept_connect (
 			port_str, sizeof (port_str),  NI_NUMERICHOST | NI_NUMERICSERV) != 0) {
 		goto POST_ACCEPT;
 	}
+
 	
 	/* Looks up the source node's information from the source table 	*/
-/*JK 20210624*/	sprintf (peer_str, "%s:%d", ip_str, CefC_Face_Type_Tcp);
-//*JK 20210624*/	sprintf (peer_str, "%s:%s:%d", ip_str, port_str, CefC_Face_Type_Tcp);
-
+//0.8.3c	sprintf (peer_str, "%s:%d", ip_str, CefC_Face_Type_Tcp);
+		sprintf (peer_str, "%s:%s:%d", ip_str, port_str, CefC_Face_Type_Tcp);	//0.8.3c
 	entry = (CefT_Sock*) cef_hash_tbl_item_get (
 							sock_tbl, (const unsigned char*) peer_str, strlen (peer_str));
 	
@@ -2120,7 +2119,23 @@ cef_face_lookup_faceid (
 		}
 		if (entry) {
 			reuse_faceid = entry->faceid;
+#if 0//#752 0.8.3c S
 			cef_face_close (entry->faceid);
+#else
+			if (sock != entry->sock) {
+				cef_face_close (entry->faceid);
+			}
+			else {
+				entry = (CefT_Sock*) cef_hash_tbl_item_remove_from_index (
+										sock_tbl, face_tbl[entry->faceid].index);
+				face_tbl[entry->faceid].index 		= 0;
+				face_tbl[entry->faceid].fd 		= 0;
+				face_tbl[entry->faceid].protocol 	= CefC_Face_Type_Invalid;
+				face_tbl[entry->faceid].ifindex 	= -1;	//0.8.3
+				face_tbl[entry->faceid].bw_stat_i 	= -1;	//0.8.3
+				free (entry);
+			}
+#endif//#752 0.8.3c E
 		}
 		/*----- for Metis: Bind its own standby port to the source port -----*/
 		if (protocol != CefC_Face_Type_Udp) {
@@ -2349,7 +2364,7 @@ cef_face_unused_faceid_search (
 			continue;
 		}
 		assigned_faceid = i + 1;
-		face_tbl[i].local_f = 0;	//20120712
+		face_tbl[i].local_f = 0;	//20210712
 		return (i);
 	}
 
@@ -2358,8 +2373,8 @@ cef_face_unused_faceid_search (
 			continue;
 		}
 //		assigned_faceid = i + 1;
-		assigned_faceid = i + 1;	//20120712
-		face_tbl[i].local_f = 0;	//20120712
+		assigned_faceid = i + 1;	//0.8.3c
+		face_tbl[i].local_f = 0;	//0.8.3c
 		return (i);
 	}
 	assigned_faceid = CefC_Face_Reserved;

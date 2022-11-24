@@ -54,6 +54,9 @@
 #include <cefore/cef_frame.h>
 #include <cefore/cef_print.h>
 #include <cefore/cef_plugin_com.h>
+#if ((defined CefC_CefnetdCache) && (defined CefC_Develop))
+#include <cefore/cef_mem_cache.h>
+#endif
 
 
 /****************************************************************************************
@@ -88,9 +91,14 @@ cef_status_face_output (
 /*--------------------------------------------------------------------------------------
 	Output FIB status
 ----------------------------------------------------------------------------------------*/
+//static int
+//cef_status_forward_output (
+//	CefT_Hash_Handle* handle
+//);
 static int
 cef_status_forward_output (
-	CefT_Hash_Handle* handle
+	CefT_Hash_Handle* handle,
+	uint16_t output_opt_f
 );
 /*--------------------------------------------------------------------------------------
 	Output PIT status
@@ -113,6 +121,15 @@ static int
 cef_status_add_output_to_rsp_buf(
 	char* buff
 );
+#if ((defined CefC_CefnetdCache) && (defined CefC_Develop))
+/*--------------------------------------------------------------------------------------
+	Output LocalCache status
+----------------------------------------------------------------------------------------*/
+static int
+cef_status_localcache_output (
+	uint16_t output_opt_f
+);
+#endif
 
 
 /****************************************************************************************
@@ -124,7 +141,8 @@ cef_status_add_output_to_rsp_buf(
 int 
 cef_status_stats_output (
 	CefT_Netd_Handle* hdl,						/* cefnetd handle						*/
-	unsigned char** rspp
+	unsigned char** rspp,
+	uint16_t output_opt_f
 ) {
 	char node_type[32] = {0};
 	char cache_type[32] = {0};
@@ -132,7 +150,6 @@ cef_status_stats_output (
 	int  fret = 0;
 	(*rspp)[0] = 0;
 	rsp_bufp = (char*) *rspp;
-//	rsp_buf_size = CefC_Max_Length;
 	rsp_buf_size = CefC_Max_Length*10;
 	
 	switch (hdl->node_type) {
@@ -153,7 +170,6 @@ cef_status_stats_output (
 			return (0);
 		}
 	}
-
 	if (hdl->cs_stat) {
 		switch (hdl->cs_stat->cache_type) {
 			case CefC_Cache_Type_None: {
@@ -186,24 +202,41 @@ cef_status_stats_output (
 	}
 	
 	sprintf (rsp_bufp,
-			"Version    : %x\n"
-			"Port       : %u\n"
-			"Rx Frames  : %llu\n"
-			"Tx Frames  : %llu\n"
-			"Cache Mode : %s\n",
+			"Version          : %x\n"
+			"Port             : %u\n"
+			"Rx Interest      : %llu (RGL[%llu], SYM[%llu], SEL[%llu])\n"
+			"Tx Interest      : %llu (RGL[%llu], SYM[%llu], SEL[%llu])\n"
+			"Rx ContentObject : %llu\n"
+			"Tx ContentObject : %llu\n"
+			"Cache Mode       : %s\n",
 			CefC_Version,
 			hdl->port_num,
+			(unsigned long long)hdl->stat_recv_interest,
+			(unsigned long long)hdl->stat_recv_interest_types[0],
+			(unsigned long long)hdl->stat_recv_interest_types[1],
+			(unsigned long long)hdl->stat_recv_interest_types[2],
+			(unsigned long long)hdl->stat_send_interest,
+			(unsigned long long)hdl->stat_send_interest_types[0],
+			(unsigned long long)hdl->stat_send_interest_types[1],
+			(unsigned long long)hdl->stat_send_interest_types[2],
 			(unsigned long long)hdl->stat_recv_frames,
 			(unsigned long long)hdl->stat_send_frames,
 			cache_type);
+#ifdef CefC_INTEREST_RETURN
+	sprintf (work_str, "Interest Return  : %s\n"
+		, (hdl->IR_Option != 1) ? "Disabled" : "Enabled");
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		goto endfunc;
+	}
+#endif
 	
 #ifdef CefC_Ccore
 	if (hdl->rt_hdl) {
-		sprintf (work_str, "Controller : %s %s\n"
+		sprintf (work_str, "Controller       : %s %s\n"
 			,  hdl->rt_hdl->controller_id
 			, (hdl->rt_hdl->sock != -1) ? "" : "#down");
 	} else {
-		sprintf (work_str, "Controller : Not Used\n");
+		sprintf (work_str, "Controller       : Not Used\n");
 	}
 	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
 		goto endfunc;
@@ -232,7 +265,7 @@ cef_status_stats_output (
 	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
 		goto endfunc;
 	}
-	if ((fret=cef_status_forward_output (&hdl->fib)) != 0){
+	if ((fret=cef_status_forward_output (&hdl->fib, output_opt_f)) != 0){
 		goto endfunc;
 	}
 
@@ -266,6 +299,14 @@ cef_status_stats_output (
 	}
 }
 #endif // CefC_NdnPlugin
+	
+#if ((defined CefC_CefnetdCache) && (defined CefC_Develop))
+	if (hdl->cs_mode == 1) {
+		if ((fret=cef_status_localcache_output (output_opt_f)) != 0){
+			goto endfunc;
+		}
+	}
+#endif
 	
 endfunc:;
 
@@ -444,7 +485,8 @@ cef_status_face_output (
 ----------------------------------------------------------------------------------------*/
 static int
 cef_status_forward_output (
-	CefT_Hash_Handle* handle
+	CefT_Hash_Handle* handle,
+	uint16_t output_opt_f
 ) {
 	CefT_Fib_Entry* entry = NULL;
 	uint32_t index = 0;
@@ -498,17 +540,44 @@ cef_status_forward_output (
 		faces = entry->faces.next;
 		face_info_index = sprintf (face_info, "    Faces : ");
 		while (faces != NULL) {
-			
+			if (face_info_index != strlen("    Faces : ")) {
+				face_info_index += 
+					sprintf (face_info + face_info_index, "            ");
+			}
 			face_info_index += 
-				sprintf (face_info + face_info_index, "%d (%c%c%c)  "
+				sprintf (face_info + face_info_index, "%d (%c%c%c) RtCost=%d "
 					, faces->faceid
 					, ((faces->type >> 2) & 0x01) ? 'c' : '-'
 					, ((faces->type >> 1) & 0x01) ? 's' : '-'
-					, ((faces->type) & 0x01) ? 'd' : '-');
+					, ((faces->type) & 0x01) ? 'd' : '-'
+					, faces->metric.cost);
+			if (output_opt_f & CefC_Ctrl_StatusOpt_Metric) {
+				face_info_index += 
+					sprintf (face_info + face_info_index, "DummyMetric=%d\n", faces->metric.dummy_metric);
+			} else {
+				face_info_index += 
+					sprintf (face_info + face_info_index, "\n");
+			}
 			
+			if (output_opt_f & CefC_Ctrl_StatusOpt_Stat) {
+				face_info_index += 
+					sprintf (face_info + face_info_index, "                     TxInt=%llu (RGL[%llu], SYM[%llu], SEL[%llu])\n"
+						, (unsigned long long)faces->tx_int
+						, (unsigned long long)faces->tx_int_types[CefC_PIT_TYPE_Rgl]
+						, (unsigned long long)faces->tx_int_types[CefC_PIT_TYPE_Sym]
+						, (unsigned long long)faces->tx_int_types[CefC_PIT_TYPE_Sel]);
+			}
 			faces = faces->next;
 		}
-		sprintf (work_str, "%s\n", face_info);
+		if (output_opt_f & CefC_Ctrl_StatusOpt_Stat) {
+			face_info_index += 
+				sprintf (face_info + face_info_index, "    RxInt : %llu (RGL[%llu], SYM[%llu], SEL[%llu])\n"
+					, (unsigned long long)entry->rx_int
+					, (unsigned long long)entry->rx_int_types[CefC_PIT_TYPE_Rgl]
+					, (unsigned long long)entry->rx_int_types[CefC_PIT_TYPE_Sym]
+					, (unsigned long long)entry->rx_int_types[CefC_PIT_TYPE_Sel]);
+		}
+		sprintf (work_str, "%s", face_info);
 		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
 			return (-1);
 		}
@@ -906,3 +975,117 @@ cef_status_add_output_to_rsp_buf(
 
 	return(0);
 }
+#if ((defined CefC_CefnetdCache) && (defined CefC_Develop))
+/*--------------------------------------------------------------------------------------
+	Output LocalCache status
+----------------------------------------------------------------------------------------*/
+static int
+cef_status_localcache_output (
+	uint16_t output_opt_f
+) {
+	char work_str[CefC_Max_Length*2];
+	char buff_str[CefC_Max_Length];
+	int fret = 0;
+	
+	if (!(output_opt_f & CefC_Ctrl_StatusOpt_LCache)) {
+		return (0);
+	}
+	
+	sprintf (work_str, "Local Cache :");
+	if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+		return (-1);
+	}
+	
+	fret = cef_mem_cache_mstat_get_buff (buff_str, CefC_Max_Length);
+	
+	if (fret == 0) {
+		sprintf (work_str, "\n  Cache is empty\n");
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (0);
+		}
+	} else {
+		uint16_t *val16t;
+		uint32_t *val32t;
+		uint64_t *val64t;
+		uint32_t entry_num;
+		int cnt;
+		int num = 0;
+		char* wk_buff = buff_str;
+		char* wk_work = work_str;
+		
+		val32t = (uint32_t*)wk_buff;
+		entry_num = *val32t;
+		wk_buff += 4;
+		if (entry_num == 0) {
+			sprintf (work_str, "\n  Cache is empty\n");
+			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+				return (0);
+			}
+			return (0);
+		}
+		
+		num = sprintf (wk_work, "\nName    Ver    Size    Cobs    Start-End    Access    Access(Ver)\n");
+		wk_work += num;
+		
+		for (cnt = 0; cnt < entry_num; cnt++) {
+			/* Name */
+			val32t = (uint32_t*)wk_buff;
+			wk_buff += 4;
+			memcpy (wk_work, wk_buff, *val32t);
+			wk_work += *val32t;
+			wk_buff += *val32t;
+			
+			/* Version */
+			num = sprintf (wk_work, "    ");
+			wk_work += num;
+			val16t = (uint16_t*)wk_buff;
+			wk_buff += 2;
+			memcpy (wk_work, wk_buff, *val16t);
+			wk_work += *val16t;
+			wk_buff += *val16t;
+			
+			/* Size */
+			val64t = (uint64_t*)wk_buff;
+			num = sprintf (wk_work, "    "FMTU64, *val64t);
+			wk_work += num;
+			wk_buff += 8;
+			
+			/* Cob */
+			val64t = (uint64_t*)wk_buff;
+			num = sprintf (wk_work, "    "FMTU64, *val64t);
+			wk_work += num;
+			wk_buff += 8;
+			
+			/* Min-Max */
+			val64t = (uint64_t*)wk_buff;
+			num = sprintf (wk_work, "    "FMTU64"-", *val64t);
+			wk_work += num;
+			wk_buff += 8;
+			val64t = (uint64_t*)wk_buff;
+			num = sprintf (wk_work, FMTU64, *val64t);
+			wk_work += num;
+			wk_buff += 8;
+			
+			/* AC */
+			val64t = (uint64_t*)wk_buff;
+			num = sprintf (wk_work, "    "FMTU64, *val64t);
+			wk_work += num;
+			wk_buff += 8;
+			
+			/* AC(ver) */
+			val64t = (uint64_t*)wk_buff;
+			num = sprintf (wk_work, "    "FMTU64"\n", *val64t);
+			wk_work += num;
+			wk_buff += 8;
+		}
+		if (buff_str[fret] == '*') {
+			sprintf (work_str, "and more...\n");
+		}
+		if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+			return (-1);
+		}
+	}
+	
+	return (0);
+}
+#endif //((defined CefC_CefnetdCache) && (defined CefC_Develop))

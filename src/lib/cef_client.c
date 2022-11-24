@@ -152,13 +152,13 @@ cef_client_init (
 		if (strcmp (pname, CefC_ParamName_PortNum) == 0) {
 			res = atoi (ws);
 			if (res < 1025) {
-				cef_log_write (CefC_Log_Warn, 
+				cef_log_write (CefC_Log_Error, 
 					"[client] PORT_NUM must be higher than 1024.\n");
 				fclose (fp);
 				return (-1);
 			}
 			if (res > 65535) {
-				cef_log_write (CefC_Log_Warn, 
+				cef_log_write (CefC_Log_Error, 
 					"[client] PORT_NUM must be lower than 65536.\n");
 				fclose (fp);
 				return (-1);
@@ -350,9 +350,9 @@ cef_client_connect_to_csmgrd (
 	memcpy (saddr.sun_path, cef_lsock_name, cef_lsock_name_len);
 #else // CefC_Android
 #if 1 //@@@@@@@@@@@@
-	fprintf(stderr, "===== cef_lsock_name=%s =====\n", cef_lsock_name);
+//	fprintf(stderr, "===== cef_lsock_name=%s =====\n", cef_lsock_name);
 #define CSMGR_SPATH  "/tmp/csmgr_9799.0"
-strcpy (cef_lsock_name, CSMGR_SPATH);
+	strcpy (cef_lsock_name, CSMGR_SPATH);
 #endif //@@@@@@@@@@@
 	strcpy (saddr.sun_path, cef_lsock_name);
 #endif // CefC_Android
@@ -838,7 +838,7 @@ cef_client_object_input (
 	return (1);
 }
 
-#ifdef CefC_Cefping
+//#ifdef CefC_Cefping
 /*--------------------------------------------------------------------------------------
 	Inputs the cefping to the cefnetd
 ----------------------------------------------------------------------------------------*/
@@ -863,7 +863,7 @@ cef_client_cefping_input (
 
 	return (1);
 }
-#endif // CefC_Cefping
+//#endif // CefC_Cefping
 
 #ifdef CefC_Ccninfo
 /*--------------------------------------------------------------------------------------
@@ -1077,6 +1077,7 @@ cef_client_payload_get_with_info (
 	
 	app_frame->version = CefC_App_Version;
 	app_frame->type = CefC_App_Type_Internal;
+	app_frame->chunk_num_f = pm.chnk_num_f;		//202108
 	app_frame->chunk_num = pm.chnk_num;
 	if (pm.end_chunk_num_f){
 		app_frame->end_chunk_num = (int64_t)0;
@@ -1094,7 +1095,17 @@ cef_client_payload_get_with_info (
 	                             + pm.name_len + pm.payload_len;
 	app_frame->name = &(app_frame->data_entity[0]);
 	app_frame->payload = &(app_frame->data_entity[pm.name_len]);
-
+	
+	app_frame->version_f = pm.org.version_f;
+	app_frame->ver_len   = pm.org.ver_len;
+	if (app_frame->ver_len) {
+		memcpy (app_frame->ver_value, pm.org.content_ver, app_frame->ver_len);
+	} else {
+		app_frame->ver_value[0] = 0x00;
+	}
+	app_frame->putverify_f = pm.org.putverify_f;
+	app_frame->putverify_msgtype = pm.org.putverify_msgtype;
+	
 	if (new_len !=  buff_len) {
 		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
 		memcpy (&buff[0], &work_buff[0], new_len);
@@ -1185,6 +1196,14 @@ cef_client_request_get_with_info (
 	app_request->name_len = pm.name_len;
 	app_request->total_segs_len =
 		cef_frame_get_len_total_namesegments (pm.name, pm.name_len);
+	
+	app_request->version_f = pm.org.version_f;
+	app_request->ver_len   = pm.org.ver_len;
+	if (app_request->ver_len) {
+		memcpy (app_request->ver_value, pm.org.content_ver, app_request->ver_len);
+	} else {
+		app_request->ver_value[0] = 0x00;
+	}
 	
 	memcpy (&(app_request->data_entity[0]), pm.name, pm.name_len);
 	app_request->name = &(app_request->data_entity[0]);
