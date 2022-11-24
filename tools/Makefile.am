@@ -28,7 +28,7 @@
 # 
 
 # load sub directry
-SUBDIRS=cefgetstream cefputstream cefgetfile cefputfile cefgetchunk cefgetfile_sec cefputfile_sec
+SUBDIRS=cefgetstream cefputstream cefgetfile cefputfile cefgetchunk cefgetfile_sec cefputfile_sec cefgetcontent
 
 # check cefping
 if CEFPING_ENABLE
@@ -42,7 +42,12 @@ endif # CCNINFO_ENABLE
 
 # check csmgr
 if CSMGR_ENABLE
-SUBDIRS+=csmgr
+SUBDIRS+=csmgr cefput_verify
 endif # CSMGR_ENABLE
+
+# check conpub
+if CONPUB_ENABLE
+SUBDIRS+=conpub
+endif # CONPUB_ENABLE
 
 

@@ -117,6 +117,7 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
+@CONPUB_ENABLE_TRUE@am__append_1 = cef_conpub.h
 subdir = src/include/cefore
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -125,7 +126,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
 	$(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
-DIST_COMMON = $(srcdir)/Makefile.am $(include_HEADERS) \
+DIST_COMMON = $(srcdir)/Makefile.am $(am__include_HEADERS_DIST) \
 	$(am__DIST_COMMON)
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/config.h
@@ -150,6 +151,11 @@ am__can_run_installinfo = \
     n|no|NO) false;; \
     *) (install-info --version) >/dev/null 2>&1;; \
   esac
+am__include_HEADERS_DIST = cef_client.h cef_csmgr.h cef_csmgr_stat.h \
+	cef_ccninfo.h cef_define.h cef_face.h cef_fib.h cef_frame.h \
+	cef_hash.h cef_mpool.h cef_pit.h cef_log.h cef_print.h \
+	cef_rngque.h cef_plugin.h cef_plugin_com.h cef_valid.h \
+	cef_mem_cache.h cef_conpub.h
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
     $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
@@ -307,7 +313,6 @@ pdfdir = @pdfdir@
 prefix = @prefix@
 program_transform_name = @program_transform_name@
 psdir = @psdir@
-runstatedir = @runstatedir@
 sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
@@ -319,10 +324,10 @@ top_srcdir = @top_srcdir@
 
 # specify the include file
 CEF_HEADER = cef_client.h cef_csmgr.h cef_csmgr_stat.h cef_ccninfo.h \
-	cef_define.h cef_face.h cef_fib.h cef_frame.h cef_hash.h cef_mpool.h \
-	cef_pit.h cef_log.h cef_print.h cef_rngque.h cef_plugin.h cef_plugin_com.h cef_valid.h \
-	cef_mem_cache.h
-
+	cef_define.h cef_face.h cef_fib.h cef_frame.h cef_hash.h \
+	cef_mpool.h cef_pit.h cef_log.h cef_print.h cef_rngque.h \
+	cef_plugin.h cef_plugin_com.h cef_valid.h cef_mem_cache.h \
+	$(am__append_1)
 include_HEADERS = $(CEF_HEADER)
 all: all-am
 

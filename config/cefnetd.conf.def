@@ -96,11 +96,13 @@
 #BUFFER_CACHE_TIME=10000
 
 #
-# FIB entry selection strategy.
-#   0: Forward using any 1 Longest prefix match FIB entry
-#   1: Forward using all Longest prefix match FIB entries
+# Customize forwarding strategies of an incoming Interest/ContentObject packet
+# (e.g. outgoing face selection in an FIB entry for the Interest)
+#  default      : Forward the Interest to a face in the longest-prefix-matched(LPMed) FIB entry
+#  flooding     : Forward the Interest to all the faces registered in the LPMed FIB entry
+#  shortest_path: Forward the Interest to the face that has the minimum routing cost in the LPMed FIB entry
 #
-#FORWARDING_INFO_STRATEGY=0
+#FORWARDING_STRATEGY=default
 
 #
 # CCNinfo access policy
@@ -175,7 +177,13 @@
 #SELECTIVE_FORWARDING=1
 
 #
-# A range of chunk numbers that allow retroactive responses to the Simbolic Interest
+# Maximum number of requested chunks per Selective Interest.
+#	n is an integer greater than 0 and not greater than 2048.
+#
+#SELECTIVE_INTEREST_MAX_RANGE=512
+
+#
+# A range of chunk numbers that allow retroactive responses to the Symbolic Interest
 #	n is an integer greater than or equal to 0.
 #
 #SYMBOLIC_BACKBUFFER=100
@@ -224,6 +232,11 @@
 #	0:Do not Create & Forward
 #	1:Create & Forward
 #ENABLE_INTEREST_RETURN=0
+
+#
+# Enabled Return Code
+#
+#ENABLED_RETURN_CODE=1,2,6
 
 #
 # Serial Logging

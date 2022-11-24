@@ -124,7 +124,10 @@ host_triplet = @host@
 @CCNINFO_ENABLE_TRUE@am__append_2 = ccninfo
 
 # check csmgr
-@CSMGR_ENABLE_TRUE@am__append_3 = csmgr
+@CSMGR_ENABLE_TRUE@am__append_3 = csmgr cefput_verify
+
+# check conpub
+@CONPUB_ENABLE_TRUE@am__append_4 = conpub
 subdir = tools
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -193,8 +196,8 @@ am__define_uniq_tagged_files = \
 ETAGS = etags
 CTAGS = ctags
 DIST_SUBDIRS = cefgetstream cefputstream cefgetfile cefputfile \
-	cefgetchunk cefgetfile_sec cefputfile_sec cefping ccninfo \
-	csmgr
+	cefgetchunk cefgetfile_sec cefputfile_sec cefgetcontent \
+	cefping ccninfo csmgr cefput_verify conpub
 am__DIST_COMMON = $(srcdir)/Makefile.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 am__relativize = \
@@ -329,7 +332,6 @@ pdfdir = @pdfdir@
 prefix = @prefix@
 program_transform_name = @program_transform_name@
 psdir = @psdir@
-runstatedir = @runstatedir@
 sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
@@ -341,8 +343,8 @@ top_srcdir = @top_srcdir@
 
 # load sub directry
 SUBDIRS = cefgetstream cefputstream cefgetfile cefputfile cefgetchunk \
-	cefgetfile_sec cefputfile_sec $(am__append_1) $(am__append_2) \
-	$(am__append_3)
+	cefgetfile_sec cefputfile_sec cefgetcontent $(am__append_1) \
+	$(am__append_2) $(am__append_3) $(am__append_4)
 all: all-recursive
 
 .SUFFIXES:

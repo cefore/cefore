@@ -199,6 +199,7 @@ static uint16_t ftvh_app_dereg 		= CefC_T_OPT_APP_DEREG;
 static uint16_t ftvh_app_reg_p		= CefC_T_OPT_APP_REG_P;
 static uint16_t ftvh_app_reg_pit 	= CefC_T_OPT_APP_PIT_REG;
 static uint16_t ftvh_app_dereg_pit 	= CefC_T_OPT_APP_PIT_DEREG;
+static uint16_t ftvh_dev_reg_pit	= CefC_T_OPT_DEV_REG_PIT;
 static uint16_t ftvh_transport 		= CefC_T_OPT_TRANSPORT;
 static uint16_t ftvh_efi 			= CefC_T_OPT_EFI;
 static uint16_t ftvh_iur 			= CefC_T_OPT_IUR;
@@ -274,6 +275,7 @@ static uint16_t ftvn_app_dereg;
 static uint16_t ftvn_app_reg_p;
 static uint16_t ftvn_app_reg_pit;
 static uint16_t ftvn_app_dereg_pit;
+static uint16_t ftvn_dev_reg_pit;
 static uint16_t ftvn_transport;
 static uint16_t ftvn_efi;
 static uint16_t ftvn_iur;
@@ -663,6 +665,14 @@ cef_frame_opheader_seqnum_pos_search (
 	uint8_t* t_org_idx,						/* OUT: position of T_ORG					*/
 	uint8_t* t_seqnum_idx					/* OUT: position of T_SEQNUM				*/
 );
+/*--------------------------------------------------------------------------------------
+	Sets T_ORG Field to Object from the specified Parameters
+----------------------------------------------------------------------------------------*/
+static uint16_t
+cef_frame_object_torg_set (
+	unsigned char* buff, 					/* buffer to set a message					*/
+	CefT_Object_TLVs* tlvs					/* Parameters to set Object 				*/
+);
 
 /****************************************************************************************
  ****************************************************************************************/
@@ -723,6 +733,7 @@ cef_frame_init (
 	ftvn_app_reg_p 		= htons (ftvh_app_reg_p);
 	ftvn_app_reg_pit	= htons (ftvh_app_reg_pit);
 	ftvn_app_dereg_pit	= htons (ftvh_app_dereg_pit);
+	ftvn_dev_reg_pit	= htons (ftvh_dev_reg_pit);
 	ftvn_symbolic 		= htons (ftvh_symbolic);
 	ftvn_transport 		= htons (ftvh_transport);
 	ftvn_efi 			= htons (ftvh_efi);
@@ -832,11 +843,18 @@ cef_frame_message_parse (
 	pm->AppComp = NULL;
 
 	//0.8.3
-	pm->InterestType = CefC_PIT_TYPE_Reg;
+	pm->InterestType = CefC_PIT_TYPE_Rgl;
 	pm->KeyIdRester_f = 0;
 	pm->KeyIdRester_sel_len = 0;
 	pm->ObjHash_f = 0;
 	pm->ObjHash_len = 0;
+	pm->org.longlife_f = 0;
+	
+	pm->expiry_f = 0;		//0.8.3c
+	pm->org.version_f = 0;
+	pm->org.ver_len = 0;
+	pm->org.last_chunk_f = 0;	//0.8.3c
+	pm->org.putverify_f = 0;
 
 	/*----------------------------------------------------------------------*/
 	/* Parses Option Header				 									*/
@@ -1362,7 +1380,7 @@ IS_NAMESEG:
 							curi++;
 							hex_type_f = -1;
 						} else {
-							/* create 0°Length TLV */
+							/* create 0-Length TLV */
 							memcpy (wp, &ftvn_nameseg, CefC_S_Type);
 							wp += CefC_S_Type;
 							value = 0;
@@ -1396,7 +1414,7 @@ IS_NAMESEG:
 							curi++;
 							hex_type_f = -1;
 						} else {
-					  		/* create 0°Length TLV */
+					  		/* create 0-Length TLV */
 							memcpy (wp, &ftvn_nameseg, CefC_S_Type);
 							wp += CefC_S_Type;
 							value = 0;
@@ -1486,7 +1504,7 @@ IS_NAMESEG:
 						/* *curi='/' && *ruri='/' */
 						/* *curi='/' && *ruri=';' */
 #endif	//CefC_Nwproc
-				  		/* create 0°Length TLV */
+				  		/* create 0-Length TLV */
 						memcpy (wp, &ftvn_nameseg, CefC_S_Type);
 						wp += CefC_S_Type;
 						value = 0;
@@ -1494,7 +1512,7 @@ IS_NAMESEG:
 						wp += CefC_S_Length;
 					} else if ( *ruri == 0x00 ) {
 						/* Last '/' */
-				  		/* create 0°Length TLV */
+				  		/* create 0-Length TLV */
 						memcpy (wp, &ftvn_nameseg, CefC_S_Type);
 						wp += CefC_S_Type;
 						value = 0;
@@ -1821,6 +1839,27 @@ cef_frame_interest_create (
 		return( index * -1 );
 	}
 
+#ifndef CefC_C3
+	/* Sets App Components */
+	if ((tlvs->app_comp >= CefC_T_APP_MIN) &&
+		(tlvs->app_comp <= CefC_T_APP_MAX)) {
+		fld_thdr.type 	= htons (tlvs->app_comp);
+		fld_thdr.length = htons (tlvs->app_comp_len);
+
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		index += CefC_S_TLF;
+
+		if (tlvs->app_comp_len) {
+			memcpy (&buff[index], tlvs->app_comp_val, tlvs->app_comp_len);
+			index += tlvs->app_comp_len;
+		}
+	}
+	
+	if ( index > CefC_Max_Length ) {
+		return( index * -1 );
+	}
+#endif
+
 #ifdef	__RESTRICT__
 		printf( "%s Sets Name rec_index;%d   index:%d\n", __func__, rec_index, index );
 #endif
@@ -2098,9 +2137,10 @@ cef_frame_interest_torg_set (
 /* In the future --->	if (!tlvs->opt.symbolic_f) {*/
 
 	if ((tlvs->opt.symbolic_f != CefC_T_LONGLIFE) &&
-		(tlvs->opt.osymbolic_f != CefC_T_LONGLIFE) &&		//0.8.3 NONPUB
 		(tlvs->opt.selective_f != CefC_T_SELECTIVE) &&
-		(tlvs->symbolic_code_f != 1)) {
+		(tlvs->symbolic_code_f != 1) && 
+		(tlvs->opt.putverify_f != 1) &&
+		(tlvs->opt.version_f != 1)) {
 /* <---In the future 	if (!tlvs->opt.symbolic_f) {*/
 #ifdef CefC_Android
 		/* Sets Length */
@@ -2135,34 +2175,6 @@ cef_frame_interest_torg_set (
 		memcpy (&buff[index], &vsv, sizeof (uint16_t));
 		index += sizeof (uint16_t);
 	}
-
-	//0.8.3 Osymbolic NONPUB S
-	if (tlvs->opt.osymbolic_f == CefC_T_LONGLIFE) {
-		if (!set_hdr_f) {
-			set_hdr_f = 1;
-			
-			/* Sets Type */
-			fld_thdr.type = htons (CefC_T_ORG);
-			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
-			index += CefC_S_TLF;
-			
-			/* Sets IANA Private Enterprise Numbers */
-			buff[index]   = (0xFF0000 & CefC_NICT_PEN) >> 16;
-			buff[++index] = (0x00FF00 & CefC_NICT_PEN) >> 8;
-			buff[++index] = (0x0000FF & CefC_NICT_PEN);
-			index++;
-		}
-		/* Sets Type of Osymbolic Interest */
-		vsv = htons (CefC_T_OSYMBOLIC);
-		memcpy (&buff[index], &vsv, sizeof (uint16_t));
-		index += sizeof (uint16_t);
-		
-		/* Sets Type of Longlife Interest */
-		vsv =  htons (CefC_T_LONGLIFE);
-		memcpy (&buff[index], &vsv, sizeof (uint16_t));
-		index += sizeof (uint16_t);
-	}
-	//0.8.3 Osymbolic NONPUB E
 
 	//0.8.3 Selective
 	if (tlvs->opt.selective_f == CefC_T_SELECTIVE) {
@@ -2208,20 +2220,27 @@ cef_frame_interest_torg_set (
 		f_chunk_len_ns = htons(f_chunk_len);
 		
 		/* Last chunk */
-	 	i = 0;
-	 	mustContinue = 0;
-		l_value = tlvs->opt.last_chunk;
-		memset(l_buffer, 0, sizeof(l_buffer));
-		for (int byte = 7; byte >= 0; byte--) {
-			uint8_t b = (l_value >> (byte * 8)) & 0xFF;
-			if (b != 0 || byte == 0 || mustContinue) {
-				l_buffer[i] = b;
-				i++;
-				mustContinue = 1;
+		//0.8.3c S
+		if (tlvs->opt.last_chunk_f == 0) {
+			l_chunk_len = 0;
+			l_chunk_len_ns = htons(l_chunk_len);
+		} else {
+		 	i = 0;
+		 	mustContinue = 0;
+			l_value = tlvs->opt.last_chunk;
+			memset(l_buffer, 0, sizeof(l_buffer));
+			for (int byte = 7; byte >= 0; byte--) {
+				uint8_t b = (l_value >> (byte * 8)) & 0xFF;
+				if (b != 0 || byte == 0 || mustContinue) {
+					l_buffer[i] = b;
+					i++;
+					mustContinue = 1;
+				}
 			}
+			l_chunk_len = i;
+			l_chunk_len_ns = htons(l_chunk_len);
 		}
-		l_chunk_len = i;
-		l_chunk_len_ns = htons(l_chunk_len);
+		//0.8.3c E
 		
 		selective_fld.type = htons(CefC_T_SELECTIVE);
 		selective_fld.length = htons((sizeof(uint16_t)*2) + (sizeof(uint32_t)) + f_chunk_len + l_chunk_len);
@@ -2232,11 +2251,74 @@ cef_frame_interest_torg_set (
 		index += sizeof(struct selective_tlv);
 		memcpy (&buff[index], f_buffer, f_chunk_len);
 		index += f_chunk_len;
-		memcpy (&buff[index], l_buffer, l_chunk_len);
-		index += l_chunk_len;
+		//0.8.3c S
+		if (tlvs->opt.last_chunk_f == 0) {
+			//NOP
+		} else {
+			memcpy (&buff[index], l_buffer, l_chunk_len);
+			index += l_chunk_len;
+		}
+		//0.8.3c E
 		}
 	}
-
+	
+	if (tlvs->opt.version_f) {
+		if (!set_hdr_f) {
+			set_hdr_f = 1;
+			
+			/* Sets Type */
+			fld_thdr.type = htons (CefC_T_ORG);
+			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+			index += CefC_S_TLF;
+			
+			/* Sets IANA Private Enterprise Numbers */
+			buff[index]   = (0xFF0000 & CefC_NICT_PEN) >> 16;
+			buff[++index] = (0x00FF00 & CefC_NICT_PEN) >> 8;
+			buff[++index] = (0x0000FF & CefC_NICT_PEN);
+			index++;
+		}
+		
+		/* Sets type of Version */
+		fld_thdr.type = htons (CefC_T_VERSION);
+		fld_thdr.length = htons(tlvs->opt.ver_len);
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		index += CefC_S_TLF;
+		if (tlvs->opt.ver_len) {
+			memcpy (&buff[index], tlvs->opt.version, tlvs->opt.ver_len);
+			index += tlvs->opt.ver_len;
+		}
+	}
+	
+	if (tlvs->opt.putverify_f) {
+		if (!set_hdr_f) {
+			set_hdr_f = 1;
+			
+			/* Sets Type */
+			fld_thdr.type = htons (CefC_T_ORG);
+			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+			index += CefC_S_TLF;
+			
+			/* Sets IANA Private Enterprise Numbers */
+			buff[index]   = (0xFF0000 & CefC_NICT_PEN) >> 16;
+			buff[++index] = (0x00FF00 & CefC_NICT_PEN) >> 8;
+			buff[++index] = (0x0000FF & CefC_NICT_PEN);
+			index++;
+		}
+		
+		/* Sets type of putverify */
+		fld_thdr.type = htons (CefC_T_PUTVERIFY);
+		/*if (tlvs->opt.putverify_msgtype == CefC_CpvOp_ContInfoMsg) {
+			fld_thdr.length = htons((sizeof (uint8_t)*2) + sizeof (uint16_t) + (sizeof (uint32_t)*2));
+		} else */if (tlvs->opt.putverify_msgtype == CefC_CpvOp_FibRegMsg) {
+			fld_thdr.length = htons((sizeof (uint8_t)*2) + sizeof (uint16_t));
+		} else {
+			fld_thdr.length = 0;
+		}
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		index += CefC_S_TLF;
+		buff[index] = tlvs->opt.putverify_msgtype;
+		index += 4;
+	}
 	
 	/* Sets Length */
 	length = htons (index - CefC_S_TLF);
@@ -2398,11 +2480,9 @@ cef_frame_object_create (
 		}
 		end_chunk_len = i;
 
-//		memcpy (&buff[index], &ftvn_endchunk, sizeof(CefC_S_Type));
 		memcpy (&buff[index], &ftvn_endchunk, CefC_S_Type);
 		index += CefC_S_Type;
 		end_chunk_len_ns = htons(end_chunk_len);
-//		memcpy (&buff[index], &end_chunk_len_ns, sizeof(CefC_S_Length));
 		memcpy (&buff[index], &end_chunk_len_ns, CefC_S_Length);
 		index += CefC_S_Length;
 		memcpy (&buff[index], buffer, end_chunk_len);
@@ -2413,6 +2493,10 @@ cef_frame_object_create (
 	if ( index > CefC_Max_Length ) {
 		return( index * -1 );
 	}
+
+	/*----- ORG TLV 			-----*/
+	index +=
+		cef_frame_object_torg_set (&buff[index], tlvs);
 
 	/*----- PAYLOAD TLV 			-----*/
 	if (tlvs->payload_len > 0) {
@@ -2491,6 +2575,78 @@ cef_frame_object_create (
 
 	return (index);
 }
+/*--------------------------------------------------------------------------------------
+	Sets T_ORG Field to Object from the specified Parameters
+----------------------------------------------------------------------------------------*/
+static uint16_t
+cef_frame_object_torg_set (
+	unsigned char* buff, 					/* buffer to set a message					*/
+	CefT_Object_TLVs* tlvs					/* Parameters to set Object 				*/
+) {
+	uint16_t index = 0;
+	struct tlv_hdr fld_thdr;
+	uint16_t length = 0;
+	int set_hdr_f = 0;
+	
+	/*
+		+---------------+---------------+---------------+---------------+
+		|             T_ORG             |             Length            |
+		+---------------+---------------+---------------+---------------+
+		|     PEN[0]    |     PEN[1]    |     PEN[2]    |               /
+		+---------------+---------------+---------------+---------------+
+		/                     Vendor Specific Value                     |
+		+---------------+-------------------------------+---------------+
+		If the first bit is 0, the length does not follow the Type.
+		+---------------+
+		|0|<-- 15bit -->|
+		+---------------+
+		If the first bit is 1, the length follows the Type.
+		+---------------+---------------+---------------+---------------+
+		|1|<-- 15bit -->|             Length            |     Value     /
+		+---------------+---------------+---------------+---------------+
+	*/	
+	
+	if (!tlvs->opt.version_f){
+		return (index);
+	}
+	
+	/* [MEMO]													*/
+	/* Currently only the version								*/
+	/* but to make it compatible with other TLVs in the future,	*/
+	/* make it an if statement									*/
+	if (tlvs->opt.version_f) {
+		if (!set_hdr_f) {
+			set_hdr_f = 1;
+			/* Sets Type */
+			fld_thdr.type = htons (CefC_T_ORG);
+			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+			index += CefC_S_TLF;
+			
+			/* Sets IANA Private Enterprise Numbers */
+			buff[index]   = (0xFF0000 & CefC_NICT_PEN) >> 16;
+			buff[++index] = (0x00FF00 & CefC_NICT_PEN) >> 8;
+			buff[++index] = (0x0000FF & CefC_NICT_PEN);
+			index++;
+		}
+		
+		/* Sets type of Version */
+		fld_thdr.type = htons (CefC_T_VERSION);
+		fld_thdr.length = htons(tlvs->opt.ver_len);
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		index += CefC_S_TLF;
+		if (tlvs->opt.ver_len) {
+			memcpy (&buff[index], tlvs->opt.version, tlvs->opt.ver_len);
+			index += tlvs->opt.ver_len;
+		}
+	}
+	
+	/* Sets Length */
+	length = htons (index - CefC_S_TLF);
+	memcpy (&buff[CefC_O_Length], &length, sizeof (uint16_t));
+	
+	return (index);
+}
+
 int 										/* Length of Content Object message 		*/
 cef_frame_object_create_for_csmgrd (
 	unsigned char* buff, 					/* buffer to set Content Object				*/
@@ -2519,10 +2675,18 @@ cef_frame_object_create_for_csmgrd (
 	}
 #endif // CefC_Dbg_Tpp_Tlvs
 
+	if ( index > CefC_Max_Length ) {
+		return( index * -1 );
+	}
+
 	/*----------------------------------------------------------*/
 	/* CEFORE message 											*/
 	/*----------------------------------------------------------*/
 	index += CefC_S_TLF;
+
+	if ( index > CefC_Max_Length ) {
+		return( index * -1 );
+	}
 
 	/*=========================================
 		NAME TLV
@@ -2534,6 +2698,10 @@ cef_frame_object_create_for_csmgrd (
 	/* Records top index of Name TLV	*/
 	rec_index = index;
 	index += CefC_S_TLF + tlvs->name_len;
+
+	if ( index > CefC_Max_Length ) {
+		return( index * -1 );
+	}
 
 	/* Sets ChunkNumber		*/
 	if (tlvs->chnk_num_f) {
@@ -2567,6 +2735,10 @@ cef_frame_object_create_for_csmgrd (
 		index += chunk_len;
 	}
 
+	if ( index > CefC_Max_Length ) {
+		return( index * -1 );
+	}
+
 #ifdef CefC_NdnPlugin
 	/* Sets Meta			*/
 	if (tlvs->meta_len > 0) {
@@ -2575,6 +2747,10 @@ cef_frame_object_create_for_csmgrd (
 		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
 		memcpy (&buff[index + CefC_O_Value], tlvs->meta, tlvs->meta_len);
 		index += CefC_S_TLF + tlvs->meta_len;
+	}
+	
+	if ( index > CefC_Max_Length ) {
+		return( index * -1 );
 	}
 #endif // CefC_NdnPlugin
 
@@ -2590,6 +2766,10 @@ cef_frame_object_create_for_csmgrd (
 	value64_fld.value  = cef_frame_htonb (tlvs->expiry);
 	memcpy (&buff[index], &value64_fld, sizeof (struct value64_tlv));
 	index += CefC_S_TLF + CefC_S_Expiry;
+
+	if ( index > CefC_Max_Length ) {
+		return( index * -1 );
+	}
 
 	/*----- Sets T_ENDCHUNK		-----*/
 	if (tlvs->end_chunk_num_f) {
@@ -2612,17 +2792,25 @@ cef_frame_object_create_for_csmgrd (
 		}
 		end_chunk_len = i;
 
-//		memcpy (&buff[index], &ftvn_endchunk, sizeof(CefC_S_Type));
 		memcpy (&buff[index], &ftvn_endchunk, CefC_S_Type);
 		index += CefC_S_Type;
 		end_chunk_len_ns = htons(end_chunk_len);
-//		memcpy (&buff[index], &end_chunk_len_ns, sizeof(CefC_S_Length));
 		memcpy (&buff[index], &end_chunk_len_ns, CefC_S_Length);
 		index += CefC_S_Length;
 		memcpy (&buff[index], buffer, end_chunk_len);
 		index += end_chunk_len;
 	}
 
+	if ( index > CefC_Max_Length ) {
+		return( index * -1 );
+	}
+
+	/*----- ORG TLV 			-----*/
+	if (tlvs->opt.version_f) {
+		index +=
+			cef_frame_object_torg_set (&buff[index], tlvs);
+	}
+	
 	/*----- PAYLOAD TLV 			-----*/
 	if (tlvs->payload_len > 0) {
 		fld_thdr.type   = ftvn_payload;
@@ -2630,6 +2818,10 @@ cef_frame_object_create_for_csmgrd (
 		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
 		memcpy (&buff[index + CefC_O_Value], tlvs->payload, tlvs->payload_len);
 		index += CefC_S_TLF + tlvs->payload_len;
+	}
+
+	if ( index > CefC_Max_Length ) {
+		return( index * -1 );
 	}
 
 	/*----- CEFORE message header 	-----*/
@@ -2646,6 +2838,11 @@ cef_frame_object_create_for_csmgrd (
 	rec_index = index;
 	index += cef_frame_validation_alg_tlv_create (
 					&buff[index], &tlvs->alg, tlvs->name, tlvs->name_len);
+
+	if ( index > CefC_Max_Length ) {
+		return( index * -1 );
+	}
+
 	if (rec_index != index) {
 		index += cef_frame_validation_pld_tlv_create (
 			&buff[CefC_S_Fix_Header + opt_header_len], 
@@ -2653,6 +2850,10 @@ cef_frame_object_create_for_csmgrd (
 			tlvs->name, tlvs->name_len, &tlvs->alg);
 	}
 	
+	if ( index > CefC_Max_Length ) {
+		return( index * -1 );
+	}
+
 	/*----------------------------------------------------------*/
 	/* Frame Header 											*/
 	/*----------------------------------------------------------*/
@@ -3666,6 +3867,29 @@ cef_frame_interest_opt_header_create (
 			index += CefC_S_TLF;
 			break;
 		}
+		case CefC_T_OPT_DEV_REG_PIT: {
+			struct value64_tlv value64_fld;
+			
+			fld_thdr.type 	= ftvn_dev_reg_pit;
+			fld_thdr.length = 0x0000;
+			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+			index += CefC_S_TLF;
+			
+			/* Use cache time instead of lifetime */
+			value64_fld.type   = ftvn_rct;
+			value64_fld.length = flvn_rct;
+			value64_fld.value  = cef_frame_htonb (tlvs->opt.cachetime);
+			memcpy (&buff[index], &value64_fld, sizeof (struct value64_tlv));
+			index += CefC_S_TLF + flvh_rct;
+			
+			value32_fld.type 	= ftvn_number;
+			value32_fld.length  = flvn_number;
+			value32_fld.value 	= htonl (tlvs->opt.number);
+			memcpy (&buff[index], &value32_fld, sizeof (struct value32_tlv));
+			index += CefC_S_TLF + CefC_S_Number;
+			
+			break;
+		}
 		default: {
 			/* NOP */;
 			break;
@@ -3922,16 +4146,20 @@ cef_frame_ccninfo_req_opt_header_create (
 	CEF_FRAME_SKIPHOP_T	w_skiphop;
 	/*
 		+---------------+---------------+---------------+---------------+
-		|           T_DISC_REQ          |             Length            |
-		+---------------+---------------+---------------+---------+-+-+-+
-		|           Request ID          | SkipHopCount  |  Flags  |F|O|C|
-		+---------------+---------------+---------------+---------+-+-+-+
-		|                     Request Arrival Time                      |
+		|     Type (=T_DISC_REQHDR)     |             Length            |
+		+---------------+---------------+-------+-------+-------+-+-+-+-+
+		|           Request ID          |SkipHop|      Flags    |V|F|O|C|
+		+---------------+---------------+-------+-------+-------+-+-+-+-+
+		
 		+---------------+---------------+---------------+---------------+
-		/                        Node Identifier                        /
+		|             T_ORG             |     Length (3+value length)   |
+		+---------------+---------------+---------------+---------------+
+		|     PEN[0]    |    PEN[1]     |     PEN[2]    |               /
+		+---------------+---------------+---------------+               +
+		/                  Vendor Specific Value                        /
 		+---------------+---------------+---------------+---------------+
 	*/
-
+	
 	/* Sets Type and Length fields index */
 	index += CefC_S_TLF;
 
@@ -3961,7 +4189,47 @@ cef_frame_ccninfo_req_opt_header_create (
 
 	memcpy (&buff[index], &req_blk, sizeof (struct ccninfo_reqhdr_block));
 	index += sizeof (struct ccninfo_reqhdr_block);
-
+	
+	if (tlvs->opt.putverify_f) {
+		uint16_t torg_idx = index;
+		uint16_t torg_len;
+		/* Sets Type */
+		fld_thdr.type = htons (CefC_T_ORG);
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		index += CefC_S_TLF;
+		/* Sets IANA Private Enterprise Numbers */
+		buff[index]   = (0xFF0000 & CefC_NICT_PEN) >> 16;
+		buff[++index] = (0x00FF00 & CefC_NICT_PEN) >> 8;
+		buff[++index] = (0x0000FF & CefC_NICT_PEN);
+		index++;
+		
+		/* Sets type of putverify */
+		fld_thdr.type = htons (CefC_T_PUTVERIFY);
+		if (tlvs->opt.putverify_msgtype == CefC_CpvOp_ContInfoMsg) {
+			fld_thdr.length = htons(sizeof (uint8_t) + (sizeof (uint32_t)*2));
+			torg_len = htons (sizeof (uint8_t) + (sizeof (uint32_t)*2) + CefC_S_TLF + 3);
+		} else {
+			cef_log_write (CefC_Log_Warn, 
+				"[frame] Unknown message type in option header at Ccninfo (0x%02x)\n", 
+				tlvs->opt.putverify_msgtype);
+			return (0);
+		}
+		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+		index += CefC_S_TLF;
+		buff[index] = tlvs->opt.putverify_msgtype;
+		index += 1;
+		if (tlvs->opt.putverify_msgtype == CefC_CpvOp_ContInfoMsg) {
+			uint32_t seq_nl;
+			seq_nl = htonl (tlvs->opt.putverify_sseq);
+			memcpy (&buff[index], &seq_nl, sizeof (uint32_t));
+			index += sizeof (uint32_t);
+			seq_nl = htonl (tlvs->opt.putverify_eseq);
+			memcpy (&buff[index], &seq_nl, sizeof (uint32_t));
+			index += sizeof (uint32_t);
+		}
+		memcpy (&buff[torg_idx + CefC_O_Length], &torg_len, sizeof (uint16_t));
+	}
+	
 	/* Sets Type and Length fields 	*/
 	fld_thdr.type 	= ftvn_disc_reqhdr;			/* ccninfo-05 */
 	fld_thdr.length = htons (index-CefC_S_TLF);
@@ -4483,6 +4751,13 @@ cef_frame_opheader_user_tlv_parse (
 					poh->app_reg_f = CefC_App_RegPit;
 				} else if (sub_type == CefC_T_OPT_APP_PIT_DEREG) {
 					poh->app_reg_f = CefC_App_DeRegPit;
+				} else if (sub_type == CefC_T_OPT_DEV_REG_PIT) {
+					poh->app_reg_f = CefC_Dev_RegPit;
+					
+					memcpy (&poh->cachetime, &value[index+sub_len+CefC_S_TLF], sizeof (uint64_t));
+					poh->cachetime 	 = cef_frame_ntohb (poh->cachetime) * 1000;
+					poh->cachetime_f = index + sub_len;
+					index += CefC_S_TLF + flvh_rct;
 				} else if (sub_type == CefC_T_OPT_INNOVATIVE) {
 					poh->bitmap_f = offset + index;
 					memcpy (poh->bitmap, &value[index], CefC_S_Innovate);
@@ -4577,6 +4852,7 @@ cef_frame_opheader_user_tlv_parse (
 #endif
 						poh->seqnum = ntohl ((uint32_t)(*((uint32_t*) &wp[CefC_S_TLF])));
 						wp += (CefC_S_TLF + ntohs(thdr->length));
+						index += (CefC_S_TLF + ntohs(thdr->length));
 						break;
 					case	CefC_T_OPT_TRANSPORT:
 #ifdef	__JK_TEST_CODE__
@@ -4590,6 +4866,8 @@ cef_frame_opheader_user_tlv_parse (
 						poh->tp_variant = ntohs (thdr->type);
 						poh->tp_length  = ntohs (thdr->length);
 						wp += (CefC_S_TLF + ntohs(thdr->length));
+						index += (CefC_S_TLF		/* TL of transport plugin */
+									+ CefC_S_TLF);	/* TL of transport variant */
 #ifdef	__JK_TEST_CODE__
 						printf( "\t poh->tp_variant=%d  poh->tp_length=%d\n",
 								poh->tp_variant, poh->tp_length );
@@ -4599,6 +4877,7 @@ cef_frame_opheader_user_tlv_parse (
 						if (poh->tp_variant < CefC_T_OPT_TP_NUM) {
 							if (poh->tp_length > 0) {
 								memcpy (poh->tp_value, &value[index], poh->tp_length);
+								index += poh->tp_length;
 							}
 						} else {
 							poh->tp_variant = CefC_T_OPT_TP_NONE;
@@ -4617,9 +4896,11 @@ cef_frame_opheader_user_tlv_parse (
 						if (wp[0] & 0x80){
 							/* exist length field */
 							wp += (CefC_S_TLF + ntohs(thdr->length));
+							index += (CefC_S_TLF + ntohs(thdr->length));
 						} else {
 							/* only type field */
 							wp += CefC_S_Type;
+							index += CefC_S_Type;
 						}
 						break;
 				}
@@ -4665,8 +4946,10 @@ cef_frame_message_name_tlv_parse (
 	uint16_t chunk_len = 0;
 	uint32_t* v32p;
 
+#ifdef CefC_C3
 	CefT_AppComp*	AppComp_p = NULL;
 	CefT_AppComp*	before_AppComp_p = NULL;
+#endif
 
 #ifdef	__RESTRICT__
 	printf( "%s \n", __func__ );
@@ -4717,6 +5000,10 @@ cef_frame_message_name_tlv_parse (
 			default: {
 				if ((sub_type >= CefC_T_APP_MIN) &&
 					(sub_type <= CefC_T_APP_MAX)) {
+#ifndef CefC_C3
+					pm->app_comp = sub_type;
+					pm->app_comp_len = sub_length;
+#else
 					name_len += CefC_S_TLF + sub_length;		//20190712
 					/* Create AppComp */
 					AppComp_p = (CefT_AppComp*)malloc( sizeof(CefT_AppComp) );
@@ -4739,6 +5026,7 @@ cef_frame_message_name_tlv_parse (
 					if (sub_length > 0) {
 						pm->app_comp_offset = offset + index + CefC_S_TLF;
 					}
+#endif
 				} else {
 					/* Ignore 		*/
 					name_len += CefC_S_TLF + sub_length;	//20190918 For HEX_Type
@@ -4801,7 +5089,8 @@ cef_frame_message_expiry_tlv_parse (
 ) {
 	memcpy (&pm->expiry, value, sizeof (uint64_t));
 	pm->expiry = cef_frame_ntohb (pm->expiry) * 1000;
-
+	//0.8.3c
+	pm->expiry_f = 1;
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -5634,7 +5923,7 @@ cef_frame_message_user_tlv_parse (
 				
 				pm->InterestType = CefC_PIT_TYPE_Sel;	//0.8.3
 				pm->org.selective_f = 1;
-				pm->org.req_chunk = selective_fld->req_num;
+				pm->org.req_chunk = ntohl(selective_fld->req_num);
 				f_chunk_len = ntohs(selective_fld->value1);
 				l_chunk_len = ntohs(selective_fld->value2);
 				wp += 12;
@@ -5644,20 +5933,16 @@ cef_frame_message_user_tlv_parse (
 		    	}
 				wp += f_chunk_len;
 				pm->org.last_chunk = 0;
-		    	for (int j = 0; j < l_chunk_len; j++) {
-					pm->org.last_chunk = (pm->org.last_chunk << 8) | wp[j];
-		    	}
+				if ( l_chunk_len > 0 ) {
+					pm->org.last_chunk_f = 1;
+			    	for (int j = 0; j < l_chunk_len; j++) {
+						pm->org.last_chunk = (pm->org.last_chunk << 8) | wp[j];
+			    	}
+				}
 				wp += l_chunk_len;
 				break;
 			}
 			//0.8.3 E
-			//0.8.3 NONPUB S
-			case CefC_T_OSYMBOLIC:
-				pm->InterestType = CefC_PIT_TYPE_Osym;
-				pm->org.symbolic_f = 1;
-				wp += CefC_S_Type;
-				break;
-			//0.8.3 NONPUB E
 #ifdef CefC_Ser_Log
 			case CefC_T_SER_LOG:
 				pm->org.sl_offset = wp;
@@ -5665,6 +5950,24 @@ cef_frame_message_user_tlv_parse (
 				wp += (CefC_S_TLF + pm->org.sl_length);
 				break;
 #endif // CefC_Ser_Log
+			case CefC_T_VERSION:
+				pm->org.version_f = 1;
+				pm->org.ver_len   = ntohs(tlv_hdr->length);
+				wp += CefC_S_TLF;
+				if (pm->org.ver_len) {
+					memcpy (pm->org.content_ver, wp, pm->org.ver_len);
+					wp += pm->org.ver_len;
+				} else {
+					pm->org.content_ver[0] = 0x00;
+				}
+				break;
+			case CefC_T_PUTVERIFY: {
+				pm->org.putverify_f = 1;
+				wp += CefC_S_TLF;
+				pm->org.putverify_msgtype = wp[0];
+				wp += 4;
+				break;
+			}
 			default:
 				if (wp[0] & 0x80){
 					/* exist length field */
@@ -5805,8 +6108,48 @@ cef_frame_ccninfo_parse (
 			pci->skip_hop_offset	= index + CefC_S_TLF + 2;
 			pci->ccninfo_flag		= req_blk->flag;
 			disc_reqhdr_f = 1;	/* ccninfo-05 */
+			
+			pci->putverify_f = 0;
+			if (length > sizeof (struct ccninfo_reqhdr_block)) {
+				uint16_t tmp_idx = 0;
+				uint16_t tmp_len;
+				uint8_t msg_type;
+				tmp_idx = index + CefC_S_TLF + sizeof (struct ccninfo_reqhdr_block) - CefC_S_Fix_Header;
+				thdr = (struct tlv_hdr*) &wmp[tmp_idx];
+				type   = ntohs (thdr->type);
+				tmp_len = ntohs (thdr->length);
+				tmp_idx += CefC_S_TLF;
+				if (type == CefC_T_OPT_ORG && tmp_len == 16) {
+					/* PEN(3)+Type+Len+MsgType(1)+seq*2(8) */
+					if( (((CefC_NICT_PEN & 0xFF0000) >> 16) == wmp[tmp_idx])
+						  &&
+						(((CefC_NICT_PEN & 0x00FF00) >>  8) == wmp[tmp_idx+1])
+						  &&
+						(((CefC_NICT_PEN & 0x0000FF)      ) == wmp[tmp_idx+2])){
+						tmp_idx += 3;
+						/* T_PUTVERIFY */
+						thdr = (struct tlv_hdr*) &wmp[tmp_idx];
+						type   = ntohs (thdr->type);
+						tmp_len = ntohs (thdr->length);
+						tmp_idx += CefC_S_TLF;
+						msg_type = wmp[tmp_idx];
+						tmp_idx += 1;
+						if (msg_type == CefC_CpvOp_ContInfoMsg) {
+							uint32_t* value32;
+							pci->putverify_f = 1;
+							pci->putverify_msgtype = msg_type;
+							value32 = (uint32_t*)(&wmp[tmp_idx]);
+							pci->putverify_sseq = ntohl (*value32);
+							tmp_idx += 4;
+							value32 = (uint32_t*)(&wmp[tmp_idx]);
+							pci->putverify_eseq = ntohl (*value32);
+						}
+					}
+				}
+			}
 			index += CefC_S_TLF + length;
 			wmp += CefC_S_TLF + length;
+			
 #ifdef	DEB_CCNINFO
 			printf( "\t CefC_T_OPT_DISC_REQHDR E  index=%d   length=%d\n", index, length );
 #endif
@@ -5979,6 +6322,23 @@ cef_frame_ccninfo_parse (
 				index += CefC_S_TLF + length;
 				wmp += CefC_S_TLF + length;
 				
+				rep_p->rep_range_len = 0;
+				if (pci->putverify_f && 
+					pci->putverify_msgtype == CefC_CpvOp_ContInfoMsg) {
+					thdr = (struct tlv_hdr*) wmp;
+					type = ntohs (thdr->type);
+					rep_p->rep_range_len = type; 
+					if (rep_p->rep_range_len) {
+						rep_p->rep_range = (unsigned char*) malloc (rep_p->rep_range_len + 1);
+						memcpy (rep_p->rep_range, &wmp[2], rep_p->rep_range_len);
+						rep_p->rep_range[rep_p->rep_range_len] = 0x00;
+					} else {
+						rep_p->rep_range = NULL;
+					}
+					index += 2 + rep_p->rep_range_len;
+					wmp += 2 + rep_p->rep_range_len;
+				}
+				
 				if (pci->rep_blk_num == 0) {
 					pci->rep_blk = rep_p;
 					pci->rep_blk_tail = rep_p;
@@ -6053,6 +6413,9 @@ cef_frame_ccninfo_parsed_free (
 	rep_p = pci->rep_blk;
 	for (i = 0; i < pci->rep_blk_num; i++) {
 		free (rep_p->rep_name);
+		if (rep_p->rep_range_len) {
+			free (rep_p->rep_range);
+		}
 		wk_rep_p = rep_p;
 		rep_p = rep_p->next;
 		free (wk_rep_p);
@@ -6078,12 +6441,23 @@ cef_frame_debug_print_buff (
 	if (n_per_line < 0) n_per_line = 0;
 	fprintf (stderr, "----------\n");
 	
+//	for (bidx = 0; bidx < buff_len; bidx++) {
+//		fprintf (stderr, "%02x ", buff[bidx]);
+//		if (n_per_line != 0 && 
+//			(bidx+1) % n_per_line == 0)
+//			fprintf (stderr, "\n");
+//	}
 	for (bidx = 0; bidx < buff_len; bidx++) {
-		fprintf (stderr, "%02x ", buff[bidx]);
+		if (isprint (buff[bidx])) {
+			fprintf (stderr, ".%c", buff[bidx]);
+		} else {
+			fprintf (stderr, "%02X", buff[bidx]);
+		}
 		if (n_per_line != 0 && 
 			(bidx+1) % n_per_line == 0)
 			fprintf (stderr, "\n");
 	}
+	
 	fprintf (stderr, "\n----------(%d)\n", bidx);
 	return;
 }

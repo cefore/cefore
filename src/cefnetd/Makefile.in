@@ -140,6 +140,9 @@ bin_PROGRAMS = $(am__EXEEXT_1)
 
 # check debug build
 @CEFDBG_ENABLE_TRUE@am__append_8 = -DCefC_Debug
+
+# check cache
+@CACHE_ENABLE_TRUE@am__append_9 = -DCefC_CefnetdCache
 subdir = src/cefnetd
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -344,7 +347,6 @@ pdfdir = @pdfdir@
 prefix = @prefix@
 program_transform_name = @program_transform_name@
 psdir = @psdir@
-runstatedir = @runstatedir@
 sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
@@ -363,15 +365,16 @@ CEF_NETD_CFLAGS = $(AM_CFLAGS) $(am__append_1) $(am__append_2) \
 
 # set cefnetd option
 cefnetd_LDFLAGS = -L$(top_srcdir)/src/lib/ -L$(top_srcdir)/src/plugin/ \
-	-lpthread $(am__append_7)
-cefnetd_LDADD = -lcef_plugin -lcefore -lssl -lcrypto -ldl
+	-L$(top_srcdir)/src/dlplugin/fwd_strategy/ -lpthread \
+	$(am__append_7)
+cefnetd_LDADD = -lcef_plugin -lcefnetd_fwd_plugin -lcefore -lssl -lcrypto -ldl
 cefnetd_CFLAGS = $(CEF_NETD_CFLAGS)
 cefnetd_SOURCES = cef_main.c cef_node.c cef_sched.c cef_netd.c cef_status.c cef_netd.h cef_status.h
 
 # set cefctrl option
 cefctrl_LDFLAGS = -L$(top_srcdir)/src/lib/
 cefctrl_LDADD = -lcefore -lssl -lcrypto
-cefctrl_CFLAGS = $(AM_CFLAGS) $(am__append_8)
+cefctrl_CFLAGS = $(AM_CFLAGS) $(am__append_8) $(am__append_9)
 cefctrl_SOURCES = cef_ctrl.c cef_netd.h
 DESTDIR = $(CEFORE_DIR_PATH)
 all: all-am

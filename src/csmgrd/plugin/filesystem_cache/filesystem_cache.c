@@ -31,6 +31,8 @@
  */
 #define __CSMGRD_FILE_SYSTEM_CACHE_SOURCE__
 
+//#define __FSCACHE_VERSION__
+
 /*
 	fsc_cache.c is a primitive filesystem cache implementation.
 */
@@ -125,14 +127,15 @@ static pthread_mutex_t 			fsc_cs_mutex = PTHREAD_MUTEX_INITIALIZER;
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 fsc_cs_create (
-	CsmgrT_Stat_Handle stat_hdl
+	CsmgrT_Stat_Handle stat_hdl, int
 );
 /*--------------------------------------------------------------------------------------
 	Destroy content store
 ----------------------------------------------------------------------------------------*/
 static void
 fsc_cs_destroy (
-	void
+//0.8.3c	void
+	int			//0.8.3c
 );
 /*--------------------------------------------------------------------------------------
 	Check content expire
@@ -149,7 +152,9 @@ fsc_cache_item_get (
 	unsigned char* key,							/* content name							*/
 	uint16_t key_size,							/* content name Length					*/
 	uint32_t seqno,								/* chunk num							*/
-	int sock									/* received socket						*/
+	int sock,									/* received socket						*/
+	unsigned char* version,						/* version								*/
+	uint16_t ver_len							/* length of version					*/
 );
 /*--------------------------------------------------------------------------------------
 	Upload content byte steream
@@ -316,7 +321,7 @@ csmgrd_filesystem_plugin_load (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 fsc_cs_create (
-	CsmgrT_Stat_Handle stat_hdl
+	CsmgrT_Stat_Handle stat_hdl, int first_node_f			//0.8.3c
 ) {
 	FscT_Config_Param conf_param;
 	int i;
@@ -590,7 +595,8 @@ fsc_cs_remove (
 ----------------------------------------------------------------------------------------*/
 static void
 fsc_cs_destroy (
-	void
+//0.8.3c	void
+	int		Last_Node_f
 ) {
 	int i = 0;
 	void* status;
@@ -727,7 +733,9 @@ fsc_cache_item_get (
 	unsigned char* key,							/* content name							*/
 	uint16_t key_size,							/* content name Length					*/
 	uint32_t seqno,								/* chunk num							*/
-	int sock									/* received socket						*/
+	int sock,									/* received socket						*/
+	unsigned char* version,						/* version								*/
+	uint16_t ver_len							/* length of version					*/
 ) {
 	CsmgrT_Stat* rcd = NULL;
 	uint32_t	file_msglen;
@@ -751,6 +759,14 @@ fsc_cache_item_get (
 	struct timeval tv;
 	static unsigned char*	page_cob_buf = NULL;
 	int				rcdsize;
+	int			rc = CefC_CV_Inconsistent;
+	int			update_ver = 1;
+	static uint16_t red_ver_len = 0;
+	static unsigned char red_version[PATH_MAX] = {0};
+	
+#ifdef __FSCACHE_VERSION__
+	fprintf (stderr, "--- fsc_cache_item_get()\n");
+#endif //__FSCACHE_VERSION__
 	
 #ifdef CefC_Debug
 	csmgrd_dbg_write (CefC_Dbg_Finest, "Incoming Interest : seqno = %u\n", seqno);
@@ -770,6 +786,36 @@ fsc_cache_item_get (
 		fsc_recursive_dir_clear (file_path);
 		csmgrd_stat_content_info_delete (csmgr_stat_hdl, key, key_size);
 		hdl->cache_cobs -= rcd->cob_num;
+		pthread_mutex_unlock (&fsc_cs_mutex);
+		return (CefC_Csmgr_Cob_NotExist);
+	}
+#ifdef __FSCACHE_VERSION__
+	fprintf (stderr, "  rcd: ");
+	for (int i = 0; i < rcd->ver_len; i++) {
+		if (isprint (rcd->version[i])) fprintf (stderr, "%c ", rcd->version[i]);
+		else fprintf (stderr, "%02x ", rcd->version[i]);
+	}
+	fprintf (stderr, "(%d)\n", rcd->ver_len);
+	fprintf (stderr, "  cob: ");
+	for (int i = 0; i < ver_len; i++) {
+		if (isprint (version[i])) fprintf (stderr, "%c ", version[i]);
+		else fprintf (stderr, "%02x ", version[i]);
+	}
+	fprintf (stderr, "(%d)\n", ver_len);
+#endif //__FSCACHE_VERSION__
+	rc = cef_csmgr_cache_version_compare (version, ver_len, rcd->version, rcd->ver_len);
+	if (rc == CefC_CV_Inconsistent) {
+		if (ver_len == 0 && rcd->ver_len != 0) {
+			/* Request is "None", so any version is OK */
+#ifdef __FSCACHE_VERSION__
+			fprintf (stderr, "    => Request is \"None\", so any version is OK\n");
+#endif //__FSCACHE_VERSION__
+			;
+		} else {
+			pthread_mutex_unlock (&fsc_cs_mutex);
+			return (CefC_Csmgr_Cob_NotExist);
+		}
+	} else if (rc != CefC_CV_Same) {
 		pthread_mutex_unlock (&fsc_cs_mutex);
 		return (CefC_Csmgr_Cob_NotExist);
 	}
@@ -828,7 +874,17 @@ fsc_cache_item_get (
 	page_index = (int)(seqno / FscC_Page_Cob_Num/FscC_File_Page_Num);
 	sprintf (file_path, "%s/%d/%d", hdl->fsc_cache_path, (int) rcd->index, page_index);
 	
-	if (strcmp (red_file_path, file_path) != 0 || cob_block_index != red_cob_block_index) {
+	if (ver_len) {
+		if (red_ver_len == ver_len &&
+			memcmp (version, red_version, red_ver_len) == 0) {
+			update_ver = 0;
+		}
+	} else {
+		update_ver = 0;
+	}
+	
+	if (strcmp (red_file_path, file_path) != 0 || cob_block_index != red_cob_block_index ||
+		(strcmp (red_file_path, file_path) == 0 && update_ver != 0)) {
 		if (page_cob_buf != NULL) {
 			free (page_cob_buf);
 			page_cob_buf = NULL;
@@ -848,6 +904,13 @@ fsc_cache_item_get (
 			if (rtc != 1) {
 				break;
 			}
+		}
+		if (red_ver_len) {
+			memset (red_version, 0, PATH_MAX);
+		}
+		red_ver_len = ver_len;
+		if (ver_len) {
+			memcpy (red_version, version, ver_len);
 		}
 	} else {
 		fp = NULL;
@@ -1031,6 +1094,12 @@ fsc_cache_cob_write (
 	unsigned char 	del_name[CsmgrT_Name_Max];
 	uint16_t 		del_name_len = 0;
 	uint32_t 		del_chunk_num = 0;
+	CsmgrT_DB_COB_MAP*	cob_map = NULL;		//0.8.3c
+	int				rc = CefC_CV_Inconsistent;
+	
+#ifdef __FSCACHE_VERSION__
+	fprintf (stderr, "--- fsc_cache_cob_write()\n");
+#endif //__FSCACHE_VERSION__
 	
 #define COBS_SORT
 
@@ -1078,8 +1147,78 @@ fsc_cache_cob_write (
 			
 			if (!rcd) {
 				rcd = csmgrd_stat_content_info_init (
-						csmgr_stat_hdl, cobs[index].name, cobs[index].name_len);
+						csmgr_stat_hdl, cobs[index].name, cobs[index].name_len, &cob_map);
 				if (!rcd) {
+					goto NEXTCOB;
+				}
+				if (csmgrd_stat_content_info_version_init(csmgr_stat_hdl, rcd, cobs[index].version, cobs[index].ver_len) < 0) {
+					goto NEXTCOB;
+				}
+#ifdef __FSCACHE_VERSION__
+				fprintf (stderr, "    init: ");
+				for (int i = 0; i < rcd->ver_len; i++) {
+					if (isprint (rcd->version[i])) fprintf (stderr, "%c ", rcd->version[i]);
+					else fprintf (stderr, "%02x ", rcd->version[i]);
+				}
+				fprintf (stderr, "(%d)\n", rcd->ver_len);
+#endif //__FSCACHE_VERSION__
+			} else {
+#ifdef __FSCACHE_VERSION__
+				fprintf (stderr, "    rcd: ");
+				for (int i = 0; i < rcd->ver_len; i++) {
+					if (isprint (rcd->version[i])) fprintf (stderr, "%c ", rcd->version[i]);
+					else fprintf (stderr, "%02x ", rcd->version[i]);
+				}
+				fprintf (stderr, "(%d)\n", rcd->ver_len);
+				fprintf (stderr, "    cob: ");
+				for (int i = 0; i < cobs[index].ver_len; i++) {
+					if (isprint (cobs[index].version[i])) fprintf (stderr, "%c ", cobs[index].version[i]);
+					else fprintf (stderr, "%02x ", cobs[index].version[i]);
+				}
+				fprintf (stderr, "(%d)\n", cobs[index].ver_len);
+#endif //__FSCACHE_VERSION__
+				rc = cef_csmgr_cache_version_compare (cobs[index].version, cobs[index].ver_len, rcd->version, rcd->ver_len);
+				if (rc != CefC_CV_Inconsistent) {
+					if (rc == CefC_CV_Newest_1stArg) {
+						char file_path[PATH_MAX];
+						/* Delete old files */
+						sprintf (file_path, "%s/%d", hdl->fsc_cache_path, (int) rcd->index);
+						fsc_recursive_dir_clear (file_path);
+						
+						/* Old Stat */
+						csmgrd_stat_content_info_delete (csmgr_stat_hdl, cobs[index].name, cobs[index].name_len);
+						
+						/* New Stat */
+						rcd = csmgrd_stat_content_info_init (
+								csmgr_stat_hdl, cobs[index].name, cobs[index].name_len, &cob_map);
+						if (!rcd) {
+							goto NEXTCOB;
+						}
+						if (csmgrd_stat_content_info_version_init(csmgr_stat_hdl, rcd, cobs[index].version, cobs[index].ver_len) < 0) {
+							goto NEXTCOB;
+						}
+#ifdef __FSCACHE_VERSION__
+						fprintf (stderr, "    => delete %s and init\n", file_path);
+#endif //__FSCACHE_VERSION__
+					} else if (rc == CefC_CV_Same) {
+						/* Check the work cob is cached or not */
+						mask = 1;
+						x = chunk_num / 64;
+						mask <<= (chunk_num % 64);
+						if ((rcd->map_max-1) >= x && rcd->cob_map[x] & mask) {
+							/* cached yet */
+							goto NEXTCOB;
+						} else {
+#ifdef __FSCACHE_VERSION__
+						fprintf (stderr, "    => Not cached\n");
+#endif //__FSCACHE_VERSION__
+							/* Not cached */
+							;
+						}
+					} else {
+						goto NEXTCOB;
+					}
+				} else {
 					goto NEXTCOB;
 				}
 			}
@@ -1222,6 +1361,9 @@ fsc_cache_cob_write (
 NEXTCOB:
 		free (cobs[index].msg);
 		free (cobs[index].name);
+		if (cobs[index].ver_len) {
+			free (cobs[index].version);
+		}
 #ifdef COBS_SORT
 		cnt++;
 #else
@@ -1602,14 +1744,16 @@ fsc_cache_lifetime_get (
 	
 	pthread_mutex_lock (&fsc_cs_mutex);
 	if (partial_f != 0) {
-		rcd = csmgr_stat_content_info_get (csmgr_stat_hdl, name, name_len);
+//0.8.3c		rcd = csmgr_stat_content_info_get (csmgr_stat_hdl, name, name_len);
+		rcd = csmgrd_stat_content_info_get (csmgr_stat_hdl, name, name_len);	//0.8.3c
 	} else {
 		uint32_t seqno = 0;
 		name_len_wo_chunk = cef_frame_get_name_without_chunkno (name, name_len, &seqno);
 		if (name_len_wo_chunk == 0) {
 			return (-1);
 		}
-		rcd = csmgr_stat_content_info_access (csmgr_stat_hdl, name, name_len_wo_chunk);
+//0.8.3c		rcd = csmgr_stat_content_info_access (csmgr_stat_hdl, name, name_len_wo_chunk);
+		rcd = csmgrd_stat_content_info_access (csmgr_stat_hdl, name, name_len_wo_chunk);	//0.8.3c
 	}
 	if (!rcd || rcd->expire_f) {
 		pthread_mutex_unlock (&fsc_cs_mutex);

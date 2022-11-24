@@ -50,6 +50,7 @@
 
 #include <cefore/cef_client.h>
 #include <csmgrd/csmgrd_plugin.h>
+#include <cefore/cef_frame.h>
 
 /****************************************************************************************
  Macros
@@ -267,7 +268,6 @@ cef_csmgr_con_entry_create (
 	if ((buff[CefC_O_Fix_Ver]  != CefC_Version) ||
 		(buff[CefC_O_Fix_Type] >= CefC_Csmgr_Msg_Type_Num) ||
 		(buff[CefC_O_Fix_Type] == CefC_Csmgr_Msg_Type_Invalid)) {
-//@@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
 		return (-1);
 	}
 	memcpy (&value16, &buff[CefC_O_Length], CefC_S_Length);
@@ -276,7 +276,6 @@ cef_csmgr_con_entry_create (
 	/* check message length */
 	if ((len <= CefC_Csmgr_Msg_HeaderLen) || 
 		(len > buff_len)) {
-//@@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
 		return (-1);
 	}
 	index = CefC_Csmgr_Msg_HeaderLen;
@@ -286,7 +285,6 @@ cef_csmgr_con_entry_create (
 	entry->pay_len = ntohs (value16);
 
 	if (entry->pay_len > len) {
-//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
 		return (-1);
 	}
 	index += CefC_S_Length;
@@ -295,39 +293,85 @@ cef_csmgr_con_entry_create (
 	memcpy (&value16, &buff[index], CefC_S_Length);
 	entry->msg_len = ntohs (value16);
 	if (entry->pay_len > entry->msg_len) {
-//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
 		return (-1);
 	}
 	if (entry->msg_len > len) {
-//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
 		return (-1);
 	}
 	index += CefC_S_Length;
 	entry->msg = calloc (1 , entry->msg_len);
 	if (entry->msg == NULL) {
-//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
 		return (-1);
 	}
 	memcpy (entry->msg, &buff[index], entry->msg_len);
 	index += entry->msg_len;
+	
+{
+	unsigned char* ucp;
+	uint16_t pkt_len = 0;
+	uint16_t hdr_len = 0;
+	CefT_Parsed_Message pm;
+	CefT_Parsed_Opheader poh;
+	int res;
+	
+/*                          1                   2                   3
+      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+     +---------------+---------------+---------------+---------------+
+     |    version    |      type     |            pkt_len            |
+     +---------------+---------------+---------------+---------------+
+     |   hoplimit    |   reserve1    |   reserve2    |     hdr_len   |
+     +---------------+---------------+---------------+---------------+
+*/
+	
+	ucp = (unsigned char*) entry->msg;
+	memcpy (&value16, &ucp[2], CefC_S_Length);	/* 2=version+type */
+	pkt_len = ntohs (value16);
+	hdr_len = ucp[7];	/* 7=version+type+pkt_len+hoplimit+reserve1+reserve2 */
+	
+	res = cef_frame_message_parse (
+					entry->msg, (pkt_len - hdr_len), hdr_len, &poh, &pm, CefC_PT_OBJECT);
+	if (res < 0) {
+		free (entry->msg);
+		return (-1);
+	}
+	if (pm.org.version_f) {
+		entry->ver_len = pm.org.ver_len;
+		if (pm.org.ver_len) {
+			entry->version = (unsigned char*) malloc (pm.org.ver_len);
+			memcpy (entry->version, pm.org.content_ver, pm.org.ver_len);
+		} else {
+			entry->version = NULL;
+		}
+	} else {
+		entry->ver_len = 0;
+		entry->version = NULL;
+	}
+}
 	
 	/* Get cob name */
 	memcpy (&value16, &buff[index], CefC_S_Length);
 	entry->name_len = ntohs (value16);
 	if (entry->name_len > entry->msg_len) {
 		free (entry->msg);
-//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
+		if (entry->version != NULL) {
+			free (entry->version);
+		}
 		return (-1);
 	}
 	index += CefC_S_Length;
 	if (!(buff[index] == 0x00 && buff[index+1] == 0x01)) { 
 		free (entry->msg);
-//@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
+		if (entry->version != NULL) {
+			free (entry->version);
+		}
 		return (-1);
 	}
 	entry->name = calloc (1 , entry->name_len);
 	if (entry->name == NULL) {
 		free (entry->msg);
+		if (entry->version != NULL) {
+			free (entry->version);
+		}
 		return (-1);
 	}
 	memcpy (entry->name, &buff[index], entry->name_len);
@@ -356,7 +400,6 @@ cef_csmgr_con_entry_create (
 	gettimeofday (&tv, NULL);
 	entry->ins_time = tv.tv_sec * 1000000llu + tv.tv_usec;
 	
-//@@@@@fprintf(stderr, "[%s]: ------ reternOK(%d) -----\n", __FUNCTION__, __LINE__);
 	return ((int) index+3/* for MAGIC */); 
 }
 /*--------------------------------------------------------------------------------------

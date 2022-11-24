@@ -27,12 +27,15 @@
 # SUCH DAMAGE.
 # 
 
-SUBDIRS = include lib plugin cefnetd
+SUBDIRS = include lib plugin dlplugin cefnetd
 
 # check csmgr
 if CSMGR_ENABLE
 SUBDIRS+=csmgrd
 endif # CSMGR_ENABLE
 
-
+# check conpub
+if CONPUB_ENABLE
+SUBDIRS+=conpubd
+endif # CONPUB_ENABLE
 

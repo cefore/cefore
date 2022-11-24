@@ -80,7 +80,7 @@ cefnetd_interest_forward (
 	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
 	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
 ) {
-	int i;
+	CefT_FwdStrtgy_Param		fwdstr;
 	
 	if (fe != NULL) {
 		
@@ -104,23 +104,24 @@ cefnetd_interest_forward (
 		return (1);
 	}
 	
-	for (i = 0 ; i < faceid_num ; i++) {
+	if (hdl->fwd_strtgy_hdl->fwd_int) {
 		
-		if (peer_faceid == faceids[i]) {
-			continue;
-		}
-		cef_pit_entry_up_face_update (pe, faceids[i], pm, poh);
+		/* Set parameters */
+		fwdstr.faceids         = faceids;
+		fwdstr.faceid_num      = faceid_num;
+		fwdstr.peer_faceid     = peer_faceid;
+		fwdstr.msg             = msg;
+		fwdstr.payload_len     = payload_len;
+		fwdstr.header_len      = header_len;
+		fwdstr.pm              = pm;
+		fwdstr.poh             = poh;
+		fwdstr.pe              = pe;
+		fwdstr.fe              = fe;
+		fwdstr.cnt_send_frames = &(hdl->stat_send_interest);
+		fwdstr.cnt_send_types  = hdl->stat_send_interest_types;
 		
-		if (cef_face_check_active (faceids[i]) > 0) {
-			cef_face_frame_send_forced (
-				faceids[i], msg, payload_len + header_len);
-			if (hdl->forwarding_info_strategy == CefC_Default_ForwardingInfoStrategy) {
-				break;
-			}
-		} else {
-//			cef_fib_faceid_remove (hdl->fib, fe, faceids[i]);
-		}
-		
+		/* Forwards the Interest according to Forwarding Strategy. */
+		hdl->fwd_strtgy_hdl->fwd_int(&fwdstr);
 	}
 	
 	return (1);
@@ -143,8 +144,8 @@ cefnetd_ccninforeq_forward (
 	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
 	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
 ) {
-	int i;
 	int fulldiscovery_authNZ = 0;
+	CefT_FwdStrtgy_Param		fwdstr;
 	
 	/* Ccninfo Full discovery authentication & authorization */
 	if (hdl->ccninfo_full_discovery == 2 /* Authentication and Authorization */
@@ -156,39 +157,22 @@ cefnetd_ccninforeq_forward (
 													hdl->ccninfo_rcvdpub_key_bi);
 	}
 	
-	for (i = 0 ; i < faceid_num ; i++) {
+	if (hdl->fwd_strtgy_hdl->fwd_ccninforeq) {
 		
-		if (peer_faceid == faceids[i]) {
-			continue;
-		}
-		cef_pit_entry_up_face_update (pe, faceids[i], pm, poh);
+		/* Set parameters */
+		fwdstr.faceids         = faceids;
+		fwdstr.faceid_num      = faceid_num;
+		fwdstr.peer_faceid     = peer_faceid;
+		fwdstr.msg             = msg;
+		fwdstr.payload_len     = payload_len;
+		fwdstr.header_len      = header_len;
+		fwdstr.pm              = pm;
+		fwdstr.poh             = poh;
+		fwdstr.pe              = pe;
+		fwdstr.fe              = fe;
 		
-		if (cef_face_check_active (faceids[i]) > 0) {
-			cef_face_frame_send_forced (
-				faceids[i], msg, payload_len + header_len);
-			if (hdl->forwarding_info_strategy == CefC_Default_ForwardingInfoStrategy) {
-				if (poh->ccninfo_flag & CefC_CtOp_FullDisCover) {
-					if (hdl->ccninfo_full_discovery == 1 /* Allow ccninfo-03 */) {
-						;	/* Full discover is performed.			*/
-					} else 
-					if (hdl->ccninfo_full_discovery == 0 /* Not Allow */) {
-						break;
-					} else {
-						if (fulldiscovery_authNZ != 0/* fulldiscovery_authNZ = NG */) {
-							break;
-						}
-					}
-				} else {
-					break;
-				}
-			} else {
-				if (fulldiscovery_authNZ != 0/* fulldiscovery_authNZ = NG */) {
-					break;
-				}
-			}
-		} else {
-//			cef_fib_faceid_remove (hdl->fib, fe, faceids[i]);
-		}
+		/* Forwards the CcninfoReq according to Forwarding Strategy. */
+		hdl->fwd_strtgy_hdl->fwd_ccninforeq(&fwdstr, fulldiscovery_authNZ, hdl->ccninfo_full_discovery);
 		
 	}
 	
@@ -212,7 +196,7 @@ cefnetd_cefpingreq_forward (
 	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
 	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
 ) {
-	int i;
+	CefT_FwdStrtgy_Param		fwdstr;
 	
 	if (fe != NULL) {
 		
@@ -236,22 +220,22 @@ cefnetd_cefpingreq_forward (
 		return (1);
 	}
 	
-	for (i = 0 ; i < faceid_num ; i++) {
+	if (hdl->fwd_strtgy_hdl->fwd_cefpingreq) {
 		
-		if (peer_faceid == faceids[i]) {
-			continue;
-		}
-		cef_pit_entry_up_face_update (pe, faceids[i], pm, poh);
+		/* Set parameters */
+		fwdstr.faceids         = faceids;
+		fwdstr.faceid_num      = faceid_num;
+		fwdstr.peer_faceid     = peer_faceid;
+		fwdstr.msg             = msg;
+		fwdstr.payload_len     = payload_len;
+		fwdstr.header_len      = header_len;
+		fwdstr.pm              = pm;
+		fwdstr.poh             = poh;
+		fwdstr.pe              = pe;
+		fwdstr.fe              = fe;
 		
-		if (cef_face_check_active (faceids[i]) > 0) {
-			cef_face_frame_send_forced (
-				faceids[i], msg, payload_len + header_len);
-			if (hdl->forwarding_info_strategy == CefC_Default_ForwardingInfoStrategy) {
-				break;
-			}
-		} else {
-//			cef_fib_faceid_remove (hdl->fib, fe, faceids[i]);
-		}
+		/* Forwards the CefpingReq according to Forwarding Strategy. */
+		hdl->fwd_strtgy_hdl->fwd_cefpingreq(&fwdstr);
 		
 	}
 	
@@ -273,20 +257,45 @@ cefnetd_object_forward (
 	CefT_Parsed_Opheader* poh, 				/* Parsed Option Header						*/
 	CefT_Pit_Entry* pe	 					/* PIT entry matching this Interest 		*/
 ) {
-	int i;
-	uint32_t seqnum;
-	uint16_t new_buff_len = 0;
+	CefT_FwdStrtgy_Param		fwdstr;
+	uint16_t					name_len;
 	
-	for (i = 0 ; i < faceid_num ; i++) {
+	if (hdl->fwd_strtgy_hdl->fwd_cob) {
 		
-		if (cef_face_check_active (faceids[i]) > 0) {
-			seqnum = cef_face_get_seqnum_from_faceid (faceids[i]);
-			new_buff_len = cef_frame_seqence_update (msg, seqnum);
-			cef_face_object_send (faceids[i], msg, new_buff_len, pm);
-			hdl->stat_send_frames++;
+		/* Set parameters */
+		fwdstr.faceids         = faceids;
+		fwdstr.faceid_num      = faceid_num;
+		fwdstr.msg             = msg;
+		fwdstr.payload_len     = payload_len;
+		fwdstr.header_len      = header_len;
+		fwdstr.pm              = pm;
+		fwdstr.poh             = poh;
+		fwdstr.pe              = pe;
+		fwdstr.cnt_send_frames = &(hdl->stat_send_frames);
+		
+		/* Searches a FIB entry matching the Interest requested this ContentObject */
+#ifdef CefC_Nwproc
+		if (pm->chnk_num_f) {
+			name_len = pm->name_wo_attr_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
 		} else {
-			cef_pit_down_faceid_remove (pe, faceids[i]);
+			name_len = pm->name_wo_attr_len;
 		}
+		
+		fwdstr.fe = cef_fib_entry_search (hdl->fib, pm->name_wo_attr, name_len);
+#else // CefC_Nwproc
+		if (pm->chnk_num_f) {
+			name_len = pm->name_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
+		} else {
+			/* Symbolic Interest	*/
+			name_len = pm->name_len;
+		}
+		
+		fwdstr.fe = cef_fib_entry_search (hdl->fib, pm->name, name_len);
+#endif // CefC_Nwproc
+		
+		/* Forwards the ContentObject according to Forwarding Strategy. */
+		hdl->fwd_strtgy_hdl->fwd_cob(&fwdstr);
+		
 	}
 	
 	return (1);

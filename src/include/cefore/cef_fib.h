@@ -64,11 +64,21 @@
  ****************************************************************************************/
 
 /***** Face Information for FIB entry 	*****/
+//0.8.3c S
+typedef struct CefT_Fib_Metric {
+	int  cost;				      		/* Route Cost from Cefbabeld 			*/
+	int  dummy_metric;			    	/* Dummy Metric from Cefbabeld			*/
+} CefT_Fib_Metric;
+//0.8.3c E
+
 typedef struct CefT_Fib_Face {
 	
 	int 	faceid;							/* Face-ID 									*/
 	struct CefT_Fib_Face* 	next;			/* Pointer to next Face Information 		*/
 	int 	type;							/* CefC_Fib_Entry_XXX 						*/
+	CefT_Fib_Metric	metric;					/* 0.8.3c */
+	uint64_t		tx_int;					/* 0.8.3c */
+	uint64_t		tx_int_types[3];		/* 0.8.3c */
 	
 } CefT_Fib_Face;
 
@@ -78,6 +88,8 @@ typedef struct {
 	unsigned char* 	key;					/* Key of the entry 						*/
 	unsigned int 	klen;					/* Length of the key 						*/
 	CefT_Fib_Face	faces;					/* Faces to forward interest 				*/
+	uint64_t		rx_int;					/* 0.8.3c */
+	uint64_t		rx_int_types[3];		/* 0.8.3c */
 	
 	/* for Application Components */
 	uint16_t 		app_comp;				/* index of Application Components 			*/
@@ -136,7 +148,8 @@ cef_fib_route_msg_read (
 	unsigned char* msg, 					/* the received message(s)					*/
 	int msg_size,							/* size of received message(s)				*/
 	uint8_t type,							/* CefC_Fib_Entry_XXX						*/
-	int* rc 								/* 0x01=New Entry, 0x02=Free Entry 			*/
+	int* rc, 								/* 0x01=New Entry, 0x02=Free Entry 	0.8.3c	*/
+	CefT_Fib_Metric*	fib_metric			//0.8.3c
 );
 /*--------------------------------------------------------------------------------------
 	Obtain the Name from the received route message

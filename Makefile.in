@@ -347,7 +347,6 @@ pdfdir = @pdfdir@
 prefix = @prefix@
 program_transform_name = @program_transform_name@
 psdir = @psdir@
-runstatedir = @runstatedir@
 sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
@@ -358,8 +357,8 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 
 # set distcheck configure flag
-DISTCHECK_CONFIGURE_FLAGS = --enable-debug --enable-csmgr --enable-cache --enable-samptp --enable-ndn --enable-cefping
-EXTRA_DIST = apps LICENSE README.md
+DISTCHECK_CONFIGURE_FLAGS = --enable-debug --enable-csmgr --enable-cache --enable-samptp --enable-ndn --enable-cefping --enable-conpub --enable-interest-return
+EXTRA_DIST = apps doc LICENSE Readme.md
 
 # load sub directory
 SUBDIRS = src tools utils config

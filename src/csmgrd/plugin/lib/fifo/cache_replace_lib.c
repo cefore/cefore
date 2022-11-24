@@ -75,7 +75,7 @@ static void* crlib_lookup_table_encode_val(int idx);
 static int crlib_lookup_table_decode_val(void* val);
 
 void crlib_lookup_table_init(int capacity) {
-    lookup_table = cef_lhash_tbl_create(capacity);
+    lookup_table = cef_lhash_tbl_create_ext(capacity, CefC_Hash_Coef_Cache);
     count = 0;
 }
 

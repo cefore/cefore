@@ -721,6 +721,14 @@ int main (
 	value16 = htons (index);
 	memcpy (cob_buff + CefC_O_Length, &value16, CefC_S_Length);
 
+	/* ADD MAGIC */
+	value16 = htons (index+3);
+	memcpy (cob_buff + CefC_O_Length, &value16, CefC_S_Length);
+	cob_buff[index]   = 0x63;
+	cob_buff[index+1] = 0x6f;
+	cob_buff[index+2] = 0x62;
+	index += 3;
+
 	cob_len = index;
 
 }

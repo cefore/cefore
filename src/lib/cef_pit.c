@@ -36,6 +36,8 @@
 //#define		__RESTRICT__
 //#define		__INTEREST__
 //#define		__PIT_CLEAN__
+//#define __T_VERSION__
+
 /****************************************************************************************
  Include Files
  ****************************************************************************************/
@@ -102,6 +104,14 @@ cef_pit_entry_down_face_lookup (
 	CefT_Down_Faces** rt_dnface,			/* Down Face entry to return				*/
 	uint64_t nonce,							/* Nonce 									*/
 	uint8_t longlife_f 						/* Long Life Interest 						*/
+);
+/*--------------------------------------------------------------------------------------
+	Looks up and creates the version entry in specified Down Face entry
+----------------------------------------------------------------------------------------*/
+static int
+cef_pit_entry_down_face_ver_lookup (
+	CefT_Down_Faces* dnface,				/* Down Face entry							*/
+	CefT_Parsed_Message* pm 				/* Parsed CEFORE message					*/
 );
 /*--------------------------------------------------------------------------------------
 	Looks up and creates the specified Up Face entry
@@ -179,10 +189,11 @@ cef_pit_entry_lookup (
 	/* Searches a PIT entry 	*/
 	entry = (CefT_Pit_Entry*) cef_hash_tbl_item_get (pit, tmp_name, tmp_name_len);
 #ifdef	__PIT_DEBUG__
-	fprintf (stderr, "\t %p\n",
-			 (void*)entry );
+	if (entry)
+		fprintf (stderr, "\t entry=%p\n", (void*)entry);
+	else
+		fprintf (stderr, "\t entry=(NULL)\n");
 #endif
-
 	/* Creates a new PIT entry, if it dose not match 	*/
 	if (entry == NULL) {
 		if(cef_hash_tbl_item_num_get(pit) == cef_hash_tbl_def_max_get(pit)) {
@@ -283,6 +294,7 @@ cef_pit_entry_search (
 	unsigned char* tmp_name = NULL;
 	uint16_t tmp_name_len;
 	uint64_t now;
+	int found_ver_f = 0;
 	
 	if (poh->symbolic_code_f) {
 		memcpy (&pm->name[name_len], &poh->symbolic_code, sizeof (struct value32x2_tlv));
@@ -327,9 +339,12 @@ cef_pit_entry_search (
 	now = cef_client_present_timeus_get ();
 	
 	if (entry != NULL) {
-		if (!entry->symbolic_f) {
-			entry->stole_f = 1;
-		}
+//0.8.3c ----- START ----- version
+		//move to pit_entry_down_face_ver_remove
+//		if (!entry->symbolic_f) {
+//			entry->stole_f = 1;
+//		}
+//0.8.3c ----- END ----- version
 		/* for ccninfo "full discovery" */
 		if (poh->ccninfo_flag & CefC_CtOp_FullDisCover) {
 			entry->stole_f = 0;
@@ -365,7 +380,11 @@ cef_pit_entry_search (
 		if ((now > entry->adv_lifetime_us) && (poh->app_reg_f != CefC_App_DeRegPit)){	//20190822
 			return (NULL);
 		}
-		return (entry);
+		found_ver_f = cef_pit_entry_down_face_ver_search (&(entry->dnfaces), 1, pm);
+		if (found_ver_f)
+			return (entry);
+		else
+			return (NULL);
 	}
 	
 	if (pm->chnk_num_f) {
@@ -415,7 +434,11 @@ cef_pit_entry_search (
 				if (now > entry->adv_lifetime_us) {
 					return (NULL);
 				}
-				return (entry);
+				found_ver_f = cef_pit_entry_down_face_ver_search (&(entry->dnfaces), 1, pm);
+				if (found_ver_f)
+					return (entry);
+				else
+					return (NULL);
 			}
 		}
 	}
@@ -442,6 +465,7 @@ cef_pit_entry_search_specified_name (
 ) {
 	CefT_Pit_Entry* entry;
 	uint16_t name_len = sp_name_len;
+	int found_ver_f = 0;
 	
 	if (poh->symbolic_code_f) {
 		memcpy (&sp_name[name_len], &poh->symbolic_code, sizeof (struct value32x2_tlv));
@@ -486,16 +510,27 @@ cef_pit_entry_search_specified_name (
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finest, "[pit] Partial matched to the entry\n");
 #endif // CefC_Debug
-			return (entry);
+			found_ver_f = cef_pit_entry_down_face_ver_search (&(entry->dnfaces), 1, pm);
+			if (found_ver_f)
+				return (entry);
+			else
+				return (NULL);
 		} else {
 			/* ExactMatch */
-			if (!entry->symbolic_f) {
-				entry->stole_f = 1;
-			}
+//0.8.3c ----- START ----- 
+			//move to pit_entry_down_face_ver_remove
+//			if (!entry->symbolic_f) {
+//				entry->stole_f = 1;
+//			}
+//0.8.3c ----- END ----- 
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finest, "[pit] Exact matched to the entry\n");
 #endif // CefC_Debug
-			return (entry);
+			found_ver_f = cef_pit_entry_down_face_ver_search (&(entry->dnfaces), 1, pm);
+			if (found_ver_f)
+				return (entry);
+			else
+				return (NULL);
 		}
 	}
 	
@@ -540,7 +575,12 @@ cef_pit_entry_search_specified_name (
 				}
 #endif
 #endif // CefC_Debug
-				return (entry);
+				found_ver_f = cef_pit_entry_down_face_ver_search (&(entry->dnfaces), 1, pm);
+				if (found_ver_f) {
+					return (entry);
+				} else {
+					return (NULL);
+				}
 			}
 		}
 	}
@@ -568,6 +608,7 @@ cef_pit_entry_search_specified_name_for_app (
 	unsigned char* mep;
 	uint16_t length;
 
+	/*----- Do not check the version with PIT (for App) -----*/
 	
 	if (poh->symbolic_code_f) {
 		memcpy (&sp_name[name_len], &poh->symbolic_code, sizeof (struct value32x2_tlv));
@@ -648,17 +689,40 @@ cef_pit_entry_print (
 				{
 					int dbg_x;
 					for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
-						fprintf (stderr, "%02x ", entry->key[dbg_x]);
+						fprintf (stderr, "%02X ", entry->key[dbg_x]);
 					}
 					fprintf (stderr, "]\n");
 				}
+#ifdef __T_VERSION__
+				{
+					CefT_Down_Faces* dnfaces = NULL;
+					CefT_Pit_Tversion* tver = NULL;
+					fprintf(stderr, "        stole_f=%d\n", entry->stole_f);
+					dnfaces = entry->dnfaces.next;
+					fprintf(stderr, "        [dnface]\n");
+					while (dnfaces != NULL) {
+						fprintf(stderr,"        [%d] tver_none=%d, ", dnfaces->faceid, dnfaces->tver_none);
+						tver = &(dnfaces->tver);
+						while (tver->tvnext) {
+							tver = tver->tvnext;
+							if (tver->tver_len == 0) {
+								fprintf(stderr, "VerReq, ");
+							} else {
+								fprintf(stderr, "%s(%d), ", tver->tver_value, tver->tver_len);
+							}
+						}
+						dnfaces = dnfaces->next;
+						fprintf(stderr, "\n");
+					}
+					fprintf(stderr, "\n");
+				}
+#endif //__VERSION__
 				cnt++;
 			} else {
 				fprintf(stderr,"    (%d) len=-1 **************************************\n", index);
 			}
 		}
 	}
-	fprintf(stderr,"==============================\n");
 	return;
 }
 #endif // CefC_Debug
@@ -725,6 +789,7 @@ cef_pit_entry_down_face_update (
 	uint64_t extent_us;
 	uint16_t nw_lifetime_ms;
 	uint16_t new_lifetime_ms;
+	int new_ver_f = 0;
 	
 	gettimeofday (&now, NULL);
 	nowt_us = now.tv_sec * 1000000llu + now.tv_usec;
@@ -732,6 +797,7 @@ cef_pit_entry_down_face_update (
 	/* Looks up a Down Face entry 		*/
 	new_downface_f = cef_pit_entry_down_face_lookup (
 						entry, faceid, &face, pm->nonce, pm->org.longlife_f);
+	
 #ifdef	__PIT_DEBUG__
 	fprintf (stderr, "\t new_downface_f=%d (1:NEW)\n",
 			 new_downface_f );
@@ -750,6 +816,13 @@ cef_pit_entry_down_face_update (
 			return (0);
 		}
 		face->nonce = pm->nonce;
+	}
+
+	new_ver_f = cef_pit_entry_down_face_ver_lookup (face, pm);
+	if (new_ver_f == -1) {
+		cef_log_write (CefC_Log_Warn, 
+			"Versions in this Down Face is full(Up to %d)\n", CefC_PitEntryVersion_Max);
+		return (0);
 	}
 	
 	if (pm->org.longlife_f) {
@@ -775,7 +848,7 @@ cef_pit_entry_down_face_update (
 	
 	/* Checks whether the life time is smaller than the limit 	*/
 #ifndef CefC_Nwproc
-	if ( entry->PitType != CefC_PIT_TYPE_Reg ) {	//0.8.3
+	if ( entry->PitType != CefC_PIT_TYPE_Rgl ) {	//0.8.3
 		if (poh->lifetime > symbolic_max_lifetime) {
 			poh->lifetime = symbolic_max_lifetime;
 		}
@@ -786,7 +859,7 @@ cef_pit_entry_down_face_update (
 	}
 #else // CefC_Nwproc
 	if (!poh->nwproc_f) {
-		if ( entry->PitType != CefC_PIT_TYPE_Reg ) {	//0.8.3
+		if ( entry->PitType != CefC_PIT_TYPE_Rgl ) {	//0.8.3
 			if (poh->lifetime > symbolic_max_lifetime) {
 				poh->lifetime = symbolic_max_lifetime;
 			}
@@ -812,10 +885,15 @@ cef_pit_entry_down_face_update (
 	} else {
 		extent_us = CefC_Default_LifetimeUs;
 	}
+	if (poh->app_reg_f == CefC_Dev_RegPit) {
+		/* Use cache time instead of lifetime */
+		extent_us = poh->cachetime;	/* poh->cachetime is usec */
+		entry->drp_lifetime_us = face->lifetime_us + extent_us;
+		entry->adv_lifetime_us = face->lifetime_us;
+	}
 	prev_lifetime_us  = face->lifetime_us;
 	face->lifetime_us = nowt_us + extent_us;
 	
-
 #ifdef	__PIT_DEBUG__
 	fprintf (stderr, "\t Before\n" );
 	fprintf (stderr, "\t extent_us= "FMTU64"\n", extent_us / 1000 );
@@ -925,6 +1003,16 @@ cef_pit_entry_down_face_update (
 	if ( (forward_interest_f == 1) && (pm->hoplimit > entry->hoplimit) ) {
 		entry->hoplimit = pm->hoplimit;
 	}
+	
+	/* Not Same Face */
+	if (new_downface_f) {
+			forward_interest_f = 1;
+	}
+	/* Same Face, Not Same Version */
+	if (!new_downface_f && new_ver_f) {
+			forward_interest_f = 1;
+	}
+	
 #endif
 
 #ifdef CefC_Debug
@@ -957,10 +1045,9 @@ cef_pit_entry_up_face_update (
 ) {
 	CefT_Up_Faces* face;
 	int new_create_f;
-
 	/* Looks up an Up Face entry 		*/
 	new_create_f = cef_pit_entry_up_face_lookup (entry, faceid, &face);
-
+	
 	/* If this entry has Symbolic Interest, always it forwards the Interest */
 	if (entry->symbolic_f) {
 		new_create_f = 1;
@@ -1219,6 +1306,168 @@ cef_pit_entry_down_face_lookup (
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
+	Looks up and creates the version entry in specified Down Face entry
+----------------------------------------------------------------------------------------*/
+static int									/* create entry = 1, lookup entry = 0		*/
+cef_pit_entry_down_face_ver_lookup (
+	CefT_Down_Faces* dnface,				/* Down Face entry							*/
+	CefT_Parsed_Message* pm 				/* Parsed CEFORE message					*/
+) {
+	CefT_Pit_Tversion*	tver = &(dnface->tver);
+	int tver_num = 0;
+	
+	/* Unversioned */
+	if (!pm->org.version_f) {
+		if (dnface->tver_none) {
+			return (0);
+		} else {
+			dnface->tver_none = 1;
+			return (1);
+		}
+	}
+	
+	/* Versioned */
+	while (tver->tvnext) {
+		tver = tver->tvnext;
+		if (pm->org.ver_len == tver->tver_len &&
+			memcmp (pm->org.content_ver, tver->tver_value, tver->tver_len) == 0) {
+			return (0);
+		}
+		tver_num++;
+	}
+	
+	if (tver_num >= CefC_PitEntryVersion_Max ) {
+		return (-1);
+	}
+	
+	/* create new entry */
+	tver->tvnext = (CefT_Pit_Tversion*) malloc (sizeof (CefT_Pit_Tversion) + pm->org.ver_len + 1);
+	memset (tver->tvnext, 0, sizeof (CefT_Pit_Tversion));
+	if (pm->org.ver_len) {
+		tver->tvnext->tver_len = pm->org.ver_len;
+		tver->tvnext->tver_value = ((unsigned char*) tver->tvnext) + sizeof(CefT_Pit_Tversion);
+		memcpy (tver->tvnext->tver_value, pm->org.content_ver, tver->tvnext->tver_len);
+		tver->tvnext->tver_value[tver->tvnext->tver_len] = 0x00;
+	} else {
+		tver->tvnext->tver_len = 0;
+		tver->tvnext->tver_value = NULL;
+	}
+	
+	return (1);
+}
+/*--------------------------------------------------------------------------------------
+	Search the version entry in specified Down Face entry
+----------------------------------------------------------------------------------------*/
+int											/* found entry = 1							*/
+cef_pit_entry_down_face_ver_search (
+	CefT_Down_Faces* dnface,				/* Down Face entry							*/
+	int head_or_point_f,					/* 1: dnface is head of down face list		*/
+											/* 0: dnface is pointer of 1 entry			*/
+	CefT_Parsed_Message* pm 				/* Parsed CEFORE message					*/
+) {
+	CefT_Pit_Tversion* tver;
+	
+	if (head_or_point_f) {
+		while (dnface->next) {
+			dnface = dnface->next;
+			
+			if (!pm->org.version_f) {
+				/* Unversioned */
+				if (dnface->tver_none) {
+					return (1);
+				}
+			} else {
+				/* Versioned */
+				
+				if (dnface->tver_none) {
+					return (1);
+				}
+				
+				tver = &(dnface->tver);
+				
+				while (tver->tvnext) {
+					tver = tver->tvnext;
+					
+					if (pm->org.ver_len == tver->tver_len &&
+						memcmp (pm->org.content_ver, tver->tver_value, tver->tver_len) == 0) {
+						return (1);
+					}
+				}
+			}
+		}
+	} else {
+		tver = &(dnface->tver);
+		
+		/* Unversioned */
+		if (!pm->org.version_f) {
+			if (dnface->tver_none) {
+				return (1);
+			} else {
+				return (0);
+			}
+		} else {
+			/* Versioned */
+			if (dnface->tver_none) {
+				return (1);
+			}
+		}
+		
+		/* Versioned */
+		while (tver->tvnext) {
+			tver = tver->tvnext;
+			if (pm->org.ver_len == tver->tver_len &&
+				memcmp (pm->org.content_ver, tver->tver_value, tver->tver_len) == 0) {
+				return (1);
+			}
+		}
+	}
+	
+	return (0);
+}
+/*--------------------------------------------------------------------------------------
+	Remove the version entry in specified Down Face entry
+----------------------------------------------------------------------------------------*/
+void
+cef_pit_entry_down_face_ver_remove (
+	CefT_Pit_Entry* pe, 					/* PIT entry								*/
+	CefT_Down_Faces* dnface,				/* Down Face entry							*/
+	CefT_Parsed_Message* pm 				/* Parsed CEFORE message					*/
+) {
+	CefT_Pit_Tversion*	tver = &(dnface->tver);
+	CefT_Pit_Tversion*	prev_tv;
+	
+	if (pe->symbolic_f)
+		return;
+	
+	if (dnface->tver_none) {
+		dnface->tver_none = 0;
+	}
+	
+	/* Versioned */
+	prev_tv = tver;
+	while (tver->tvnext) {
+		tver = tver->tvnext;
+		if (pm->org.ver_len == tver->tver_len &&
+			memcmp (pm->org.content_ver, tver->tver_value, tver->tver_len) == 0) {
+			
+			prev_tv->tvnext = tver->tvnext;
+			
+			free (tver);
+			break;
+		}
+		prev_tv = tver;
+	}
+	
+	tver = &(dnface->tver);
+	if (dnface->tver_none == 0 && tver->tvnext == NULL) {
+		cef_pit_down_faceid_remove (pe, dnface->faceid);
+	}
+	if (pe->dnfacenum == 0) {
+		pe->stole_f = 1;
+	}
+	return;
+}
+/*--------------------------------------------------------------------------------------
 	Removes the specified FaceID from the specified PIT entry
 ----------------------------------------------------------------------------------------*/
 void
@@ -1261,7 +1510,6 @@ cef_pit_entry_up_face_lookup (
 	CefT_Up_Faces** rt_face					/* Up Face entry to return		 			*/
 ) {
 	CefT_Up_Faces* face = &(entry->upfaces);
-
 	while (face->next) {
 		face = face->next;
 		if (face->faceid == faceid) {
@@ -1566,6 +1814,7 @@ cef_pit_entry_search_with_chunk (
 ) {
 	CefT_Pit_Entry* entry;
 	uint64_t now;
+	int found_ver_f = 0;
 	
 #ifdef CefC_Debug
 #if 0
@@ -1597,9 +1846,13 @@ cef_pit_entry_search_with_chunk (
 	now = cef_client_present_timeus_get ();
 	
 	if (entry != NULL) {
-		if (!entry->symbolic_f) {
-			entry->stole_f = 1;
-		}
+		found_ver_f = cef_pit_entry_down_face_ver_search (&(entry->dnfaces), 1, pm);
+//0.8.3c ----- START ----- version
+		//move to pit_entry_down_face_ver_remove
+//		if (!entry->symbolic_f) {
+//			entry->stole_f = 1;
+//		}
+//0.8.3c ----- END ----- version
 #ifdef CefC_Debug
 #if 0
 		{
@@ -1627,7 +1880,14 @@ cef_pit_entry_search_with_chunk (
 		if ((now > entry->adv_lifetime_us) && (poh->app_reg_f != CefC_App_DeRegPit)){	//20190822
 			return (NULL);
 		}
-		return (entry);
+		if (found_ver_f) {
+			return (entry);
+		} else {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "[pit] ... Unmatched Version.\n");
+#endif // CefC_Debug
+			return (NULL);
+		}
 	}
 	
 #ifdef CefC_Debug
@@ -1648,6 +1908,7 @@ cef_pit_entry_search_without_chunk (
 	CefT_Pit_Entry* entry;
 	uint16_t tmp_name_len;
 	uint64_t now;
+	int found_ver_f = 0;
 	
 	tmp_name_len = pm->name_len;
 
@@ -1721,7 +1982,18 @@ cef_pit_entry_search_without_chunk (
 				if (now > entry->adv_lifetime_us) {
 					return (NULL);
 				}
-				return (entry);
+				found_ver_f = cef_pit_entry_down_face_ver_search (&(entry->dnfaces), 1, pm);
+				if (found_ver_f) {
+#ifdef CefC_Debug
+					cef_dbg_write (CefC_Dbg_Finest, "[pit] ... Matched Version\n");
+#endif // CefC_Debug
+					return (entry);
+				} else {
+#ifdef CefC_Debug
+					cef_dbg_write (CefC_Dbg_Finest, "[pit] ... Unmatched Version\n");
+#endif // CefC_Debug
+					return (NULL);
+				}
 			}
 		}
 	}

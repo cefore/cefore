@@ -87,6 +87,10 @@
  ****************************************************************************************/
 
 #define CefMemCacheC_Key_Max 				1024
+#define Cef_InconsistentVersion				-1000
+#define Cef_SameVersion						0
+#define Cef_NewestVersion_1stArg			1
+#define Cef_NewestVersion_2ndArg			-1
 
 /****************************************************************************************
  Structure Declarations
@@ -104,6 +108,8 @@ typedef struct {
 	uint64_t		cache_time;					/* Cache time							*/
 	uint64_t		expiry;						/* Expiry								*/
 	struct in_addr	node;						/* Node address							*/
+	unsigned char*	version;					/* 0.8.3c */
+	uint16_t		ver_len;					/* 0.8.3c */
 
 } CefMemCacheT_Content_Entry;
 
@@ -115,6 +121,8 @@ typedef struct {
 	unsigned char	*name;						/* Content name							*/
 	uint16_t		name_len;					/* Content name length					*/
 	uint16_t		pay_len;					/* Payload length						*/
+	unsigned char*	version;					/* 0.8.3c */
+	uint16_t		ver_len;					/* 0.8.3c */
 	uint32_t		chnk_num;					/* Chunk num							*/
 	uint64_t		cache_time;					/* Cache time							*/
 	uint64_t		expiry;						/* Expiry								*/
@@ -126,6 +134,8 @@ typedef struct {
 	uint32_t		con_size;
 	uint32_t		con_num;
 	uint32_t		ac_cnt;
+	uint32_t		min_seq;
+	uint32_t		max_seq;
 } CefMemCacheT_Ccninfo;
 
 /****************************************************************************************
@@ -155,6 +165,13 @@ cef_mem_cache_put_thread (
 ----------------------------------------------------------------------------------------*/
 void *
 cef_mem_cache_clear_thread (
+	void *p
+);
+/*--------------------------------------------------------------------------------------
+	A thread that delete a content object in the local cache
+----------------------------------------------------------------------------------------*/
+void *
+cef_mem_cache_delete_thread (
 	void *p
 );
 /*--------------------------------------------------------------------------------------
@@ -197,5 +214,14 @@ cef_mem_cache_mstat_get (
 	uint32_t klen,
 	CefMemCacheT_Ccninfo* info_p
 );
-
+#if ((defined CefC_CefnetdCache) && (defined CefC_Develop))
+/*--------------------------------------------------------------------------------------
+	Get mstat info in buffer
+----------------------------------------------------------------------------------------*/
+int
+cef_mem_cache_mstat_get_buff (
+	char* buff, 
+	int buff_size
+);
+#endif //((defined CefC_CefnetdCache) && (defined CefC_Develop))
 #endif // __CEF_MEM_CACHE_HEADER__

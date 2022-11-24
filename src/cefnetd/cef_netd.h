@@ -96,6 +96,13 @@
 #define CefnetdC_Plugin_Library_Name	"libcefnetd_plugin.so"
 #endif // __APPLE__
 
+/* Library name libcefnetd_fwd_plugin		*/
+#ifdef __APPLE__
+#define CefnetdC_FwdPlugin_Library_Name		"libcefnetd_fwd_plugin.dylib"
+#else // __APPLE__
+#define CefnetdC_FwdPlugin_Library_Name		"libcefnetd_fwd_plugin.so"
+#endif // __APPLE__
+
 /*------------------------------------------------------------------*/
 /* Commands to control cefnetd										*/
 /*------------------------------------------------------------------*/
@@ -108,6 +115,8 @@
 #define CefC_Ctrl_Status_Len		strlen(CefC_Ctrl_Status)
 #define CefC_Ctrl_StatusPit			"STATUSPIT"
 #define CefC_Ctrl_StatusPit_Len		strlen(CefC_Ctrl_StatusPit)
+#define CefC_Ctrl_StatusStat		"STATUSSTAT"
+#define CefC_Ctrl_StatusStat_Len	strlen(CefC_Ctrl_StatusStat)
 #define CefC_Ctrl_Route				"ROUTE"
 #define CefC_Ctrl_Route_Len			strlen(CefC_Ctrl_Route)
 #define CefC_Ctrl_Babel				"BABEL"
@@ -129,6 +138,14 @@
 #else // CefC_Android
 #define CefC_Listen_Face_Max		CefC_Face_Router_Max
 #endif // CefC_Android
+
+/* cefstatus output option */
+#define CefC_Ctrl_StatusOpt_Stat	0x0001
+#define CefC_Ctrl_StatusOpt_Metric	0x0002
+#if ((defined CefC_CefnetdCache) && (defined CefC_Develop))
+#define CefC_Ctrl_StatusOpt_LCache	0x0004
+#endif //((defined CefC_CefnetdCache) && (defined CefC_Develop))
+
 
 /*------------------------------------------------------------------*/
 /* Neighbor Management												*/
@@ -244,12 +261,18 @@ typedef struct {
 	uint16_t 			nbr_mng_thread;
 	uint16_t 			fwd_rate;
 	uint8_t 			cs_mode;
-	uint32_t 			forwarding_info_strategy;
-												/* FIB entry selection strategy.		*/
-												/*   0: Forward using 					*/
+	char*				forwarding_strategy;	/* FIB entry selection strategy.		*/
+												/*  default:							*/
+												/*      Forward using					*/
 												/*      any 1 match FIB entry			*/
-												/*   1: Forward using 					*/
+												/*  flooding:							*/
+												/*      Forward using					*/
 												/*      all match FIB entries			*/
+												/*  shortest_path:						*/
+												/*      Forward using					*/
+												/*      the Lowest Routing Cost			*/
+												/*      in match FIB entries			*/
+												/*  and any more...						*/
 	uint32_t			app_fib_max_size;		/* Maximum FIB(APP) entry 				*/
 	uint32_t			app_pit_max_size;		/* Maximum PIT(APP) entry 				*/
 	char*				My_Node_Name;			/* Node Name							*/
@@ -274,7 +297,9 @@ typedef struct {
 	/*202108*/
 	int					IR_Option;				/* Interest Return Option 0:Not Create & Forward */
 												/* 						  1:Create & Forward */
-
+	int					IR_enable[10];			/* ENABLED_RETURN_CODE 0:Disabled 1:Enabled */
+	//20220311
+	uint32_t			Selective_max_range;
 
 #ifdef CefC_C3
 	int					c3_log;					/* C3_Log	0:OFF 1:ON					*/
@@ -333,8 +358,14 @@ typedef struct {
 	uint32_t 			fib_clean_i;
 	
 	/********** Statistics 			***********/
-	uint64_t 			stat_recv_frames;
-	uint64_t 			stat_send_frames;
+	uint64_t 			stat_recv_frames;				/* Count of Received ContentObject */
+	uint64_t 			stat_send_frames;				/* Count of Send ContentObject	*/
+	uint64_t			stat_recv_interest;				/* Count of Received Interest	*/
+	uint64_t			stat_recv_interest_types[3];	/* Count of Received Interest by type */
+														/* 0:Regular, 1:Symbolic, 2:Selective */
+	uint64_t			stat_send_interest;				/* Count of Send Interest		*/
+	uint64_t			stat_send_interest_types[3];	/* Count of Send Interest by type */
+														/* 0:Regular, 1:Symbolic, 2:Selective */
 
 	/********** Content Store		***********/
 	CefT_Cs_Stat*		cs_stat;				/* Status of Content Store				*/
@@ -409,6 +440,10 @@ typedef struct {
 	CefT_Hash_Handle	c3_log_sum_fib;
 	CefT_Hash_Handle	c3_log_sum_pit;
 #endif	//CefC_C3
+
+	/********** Forwarding Strategy Plugin **********/
+	CefT_Plugin_Fwd_Strtgy*		fwd_strtgy_hdl;
+	void*						fwd_strtgy_lib;
 
 } CefT_Netd_Handle;
 
@@ -583,5 +618,4 @@ void *
 cefnetd_cefstatus_thread (
 	void *p
 );
-
 #endif // __CEF_NETD_HEADER__

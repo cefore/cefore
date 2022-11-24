@@ -68,6 +68,13 @@
 #define CefC_Cleanup_Smax	 		4
 #endif
 
+/* [Coefficients for expanding hash tables]                                         */
+/* Hash tables other than the following do not use coefficients.                    */
+#define CefC_Hash_Coef_FIB			1			/* for FIB (Normal, App, c3)                       */
+#define CefC_Hash_Coef_PIT			1			/* for PIT (Normal, App, c3)                       */
+#define CefC_Hash_Coef_Cache		1			/* for Work Buffer, Memory Cache(conpubd/csmgrd),  */
+												/*     Cache Algorithm(csmgrd/conpubd/local cache) */
+
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
@@ -108,6 +115,13 @@ CefT_Hash_Handle
 cef_hash_tbl_create (
 	uint32_t table_size
 );
+
+CefT_Hash_Handle
+cef_hash_tbl_create_ext (
+	uint32_t table_size,
+	uint8_t coef
+);
+
 void
 cef_hash_tbl_destroy (
 	CefT_Hash_Handle handle
@@ -225,8 +239,20 @@ cef_lhash_tbl_create (
 );
 
 CefT_Hash_Handle
+cef_lhash_tbl_create_ext (
+	uint32_t table_size,
+	uint8_t coef
+);
+
+CefT_Hash_Handle
 cef_lhash_tbl_create_u32 (
 	uint32_t table_size
+);
+
+CefT_Hash_Handle
+cef_lhash_tbl_create_u32_ext (
+	uint32_t table_size,
+	uint8_t coef
 );
 
 void

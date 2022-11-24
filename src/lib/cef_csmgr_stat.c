@@ -75,7 +75,7 @@ static int xpthread_mutex_lock (const char* pname, int pline, pthread_mutex_t *m
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
-
+#if 0
 typedef struct {
 	
 	uint64_t 			capacity;
@@ -85,7 +85,7 @@ typedef struct {
 	pthread_mutex_t 	stat_mutex;
 
 } CsmgrT_Stat_Table;
-
+#endif
 /****************************************************************************************
  State Variables
  ****************************************************************************************/
@@ -199,7 +199,8 @@ CsmgrT_Stat*
 csmgr_stat_content_info_is_exist (
 	CsmgrT_Stat_Handle hdl, 
 	const unsigned char* name, 
-	uint16_t name_len
+	uint16_t name_len,
+	CsmgrT_DB_COB_MAP**	cob_map
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd = NULL;
@@ -752,6 +753,36 @@ csmgr_stat_access_count_update (
 }
 
 /*--------------------------------------------------------------------------------------
+	Update request count
+----------------------------------------------------------------------------------------*/
+void 
+csmgr_stat_request_count_update (
+	CsmgrT_Stat_Handle hdl, 
+	const unsigned char* name, 
+	uint16_t name_len
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	CsmgrT_Stat* rcd;
+	
+	if (!tbl) {
+		return;
+	}
+	
+	pthread_mutex_lock (&tbl->stat_mutex);
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
+	if (!rcd) {
+		pthread_mutex_unlock (&tbl->stat_mutex);
+		return;
+	}
+	if (rcd->req_count < UINT64_MAX) {
+		rcd->req_count++;
+	}
+	pthread_mutex_unlock (&tbl->stat_mutex);
+	
+	return;
+}
+
+/*--------------------------------------------------------------------------------------
 	Update cache capacity
 ----------------------------------------------------------------------------------------*/
 void 
@@ -825,7 +856,8 @@ CsmgrT_Stat*
 csmgr_stat_content_info_init (
 	CsmgrT_Stat_Handle hdl, 
 	const unsigned char* name, 
-	uint16_t name_len
+	uint16_t name_len,
+	CsmgrT_DB_COB_MAP**	cob_map
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd;
@@ -848,6 +880,33 @@ csmgr_stat_content_info_init (
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	
 	return (rcd);
+}
+/*--------------------------------------------------------------------------------------
+	Init the valiables of the specified content (for version)
+----------------------------------------------------------------------------------------*/
+int
+csmgr_stat_content_info_version_init (
+	CsmgrT_Stat_Handle hdl, 
+	CsmgrT_Stat* rcd,
+	unsigned char* version, 
+	uint16_t ver_len
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	
+	pthread_mutex_lock (&tbl->stat_mutex);
+	rcd->ver_len = ver_len;
+	if (ver_len) {
+		rcd->version = (unsigned char*) malloc (ver_len);
+		if (rcd->version == NULL) {
+			pthread_mutex_unlock (&tbl->stat_mutex);
+			return (-1);
+		}
+		memcpy (rcd->version, version, ver_len);
+	} else {
+		rcd->version = NULL;
+	}
+	pthread_mutex_unlock (&tbl->stat_mutex);
+	return (1);
 }
 /*--------------------------------------------------------------------------------------
 	Deletes the content information
@@ -879,27 +938,33 @@ csmgr_stat_content_info_delete (
 	}
 	if (cp != NULL) {
 		if ((cp->name_len == name_len) &&
-		   (memcmp (cp->name, name, name_len) == 0)) {
-		   	tbl->rcds[index] = cp->next;
+			(memcmp (cp->name, name, name_len) == 0)) {
+			tbl->rcds[index] = cp->next;
 			tbl->cached_con_num--;
-		   	stat_index_mngr[cp->index] = 0;
+			stat_index_mngr[cp->index] = 0;
 			free (cp->cob_map);
-		   	free (cp);
+			if (cp->version != NULL && cp->ver_len > 0) {
+				free (cp->version);
+			}
+			free (cp);
 			pthread_mutex_unlock (&tbl->stat_mutex);
-		   	return;
+			return;
 		} else {
 			cp = tbl->rcds[index];
 			for (; cp->next != NULL; cp = cp->next) {
 				if ((cp->next->name_len == name_len) &&
-				   (memcmp (cp->next->name, name, name_len) == 0)) {
-				   	wcp = cp->next;
-				   	cp->next = cp->next->next;
+					(memcmp (cp->next->name, name, name_len) == 0)) {
+					wcp = cp->next;
+					cp->next = cp->next->next;
 					tbl->cached_con_num--;
-				   	stat_index_mngr[wcp->index] = 0;
+					stat_index_mngr[wcp->index] = 0;
 					free (wcp->cob_map);
-				   	free (wcp);
+					if (wcp->version != NULL && wcp->ver_len > 0) {
+						free (wcp->version);
+					}
+					free (wcp);
 					pthread_mutex_unlock (&tbl->stat_mutex);
-				   	return;
+					return;
 				}
 			}
 		}

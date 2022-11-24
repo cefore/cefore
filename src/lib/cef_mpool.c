@@ -158,6 +158,7 @@ cef_mpool_alloc (
 		}
 		break;
 	}
+
 	
 	if (mpmng->tail != mpmng->head) {
 		index = mpmng->head;
@@ -259,6 +260,7 @@ cef_mpool_handle_create (
 	}
 	memset (mpmng, 0, sizeof (CefT_Mp_Mng));
 
+
 	if (key != NULL) {
 		mpmng->klen = (size_t) strlen (key);
 		mpmng->key  = (char*) malloc (sizeof (char) * (mpmng->klen + 1));
@@ -289,7 +291,6 @@ cef_mpool_handle_create (
 		return (NULL);
 	}
 	memset (mpmng->pool, 0, sizeof (CefT_Mp_Pool) * mpmng->pool_num);
-
 
 	mpmng->pool[0].blocks
 		= (unsigned char*) calloc (mpmng->increment, mpmng->size);
@@ -358,10 +359,10 @@ cef_mpool_handle_update (
 	new_pool[i].head = new_pool[i].blocks - 1;
 	new_pool[i].tail = new_pool[i].blocks + mpmng->increment * (mpmng->size - 1) + 1;
 
+
 	free (mpmng->pool);
 	mpmng->pool = new_pool;
 	mpmng->pool_num++;
-
 
 	/* prepare management information 	*/
 	new_block_num = mpmng->block_num + mpmng->increment;

@@ -146,6 +146,67 @@ cef_hash_tbl_create (
 	return ((CefT_Hash_Handle) ht);
 }
 
+CefT_Hash_Handle
+cef_hash_tbl_create_ext (
+	uint32_t table_size,
+	uint8_t coef
+) {
+	CefT_Hash* ht = NULL;
+	int i, n;
+	int flag;
+	uint32_t def_tbl_size = table_size;
+	uint64_t table_size64;
+	
+	table_size64 = table_size * coef;
+	
+	/* A prime number larger than the maximum size defined by the user	*/
+	/* is set as the table size.										*/
+	/* The maximum size defined by the user is set to "def_elem_max".	*/
+	for (i = table_size64 ; i > 1 ; i++) {
+		flag = 0;
+		
+		for (n = 2 ; n < table_size64 ; n++) {
+			if (table_size64 % n == 0) {
+				flag = 1;
+				break;
+			}
+		}
+		if (flag) {
+			table_size64++;
+		} else {
+			break;
+		}
+	}
+	
+	if (table_size64 > UINT32_MAX) {
+		table_size64 = UINT32_MAX;
+	}
+	table_size = (uint32_t)table_size64;
+
+	ht = (CefT_Hash*) malloc (sizeof (CefT_Hash));
+	if (ht == NULL) {
+		return ((CefT_Hash_Handle) NULL);
+	}
+	memset (ht, 0, sizeof (CefT_Hash));
+
+	ht->tbl = (CefT_Hash_Table*) malloc (sizeof (CefT_Hash_Table) * table_size);
+	if (ht->tbl == NULL) {
+		free (ht);
+		return ((CefT_Hash_Handle) NULL);
+	}
+	memset (ht->tbl, 0, sizeof (CefT_Hash_Table) * table_size);
+
+	srand ((unsigned) time (NULL));
+	ht->seed = (uint32_t)(rand () + 1);
+	ht->elem_max = table_size;
+	ht->def_elem_max = def_tbl_size;
+	ht->cleanup_step = CefC_Cleanup_Smin;
+	ht->cleanup_mwin = CefC_Cleanup_Wmin;
+	ht->cleanup_cwin = 0;
+
+	return ((CefT_Hash_Handle) ht);
+}
+
 void
 cef_hash_tbl_destroy (
 	CefT_Hash_Handle handle
@@ -849,6 +910,58 @@ cef_lhash_tbl_create (
 
 	return ((CefT_Hash_Handle) ht);
 }
+
+CefT_Hash_Handle
+cef_lhash_tbl_create_ext (
+	uint32_t table_size,
+	uint8_t coef
+) {
+	CefT_List_Hash* ht = NULL;
+	int i, n;
+	int flag;
+	uint64_t table_size64;
+	
+	table_size64 = table_size * coef;
+	
+	for (i = table_size64 ; i > 1 ; i++) {
+		flag = 0;
+		
+		for (n = 2 ; n < table_size64 ; n++) {
+			if (table_size64 % n == 0) {
+				flag = 1;
+				break;
+			}
+		}
+		if (flag) {
+			table_size64++;
+		} else {
+			break;
+		}
+	}
+	
+	if (table_size64 > UINT32_MAX) {
+		table_size64 = UINT32_MAX;
+	}
+	table_size = (uint32_t)table_size64;
+	
+	ht = (CefT_List_Hash*) malloc (sizeof (CefT_List_Hash));
+	if (ht == NULL) {
+		return ((CefT_Hash_Handle) NULL);
+	}
+	memset (ht, 0, sizeof (CefT_List_Hash));
+
+	ht->tbl = (CefT_List_Hash_Cell**) malloc (sizeof (CefT_List_Hash_Cell *) * table_size);
+	if (ht->tbl == NULL) {
+		free (ht);
+		return ((CefT_Hash_Handle) NULL);
+	}
+	memset (ht->tbl, 0, sizeof (CefT_List_Hash_Cell*) * table_size);
+	
+	ht->elem_max = table_size;
+
+	return ((CefT_Hash_Handle) ht);
+}
+
 CefT_Hash_Handle
 cef_lhash_tbl_create_u32 (
 	uint32_t table_size
@@ -875,6 +988,57 @@ cef_lhash_tbl_create_u32 (
 	if (table_size > UINT_MAX) {
 		table_size = UINT_MAX;
 	}
+
+	ht = (CefT_List_Hash*) malloc (sizeof (CefT_List_Hash));
+	if (ht == NULL) {
+		return ((CefT_Hash_Handle) NULL);
+	}
+	memset (ht, 0, sizeof (CefT_List_Hash));
+
+	ht->tbl = (CefT_List_Hash_Cell**) malloc (sizeof (CefT_List_Hash_Cell *) * table_size);
+	if (ht->tbl == NULL) {
+		free (ht);
+		return ((CefT_Hash_Handle) NULL);
+	}
+	memset (ht->tbl, 0, sizeof (CefT_List_Hash_Cell*) * table_size);
+	
+	ht->elem_max = table_size;
+
+	return ((CefT_Hash_Handle) ht);
+}
+
+CefT_Hash_Handle
+cef_lhash_tbl_create_u32_ext (
+	uint32_t table_size,
+	uint8_t coef
+) {
+	CefT_List_Hash* ht = NULL;
+	int i, n;
+	int flag;
+	uint64_t table_size64;
+	
+	table_size64 = table_size * coef;
+	
+	for (i = table_size64 ; i > 1 ; i++) {
+		flag = 0;
+		
+		for (n = 2 ; n < table_size64 ; n++) {
+			if (table_size64 % n == 0) {
+				flag = 1;
+				break;
+			}
+		}
+		if (flag) {
+			table_size64++;
+		} else {
+			break;
+		}
+	}
+
+	if (table_size64 > UINT32_MAX) {
+		table_size = UINT32_MAX;
+	}
+	table_size = (uint32_t)table_size64;
 
 	ht = (CefT_List_Hash*) malloc (sizeof (CefT_List_Hash));
 	if (ht == NULL) {

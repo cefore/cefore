@@ -104,6 +104,7 @@ int main (
 	int dir_path_f 		= 0;
 	int port_num_f 		= 0;
 	int pit_f			= 0;
+	uint16_t output_opt_f = 0;
 	char*	work_arg;
 	char 	file_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
@@ -154,6 +155,29 @@ int main (
 				cef_log_write (CefC_Log_Error, "[--pit] has no parameter.\n");
 				exit (1);
 			}
+		} else if (strcmp (work_arg, "-s") == 0) {
+			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
+				output_opt_f |= CefC_Ctrl_StatusOpt_Stat;
+			} else {
+				cef_log_write (CefC_Log_Error, "[-s] has no parameter.\n");
+				exit (1);
+			}
+		} else if (strcmp (work_arg, "-m") == 0) {			//Secret option
+			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
+				output_opt_f |= CefC_Ctrl_StatusOpt_Metric;
+			} else {
+				cef_log_write (CefC_Log_Error, "[-m] has no parameter.\n");
+				exit (1);
+			}
+#if ((defined CefC_CefnetdCache) && (defined CefC_Develop))
+		} else if (strcmp (work_arg, "-lc") == 0) {			//Secret option
+			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
+				output_opt_f |= CefC_Ctrl_StatusOpt_LCache;
+			} else {
+				cef_log_write (CefC_Log_Error, "[-lc] has no parameter.\n");
+				exit (1);
+			}
+#endif //((defined CefC_CefnetdCache) && (defined CefC_Develop))
 		} else if (strcmp (work_arg, "-p") == 0) {
 			if (i + 1 == argc) {
 				cef_log_write (CefC_Log_Error, "[-p] has no parameter.\n");
@@ -224,11 +248,21 @@ int main (
 		cef_client_message_input (fhdl, buff, 
 			CefC_Ctrl_Len + CefC_Ctrl_StatusPit_Len + CefC_Ctrl_User_Len);
 	} else if (strcmp (argv[1], CefC_Arg_Status) == 0) {
-		sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_Status);
-		memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_Status_Len], 
+		if (output_opt_f) {
+			sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_StatusStat);
+			memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len], 
+						&output_opt_f, sizeof (uint16_t));
+			memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len + sizeof (uint16_t)], 
 						launched_user_name, CefC_Ctrl_User_Len);
-		cef_client_message_input (fhdl, buff, 
-			CefC_Ctrl_Len + CefC_Ctrl_Status_Len + CefC_Ctrl_User_Len);
+			cef_client_message_input (fhdl, buff, 
+				CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len + sizeof (uint16_t) + CefC_Ctrl_User_Len);
+		} else {
+			sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_Status);
+			memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_Status_Len], 
+						launched_user_name, CefC_Ctrl_User_Len);
+			cef_client_message_input (fhdl, buff, 
+				CefC_Ctrl_Len + CefC_Ctrl_Status_Len + CefC_Ctrl_User_Len);
+		}
 		
 		usleep (CefC_StatusRspWait);
 		int ff = 1;

@@ -48,7 +48,8 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
-
+#define CefC_PitEntryVersion_Max		2	/* Max number of versions that can be 		*/
+											/* registered in 1 Down Face Entry (other than AnyVer) */
 
 /****************************************************************************************
  Structure Declarations
@@ -84,6 +85,14 @@ typedef struct {
 /*------------------------------------------------------------------*/
 /* Down Stream Face entry											*/
 /*------------------------------------------------------------------*/
+//0.8.3c S
+/***** T_VERSION Information for PIT entry 	*****/
+typedef struct CefT_Pit_Tversion {
+	int 			tver_len;			/* T_VERSION Length					*/
+	unsigned char*	tver_value;			/* T_VERSION Value    		 		*/
+	struct CefT_Pit_Tversion* tvnext;	/* Next T_VERSION	 				*/
+} CefT_Pit_Tversion;
+//0.8.3c E
 
 typedef struct CefT_Down_Faces {
 
@@ -94,6 +103,8 @@ typedef struct CefT_Down_Faces {
 	uint64_t	 	lifetime_us;			/* Lifetime 								*/
 	uint64_t		nonce;					/* Nonce 									*/
 	struct CefT_Down_Faces* next;			/* pointer to next Down Stream Face entry 	*/
+	int				tver_none;				/* No T_VERSION flag 0.8.3c */
+	struct CefT_Pit_Tversion	tver;		/* T_VERSION List	 0.8.3c */
 
 	/*--------------------------------------------
 		Variables related to Content Store
@@ -375,4 +386,23 @@ cef_pit_interest_return_set (
 	unsigned char* 		IR_msg				/* InterestReturn msg 						*/
 ) ;
 
+/*--------------------------------------------------------------------------------------
+	Search the version entry in specified Down Face entry
+----------------------------------------------------------------------------------------*/
+int											/* found entry = 1							*/
+cef_pit_entry_down_face_ver_search (
+	CefT_Down_Faces* dnface,				/* Down Face entry							*/
+	int head_or_point_f,					/* 1: dnface is head of down face lest		*/
+											/* 0: dnface is pointer of 1 entry			*/
+	CefT_Parsed_Message* pm 				/* Parsed CEFORE message					*/
+);
+/*--------------------------------------------------------------------------------------
+	Remove the version entry in specified Down Face entry
+----------------------------------------------------------------------------------------*/
+void
+cef_pit_entry_down_face_ver_remove (
+	CefT_Pit_Entry* pe, 					/* PIT entry								*/
+	CefT_Down_Faces* dnface,				/* Down Face entry							*/
+	CefT_Parsed_Message* pm 				/* Parsed CEFORE message					*/
+);
 #endif // __CEF_PIT_HEADER__
