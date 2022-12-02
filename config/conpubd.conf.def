@@ -1,0 +1,96 @@
+#
+# conpubd.conf
+#
+
+# Operational Log Level
+#  0: Error only
+#  1: Warning and Error
+#  2: Info, Warning, and Error
+#
+#CEF_LOG_LEVEL=0
+
+#
+# Port number used by conpubd.
+# This value must be higher than 1024 and lower than 65536.
+#
+#PORT_NUM=9799
+
+#
+# Socket ID used by conpubd and cefnetd.
+# This value is the string type, not the integer type.
+#
+#LOCAL_SOCK_ID=0
+
+#
+# Plugin name (string) used by conpubd.
+# Supports only the following cache plugins.
+#  filesystem : UNIX filesystem
+#  memory     : Memory
+#
+#CACHE_TYPE=filesystem
+
+#
+# Directory name. Only applicable for filesystem cache.
+# The default is $CEFORE_DIR/cefore.
+#
+#CACHE_PATH=
+
+#
+# Interval (seconds) at which conpubd checks for expired content.
+# This value must be greater than or equal to 60 and less than 86400 (24 hours).
+#
+#PURGE_INTERVAL=60
+
+#
+# RTC(seconds) to set for Cob to send. 
+# This value must be higher than 1 and lower than 3600.
+#
+#CACHE_DEFAULT_RCT=600
+
+#
+# Specify the Validation Algorithm to be added to Content Object.
+# Validation is not added when NONE is specified.
+# Either sha256 or crc32 can be specified.
+#
+#VALID_ALG=NONE
+
+#
+# Total content that can be registered.
+# This value must be greater than or equal to 1 and less than or equal to 1,000,000.
+# 
+#CONTENTS_NUM=1024
+
+
+#
+# Total content capacity. Specified by total Content Object number
+# This value must be greater than or equal to 1 and less than or equal to 
+# 68,719,476,735(0xFFFFFFFFF).
+# It can also be specified in 16 digits.
+# (e.g.: 0xFF)
+#
+#CONTENTS_CAPACITY=4294967296
+
+#
+# Specify the maximum payload length (bytes) of Content Object.
+# This value must be greater than or equal to 1024 and less than or equal to 57344.
+#
+#BLOCK_SIZE=1024
+
+#
+# cefnetd's IP address
+#
+#CEFNETD_NODE=127.0.0.1
+
+#
+# cefnetd's TCP port number.
+# This value must be higher than 1024 and lower than 65536.
+#
+#CEFNETD_PORT_NUM=9896
+
+# Debug log level
+#
+#  Range of the debug log level can be specified from 0 to 3. (0 indicates "no debug logging")
+#  Note that you must specify "--enable-debug" for configure option to enable this debug logging.
+#
+#CEF_DEBUG_LEVEL=0
+

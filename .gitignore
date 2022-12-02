@@ -1,3 +1,4 @@
+# Configuration for Cefore
 autom4te.cache/
 config.*
 
@@ -13,7 +14,7 @@ config.*
 *.Po
 *.Plo
 
-config/
+config/*
 !config/*.pem
 !config/*.def
 !config/Makefile.am
@@ -52,3 +53,6 @@ src/csmgrd/csmgrd/csmgrctrl
 src/csmgrd/csmgrd/csmgrd
 src/csmgrd/csmgrd/.libs/csmgrctrl
 src/csmgrd/csmgrd/.libs/csmgrd
+
+# Configuration for Mac
+.DS_Store
