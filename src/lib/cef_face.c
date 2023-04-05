@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -109,7 +109,7 @@ static CefT_Sock*							/* the created new entry					*/
 cef_face_sock_entry_create (
 	int sock, 								/* file descriptor to register				*/
 	struct sockaddr* ai_addr,
-	socklen_t ai_addrlen, 
+	socklen_t ai_addrlen,
 	int ai_family
 );
 /*--------------------------------------------------------------------------------------
@@ -120,14 +120,14 @@ cef_face_sock_entry_destroy (
 	CefT_Sock* entry						/* the entry to destroy						*/
 );
 /*--------------------------------------------------------------------------------------
-	Creates the peer ID 
+	Creates the peer ID
 ----------------------------------------------------------------------------------------*/
-static void 
+static void
 cef_face_peer_id_create (
 	const char* destination, 				/* String of the destination address 		*/
 	int protocol,							/* protoco (udp,tcp,local) 					*/
-	char* peer_id, 
-	char* usr_id, 
+	char* peer_id,
+	char* usr_id,
 	char* port_str
 );
 /*--------------------------------------------------------------------------------------
@@ -143,9 +143,9 @@ cef_face_unused_faceid_search (
 static int									/* Face-ID									*/
 cef_face_lookup_faceid (
 	int protocol,
-	char* peer_id, 
-	char* usr_id, 
-	char* port_str, 
+	char* peer_id,
+	char* usr_id,
+	char* port_str,
 	int* create_f
 );
 #ifdef CefC_DebugOld
@@ -168,7 +168,7 @@ cef_face_init (
 	uint8_t 	node_type					/* Node Type (Router/Receiver....)			*/
 ){
 	int		i;
-	
+
 	/* Creates the Socket Table and Face Table 		*/
 	if (face_tbl != NULL) {
 		cef_log_write (CefC_Log_Error, "%s (face_tbl)\n", __func__);
@@ -196,25 +196,19 @@ cef_face_init (
 		cef_log_write (CefC_Log_Error, "%s (max_tbl_size)\n", __func__);
 		return (-1);
 	}
-	
+
 	face_tbl = (CefT_Face*) malloc (sizeof (CefT_Face) * max_tbl_size);
 	memset (face_tbl, 0, sizeof (CefT_Face) * max_tbl_size);
 
-#if 0
-	for (i = 0; i < max_tbl_size; i++)
-		face_tbl[i].ifindex = -1;
-#else
-	//0.8.3
 	for (i = 0; i < max_tbl_size; i++) {
 		face_tbl[i].ifindex = -1;
 		face_tbl[i].bw_stat_i = -1;	//0.8.3
 	}
-#endif
 	sock_tbl = cef_hash_tbl_create ((uint16_t) max_tbl_size);
-	
+
 	local_sock_path_len = cef_client_local_sock_name_get (local_sock_path);
 	babel_sock_path_len = cef_client_babel_sock_name_get (babel_sock_path);
-	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -227,15 +221,11 @@ cef_face_lookup_faceid_from_addrstr (
 ) {
 	int faceid;
 	int create_f = 0;
-#ifdef CefC_Neighbour
-	int msg_len;
-	unsigned char buff[CefC_Max_Length];
-#endif
 	int prot_index = CefC_Face_Type_Invalid;
 	char port_str[32];
 	char peer_id[512];
 	char usr_id[512];
-	
+
 	if (strcmp (protocol, "udp") == 0) {
 		prot_index = CefC_Face_Type_Udp;
 	}
@@ -244,26 +234,9 @@ cef_face_lookup_faceid_from_addrstr (
 	}
 	port_str[0] = 0x00;
 	cef_face_peer_id_create (destination, prot_index, peer_id, usr_id, port_str);
-	
+
 	faceid = cef_face_lookup_faceid (prot_index, peer_id, usr_id, port_str, &create_f);
-	
-	if ((faceid > 0) && (create_f)) {
-		
-#ifdef CefC_Neighbour
-		/* send a link message */
-		msg_len = cef_frame_interest_link_msg_create (buff);
-		
-		if (msg_len > 0) {
-#ifdef CefC_Debug
-			cef_dbg_write (CefC_Dbg_Finer, 
-				"Send a Interest Link message to FID#%d\n", faceid);
-#endif // CefC_Debug
-			cef_face_frame_send_forced (faceid, buff, (size_t) msg_len);
-		}
-#endif
-		
-	}
-	
+
 	return (faceid);
 }
 /*--------------------------------------------------------------------------------------
@@ -279,17 +252,17 @@ cef_face_search_faceid (
 	char peer_id[512];
 	char usr_id[512];
 	CefT_Sock* entry;
-	
+
 	if (strcmp (protocol, "udp") == 0) {
 		prot_index = CefC_Face_Type_Udp;
 	}
 	if (strcmp (protocol, "tcp") == 0) {
 		prot_index = CefC_Face_Type_Tcp;
 	}
-	
+
 	port_str[0] = 0x00;
 	cef_face_peer_id_create (destination, prot_index, peer_id, usr_id, port_str);
-	
+
 	entry = (CefT_Sock*) cef_hash_tbl_item_get (
 				sock_tbl, (const unsigned char*) peer_id, strlen (peer_id));
 	if (entry) {
@@ -307,7 +280,7 @@ cef_face_search_faceid (
 			}
 		}
 	}
-	
+
 	return (-1);
 }
 /*--------------------------------------------------------------------------------------
@@ -316,10 +289,10 @@ cef_face_search_faceid (
 int
 cef_face_update_listen_faces (
 	struct pollfd* inudpfds,
-	uint16_t* inudpfaces, 
-	uint16_t* inudpfdc, 
+	uint16_t* inudpfaces,
+	uint16_t* inudpfdc,
 	struct pollfd* intcpfds,
-	uint16_t* intcpfaces, 
+	uint16_t* intcpfaces,
 	uint16_t* intcpfdc
 ) {
 	int i;
@@ -327,7 +300,7 @@ cef_face_update_listen_faces (
 	int new_intcpfdc = 0;
 
 	for (i = CefC_Face_Reserved ; i < assigned_faceid ; i++) {
-		
+
 		if (face_tbl[i].fd > 0) {
 			if (face_tbl[i].protocol == CefC_Face_Type_Tcp) {
 				intcpfaces[new_intcpfdc] = i;
@@ -344,7 +317,7 @@ cef_face_update_listen_faces (
 	}
 	*inudpfdc = new_inudpfdc;
 	*intcpfdc = new_intcpfdc;
-	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -364,37 +337,37 @@ cef_face_lookup_peer_faceid (
 	char port_str[32];
 	char peer_id[512];
 	char usr_id[512];
-	
+
 	/* Obtains the source node's information 	*/
-	result = getnameinfo ((struct sockaddr*) sas, sas_len, 
+	result = getnameinfo ((struct sockaddr*) sas, sas_len,
 				name, sizeof (name), port_str, sizeof (port_str), NI_NUMERICHOST | NI_NUMERICSERV);
 	if (result != 0) {
 		cef_log_write (CefC_Log_Error, "%s (getnameinfo:%s)\n", __func__, gai_strerror(result));
 		return (-1);
 	}
-	
+
 	/* Looks up the source node's information from the source table 	*/
 	cef_face_peer_id_create (name, protocol, peer_id, usr_id, port_str);
 	entry = (CefT_Sock*) cef_hash_tbl_item_get (
 									sock_tbl,
 									(const unsigned char*) peer_id, strlen (peer_id));
 	strcpy( user_id, usr_id );	//0.8.3
-	
+
 	if (entry) {
 #ifdef CefC_Debug
-		cef_dbg_write (CefC_Dbg_Finest, 
+		cef_dbg_write (CefC_Dbg_Finest,
 			"[face] Lookup the Face#%d for %s\n", entry->faceid, peer_id);
 #endif // CefC_Debug
 		return (entry->faceid);
 	}
-	
+
 	faceid = cef_face_lookup_faceid (protocol, peer_id, usr_id, port_str, NULL);
-	
+
 #ifdef CefC_Debug
-	cef_dbg_write (CefC_Dbg_Finer, 
+	cef_dbg_write (CefC_Dbg_Finer,
 		"[face] Creation the new Face#%d for %s.\n", faceid, peer_id);
 #endif // CefC_Debug
-	
+
 	return (faceid);
 }
 /*--------------------------------------------------------------------------------------
@@ -417,7 +390,7 @@ cef_face_lookup_local_faceid (
 									sock_tbl, (const unsigned char*)name, strlen (name));
 	if (entry) {
 #ifdef CefC_Debug
-		cef_dbg_write (CefC_Dbg_Finer, 
+		cef_dbg_write (CefC_Dbg_Finer,
 			"[face] Lookup the Face#%d (FD#%d) for local peer\n", entry->faceid, fd);
 #endif // CefC_Debug
 		/* Finds and returns an existing entry 	*/
@@ -447,12 +420,12 @@ cef_face_lookup_local_faceid (
 	face_tbl[faceid].index = index;
 	face_tbl[faceid].fd = entry->sock;
 	face_tbl[faceid].local_f = 1;
-	
+
 #ifdef CefC_Debug
-	cef_dbg_write (CefC_Dbg_Finer, 
+	cef_dbg_write (CefC_Dbg_Finer,
 		"[face] Creation the new Face#%d (FD#%d) for local peer\n", entry->faceid, fd);
 #endif // CefC_Debug
-	
+
 	return (faceid);
 }
 /*--------------------------------------------------------------------------------------
@@ -463,13 +436,13 @@ cef_face_close (
 	int faceid								/* Face-ID									*/
 ) {
 	CefT_Sock* entry;
-	
+
 	entry = (CefT_Sock*) cef_hash_tbl_item_remove_from_index (
 										sock_tbl, face_tbl[faceid].index);
-	
+
 	if (entry) {
 #ifdef CefC_Debug
-		cef_dbg_write (CefC_Dbg_Finer, 
+		cef_dbg_write (CefC_Dbg_Finer,
 			"[face] Close the Face#%d (FD#%d)\n", faceid, face_tbl[entry->faceid].fd);
 #endif // CefC_Debug
 		face_tbl[faceid].index 		= 0;
@@ -491,13 +464,13 @@ cef_face_close_for_down (
 	int faceid								/* Face-ID									*/
 ) {
 	CefT_Sock* entry;
-	
+
 	entry = (CefT_Sock*) cef_hash_tbl_item_get_from_index (
 										sock_tbl, face_tbl[faceid].index);
-	
+
 	if (entry) {
 #ifdef CefC_Debug
-		cef_dbg_write (CefC_Dbg_Finer, 
+		cef_dbg_write (CefC_Dbg_Finer,
 			"[face] Close the Face#%d (only FD#%d)\n", faceid, face_tbl[entry->faceid].fd);
 #endif // CefC_Debug
 		close (entry->sock);
@@ -514,20 +487,20 @@ cef_face_down (
 	int faceid								/* Face-ID									*/
 ) {
 	CefT_Sock* entry;
-	
+
 	entry = (CefT_Sock*) cef_hash_tbl_item_get_from_index (
 										sock_tbl, face_tbl[faceid].index);
-	
+
 	if (entry) {
 #ifdef CefC_Debug
-		cef_dbg_write (CefC_Dbg_Finer, 
+		cef_dbg_write (CefC_Dbg_Finer,
 			"[face] Down the Face#%d (FD#%d)\n", faceid, face_tbl[entry->faceid].fd);
 #endif // CefC_Debug
 		face_tbl[faceid].fd = 0;
 		face_tbl[faceid].ifindex 	= -1;	//0.8.3
 		face_tbl[faceid].bw_stat_i 	= -1;	//0.8.3
 	}
-	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -572,7 +545,7 @@ cef_face_udp_listen_face_create (
 	int ret_val = 0;
 
 	my_udp_listen_port_num = port_num;
-	
+
 	memset (&hints, 0, sizeof (hints));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_DGRAM;
@@ -583,7 +556,7 @@ cef_face_udp_listen_face_create (
 	sprintf (port_str, "%d", port_num);
 
 	if ((err = getaddrinfo (NULL, port_str, &hints, &res)) != 0) {
-		cef_log_write (CefC_Log_Error, 
+		cef_log_write (CefC_Log_Error,
 			"%s (getaddrinfo:%s)\n", __func__, gai_strerror(err));
 		return (-1);
 	}
@@ -652,7 +625,7 @@ cef_face_udp_listen_face_create (
 				close (entryv4->sock);
 				face_tbl[CefC_Faceid_ListenUdpv4].index = indexv4;
 				face_tbl[CefC_Faceid_ListenUdpv4].fd = 0;
-				cef_log_write (CefC_Log_Error, 
+				cef_log_write (CefC_Log_Error,
 					"[face] Failed to create the listen face with UDP (%s)\n", strerror(errno));
 				ret_val = -1;
 			} else {
@@ -663,14 +636,14 @@ cef_face_udp_listen_face_create (
 				*res_v4 = CefC_Faceid_ListenUdpv4;
 			}
 		}
-	
+
 		errno = 0;
 		if (indexv6 >= 0) {
 			if (bind (entryv6->sock, entryv6->ai_addr, entryv6->ai_addrlen) < 0) {
 				close (entryv6->sock);
 				face_tbl[CefC_Faceid_ListenUdpv6].index = indexv6;
 				face_tbl[CefC_Faceid_ListenUdpv6].fd = 0;
-				cef_log_write (CefC_Log_Error, 
+				cef_log_write (CefC_Log_Error,
 					"[face] Failed to create the listen face with UDP (%s)\n", strerror(errno));
 				ret_val = -1;
 			} else {
@@ -712,7 +685,7 @@ cef_face_tcp_listen_face_create (
 	int ret_val = 0;
 
 	my_tcp_listen_port_num = port_num;
-	
+
 	memset (&hints, 0, sizeof (hints));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
@@ -723,7 +696,7 @@ cef_face_tcp_listen_face_create (
 	sprintf (port_str, "%d", port_num);
 
 	if ((err = getaddrinfo (NULL, port_str, &hints, &res)) != 0) {
-		cef_log_write (CefC_Log_Error, 
+		cef_log_write (CefC_Log_Error,
 			"%s (getaddrinfo:%s)\n", __func__, gai_strerror(err));
 		return (-1);
 	}
@@ -790,23 +763,23 @@ cef_face_tcp_listen_face_create (
 				close (entryv4->sock);
 				face_tbl[CefC_Faceid_ListenTcpv4].index = indexv4;
 				face_tbl[CefC_Faceid_ListenTcpv4].fd = 0;
-				cef_log_write (CefC_Log_Error, 
+				cef_log_write (CefC_Log_Error,
 					"[face] Failed to create the listen face with TCP (%s)\n", strerror(errno));
 				ret_val = -1;
 			} else {
 				if (listen (entryv4->sock, 16) < 0) {
-					cef_log_write (CefC_Log_Error, 
+					cef_log_write (CefC_Log_Error,
 						"%s (listen:%s)\n", __func__, strerror(errno));
 					return (-1);
 				}
 				flag = fcntl (entryv4->sock, F_GETFL, 0);
 				if (flag < 0) {
-					cef_log_write (CefC_Log_Error, 
+					cef_log_write (CefC_Log_Error,
 						"%s (fcntl:%s)\n", __func__, strerror(errno));
 					return (-1);
 				}
 				if (fcntl (entryv4->sock, F_SETFL, flag | O_NONBLOCK) < 0) {
-					cef_log_write (CefC_Log_Error, 
+					cef_log_write (CefC_Log_Error,
 						"%s (fcntl:%s)\n", __func__, strerror(errno));
 					return (-1);
 				}
@@ -817,30 +790,30 @@ cef_face_tcp_listen_face_create (
 				*res_v4 = CefC_Faceid_ListenTcpv4;
 			}
 		}
-	
+
 		errno = 0;
 		if (indexv6 >= 0) {
 			if (bind (entryv6->sock, entryv6->ai_addr, entryv6->ai_addrlen) < 0) {
 				close (entryv6->sock);
 				face_tbl[CefC_Faceid_ListenTcpv6].index = indexv6;
 				face_tbl[CefC_Faceid_ListenTcpv6].fd = 0;
-				cef_log_write (CefC_Log_Error, 
+				cef_log_write (CefC_Log_Error,
 					"[face] Failed to create the listen face with TCP (%s)\n", strerror(errno));
 				ret_val = -1;
 			} else {
 				if (listen (entryv6->sock, 16) < 0) {
-					cef_log_write (CefC_Log_Error, 
+					cef_log_write (CefC_Log_Error,
 						"%s (listen/v6:%s)\n", __func__, strerror(errno));
 					return (-1);
 				}
 				flag = fcntl (entryv6->sock, F_GETFL, 0);
 				if (flag < 0) {
-					cef_log_write (CefC_Log_Error, 
+					cef_log_write (CefC_Log_Error,
 						"%s (fcntl/v6:%s)\n", __func__, strerror(errno));
 					return (-1);
 				}
 				if (fcntl (entryv6->sock, F_SETFL, flag | O_NONBLOCK) < 0) {
-					cef_log_write (CefC_Log_Error, 
+					cef_log_write (CefC_Log_Error,
 						"%s (fcntl/v6:%s)\n", __func__, strerror(errno));
 					return (-1);
 				}
@@ -855,124 +828,6 @@ cef_face_tcp_listen_face_create (
 		indexv6 = -1;
 	}
 	return (ret_val);
-}
-/*--------------------------------------------------------------------------------------
-	Creates the listening UDP socket for NDN with the specified port
-----------------------------------------------------------------------------------------*/
-int											/* Returns a negative value if it fails 	*/
-cef_face_ndn_listen_face_create (
-	uint16_t 		port_num				/* Port Number that cefnetd listens			*/
-) {
-	struct addrinfo hints;
-	struct addrinfo* res;
-	struct addrinfo* cres;
-	int err;
-	char port_str[32];
-	int sock;
-	CefT_Sock* entryv4;
-	CefT_Sock* entryv6;
-	char ip_str[64];
-	char if_str[128];
-	int indexv4 = -1;
-	int indexv6 = -1;
-
-	memset (&hints, 0, sizeof (hints));
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_DGRAM;
-	hints.ai_flags = AI_PASSIVE;
-	
-	sprintf (port_str, "%d", port_num);
-
-	if ((err = getaddrinfo (NULL, port_str, &hints, &res)) != 0) {
-		cef_log_write (CefC_Log_Error, 
-			"%s (getaddrinfo:%s)\n", __func__, gai_strerror(err));
-		return (-1);
-	}
-
-	for (cres = res ; cres != NULL ; cres = res) {
-		res = cres->ai_next;
-
-		sock = socket (cres->ai_family, cres->ai_socktype, 0);
-		if (sock < 0) {
-			continue;
-		}
-
-		memset (ip_str, 0, 64);
-		if (getnameinfo (cres->ai_addr, (int)cres->ai_addrlen
-				, ip_str, sizeof (ip_str), 0, 0,  NI_NUMERICHOST) != 0) {
-			continue;
-		}
-		sprintf (if_str, "%s:ndn", ip_str);
-		
-		switch (cres->ai_family) {
-			case AF_INET: {
-				if (indexv4 >= 0) {
-					cef_face_addrinfo_free (cres);
-					close (sock);
-				} else {
-					cres->ai_next = NULL;
-					entryv4 = cef_face_sock_entry_create (
-								sock, cres->ai_addr, cres->ai_addrlen, cres->ai_family);
-					entryv4->faceid = CefC_Faceid_ListenNdnv4;
-					entryv4->protocol = CefC_Face_Type_Udp;
-					indexv4 = cef_hash_tbl_item_set (
-						sock_tbl, (const unsigned char*)if_str, strlen (if_str), entryv4);
-				}
-				break;
-			}
-			case AF_INET6: {
-				if (indexv6 >= 0) {
-					cef_face_addrinfo_free (cres);
-					close (sock);
-				} else {
-					cres->ai_next = NULL;
-					entryv6 = cef_face_sock_entry_create (
-								sock, cres->ai_addr, cres->ai_addrlen, cres->ai_family);
-					entryv6->faceid = CefC_Faceid_ListenNdnv6;
-					entryv6->protocol = CefC_Face_Type_Udp;
-					indexv6 = cef_hash_tbl_item_set (
-						sock_tbl, (const unsigned char*)if_str, strlen (if_str), entryv6);
-				}
-				break;
-			}
-			default: {
-				/* NOP */;
-				break;
-			}
-		}
-	}
-	
-	errno = 0;
-	if (indexv4 >= 0) {
-		if (bind (entryv4->sock, entryv4->ai_addr, entryv4->ai_addrlen) < 0) {
-			close (entryv4->sock);
-			face_tbl[CefC_Faceid_ListenNdnv4].index = indexv4;
-			face_tbl[CefC_Faceid_ListenNdnv4].fd = 0;
-		} else {
-			face_tbl[CefC_Faceid_ListenNdnv4].index = indexv4;
-			face_tbl[CefC_Faceid_ListenNdnv4].fd = entryv4->sock;
-			face_tbl[CefC_Faceid_ListenNdnv4].protocol = CefC_Face_Type_Udp;
-			return (CefC_Faceid_ListenNdnv4);
-		}
-	}
-	
-	if (indexv6 >= 0) {
-		if (bind (entryv6->sock, entryv6->ai_addr, entryv6->ai_addrlen) < 0) {
-			close (entryv6->sock);
-			face_tbl[CefC_Faceid_ListenNdnv6].index = indexv6;
-			face_tbl[CefC_Faceid_ListenNdnv6].fd = 0;
-		} else {
-			face_tbl[CefC_Faceid_ListenNdnv6].index = indexv6;
-			face_tbl[CefC_Faceid_ListenNdnv6].fd = entryv6->sock;
-			face_tbl[CefC_Faceid_ListenNdnv6].protocol = CefC_Face_Type_Udp;
-			return (CefC_Faceid_ListenNdnv6);
-		}
-	}
-
-	cef_log_write (CefC_Log_Error, 
-		"[face] Failed to create the listen face for NFD (%s)\n", strerror(errno));
-
-	return (-1);
 }
 /*--------------------------------------------------------------------------------------
 	Accepts the TCP socket
@@ -993,12 +848,6 @@ cef_face_accept_connect (
 	char peer_str[1024];
 	char src_peer_str[1024];
 
-#ifdef CefC_Neighbour
-	int msg_len;
-	unsigned char buff[CefC_Max_Length];
-#endif
-
-	
 	sa = (struct sockaddr_storage*) malloc (sizeof (struct sockaddr_storage));
 	memset (sa, 0, sizeof (struct sockaddr_storage));
 	cs = accept (face_tbl[CefC_Faceid_ListenTcpv4].fd, (struct sockaddr*) sa, &len);
@@ -1009,7 +858,7 @@ cef_face_accept_connect (
 			return (-1);
 		}
 	}
-	
+
 	flag = fcntl (cs, F_GETFL, 0);
 	if (flag < 0) {
 		goto POST_ACCEPT;
@@ -1018,18 +867,18 @@ cef_face_accept_connect (
 		goto POST_ACCEPT;
 	}
 
-	if (getnameinfo ((struct sockaddr*) sa, len, ip_str, sizeof (ip_str), 
+	if (getnameinfo ((struct sockaddr*) sa, len, ip_str, sizeof (ip_str),
 			port_str, sizeof (port_str),  NI_NUMERICHOST | NI_NUMERICSERV) != 0) {
 		goto POST_ACCEPT;
 	}
 
-	
+
 	/* Looks up the source node's information from the source table 	*/
 //0.8.3c	sprintf (peer_str, "%s:%d", ip_str, CefC_Face_Type_Tcp);
 		sprintf (peer_str, "%s:%s:%d", ip_str, port_str, CefC_Face_Type_Tcp);	//0.8.3c
 	entry = (CefT_Sock*) cef_hash_tbl_item_get (
 							sock_tbl, (const unsigned char*) peer_str, strlen (peer_str));
-	
+
 	if (entry) {
 		if (face_tbl[entry->faceid].fd != 0) {	/* faceid of entry is not down */
 			close (entry->sock);
@@ -1080,7 +929,7 @@ cef_face_accept_connect (
 	entry->faceid = faceid;
 	entry->protocol = CefC_Face_Type_Tcp;
 	entry->port_num = process_port_num;
-	
+
 	index = cef_hash_tbl_item_set (
 		sock_tbl, (const unsigned char*) peer_str, strlen (peer_str), entry);
 
@@ -1106,23 +955,11 @@ cef_face_accept_connect (
     getnameinfo (entry->ai_addr, entry->ai_addrlen,
                  dst_ip, sizeof(dst_ip), dst_port, sizeof(dst_port),
                             NI_NUMERICHOST);
-    fprintf(stderr, "==========[%s] DST(%s:%s) SRC(%s:%d)==========\n", 
+    fprintf(stderr, "==========[%s] DST(%s:%s) SRC(%s:%d)==========\n",
     		__FUNCTION__, dst_ip, dst_port, inet_ntoa(s.sin_addr), ntohs(s.sin_port));
 	}
 #endif
 
-#ifdef CefC_Neighbour
-	
-	/* send a link message */
-	msg_len = cef_frame_interest_link_msg_create (buff);
-	if (msg_len > 0) {
-#ifdef CefC_Debug
-		cef_dbg_write (CefC_Dbg_Finer, 
-			"Send a Interest Link message to FID#%d\n", entry->faceid);
-#endif // CefC_Debug
-		cef_face_frame_send_forced (entry->faceid, buff, (size_t) msg_len);
-	}
-#endif
 	return (faceid);
 
 POST_ACCEPT:
@@ -1145,21 +982,17 @@ cef_face_local_face_create (
 	int sock;
 	int index;
 	CefT_Sock* entry;
-	
+
 	if ((sock = socket (AF_UNIX, sk_type, 0)) < 0) {
 		cef_log_write (CefC_Log_Error, "%s (sock:%s)\n", __func__, strerror(errno));
 		return (-1);
 	}
-	
+
 	/* Initialize a sockaddr_un 	*/
 	memset (&saddr, 0, sizeof (saddr));
 	saddr.sun_family = AF_UNIX;
-#ifdef CefC_Android
-	/* Android socket Name starts with \0.	*/
-	memcpy(saddr.sun_path, local_sock_path, local_sock_path_len);
-#else // CefC_Android
 	strcpy (saddr.sun_path, local_sock_path);
-#endif // CefC_Android
+
 	/* Prepares a source socket 	*/
 	unlink (local_sock_path);
 
@@ -1202,9 +1035,9 @@ cef_face_local_face_create (
 	entry = cef_face_sock_entry_create (sock, NULL, 0, -1);
 	entry->faceid = CefC_Faceid_Local;
 	index = cef_hash_tbl_item_set (
-		sock_tbl, 
-		(const unsigned char*)local_sock_path, 
-		local_sock_path_len, 
+		sock_tbl,
+		(const unsigned char*)local_sock_path,
+		local_sock_path_len,
 		entry);
 	face_tbl[CefC_Faceid_Local].index 	= index;
 	face_tbl[CefC_Faceid_Local].fd 		= entry->sock;
@@ -1224,21 +1057,17 @@ cef_face_babel_face_create (
 	int sock;
 	int index;
 	CefT_Sock* entry;
-	
+
 	if ((sock = socket (AF_UNIX, sk_type, 0)) < 0) {
 		cef_log_write (CefC_Log_Error, "%s (sock:%s)\n", __func__, strerror(errno));
 		return (-1);
 	}
-	
+
 	/* Initialize a sockaddr_un 	*/
 	memset (&saddr, 0, sizeof (saddr));
 	saddr.sun_family = AF_UNIX;
-#ifdef CefC_Android
-	/* Android socket Name starts with \0.	*/
-	memcpy(saddr.sun_path, babel_sock_path, babel_sock_path_len);
-#else // CefC_Android
 	strcpy (saddr.sun_path, babel_sock_path);
-#endif // CefC_Android
+
 	/* Prepares a source socket 	*/
 	unlink (babel_sock_path);
 
@@ -1281,9 +1110,9 @@ cef_face_babel_face_create (
 	entry = cef_face_sock_entry_create (sock, NULL, 0, -1);
 	entry->faceid = CefC_Faceid_ListenBabel;
 	index = cef_hash_tbl_item_set (
-		sock_tbl, 
-		(const unsigned char*) babel_sock_path, 
-		babel_sock_path_len, 
+		sock_tbl,
+		(const unsigned char*) babel_sock_path,
+		babel_sock_path_len,
 		entry);
 	face_tbl[CefC_Faceid_ListenBabel].index = index;
 	face_tbl[CefC_Faceid_ListenBabel].fd 	= entry->sock;
@@ -1312,7 +1141,7 @@ cef_face_get_face_from_faceid (
 /*--------------------------------------------------------------------------------------
 	Obtains the Face structure from the specified Face-ID
 ----------------------------------------------------------------------------------------*/
-uint32_t 
+uint32_t
 cef_face_get_seqnum_from_faceid (
 	uint16_t 	faceid						/* Face-ID									*/
 ) {
@@ -1332,16 +1161,16 @@ cef_face_frame_send_forced (
 ) {
 	CefT_Sock* entry;
 	int res;
-	
+
 	entry = (CefT_Sock*) cef_hash_tbl_item_get_from_index (
 										sock_tbl, face_tbl[faceid].index);
 	if (entry == NULL) {
 		return;
 	}
-	
+
 	if (face_tbl[faceid].local_f) {
 		int	send_count = 0;
-		res = 0;  
+		res = 0;
     	unsigned char* p = msg;
     	int len = msg_len;
 		fd_set fds, writefds;
@@ -1352,7 +1181,7 @@ cef_face_frame_send_forced (
 		if ( res <= 0 ) {
 			return;
 		}
-		len -= res;  
+		len -= res;
 		p += res;
 		send_count++;
 
@@ -1367,7 +1196,7 @@ cef_face_frame_send_forced (
 				if (FD_ISSET (entry->sock, &fds)) {
 					res = send (entry->sock, msg, msg_len, 0);
 					if(res > 0) {
-						len -= res;  
+						len -= res;
 						p += res;
 					} else {
 						if ( errno == EAGAIN ) {
@@ -1375,6 +1204,9 @@ cef_face_frame_send_forced (
 						}
 					}
 					send_count++;
+					if ( send_count > DEMO_RETRY_NUM ) {
+						break;
+					}
 				}
 			} else {
 				if ( send_count == 0 ) {
@@ -1390,105 +1222,111 @@ cef_face_frame_send_forced (
 		}
 	} else {
 		if (face_tbl[faceid].protocol != CefC_Face_Type_Tcp) {
-		int	send_count = 0;
-		res = 0;  
-    	unsigned char* p = msg;
-    	int len = msg_len;
-		fd_set fds, writefds;
-		int n;
-		struct timeval timeout;
+			int	send_count = 0;
+			res = 0;
+    		unsigned char* p = msg;
+    		int len = msg_len;
+			fd_set fds, writefds;
+			int n;
+			struct timeval timeout;
 
 			res = sendto (entry->sock, msg, msg_len
 							, 0, entry->ai_addr, entry->ai_addrlen);
 			if ( res <= 0 ) {
 				return;
 			}
-			len -= res;  
+			len -= res;
 			p += res;
 			send_count++;
 
-		while( len > 0 ){
-			timeout.tv_sec  = 0;
-			timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
-			FD_ZERO (&writefds);
-			FD_SET (entry->sock, &writefds);
-			memcpy (&fds, &writefds, sizeof (fds));
-			n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
-			if (n > 0) {
-				if (FD_ISSET (entry->sock, &fds)) {
-					res = sendto (entry->sock, msg, msg_len
-							, 0, entry->ai_addr, entry->ai_addrlen);
-					if(res > 0) {
-						len -= res;  
-						p += res;
-					} else {
-						if ( errno == EAGAIN ) {
-							usleep(CEF_FACE_SEND_USLEEP);
+			while( len > 0 ){
+				timeout.tv_sec  = 0;
+				timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
+				FD_ZERO (&writefds);
+				FD_SET (entry->sock, &writefds);
+				memcpy (&fds, &writefds, sizeof (fds));
+				n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
+				if (n > 0) {
+					if (FD_ISSET (entry->sock, &fds)) {
+						res = sendto (entry->sock, msg, msg_len
+								, 0, entry->ai_addr, entry->ai_addrlen);
+						if(res > 0) {
+							len -= res;
+							p += res;
+						} else {
+							if ( errno == EAGAIN ) {
+								usleep(CEF_FACE_SEND_USLEEP);
+							}
+						}
+						send_count++;
+						if ( send_count > DEMO_RETRY_NUM ) {
+							break;
 						}
 					}
+				} else {
+					if ( send_count == 0 ) {
+						break;
+					} else if ( send_count > DEMO_RETRY_NUM ) {
+						break;
+					}
 					send_count++;
-				}
-			} else {
-				if ( send_count == 0 ) {
-					break;
-				} else if ( send_count > DEMO_RETRY_NUM ) {
-					break;
-				}
-				send_count++;
-				if ( errno == EAGAIN ) {
-					usleep(CEF_FACE_SEND_USLEEP);
+					if ( errno == EAGAIN ) {
+						usleep(CEF_FACE_SEND_USLEEP);
+					}
 				}
 			}
-		}
-	} else {
-		int	send_count = 0;
-		res = 0;  
-    	unsigned char* p = msg;
-    	int len = msg_len;
-		fd_set fds, writefds;
-		int n;
-		struct timeval timeout;
+		} else {
+			int	send_count = 0;
+			res = 0;
+    		unsigned char* p = msg;
+	    	int len = msg_len;
+			fd_set fds, writefds;
+			int n;
+			struct timeval timeout;
 
 			res = write (entry->sock, msg, msg_len);
 			if ( res <= 0 ) {
 				return;
 			}
-			len -= res;  
+			len -= res;
 			p += res;
 			send_count++;
 
-		while( len > 0 ){
-			timeout.tv_sec  = 0;
-			timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
-			FD_ZERO (&writefds);
-			FD_SET (entry->sock, &writefds);
-			memcpy (&fds, &writefds, sizeof (fds));
-			n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
-			if (n > 0) {
-				if (FD_ISSET (entry->sock, &fds)) {
-					res = write (entry->sock, msg, msg_len);
-					if(res > 0) {
-						len -= res;  
-						p += res;
-					} else {
-						if ( errno == EAGAIN ) {
-							usleep(CEF_FACE_SEND_USLEEP);
+			while( len > 0 ){
+				timeout.tv_sec  = 0;
+				timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
+				FD_ZERO (&writefds);
+				FD_SET (entry->sock, &writefds);
+				memcpy (&fds, &writefds, sizeof (fds));
+				n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
+				if (n > 0) {
+					if (FD_ISSET (entry->sock, &fds)) {
+						res = write (entry->sock, msg, msg_len);
+						if(res > 0) {
+							len -= res;
+							p += res;
+						} else {
+							if ( errno == EAGAIN ) {
+								usleep(CEF_FACE_SEND_USLEEP);
+							}
+						}
+						send_count++;
+						if ( send_count > DEMO_RETRY_NUM ) {
+							break;
 						}
 					}
+				} else {
+					if ( send_count == 0 ) {
+						break;
+					} else if ( send_count > DEMO_RETRY_NUM ) {
+						break;
+					}
 					send_count++;
-				}
-			} else {
-				if ( send_count == 0 ) {
-					break;
-				} else if ( send_count > DEMO_RETRY_NUM ) {
-					break;
-				}
-				send_count++;
-				if ( errno == EAGAIN ) {
-					usleep(CEF_FACE_SEND_USLEEP);
+					if ( errno == EAGAIN ) {
+						usleep(CEF_FACE_SEND_USLEEP);
+					}
 				}
 			}
-		}
 		}
 	}
 
@@ -1502,11 +1340,11 @@ cef_face_object_send (
 	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
 	unsigned char* 	msg, 					/* a message to send						*/
 	size_t			msg_len,				/* length of the message to send 			*/
-	CefT_Parsed_Message* pm 				/* Parsed message 							*/
+	CefT_CcnMsg_MsgBdy* pm 				/* Parsed message 							*/
 ) {
 	CefT_Sock* entry;
 	int res;
-	
+
 	if (face_tbl[faceid].fd < 3) {
 		return (-1);
 	}
@@ -1515,10 +1353,10 @@ cef_face_object_send (
 	if (entry == NULL) {
 		return (-1);
 	}
-	
+
 	if (face_tbl[faceid].local_f) {
 		int	send_count = 0;
-		res = 0;  
+		res = 0;
     	unsigned char* p = msg;
     	int len = msg_len;
 		fd_set fds, writefds;
@@ -1529,7 +1367,7 @@ cef_face_object_send (
 		if ( res <= 0 ) {
 				return( -1 );
 		}
-		len -= res;  
+		len -= res;
 		p += res;
 		send_count++;
 
@@ -1544,7 +1382,7 @@ cef_face_object_send (
 				if (FD_ISSET (entry->sock, &fds)) {
 					res = send (entry->sock, msg, msg_len, 0);
 					if(res > 0) {
-						len -= res;  
+						len -= res;
 						p += res;
 					} else {
 						if ( errno == EAGAIN ) {
@@ -1552,6 +1390,9 @@ cef_face_object_send (
 						}
 					}
 					send_count++;
+					if ( send_count > DEMO_RETRY_NUM ) {
+						break;
+					}
 				}
 			} else {
 				if ( send_count == 0 ) {
@@ -1567,88 +1408,94 @@ cef_face_object_send (
 		}
 	} else {
 		if (face_tbl[faceid].protocol != CefC_Face_Type_Tcp) {
-		int	send_count = 0;
-		res = 0;  
-    	unsigned char* p = msg;
-    	int len = msg_len;
-		fd_set fds, writefds;
-		int n;
-		struct timeval timeout;
+			int	send_count = 0;
+			res = 0;
+    		unsigned char* p = msg;
+	    	int len = msg_len;
+			fd_set fds, writefds;
+			int n;
+			struct timeval timeout;
 
-		while( len > 0 ){
-			timeout.tv_sec  = 0;
-			timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
-			FD_ZERO (&writefds);
-			FD_SET (entry->sock, &writefds);
-			memcpy (&fds, &writefds, sizeof (fds));
-			n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
-			if (n > 0) {
-				if (FD_ISSET (entry->sock, &fds)) {
-					res = sendto (entry->sock, msg, msg_len
-							, 0, entry->ai_addr, entry->ai_addrlen);
-					if(res > 0) {
-						len -= res;  
-						p += res;
-					} else {
-						if ( errno == EAGAIN ) {
-							usleep(CEF_FACE_SEND_USLEEP);
+			while( len > 0 ){
+				timeout.tv_sec  = 0;
+				timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
+				FD_ZERO (&writefds);
+				FD_SET (entry->sock, &writefds);
+				memcpy (&fds, &writefds, sizeof (fds));
+				n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
+				if (n > 0) {
+					if (FD_ISSET (entry->sock, &fds)) {
+						res = sendto (entry->sock, msg, msg_len
+								, 0, entry->ai_addr, entry->ai_addrlen);
+						if(res > 0) {
+							len -= res;
+							p += res;
+						} else {
+							if ( errno == EAGAIN ) {
+								usleep(CEF_FACE_SEND_USLEEP);
+							}
+						}
+						send_count++;
+						if ( send_count > DEMO_RETRY_NUM ) {
+							break;
 						}
 					}
-					send_count++;
-				}
-			} else {
-				if ( send_count == 0 ) {
-					break;
-				} else if ( send_count > DEMO_RETRY_NUM ) {
-					break;
-				}
-				send_count++;
-				if ( errno == EAGAIN ) {
-					usleep(CEF_FACE_SEND_USLEEP);
-				}
-			}
-		}
-	} else {
-		int	send_count = 0;
-		res = 0;  
-    	unsigned char* p = msg;
-    	int len = msg_len;
-		fd_set fds, writefds;
-		int n;
-		struct timeval timeout;
-
-		while( len > 0 ){
-			timeout.tv_sec  = 0;
-			timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
-			FD_ZERO (&writefds);
-			FD_SET (entry->sock, &writefds);
-			memcpy (&fds, &writefds, sizeof (fds));
-			n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
-			if (n > 0) {
-				if (FD_ISSET (entry->sock, &fds)) {
-					res = write (entry->sock, msg, msg_len);
-					if(res > 0) {
-						len -= res;  
-						p += res;
-					} else {
-						if ( errno == EAGAIN ) {
-							usleep(CEF_FACE_SEND_USLEEP);
-						}
+				} else {
+					if ( send_count == 0 ) {
+						break;
+					} else if ( send_count > DEMO_RETRY_NUM ) {
+						break;
 					}
 					send_count++;
-				}
-			} else {
-				if ( send_count == 0 ) {
-					break;
-				} else if ( send_count > DEMO_RETRY_NUM ) {
-					break;
-				}
-				send_count++;
-				if ( errno == EAGAIN ) {
-					usleep(CEF_FACE_SEND_USLEEP);
+					if ( errno == EAGAIN ) {
+						usleep(CEF_FACE_SEND_USLEEP);
+					}
 				}
 			}
-		}
+		} else {
+			int	send_count = 0;
+			res = 0;
+    		unsigned char* p = msg;
+	    	int len = msg_len;
+			fd_set fds, writefds;
+			int n;
+			struct timeval timeout;
+
+			while( len > 0 ){
+				timeout.tv_sec  = 0;
+				timeout.tv_usec = CEF_FACE_SEND_TIMEOUT;
+				FD_ZERO (&writefds);
+				FD_SET (entry->sock, &writefds);
+				memcpy (&fds, &writefds, sizeof (fds));
+				n = select(entry->sock+1, NULL, &fds, NULL, &timeout);
+				if (n > 0) {
+					if (FD_ISSET (entry->sock, &fds)) {
+						res = write (entry->sock, msg, msg_len);
+						if(res > 0) {
+							len -= res;
+							p += res;
+						} else {
+							if ( errno == EAGAIN ) {
+								usleep(CEF_FACE_SEND_USLEEP);
+							}
+						}
+						send_count++;
+						if ( send_count > DEMO_RETRY_NUM ) {
+							break;
+						}
+					}
+				} else {
+					if ( send_count == 0 ) {
+						break;
+					} else if ( send_count > DEMO_RETRY_NUM ) {
+						break;
+					}
+					send_count++;
+					if ( errno == EAGAIN ) {
+						usleep(CEF_FACE_SEND_USLEEP);
+					}
+				}
+			}
 		}
 	}
 
@@ -1665,7 +1512,7 @@ cef_face_object_send_iflocal (
 ) {
 	CefT_Sock* entry;
 	int res;
-	
+
 	if (face_tbl[faceid].fd < 3) {
 		return (-1);
 	}
@@ -1675,14 +1522,14 @@ cef_face_object_send_iflocal (
 	if (entry == NULL) {
 		return (-1);
 	}
-	
+
 	if (face_tbl[faceid].local_f) {
 		send (entry->sock, msg, msg_len, 0);
 		res = 1;
 	} else {
 		res = 0;
 	}
-	
+
 	return (res);
 }
 /*--------------------------------------------------------------------------------------
@@ -1734,7 +1581,7 @@ cef_face_apimsg_send_iflocal (
 	if (entry == NULL) {
 		return (-1);
 	}
-	
+
 	if (face_tbl[faceid].local_f) {
 		memcpy (api_frame, api_hdr, api_hdr_len);
 		if ( payload && 0 < payload_len )
@@ -1778,7 +1625,7 @@ cef_face_all_face_close (
 	for (i = 0 ; i < max_tbl_size ; i++) {
 		if (face_tbl[i].fd) {
 #ifdef CefC_Debug
-			cef_dbg_write (CefC_Dbg_Finer, 
+			cef_dbg_write (CefC_Dbg_Finer,
 				"[face] Close the Face#%d (FD#%d)\n", i, face_tbl[i].fd);
 #endif // CefC_Debug
 			close (face_tbl[i].fd);
@@ -1786,16 +1633,13 @@ cef_face_all_face_close (
 	}
 
 	free (face_tbl);
-#ifdef CefC_Android
-	/* Process for Android next running	*/
-	face_tbl = NULL;
-#endif // CefC_Android
+
 	max_tbl_size = 0;
 }
 /*--------------------------------------------------------------------------------------
 	Obtains the neighbor information
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_neighbor_info_get (
 	char* info_buff
 ) {
@@ -1803,20 +1647,20 @@ cef_face_neighbor_info_get (
 	uint32_t index = 0;
 	int table_num;
 	int i;
-	
+
 	char node[NI_MAXHOST];
 	int res;
 	CefT_Face* face;
 	char prot_str[3][16] = {"invalid", "tcp", "udp"};
 	int	info_buff_len = 0;	//gcc v9
-	
+
 	/* get table num		*/
 	info_buff[0] = 0x00;
 	table_num = cef_hash_tbl_item_num_get (sock_tbl);
 	if (table_num == 0) {
 		return (0);
 	}
-	
+
 	/* output table		*/
 	for (i = 0; i < table_num; i++) {
 		/* get socket table	*/
@@ -1824,15 +1668,15 @@ cef_face_neighbor_info_get (
 		if (sock == NULL) {
 			break;
 		}
-		
+
 		/* check local face flag	*/
 		face = cef_face_get_face_from_faceid (sock->faceid);
-		
+
 		if ((face->local_f == 1) || (sock->faceid < CefC_Face_Reserved)) {
 			index++;
 			continue;
 		}
-		
+
 		/* output face info	*/
 		memset (node, 0, sizeof(node));
 		res = getnameinfo (	sock->ai_addr,
@@ -1845,10 +1689,10 @@ cef_face_neighbor_info_get (
 			continue;
 		}
 #if 0
-		sprintf (info_buff, "%sfaceid = %d %s %s:%d\n", 
+		sprintf (info_buff, "%sfaceid = %d %s %s:%d\n",
 			info_buff, sock->faceid, prot_str[sock->protocol], node, sock->port_num);
 #else
-		info_buff_len = info_buff_len + sprintf (info_buff + info_buff_len, "faceid = %d %s %s:%d\n", 
+		info_buff_len = info_buff_len + sprintf (info_buff + info_buff_len, "faceid = %d %s %s:%d\n",
 			sock->faceid, prot_str[sock->protocol], node, sock->port_num);
 #endif
 		index++;
@@ -1858,7 +1702,7 @@ cef_face_neighbor_info_get (
 /*--------------------------------------------------------------------------------------
 	Obtains the face num
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_num_get (
 ) {
 	int table_num;
@@ -1870,28 +1714,28 @@ cef_face_num_get (
 /*--------------------------------------------------------------------------------------
 	Obtains the face information
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_info_get (
-	char* face_info, 
+	char* face_info,
 	uint16_t faceid
 ) {
 	CefT_Sock* sock;
 	uint32_t index = 0;
 	int table_num;
 	int i;
-	
+
 	char node[NI_MAXHOST];
 	int res;
 	CefT_Face* face;
 	char prot_str[3][16] = {"invalid", "tcp", "udp"};
-	
+
 	/* get table num		*/
 	face_info[0] = 0x00;
 	table_num = cef_hash_tbl_item_num_get (sock_tbl);
 	if (table_num == 0) {
 		return (0);
 	}
-	
+
 	/* output table		*/
 	for (i = 0; i < table_num; i++) {
 		/* get socket table	*/
@@ -1899,11 +1743,11 @@ cef_face_info_get (
 		if (sock == NULL) {
 			break;
 		}
-		
+
 		/* check local face flag	*/
 		face = cef_face_get_face_from_faceid (sock->faceid);
-		
-		if ((face->local_f == 1) || 
+
+		if ((face->local_f == 1) ||
 			(sock->faceid < CefC_Face_Reserved) ||
 			(faceid != sock->faceid)) {
 			index++;
@@ -1920,7 +1764,7 @@ cef_face_info_get (
 			index++;
 			continue;
 		}
-		sprintf (face_info, "faceid = %d %s %s:%d", 
+		sprintf (face_info, "faceid = %d %s %s:%d",
 			sock->faceid, prot_str[sock->protocol], node, sock->port_num);
 		break;
 	}
@@ -1930,22 +1774,22 @@ cef_face_info_get (
 /*--------------------------------------------------------------------------------------
 	Obtains the node id of the specified face
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_node_id_get (
-	uint16_t faceid, 
+	uint16_t faceid,
 	unsigned char* node_id
 ) {
 	CefT_Sock* sock;
 	int table_num;
 	CefT_Face* face;
 	int len = 0;
-	
+
 	/* get table num		*/
 	table_num = cef_hash_tbl_item_num_get (sock_tbl);
 	if (table_num == 0) {
 		return (0);
 	}
-	
+
 	face = cef_face_get_face_from_faceid (faceid);
 	if (face->fd == -1) {
 		return (0);
@@ -1957,7 +1801,7 @@ cef_face_node_id_get (
 	if (faceid != sock->faceid) {
 		return (0);
 	}
-	
+
 	if (sock->ai_family == AF_INET6) {
 		len = 16;
 		memcpy (&node_id[0],
@@ -1984,9 +1828,9 @@ cef_face_return_sock_table (
 static int									/* Face-ID									*/
 cef_face_lookup_faceid (
 	int protocol,
-	char* peer_id, 
-	char* usr_id, 
-	char* port_str, 
+	char* peer_id,
+	char* usr_id,
+	char* port_str,
 	int* create_f
 ) {
 	struct addrinfo hints;
@@ -2000,10 +1844,6 @@ cef_face_lookup_faceid (
 	int flag;
 	int val;
 	fd_set readfds;
-#ifdef CefC_Neighbour
-	struct timeval timeout;
-	int ret;
-#endif
 	int port_num;
 	int optval = 1;
 	int rtry_count = 0;
@@ -2012,10 +1852,10 @@ cef_face_lookup_faceid (
 	if (create_f) {
 		*create_f = 0;
 	}
-	
+
 	entry = (CefT_Sock*) cef_hash_tbl_item_get (
 				sock_tbl, (const unsigned char*) peer_id, strlen (peer_id));
-	
+
 	if (entry) {
 		if (face_tbl[entry->faceid].fd > 0) {
 			return (entry->faceid);
@@ -2033,7 +1873,7 @@ cef_face_lookup_faceid (
 			}
 		}
 	}
-	
+
 	memset (&hints, 0, sizeof (hints));
 	hints.ai_family = AF_UNSPEC;
 	if (protocol != CefC_Face_Type_Tcp) {
@@ -2042,9 +1882,9 @@ cef_face_lookup_faceid (
 		hints.ai_socktype = SOCK_STREAM;
 		hints.ai_flags = AI_NUMERICSERV;
 	}
-	
+
 	if ((err = getaddrinfo (usr_id, port_str, &hints, &res)) != 0) {
-		cef_log_write (CefC_Log_Error, 
+		cef_log_write (CefC_Log_Error,
 			"%s (getaddrinfo:%s)\n", __func__, gai_strerror(err));
 		return (-1);
 	}
@@ -2059,13 +1899,13 @@ cef_face_lookup_faceid (
 			cef_face_addrinfo_free (cres);
 			continue;
 		}
-		
+
 		if (protocol != CefC_Face_Type_Tcp) {
 			sock = socket (cres->ai_family, cres->ai_socktype, 0);
 		} else {
 			sock = socket (cres->ai_family, cres->ai_socktype, cres->ai_protocol);
 		}
-		
+
 		if (sock < 0) {
 			cef_face_addrinfo_free (cres);
 			continue;
@@ -2092,7 +1932,7 @@ cef_face_lookup_faceid (
 		}
 		if (cres->ai_family == AF_INET){
 			struct sockaddr_in myname;
-			
+
 			memset(&myname, 0, sizeof(myname));
 			myname.sin_family = cres->ai_family;
 			myname.sin_addr.s_addr = INADDR_ANY;
@@ -2105,7 +1945,7 @@ cef_face_lookup_faceid (
 			}
 		} else {
 			struct sockaddr_in6 myname;
-			
+
 			memset(&myname, 0, sizeof(myname));
 			myname.sin6_family = cres->ai_family;
 			myname.sin6_addr = in6addr_any;
@@ -2181,34 +2021,13 @@ RETRY:;
 						close (sock);
 						cef_face_addrinfo_free (cres);
 						continue;
-					}					
+					}
 #endif // __APPLE__
 			}
 			val = 1;
 			ioctl (sock, FIONBIO, &val);
 			FD_ZERO (&readfds);
 			FD_SET (sock, &readfds);
-#ifdef CefC_Neighbour
-			timeout.tv_sec = 5;
-			timeout.tv_usec = 0;
-			ret = select (sock + 1, &readfds, NULL, NULL, &timeout);
-			if (ret == 0) {
-				close (sock);
-				cef_face_addrinfo_free (cres);
-				continue;
-			} else {
-				if (FD_ISSET (sock, &readfds)) {
-					ret = recv (sock, port_str, 0, 0);
-					if (ret == -1) {
-						close (sock);
-						cef_face_addrinfo_free (cres);
-						continue;
-					} else {
-						/* NOP */;
-					}
-				}
-			}
-#endif
 		}
 
 		if (reuse_faceid != -1) {
@@ -2222,7 +2041,7 @@ RETRY:;
 				continue;
 			}
 		}
-		
+
 		cres->ai_next = NULL;
 		entry = cef_face_sock_entry_create (
 					sock, cres->ai_addr, cres->ai_addrlen, cres->ai_family);
@@ -2241,48 +2060,47 @@ RETRY:;
 		face_tbl[faceid].index = index;
 		face_tbl[faceid].fd = entry->sock;
 		face_tbl[faceid].protocol = (uint8_t) protocol;
-		
+
 		if (create_f) {
 			*create_f = 1;
 #ifdef	__INTEREST__
 		fprintf( stderr,
-			"[face] Creation the new Face#%d (FD#%d) for %s:%s\n", 
+			"[face] Creation the new Face#%d (FD#%d) for %s:%s\n",
 			entry->faceid, face_tbl[entry->faceid].fd, usr_id, port_str);
 #endif
 
 #ifdef CefC_Debug
-		cef_dbg_write (CefC_Dbg_Finer, 
-			"[face] Creation the new Face#%d (FD#%d) for %s:%s\n", 
+		cef_dbg_write (CefC_Dbg_Finer,
+			"[face] Creation the new Face#%d (FD#%d) for %s:%s\n",
 			entry->faceid, face_tbl[entry->faceid].fd, usr_id, port_str);
 #endif // CefC_Debug
 		}
-#ifndef CefC_Android
 		freeaddrinfo (res);
-#endif // CefC_Android
+
 		return (entry->faceid);
 	}
 
 	return (-1);
 }
 /*--------------------------------------------------------------------------------------
-	Creates the peer ID 
+	Creates the peer ID
 ----------------------------------------------------------------------------------------*/
-static void 
+static void
 cef_face_peer_id_create (
 	const char* destination, 				/* String of the destination address 		*/
 	int protocol,							/* protoco (udp,tcp,local) 					*/
-	char* peer_id, 
-	char* usr_id, 
+	char* peer_id,
+	char* usr_id,
 	char* port_str
 ) {
 	int ret;
 	int i, n, t;
 	int is_exist;
-	
+
 	ret = strlen (destination);
 	n = 0;
 	t = 0;
-	
+
 	if (strlen (port_str) == 0) {
 		if (destination[0] == '[') {
 			/* IPv6 */
@@ -2309,7 +2127,7 @@ cef_face_peer_id_create (
 				t++;
 			}
 			port_str[t] = 0x00;
-			
+
 			if (t == 0) {
 				sprintf (port_str, "%d", process_port_num);
 				sprintf (peer_id, "%s:%d:%d", usr_id, process_port_num, protocol);
@@ -2328,13 +2146,13 @@ cef_face_peer_id_create (
 				}
 			}
 			usr_id[n] = 0x00;
-			
+
 			for (i = n + 1 ; i < ret ; i++) {
 				port_str[t] = destination[i];
 				t++;
 			}
 			port_str[t] = 0x00;
-			
+
 			if (t == 0) {
 				sprintf (port_str, "%d", process_port_num);
 				sprintf (peer_id, "%s:%d:%d", destination, process_port_num, protocol);
@@ -2347,7 +2165,7 @@ cef_face_peer_id_create (
 		strcpy(usr_id, destination);
 		sprintf (peer_id, "%s:%s:%d", usr_id, port_str, protocol);
 	}
-	
+
 	return;
 }
 /*--------------------------------------------------------------------------------------
@@ -2399,7 +2217,7 @@ static CefT_Sock*								/* the created new entry				*/
 cef_face_sock_entry_create (
 	int sock, 									/* file descriptor to register			*/
 	struct sockaddr* ai_addr,
-	socklen_t ai_addrlen, 
+	socklen_t ai_addrlen,
 	int ai_family
 ) {
 	CefT_Sock* entry;
@@ -2410,7 +2228,7 @@ cef_face_sock_entry_create (
 	entry->sock = sock;
 	entry->faceid = -1;
 	entry->ai_family = ai_family;
-	
+
 	return (entry);
 }
 /*--------------------------------------------------------------------------------------
@@ -2431,16 +2249,16 @@ cef_face_sock_entry_destroy (
 /*--------------------------------------------------------------------------------------
 	Obtains the bw_stat_i get of the specified face
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_bw_stat_i_get (
-	uint16_t faceid 
+	uint16_t faceid
 ) {
 	return (face_tbl[faceid].bw_stat_i);
 }
 /*--------------------------------------------------------------------------------------
 	Obtains the bw_stat_i set of the specified face
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_bw_stat_i_set (
 	uint16_t faceid,
 	int		 index
@@ -2464,7 +2282,7 @@ cef_face_ip_route_get (
     FILE* fp;
     char  buf[1024];
     char  cmd_buf[128];
-	
+
 #ifndef CefC_MACOS
 	char*	keyword = "dev";
 	char fld01[128], fld02[128], fld03[128], fld04[128],

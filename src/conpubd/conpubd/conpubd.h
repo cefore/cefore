@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -53,7 +53,7 @@
 /*------------------------------------------------------------------*/
 /* Macros for conpubd status										*/
 /*------------------------------------------------------------------*/
-#define ConpubdC_Max_Sock_Num		32					/* Max number of TCP peer		*/
+//JK	#define ConpubdC_Max_Sock_Num		32					/* Max number of TCP peer		*/
 
 /* Library name				*/
 #ifdef __APPLE__
@@ -79,8 +79,11 @@ typedef struct {
 	int				block_size;
 	char			cefnetd_node[128]; 
 	int				cefnetd_port;
+	char			restore_path[PATH_MAX];
+	char			restore_fname[PATH_MAX];
 } ConpubT_Config_Param;
 
+#if 0	//JK
 typedef struct {
 	char 				launched_user_name[CefC_Csmgr_User_Len];
 
@@ -129,6 +132,7 @@ typedef struct {
 	int				published_contents_num;
 	
 } CefT_Conpubd_Handle;
+#endif		//JK
 
 /****************************************************************************************
  Function Declarations

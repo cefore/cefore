@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,11 +44,7 @@
 #include <poll.h>
 #include <limits.h>
 
-#ifndef CefC_Android
 #include <ifaddrs.h>
-#else // CefC_Android
-#include <cefore/cef_android.h>
-#endif // CefC_Android
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -75,13 +71,6 @@
 #include <ccore/ccore_valid.h>
 #endif // CefC_Ccore
 
-#ifdef CefC_Ccninfo
-#include <cefore/cef_ccninfo.h>
-#endif // CefC_Ccninfo
-#ifdef CefC_Ser_Log
-#include <cefore/cef_ser_log.h>
-#endif // CefC_Ser_Log
-
 /****************************************************************************************
  Macros
  ****************************************************************************************/
@@ -104,7 +93,7 @@ typedef struct {
 	unsigned char	name[CefC_Max_Msg_Size];	/* Content name							*/
 	uint16_t		name_len;					/* Content name length					*/
 	uint16_t		pay_len;					/* Payload length						*/
-	uint32_t		chnk_num;					/* Chunk num							*/
+	uint32_t		chunk_num;					/* Chunk num							*/
 	uint64_t		cache_time;					/* Cache time							*/
 	uint64_t		expiry;						/* Expiry								*/
 	struct in_addr	node;						/* Node address							*/
@@ -123,7 +112,7 @@ typedef struct {
 	uint16_t		pay_len;					/* Payload length						*/
 	unsigned char*	version;					/* 0.8.3c */
 	uint16_t		ver_len;					/* 0.8.3c */
-	uint32_t		chnk_num;					/* Chunk num							*/
+	uint32_t		chunk_num;					/* Chunk num							*/
 	uint64_t		cache_time;					/* Cache time							*/
 	uint64_t		expiry;						/* Expiry								*/
 	struct in_addr	node;						/* Node address							*/
@@ -175,7 +164,7 @@ cef_mem_cache_delete_thread (
 	void *p
 );
 /*--------------------------------------------------------------------------------------
-	set the cob to memry cache 
+	set the cob to memry cache
 ----------------------------------------------------------------------------------------*/
 int
 cef_mem_cache_item_set (
@@ -220,7 +209,7 @@ cef_mem_cache_mstat_get (
 ----------------------------------------------------------------------------------------*/
 int
 cef_mem_cache_mstat_get_buff (
-	char* buff, 
+	char* buff,
 	int buff_size
 );
 #endif //((defined CefC_CefnetdCache) && (defined CefC_Develop))

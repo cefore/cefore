@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -54,19 +54,21 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+#define CefC_BlockSize_Byte                 1024            /* option[-b] default */
+#define CefC_Rate_Mbps                      5.0             /* option[-r] default */
+#define CefC_RateMbps_Min                   0.001           /* option[-r] min    (1Kbps) */
+#define CefC_RateMbps_Max                   1000.0		    /* option[-r] max    (1000Mbps) */
+#define CefC_WaitCsmgrd_Sec                 1               /* option[-w] default */
+#define CefC_WaitCsmgrd_Max                 3600            /* option[-w] max    (sec) */
+#define CefC_WaitCsmgrd_Retry               0               /* option[-c] default */
+#define CefC_WaitCsmgrd_Retry_Max           10              /* option[-c] max */
+#define CefC_PutCsmgrd_Vercnt               3               /* option[-n] default */
+#define CefC_PutCsmgrd_Limit                50              /* option[-n] max */
+//#define CefC_PutCsmgrd_Limit              -1              /* Never give up */
 
-#define CefC_Putfile_Max 					512000
-//#define CefC_RateMbps_Max				 	32.0
-#define CefC_RateMbps_Max				 	100000000.0
-#define CefC_RateMbps_Min				 	0.001	/* 1Kbps */
-#define CefC_UnixTime_Max					2147483647	/* 32bit signed int */
-														/* 2038-1-19 3:14:7 (UTC) */
-#define CefC_WaitCsmgrd_Sec					1			/* sec */
-#define CefC_WaitCsmgrd_Max					3600		/* sec */
-#define CefC_WaitCsmgrd_Retry				0
-#define CefC_WaitCsmgrd_Retry_Max			10
-#define CefC_PutCsmgrd_Limit				50
-//#define CefC_PutCsmgrd_Limit				-1			/* Never give up */
+#define CefC_Putfile_Max                    512000
+#define CefC_UnixTime_Max                   2147483647      /* 32bit signed int */
+                                                            /* 2038-1-19 3:14:7 (UTC) */
 
 //#define TO_CSMGRD // Enable to connect directly to Csmgrd
 
@@ -145,7 +147,7 @@ cefputv_put_chunk (
 	int					block_size,
 	long				sending_time_us,
 	char*				filename,
-	CefT_Object_TLVs	params
+	CefT_CcnMsg_MsgBdy	params
 );
 static void
 cefputv_send_fibreg (
@@ -180,7 +182,8 @@ int main (
 ) {
 	int res;
 	unsigned char			buff[CefC_Max_Length];
-	CefT_Object_TLVs		params;
+	CefT_CcnMsg_OptHdr	opt;
+	CefT_CcnMsg_MsgBdy		params;
 	uint64_t				seqnum = 0;
 	char					uri[1024];
 	struct stat				statBuf;
@@ -226,14 +229,16 @@ int main (
 	int						port_num_f 	= 0;
 	int						wait_time_f	= 0;
 	int						retry_cnt_f	= 0;
+	int						verify_cnt_f	= 0;
 	
 	/***** parameters 	*****/
 	uint64_t				cache_time	= CefC_UnixTime_Max;
 	uint64_t				expiry		= CefC_UnixTime_Max;
-	double					rate		= 5.0;
-	int						block_size	= 1024;
+	double					rate		= CefC_Rate_Mbps;
+	int						block_size	= CefC_BlockSize_Byte;
 	uint32_t				wait_time	= CefC_WaitCsmgrd_Sec;
 	int						retry_cnt	= CefC_WaitCsmgrd_Retry;
+	int						verify_cnt	= CefC_PutCsmgrd_Vercnt;
 	
 #ifdef CefC_Develop
 	int						dbg_file_f	= 0;
@@ -375,7 +380,6 @@ int main (
 				print_usage ();
 				return (-1);
 			}
-			//202108
 			if (strlen(argv[i + 1]) > PATH_MAX) {
 				fprintf (stderr, "ERROR: [-d] parameter is too long.\n");
 				print_usage ();
@@ -441,6 +445,28 @@ int main (
 				return (-1);
 			}
 			retry_cnt_f++;
+			i++;
+		} else if (strcmp (work_arg, "-n") == 0) {
+			if (verify_cnt_f) {
+				fprintf (stdout, "ERROR: [-n] is duplicated.\n");
+				print_usage ();
+				return (-1);
+			}
+			if (i + 1 == argc) {
+				fprintf (stdout, "ERROR: [-n] has no parameter.\n");
+				print_usage ();
+				return (-1);
+			}
+			work_arg = argv[i + 1];
+			verify_cnt = atoi (work_arg);
+			
+			if (CefC_PutCsmgrd_Limit != -1 && 
+				((verify_cnt < 0) || (verify_cnt > CefC_PutCsmgrd_Limit))) {
+				fprintf (stdout, "ERROR: [-n] is 1 or more and less than %d.\n", CefC_PutCsmgrd_Limit);
+				print_usage ();
+				return (-1);
+			}
+			verify_cnt_f++;
 			i++;
 		} else if (strcmp (work_arg, "-v") == 0) {
 			if (verify_only_f) {
@@ -539,7 +565,8 @@ VO_NAME:
 	/*------------------------------------------
 		Creates the name from URI
 	--------------------------------------------*/
-	memset (&params, 0, sizeof (CefT_Object_TLVs));
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));
+	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	cef_frame_init ();
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
@@ -556,7 +583,7 @@ VO_NAME:
 	fprintf (stdout, "OK\n");
 	
 	params.name_len 	= res;
-	params.chnk_num_f 	= 1;
+	params.chunk_num_f 	= 1;
 	
 	if (verify_only_f) {
 		goto VO_CONN;
@@ -575,8 +602,8 @@ VO_NAME:
 		expiry = CefC_UnixTime_Max - now_s;
 	}
 	
-	params.opt.cachetime_f 	= 1;
-	params.opt.cachetime 	= now_ms + cache_time * 1000;
+	opt.cachetime_f 	= 1;
+	opt.cachetime 	= now_ms + cache_time * 1000;
 	
 	if (expiry) {
 		params.expiry = now_ms + expiry * 1000;
@@ -629,18 +656,19 @@ VO_CONN:
 	fprintf (stdout, "OK\n");
 	
 	app_running_f = 1;
-	fprintf (stdout, "[cefput_verify] URI         = %s\n", uri);
+	fprintf (stdout, "[cefput_verify] URI            = %s\n", uri);
 	if (!verify_only_f) {
-		fprintf (stdout, "[cefput_verify] File        = %s\n", filename);
-		fprintf (stdout, "[cefput_verify] Rate        = %.3f Mbps\n", rate);
-		fprintf (stdout, "[cefput_verify] Block Size  = %d Bytes\n", block_size);
-		fprintf (stdout, "[cefput_verify] Cache Time  = "FMTU64" sec\n", cache_time);
-		fprintf (stdout, "[cefput_verify] Expiration  = "FMTU64" sec\n", expiry);
-		fprintf (stdout, "[cefput_verify] Wait Time   = %d sec\n", wait_time);
-		fprintf (stdout, "[cefput_verify] Retry Count = %d time\n", retry_cnt);
+		fprintf (stdout, "[cefput_verify] File           = %s\n", filename);
+		fprintf (stdout, "[cefput_verify] Rate           = %.3f Mbps\n", rate);
+		fprintf (stdout, "[cefput_verify] Block Size     = %d Bytes\n", block_size);
+		fprintf (stdout, "[cefput_verify] Cache Time     = "FMTU64" sec\n", cache_time);
+		fprintf (stdout, "[cefput_verify] Expiration     = "FMTU64" sec\n", expiry);
+		fprintf (stdout, "[cefput_verify] Wait Time      = %d sec\n", wait_time);
+		fprintf (stdout, "[cefput_verify] Retry (Verify) = %d time\n", verify_cnt);
+		fprintf (stdout, "[cefput_verify] Retry (Csmgrd) = %d time\n", retry_cnt);
 #ifdef CefC_Develop
 		if (dbg_file_f) {
-			fprintf (stdout, "[cefput_verify] Debug File  = %s\n", dbg_file_name);
+			fprintf (stdout, "[cefput_verify] Debug File     = %s\n", dbg_file_name);
 		}
 #endif // CefC_Develop
 	} else {
@@ -701,16 +729,16 @@ VO_CONN:
 				
 				memcpy (params.payload, buff, res);
 				params.payload_len = (uint16_t) res;
-				params.chnk_num = (uint32_t)seqnum;
+				params.chunk_num = (uint32_t)seqnum;
 				
 				if ( (stat_send_bytes + res) == statBuf.st_size ) {
 					params.end_chunk_num_f = 1;
 					params.end_chunk_num = seqnum;
 				}
 #ifndef TO_CSMGRD
-				cob_len = cef_frame_object_create (cob_buff, &params);
+				cob_len = cef_frame_object_create (cob_buff, &opt, &params);
 #else	//TO_CSMGRD
-				cob_len = cef_frame_object_create_for_csmgrd (wbuff, &params);
+				cob_len = cef_frame_object_create_for_csmgrd (wbuff, &opt, &params);
 				{
 					uint16_t index = 0;
 					uint16_t value16;
@@ -745,12 +773,12 @@ VO_CONN:
 					index += CefC_S_Length + value16_namelen;
 						
 					/* set chunk num */
-					value32 = htonl (params.chnk_num);
+					value32 = htonl (params.chunk_num);
 					memcpy (cob_buff + index, &value32, CefC_S_ChunkNum);
 					index += CefC_S_ChunkNum;
 						
 					/* set cache time */
-					value64 = cef_client_htonb (params.opt.cachetime*1000);
+					value64 = cef_client_htonb (opt.cachetime*1000);
 					memcpy (cob_buff + index, &value64, CefC_S_Cachetime);
 					index += CefC_S_Cachetime;
 						
@@ -781,7 +809,6 @@ VO_CONN:
 					cob_len = index;
 				}
 #endif	//TO_CSMGRD
-				//0.8.3
 				if ( cob_len < 0 ) {
 					fprintf (stdout, "ERROR: Content Object frame size over(%d).\n", cob_len*(-1));
 					fprintf (stdout, "       Try shortening the block size specification.\n");
@@ -820,7 +847,7 @@ VO_CONN:
 #ifndef TO_CSMGRD
 			cef_client_message_input (fhdl, work_buff, work_buff_idx);
 #else
-			cef_client_message_input (fhdl, work_buff, work_buff_idx);/*//@@@@@@@@@*/
+			cef_client_message_input (fhdl, work_buff, work_buff_idx);
 #endif
 			work_buff_idx = 0;
 		} else {
@@ -895,10 +922,13 @@ VO_VERIFY:
 			}
 		}
 		
+		if (res > 0) {
+			break;
+		}
 		put_limit_count++;
-		if (CefC_PutCsmgrd_Limit >= 0 &&
-			put_limit_count >= CefC_PutCsmgrd_Limit) {
-			fprintf (stdout, "[cefput_verify] Give up to put completely...(%d times put)\n", put_limit_count);
+		if (verify_cnt >= 0 &&
+			put_limit_count >= (verify_cnt+1)) {
+			fprintf (stdout, "[cefput_verify] Give up to verify...(%d times put)\n", put_limit_count);
 			res = 0;
 			break;
 		}
@@ -908,11 +938,6 @@ VO_VERIFY:
 	
 	if (res > 0) {
 		cefputv_send_fibreg (params.name, params.name_len);
-	}
-	
-	if ( params.AppComp_num > 0 ) {
-		/* Free AppComp */
-		cef_frame_app_components_free ( params.AppComp_num, params.AppComp );
 	}
 	
 VO_END:
@@ -926,10 +951,24 @@ print_usage (
 	void
 ) {
 	
-	fprintf (stdout, "\nUsage: \n");
+	fprintf (stdout, "\nUsage: cefput_verify\n");
 	fprintf (stdout, "  cefput_verify uri -f path [-b block_size] [-r rate] [-e expiry] "
 					 "[-t cache_time] [-d config_file_dir] [-p port_num] "
-					 "[-w wait_time] [-c retry_count] [-v (start)] ");
+					 "[-w wait_time] [-c retry_count] [-n verify_count] [-v (start)] \n\n");
+	fprintf (stderr, "  uri              Specify the URI.\n");
+	fprintf (stdout, "  path             Specify the file path of output. \n");
+	fprintf (stdout, "  block_size       Specifies the max payload length (bytes) of the Content Object.\n");
+	fprintf (stdout, "  rate             Transfer rate to cefnetd (Mbps)\n");
+	fprintf (stdout, "  expiry           Specifies the lifetime (seconds) of the Content Object.\n");
+	fprintf (stdout, "  cache_time       Specifies the period (seconds) after which Content Objects are cached before they are deleted.\n");
+	fprintf (stderr, "  config_file_dir  Configure file directory\n");
+	fprintf (stderr, "  port_num         Port Number\n");
+	fprintf (stderr, "  wait_time        Specify the time (seconds) to wait before checking cache storage after the first put.\n");
+	fprintf (stderr, "  retry_count      Specify the number of times to retry when there is no response when inquiring missing Cob to csmgrd.\n");
+	fprintf (stderr, "  verify_count     Specify the number of times to verify and sending missing chunk(s).\n");
+	fprintf (stderr, "  -v (start)       Missing check only. Specify the starting position for (start).\n");
+	fprintf (stdout, "  valid_algo       Specify the validation algorithm (crc32 or sha256)\n");
+
 #ifndef CefC_Develop
 	fprintf (stdout, "\n\n");
 #else
@@ -1057,8 +1096,8 @@ cefputv_check_chunk (
 	uint16_t				res_len;
 	uint16_t				pkt_len;
 	struct fixed_hdr*		fixhdr;
-	CefT_Parsed_Ccninfo		pci;
-	CefT_Ccninfo_Rep*		rep_p;
+	CefT_Parsed_Ccninfo*	p_pci;
+	CefT_Reply_SubBlk*		rep_p;
 	
 	/* Send Contents Information Request Message */
 	memset (&tlvs, 0, sizeof (CefT_Ccninfo_TLVs));
@@ -1117,33 +1156,33 @@ cefputv_check_chunk (
 				pkt_len = ntohs (fixhdr->pkt_len);
 				
 				if (res >= pkt_len) {
-					memset (&pci, 0x00, sizeof (CefT_Parsed_Ccninfo));
+					//memset (&p_pci, 0x00, sizeof (CefT_Parsed_Ccninfo));
 					
 					/* Parses the received Ccninfo Replay 	*/
-					res = cef_frame_ccninfo_parse (buff, &pci);
-					if (res < 0) {
+					p_pci = cef_frame_ccninfo_parse (buff);
+					if (p_pci == NULL) {
 						goto PKTLEN;
 					}
 					
 					/* Check Reply */
-					if (pci.pkt_type != CefC_PT_REPLY) {
-						cef_frame_ccninfo_parsed_free (&pci);
+					if (p_pci->pkt_type != CefC_PT_REPLY) {
+						cef_frame_ccninfo_parsed_free (p_pci);
 						goto PKTLEN;
 					}
 					
-					if (pci.putverify_f &&
-						pci.putverify_msgtype == CefC_CpvOp_ContInfoMsg) {
+					if (p_pci->putverify_f &&
+						p_pci->putverify_msgtype == CefC_CpvOp_ContInfoMsg) {
 						/* Response to Contents Information Request */
-						rep_p = pci.rep_blk;
+						rep_p = p_pci->rep_blk;
 						if (rep_p->rep_name_len == name_len &&
 							memcmp (rep_p->rep_name, name, name_len) == 0) {
 							goto CHECK_CONTENTS;
 						} else {
-							cef_frame_ccninfo_parsed_free (&pci);
+							cef_frame_ccninfo_parsed_free (p_pci);
 							goto PKTLEN;
 						}
 					} else {
-						cef_frame_ccninfo_parsed_free (&pci);
+						cef_frame_ccninfo_parsed_free (p_pci);
 						goto PKTLEN;
 					}
 PKTLEN:;
@@ -1166,7 +1205,7 @@ CHECK_CONTENTS:;
 	
 	/* check information */
 	res = cefputv_parse_response (rep_p->rep_range, start_seq, end_seq);
-	cef_frame_ccninfo_parsed_free (&pci);
+	cef_frame_ccninfo_parsed_free (p_pci);
 	
 	return (res);
 }
@@ -1217,25 +1256,20 @@ cefputv_parse_response (
 		fprintf (stdout, "[cefput_verify]   Missed: %s\n", ng_seq);
 		return (-1);
 	}
-//fprintf (stderr, "** res_seqnum[%s], start_seq[%ld], end_seq[%ld]\n", res_seqnum, start_seq, end_seq);
 	
 	p = strtok ((char*)res_seqnum, ",");
-//fprintf (stderr, "** p=%s\n", p);
 	while (p != NULL) {
 		char*	colon_p;
 		memset (tmp_buff, 0, CefC_Max_Length);
 		
 		colon_p = strstr (p, ":");
-//fprintf (stderr, "** colon_p=%s\n", colon_p);
 		if (colon_p != NULL) {
 			int tmp_val_s, tmp_val_e;
 			
 			strncpy (tmp_buff, p, (colon_p - p));
 			tmp_val_s = atoi (tmp_buff);
-//fprintf (stderr, "** tmp_val_s=%d\n", tmp_val_s);
 			strcpy (tmp_buff, (colon_p + 1));
 			tmp_val_e = atoi (tmp_buff);
-//fprintf (stderr, "** tmp_val_e=%d\n", tmp_val_e);
 			prev_e_pos = tmp_val_e;
 			
 			if (!s_find_f) {
@@ -1243,42 +1277,34 @@ cefputv_parse_response (
 				if (tmp_val_s == s_val) {
 					s_pos = tmp_val_e + 1;
 					s_find_f = 1;
-//fprintf(stderr, "**   (1)s_pos=%d\n", s_pos);
 					if (s_pos >= end_seq) {
 						/* Reached the end of the check range. */
 						e_pos = s_pos;
 						e_find_f = 1;
-//fprintf(stderr, "**   (1)e_pos=%d\n", e_pos);
 						break;
 					}
 				} else {
 					/* case: tmp_val_s > s_val */
 					s_pos = s_val;
 					s_find_f = 1;
-//fprintf(stderr, "**   (2)s_pos=%d\n", s_pos);
 					e_pos = tmp_val_s - 1;
 					e_find_f = 1;
-//fprintf(stderr, "**   (2)e_pos=%d\n", e_pos);
 					next_s_pos = tmp_val_e + 1;
-//fprintf(stderr, "**   (2)next_s_pos=%d\n", next_s_pos);
 				}
 			} else {
 				/* Since the start position is fixed, decide the end position. */
 				if (!e_find_f) {
 					e_pos = tmp_val_s - 1;
 					e_find_f = 1;
-//fprintf(stderr, "**   (3)e_pos=%d\n", e_pos);
 					next_s_pos = tmp_val_e + 1;
 				} else {
 					/* The end position has already been decided. */
-//fprintf(stderr, "**   (4)\n");
 					;
 				}
 			}
 		} else {
 			int tmp_val;
 			tmp_val = atoi (p);
-//fprintf (stderr, "** tmp_val=%d\n", tmp_val);
 			prev_e_pos = tmp_val;
 			
 			if (!s_find_f) {
@@ -1286,7 +1312,6 @@ cefputv_parse_response (
 				if (tmp_val == s_val) {
 					s_pos = tmp_val + 1;
 					s_find_f = 1;
-//fprintf(stderr, "**   (5)s_pos=%d\n", s_pos);
 					if (s_pos >= end_seq) {
 						/* Reached the end of the check range. */
 						e_pos = end_seq;
@@ -1297,24 +1322,18 @@ cefputv_parse_response (
 					/* case: tmp_val > s_val */
 					s_pos = s_val;
 					s_find_f = 1;
-//fprintf(stderr, "**   (6)s_pos=%d\n", s_pos);
 					e_pos = tmp_val - 1;
 					e_find_f = 1;
-//fprintf(stderr, "**   (6)e_pos=%d\n", e_pos);
 					next_s_pos = tmp_val + 1;
-//fprintf(stderr, "**   (6)next_s_pos=%d\n", next_s_pos);
 				}
 			} else {
 				/* Since the start position is fixed, decide the end position. */
 				if (!e_find_f) {
 					e_pos = tmp_val - 1;
 					e_find_f = 1;
-//fprintf(stderr, "**   (7)e_pos=%d\n", e_pos);
 					next_s_pos = tmp_val + 1;
-//fprintf(stderr, "**   (7)next_s_pos=%d\n", next_s_pos);
 				} else {
 					/* The end position has already been decided. */
-//fprintf(stderr, "**   (8)\n");
 					;
 				}
 			}
@@ -1329,17 +1348,14 @@ cefputv_parse_response (
 			}
 			if (s_pos == e_pos) {
 				tmp_buff_len = sprintf (tmp_buff, "%d,", s_pos);
-//fprintf(stderr, "**   (9)%s\n", tmp_buff);
 			} else if (s_pos < e_pos) {
 				tmp_buff_len = sprintf (tmp_buff, "%d:%d,", s_pos, e_pos);
-//fprintf(stderr, "**   (10)%s\n", tmp_buff);
 			}
 			s_find_f = 0;
 			e_find_f = 0;
 			s_val = e_pos + 1;
 			if ((wk_buff_p + tmp_buff_len) < wk_buff_end_p) {
 				memcpy (wk_buff_p, tmp_buff, tmp_buff_len);
-//fprintf(stderr, "**   (11)%s\n", tmp_buff);
 				wk_buff_p += tmp_buff_len;
 			} else {
 				/* can't write to buff anymore */
@@ -1354,7 +1370,6 @@ cefputv_parse_response (
 		
 		/* next seq */
 		p = strtok (NULL, ",");
-//fprintf (stderr, "** p=%s\n", p);
 	}
 	
 	if (s_find_f && !e_find_f) {
@@ -1367,21 +1382,16 @@ cefputv_parse_response (
 	if (s_find_f && e_find_f) {
 		if (s_pos > end_seq) {
 			/* out of range */
-//fprintf(stderr, "**   (12)\n");
 			goto NOTADD;
 		} else if (s_pos == e_pos) {
 			tmp_buff_len = sprintf (tmp_buff, "%d,", s_pos);
-//fprintf(stderr, "**   (13)%s\n", tmp_buff);
 		} else if (s_pos < e_pos) {
 			tmp_buff_len = sprintf (tmp_buff, "%d:%d,", s_pos, e_pos);
-//fprintf(stderr, "**   (14)%s\n", tmp_buff);
 		} else {
-//fprintf(stderr, "**   (15)\n");
 			goto NOTADD;
 		}
 		if ((wk_buff_p + tmp_buff_len) < wk_buff_end_p) {
 			memcpy (wk_buff_p, tmp_buff, tmp_buff_len);
-//fprintf(stderr, "**   (16)%s\n", tmp_buff);
 			wk_buff_p += tmp_buff_len;
 		} else {
 			/* can't write to buff anymore */
@@ -1394,8 +1404,6 @@ NOTADD:;
 		if (ng_seq != NULL) {
 			free (ng_seq);
 		}
-//fprintf(stderr, "** wk_buff_len=%d\n", wk_buff_len);
-//fprintf(stderr, "** wk_buff=%s\n", wk_buff);
 		ng_seq = (char*)malloc (wk_buff_len + 1);
 		memcpy (ng_seq, wk_buff, wk_buff_len);
 		ng_seq[wk_buff_len] = 0x00;
@@ -1416,7 +1424,7 @@ cefputv_put_chunk (
 	int					block_size,
 	long				sending_time_us,
 	char*				filename,
-	CefT_Object_TLVs	params
+	CefT_CcnMsg_MsgBdy	params
 ) {
 	struct timeval		retx_start_t;
 	unsigned char*		work_buff = NULL;
@@ -1440,6 +1448,7 @@ cefputv_put_chunk (
 	FILE*				fp;
 	struct stat 		statBuf;
 	char				copy_ng_seq[CefC_Max_Length];
+	CefT_CcnMsg_OptHdr opt;
 	
 	gettimeofday (&retx_start_t, NULL);
 	next_tus = retx_start_t.tv_sec * 1000000llu + retx_start_t.tv_usec + interval_us;
@@ -1458,6 +1467,7 @@ cefputv_put_chunk (
 		exit (1);
 	}
 	
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));
 	memset (copy_ng_seq, 0x00, CefC_Max_Length);
 	memcpy (copy_ng_seq, ng_seq, strlen (ng_seq));
 	p = strtok (copy_ng_seq, ",");
@@ -1465,19 +1475,15 @@ cefputv_put_chunk (
 		fprintf (stdout, "ERROR: Invalid response from csmgrd.\n");
 		exit (1);
 	}
-//fprintf (stderr, "++p=%s\n", p);
 	colon_p = strstr (p, ":");
 	if (colon_p != NULL) {
-//fprintf (stderr, "++colon_p=%s\n", colon_p);
 		strncpy (tmp_buff, p, (colon_p - p));
 		s_pos = atoi (tmp_buff);
 		strcpy (tmp_buff, (colon_p + 1));
 		e_pos = atoi (tmp_buff);
-//fprintf (stderr, "++(1) %d:%d\n", s_pos, e_pos);
 	} else {
 		s_pos = atoi (p);
 		e_pos = s_pos;
-//fprintf (stderr, "++(1) %d\n", s_pos);
 	}
 	
 	while (app_running_f) {
@@ -1489,11 +1495,9 @@ cefputv_put_chunk (
 		while (work_buff_idx < 1) {
 			res = fread (buff, sizeof (unsigned char), block_size, fp);
 			
-//fprintf(stderr, "++ seqnum=%ld\n", seqnum);
 			if (seqnum > e_pos) {
 				p = strtok (NULL, ",");
 				if (p == NULL) {
-//fprintf(stderr, "++ break;\n");
 					app_running_f = 0;
 					break;
 				}
@@ -1503,11 +1507,9 @@ cefputv_put_chunk (
 					s_pos = atoi (tmp_buff);
 					strcpy (tmp_buff, (colon_p + 1));
 					e_pos = atoi (tmp_buff);
-//fprintf (stderr, "++(2) %d:%d\n", s_pos, e_pos);
 				} else {
 					s_pos = atoi (p);
 					e_pos = s_pos;
-//fprintf (stderr, "++(2) %d\n", s_pos);
 				}
 			}
 			if (seqnum < s_pos) {
@@ -1523,16 +1525,16 @@ cefputv_put_chunk (
 			if (res > 0) {
 				memcpy (params.payload, buff, res);
 				params.payload_len = (uint16_t) res;
-				params.chnk_num = (uint32_t)seqnum;
+				params.chunk_num = (uint32_t)seqnum;
 				
 				if ( (stat_resend_bytes + res) == statBuf.st_size ) {
 					params.end_chunk_num_f = 1;
 					params.end_chunk_num = seqnum;
 				}
 #ifndef TO_CSMGRD
-				cob_len = cef_frame_object_create (cob_buff, &params);
+				cob_len = cef_frame_object_create (cob_buff, &opt, &params);
 #else	//TO_CSMGRD
-				cob_len = cef_frame_object_create_for_csmgrd (wbuff, &params);
+				cob_len = cef_frame_object_create_for_csmgrd (wbuff, &opt, &params);
 				{
 					uint16_t index = 0;
 					uint16_t value16;
@@ -1567,12 +1569,12 @@ cefputv_put_chunk (
 					index += CefC_S_Length + value16_namelen;
 					
 					/* set chunk num */
-					value32 = htonl (params.chnk_num);
+					value32 = htonl (params.chunk_num);
 					memcpy (cob_buff + index, &value32, CefC_S_ChunkNum);
 					index += CefC_S_ChunkNum;
 						
 					/* set cache time */
-					value64 = cef_client_htonb (params.opt.cachetime*1000);
+					value64 = cef_client_htonb (opt.cachetime*1000);
 					memcpy (cob_buff + index, &value64, CefC_S_Cachetime);
 					index += CefC_S_Cachetime;
 						
@@ -1613,7 +1615,6 @@ cefputv_put_chunk (
 					work_buff_idx += cob_len;
 					cob_len = 0;
 					
-//fprintf(stderr, "##### send %ld\n", seqnum);
 					stat_resend_frames++;
 					stat_resend_bytes += res;
 					
@@ -1663,23 +1664,25 @@ cefputv_send_fibreg (
 	unsigned char*		name,
 	uint16_t			name_len
 ) {
-	CefT_Interest_TLVs		params;
+	CefT_CcnMsg_OptHdr opt;
+	CefT_CcnMsg_MsgBdy		params;
 	
 	/* Send FIB registration request Message */
-	memset (&params, 0, sizeof (CefT_Interest_TLVs));
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));
+	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	params.hoplimit 		= 1;
-	params.opt.lifetime_f 	= 1;
-	params.opt.lifetime 	= CefC_Default_LifetimeSec * 1000;
+	opt.lifetime_f 	= 1;
+	opt.lifetime 	= CefC_Default_LifetimeSec * 1000;
 	memcpy (params.name, name, name_len);
 	params.name_len = name_len;
-	params.opt.putverify_f	= 1;
-	params.opt.putverify_msgtype = CefC_CpvOp_FibRegMsg;
+	params.org.putverify_f	= 1;
+	params.org.putverify_msgtype = CefC_CpvOp_FibRegMsg;
 	
 	fprintf (stdout, "[cefput_verify] Send FIB registration request\n");
 #ifndef TO_CSMGRD
-	cef_client_interest_input (fhdl, &params);
+	cef_client_interest_input (fhdl, &opt, &params);
 #else
-	cef_client_interest_input (cefnetd_fhdl, &params);
+	cef_client_interest_input (cefnetd_fhdl, &opt, &params);
 #endif
 	
 	return;

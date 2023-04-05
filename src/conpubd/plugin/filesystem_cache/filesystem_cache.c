@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -102,7 +102,7 @@ typedef struct {
 	unsigned char	*name;						/* Content name							*/
 	uint16_t		name_len;					/* Content name length					*/
 	uint16_t		pay_len;					/* Payload length						*/
-	uint32_t		chnk_num;					/* Chunk num							*/
+	uint32_t		chunk_num;					/* Chunk num							*/
 	uint64_t		rct;						/* RCT									*/
 	uint64_t		expiry;						/* Expiry								*/
 	uint64_t		cachetime;					/* cachetime							*/
@@ -164,8 +164,10 @@ fsc_cache_item_get (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 fsc_cache_item_puts (
-	ConpubdT_Content_Entry* entry, 
-	int size
+//JK	ConpubdT_Content_Entry* entry, 
+	void* entry, 
+	int size,
+	void* conpubd_hdl
 );
 /*--------------------------------------------------------------------------------------
 	writes the cobs to filesystem cache
@@ -302,6 +304,7 @@ fsc_cs_create (
 	cobpub_hdl->cache_capacity = conf_param.cache_capacity;
 	cobpub_hdl->cache_cobs = 0;
 	strcpy (cobpub_hdl->fsc_root_path, conf_param.cache_path);
+	cobpub_hdl->cache_default_rct = conf_param.cache_default_rct;
 	
 	/* Check and create root directory	*/
 	if (fsc_root_dir_check (cobpub_hdl->fsc_root_path) < 0) {
@@ -322,6 +325,7 @@ fsc_cs_create (
 	
 	conpubd_log_write (CefC_Log_Info, "Start\n");
 	conpubd_log_write (CefC_Log_Info, "Capacity : "FMTU64"\n", cobpub_hdl->cache_capacity);
+	conpubd_log_write (CefC_Log_Info, "cache_default_rct : %u\n", cobpub_hdl->cache_default_rct);
 	conpub_stat_hdl = stat_hdl;
 	conpubd_stat_cache_capacity_update (conpub_stat_hdl, cobpub_hdl->cache_capacity);
 	
@@ -540,6 +544,15 @@ fsc_cache_item_get (
 	conpubd_stat_access_count_update (
 			conpub_stat_hdl, key, key_size);
 	
+	/* Set cache time */
+	{
+	uint64_t cachetime;
+	time_t timer = time (NULL);
+	struct tm* local = localtime (&timer);
+	time_t now_time = mktime (local);
+	cachetime = (uint64_t)(now_time + cobpub_hdl->cache_default_rct) * 1000;
+	cef_frame_opheader_cachetime_update (&page_cob_buf[pos_index*rcdsize+sizeof (uint16_t)], cachetime);
+	}
 	/* Send Cob to cefnetd */
 	uint16_t mlen;
 	memcpy (&mlen, &page_cob_buf[pos_index*rcdsize], sizeof (uint16_t));
@@ -572,6 +585,15 @@ fsc_cache_item_get (
 				conpubd_dbg_write (CefC_Dbg_Finest, "send seqno = %u (%u bytes)\n", seqno, mlen);
 			}
 #endif // CefC_Debug
+	/* Set cache time */
+			{
+			uint64_t cachetime;
+			time_t timer = time (NULL);
+			struct tm* local = localtime (&timer);
+			time_t now_time = mktime (local);
+			cachetime = (uint64_t)(now_time + cobpub_hdl->cache_default_rct) * 1000;
+			cef_frame_opheader_cachetime_update (&page_cob_buf[i*rcdsize+sizeof (uint16_t)], cachetime);
+			}
 			uint16_t mlen;
 			memcpy (&mlen, &page_cob_buf[i*rcdsize], sizeof (uint16_t));
 			if (mlen != 0) {
@@ -597,11 +619,14 @@ ItemGetPost:
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 fsc_cache_item_puts (
-	ConpubdT_Content_Entry* entry, 
-	int size
+//	ConpubdT_Content_Entry* entry, 
+	void* in_entry, 
+	int size,
+	void* conpubd_hdl
 ) {
 	static int cob_num = 0;
 	int rtc = 0;
+	ConpubdT_Content_Entry* entry = (ConpubdT_Content_Entry*)in_entry;
 	
 	if (entry == NULL) {
 		if (cob_num != 0) {
@@ -655,7 +680,7 @@ fsc_cache_cob_write (
 	index = 0;
 	while (index < cob_num) {
 		
-		uint32_t chunk_num = cobs[index].chnk_num;
+		uint32_t chunk_num = cobs[index].chunk_num;
 		if (cobs[index].expiry < nowt) {
 			goto NEXTCOB;
 		}
@@ -877,6 +902,7 @@ fsc_config_read (
 	memset (params, 0, sizeof (FscT_Config_Param));
 	params->cache_capacity 			= CefC_CnpbDefault_Contents_Capacity;
 	strcpy(params->cache_path, 		  conpub_conf_dir);
+	params->cache_default_rct = CefC_CnpbDefault_Cache_Default_Rct;
 
 	/* Obtains the directory path where the conpubd's config file is located. */
 #if 0 //+++++ GCC v9 +++++
@@ -960,6 +986,16 @@ fsc_config_read (
 				return (-1);
 		    }
 			strcpy (params->cache_path, value);
+		} else
+		if (strcmp (option, "CACHE_DEFAULT_RCT") == 0) {
+			char *endp = "";
+			params->cache_default_rct = strtoul (value, &endp, 0);
+			if (!(1 < params->cache_default_rct && params->cache_default_rct < 3600)) {
+				cef_log_write (CefC_Log_Error,
+					"CACHE_DEFAULT_RCT value must be higher than 1 and lower than 3600 (secs).\n");
+				fclose (fp);
+				return (-1);
+			}
 		} else {
 			/* NOP */;
 		}

@@ -1,7 +1,7 @@
 #
-# Copyright (c) 2016-2021, National Institute of Information and Communications
+# Copyright (c) 2016-2023, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
 # met:
@@ -13,7 +13,7 @@
 # 3. Neither the name of the NICT nor the names of its contributors may be
 #    used to endorse or promote products derived from this software
 #    without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE NICT AND CONTRIBUTORS "AS IS" AND ANY
 # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,16 +25,23 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
-# 
+#
 
 AM_CPPFLAGS = -I$(top_srcdir)/src/include -Wall -O2
 
 bin_PROGRAMS=cefgetcontent
 cefgetcontent_LDFLAGS=-L$(top_srcdir)/src/lib/
 if LINUX
-cefgetcontent_LDFLAGS+=-pthread -lpthread
+cefgetcontent_LDFLAGS+=-pthread
 endif # LINUX
-cefgetcontent_LDADD=-lcefore -lssl -lcrypto
+cefgetcontent_LDADD=-lcefore
+if OPENSSL_STATIC
+cefgetcontent_LDADD+=-l:libssl.a -l:libcrypto.a
+else  #OPENSSL_STATIC
+cefgetcontent_LDADD+=-lssl -lcrypto
+endif #OPENSSL_STATIC
+cefgetcontent_LDADD += -lpthread -ldl
+
 cefgetcontent_CFLAGS=$(AM_CPPFLAGS)
 cefgetcontent_SOURCES=cefgetcontent.c
 

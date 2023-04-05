@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -60,7 +60,7 @@ typedef struct {
 	uint64_t 			cache_capacity;					/* size of cache capacity 			*/
 	char				cache_path[CefC_Conpubd_File_Path_Length];
 														/* FileSystemCache root dir		*/
-	
+	uint32_t			cache_default_rct;
 	
 } FscT_Config_Param;
 
@@ -80,6 +80,7 @@ typedef struct {
 	uint64_t 		cache_cobs;
 	uint64_t		cache_capacity;
 	CefT_Mp_Handle	mem_rm_key;
+	uint32_t		cache_default_rct;
 	
 } FscT_Cache_Handle;
 

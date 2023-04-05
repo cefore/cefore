@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,23 +46,103 @@
 #include <cefore/cef_csmgr.h>
 #include <cefore/cef_csmgr_stat.h>
 
-#ifdef CefC_Ccninfo
 #include <cefore/cef_ccninfo.h>
-#endif // CefC_Ccninfo
 #include <cefore/cef_log.h>
 
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+#define ConpubdC_Max_Sock_Num		32					/* Max number of TCP peer		*/
+
+#define CefC_Name_Max_Length	2048
 
 #define ConpubdC_Max_Plugin_Name_Len 	64
 #define ConpubdC_Key_Max 				1024
 
 #define ConpubC_Buff_Num 				65535
 
+#define ConpubC_Add_Maps				1000
+
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
+
+typedef struct ConpubdT_Plugin_Interface {
+	/* Initialize process */
+	int (*init)(CsmgrT_Stat_Handle);
+
+	/* Destroy process */
+	void (*destroy)(void);
+
+	/* Check expiry */
+	void (*expire_check)(void);
+
+	/* Get Cob Entry */
+	int (*cache_item_get)(unsigned char*, uint16_t, uint32_t, int, unsigned char*, uint16_t);
+
+	/* Put contents */
+//JK	int (*cache_item_puts)(	ConpubdT_Content_Entry*, int);
+	int (*cache_item_puts)(void*, int, void*);
+
+	/* Increment access count */
+	void (*ac_cnt_inc)(unsigned char*, uint16_t, uint32_t);
+
+	/* Delete content */
+	int (*content_del) (unsigned char*, uint16_t, uint64_t);
+
+	/* Get chahed cob num */
+	uint64_t (*cached_cobs) ();
+
+} ConpubdT_Plugin_Interface;
+
+typedef struct {
+	char 				launched_user_name[CefC_Csmgr_User_Len];
+
+	/********** TCP Listen Sockets		***********/
+	uint16_t 			port_num;
+	int 				tcp_listen_fd;
+	struct sockaddr* 	ai_addr;
+	socklen_t 			ai_addrlen;
+	int 				tcp_fds[ConpubdC_Max_Sock_Num];
+	int 				tcp_index[ConpubdC_Max_Sock_Num];
+	unsigned char* 		tcp_buff[ConpubdC_Max_Sock_Num];
+	char				peer_id_str[ConpubdC_Max_Sock_Num][NI_MAXHOST];
+	char				peer_sv_str[ConpubdC_Max_Sock_Num][NI_MAXSERV];
+	int 				peer_num;
+	
+	/********** Local listen socket 	***********/
+	int 				local_listen_fd;
+	char 				local_sock_name[1024];
+	int					local_peer_sock;
+	
+	/********** load functions			***********/
+	ConpubdT_Plugin_Interface* cs_mod_int;		/* plugin interface						*/
+	char			cache_type[ConpubdC_Max_Plugin_Name_Len];
+												/* plugin library name					*/
+	void*			mod_lib;					/* plugin library						*/
+	
+	/********** CS parameters info. ***********/
+	uint32_t		purge_interval;				/* Interval that to purge cache			*/
+	char			cache_path[PATH_MAX];
+	int				contents_num;
+	uint64_t		contents_capacity;
+
+	/********** Cob parameters info. ***********/
+	int				block_size;
+	uint32_t		cache_default_rct;
+	uint16_t 		valid_type;
+
+	/********** APP FIB registration info. ***********/
+	char 		cefnetd_id[128];
+	char 		cefnetd_port_str[128];
+	int 		cefnetd_port_num;
+	int			cefnetd_sock;
+	uint64_t 	cefnetd_reconnect_time;
+	
+	/********** Published info.  ***********/
+	int				published_contents_num;
+	
+} CefT_Conpubd_Handle;
 
 typedef struct {
 
@@ -72,40 +152,59 @@ typedef struct {
 	unsigned char*	name;						/* Content name							*/
 	uint16_t		name_len;					/* Content name length					*/
 	uint16_t		pay_len;					/* Payload length						*/
-	uint32_t		chnk_num;					/* Chunk num							*/
+	uint32_t		chunk_num;					/* Chunk num							*/
 	uint64_t		rct;						/* RCT									*/
 	uint64_t		expiry;						/* Expiry								*/
 	struct in_addr	node;						/* Node address							*/
 
 } ConpubdT_Content_Entry;
 
+/* Content management entry */
+typedef struct _CefT_Cpubcnt_Hdl {
 
+	unsigned char 		name[CefC_Name_Max_Length];
+	int 				name_len;
+	unsigned char 		version[CefC_Name_Max_Length];
+	int 				version_len;
+	char 				file_path[PATH_MAX];
+	time_t 				date;					/* date of upload */
+	time_t 				expiry;
+	uint64_t 			interests;
+	uint64_t			cob_num;
+	int					line_no;
+	struct _CefT_Cpubcnt_Hdl* next;
+
+} CefT_Cpubcnt_Hdl;
+
+#if 0		//JK
 typedef struct ConpubdT_Plugin_Interface {
 	/* Initialize process */
 	int (*init)(CsmgrT_Stat_Handle);
-	
+
 	/* Destroy process */
 	void (*destroy)(void);
-	
+
 	/* Check expiry */
 	void (*expire_check)(void);
-	
+
 	/* Get Cob Entry */
 	int (*cache_item_get)(unsigned char*, uint16_t, uint32_t, int, unsigned char*, uint16_t);
-	
+
 	/* Put contents */
-	int (*cache_item_puts)(	ConpubdT_Content_Entry*, int);
-	
+//JK	int (*cache_item_puts)(	ConpubdT_Content_Entry*, int);
+	int (*cache_item_puts)(void*, int, void*);
+
 	/* Increment access count */
 	void (*ac_cnt_inc)(unsigned char*, uint16_t, uint32_t);
-	
+
 	/* Delete content */
 	int (*content_del) (unsigned char*, uint16_t, uint64_t);
-	
+
 	/* Get chahed cob num */
 	uint64_t (*cached_cobs) ();
 
 } ConpubdT_Plugin_Interface;
+#endif		//JK
 
 /****************************************************************************************
  Global Variables

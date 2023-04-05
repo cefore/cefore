@@ -5,7 +5,7 @@ dnl
 dnl  project setting
 dnl
 AC_PREREQ([2.69])
-AC_INIT([cefore], [0.9.0b], [])
+AC_INIT([cefore], [0.10.0b], [])
 AC_CONFIG_AUX_DIR(autotools)
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
@@ -62,14 +62,31 @@ echo "#define CEFORE_VERSION \"Cefore version $VERSION\"" > src/cefnetd/version.
 dnl
 dnl  check OpenSSL library
 dnl
-if test "x${opssl_header_path}" = "x" ; then
-  opssl_header_path=/usr/include/openssl/sha.h
-else
-  opssl_header_path=${opssl_header_path}/openssl/sha.h
-fi
-AC_CHECK_FILES([${opssl_header_path}],[],[AC_MSG_ERROR("OpenSSL is not installed.")])
+AC_ARG_WITH([openssl-dir],
+  [AS_HELP_STRING([--with-openssl-dir=DIR],[An openssl path (default /usr)
+  ])],
+  [openssl_path=$withval],
+  [openssl_path=/usr]
+)
+check_openssl_header=${openssl_path}/include/openssl/sha.h
+
+AC_CHECK_FILES([${check_openssl_header}],[],[AC_MSG_ERROR("OpenSSL is not installed.")])
+# CFLAGS="${CFLAGS} -I${openssl_path}/include"
+CFLAGS="${CFLAGS} -DOPENSSL_API_COMPAT=0x10101000L -I${openssl_path}/include"
+LDFLAGS="${LDFLAGS} -L${openssl_path}/lib64"
 
 # checks for args
+
+dnl
+dnl  check openssl-static-link build
+dnl
+AC_ARG_WITH([openssl-static],
+  [AS_HELP_STRING([--with-openssl-static],[openssl library static link (default no)
+  ])],
+  [openssl_static=yes],
+  [openssl_static=no]
+)
+AM_CONDITIONAL(OPENSSL_STATIC, test x"${openssl_static}" = xyes)
 
 dnl
 dnl  check debug build
@@ -94,21 +111,6 @@ AC_ARG_ENABLE(
 AM_CONDITIONAL(CSMGR_ENABLE, test x"${enable_csmgr}" = xyes)
 
 dnl
-dnl  enable ccninfo
-dnl
-AM_CONDITIONAL(CCNINFO_ENABLE, true)
-
-dnl
-dnl  check cefping
-dnl
-AC_ARG_ENABLE(cefping,
-  AS_HELP_STRING([--enable-cefping], [content ping tool (default no)]),
-  [enable_cefping=yes],
-  [enable_cefping=no]
-)
-AM_CONDITIONAL(CEFPING_ENABLE, test x"${enable_cefping}" = xyes)
-
-dnl
 dnl  check samptp
 dnl
 AC_ARG_ENABLE(
@@ -118,17 +120,6 @@ AC_ARG_ENABLE(
   [enable_samptp=no]
 )
 AM_CONDITIONAL(SAMPTP_ENABLE, test x"${enable_samptp}" = xyes)
-
-dnl
-dnl  check NDN Plugin
-dnl
-AC_ARG_ENABLE(
-  ndn,
-  AS_HELP_STRING([--enable-ndn], [NDN Plugin (default no)]),
-  [enable_ndn=yes],
-  [enable_ndn=no]
-)
-AM_CONDITIONAL(NDNPLUGIN_ENABLE, test x"${enable_ndn}" = xyes)
 
 dnl
 dnl  check cache
@@ -174,6 +165,7 @@ AC_CONFIG_FILES([
   tools/cefputfile_sec/Makefile
   tools/cefgetchunk/Makefile
   tools/cefgetcontent/Makefile
+  tools/ccninfo/Makefile
 ])
 
 dnl
@@ -198,30 +190,10 @@ AM_COND_IF(
 ])
 
 dnl
-dnl  check cefping
-dnl
-AM_COND_IF(
-  [CEFPING_ENABLE],
-  [AC_CONFIG_FILES([
-    tools/cefping/Makefile
-  ])
-])
-
-dnl
-dnl  check ccninfo
-dnl
-AM_COND_IF(
-  [CCNINFO_ENABLE],
-  [AC_CONFIG_FILES([
-    tools/ccninfo/Makefile
-  ])
-])
-
-dnl
 dnl  check cache
 dnl
 AM_COND_IF(
-  [CACHE_ENABLE], 
+  [CACHE_ENABLE],
   [AC_CONFIG_FILES([
   ])
 ])

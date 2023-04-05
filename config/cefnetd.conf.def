@@ -40,9 +40,9 @@
 
 #
 # Maximum number of PIT entries.
-# This value must be higther than 0 and lower than 65536.
+# This value must be higther than 0 and lower than 16777216.
 #
-#PIT_SIZE=2048
+#PIT_SIZE=65535
 
 #
 # Maximum number of PIT(APP) entries.
@@ -158,13 +158,6 @@
 #CEFBABEL_ROUTE=both
 
 #
-# Neighbour Discovery
-#
-#NBR_SIZE=1
-#NBR_INTERVAL=10000
-#NBR_THRESH=3
-
-#
 # Same Interest retransmission strategy
 #	RFC8569 or SUPPRESSIVE
 #
@@ -237,27 +230,6 @@
 # Enabled Return Code
 #
 #ENABLED_RETURN_CODE=1,2,6
-
-#
-# Serial Logging
-#
-#SER_LOG_ENABLE=0
-#SER_LOG_SIZE=65535
-#SER_LOG_DIR=/path/to/file.csv
-
-#
-# Community Log
-#
-#  Necessity of output log for community.
-#    OFF or ON
-#CEF_C3_LOG=OFF
-#
-# Community log output directory.
-#CEF_C3_LOG_DIR=/usr/local/cefore/logs
-#
-# Community log output period. The unit is seconds.
-#   This value must be greater than 0.
-#CEF_C3_LOG_PERIOD=3600
 
 # Debug log level
 #

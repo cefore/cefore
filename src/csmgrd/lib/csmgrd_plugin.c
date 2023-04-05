@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -150,6 +150,9 @@ csmgrd_plugin_cob_msg_send (
 					}
 				}
 				send_count++;
+				if  ( send_count > DEMO_RETRY_NUM ) {
+					break;
+				}
 			}
 		} else {
 			if ( send_count == 0 ) {
@@ -208,15 +211,15 @@ csmgrd_key_create (
 	CsmgrdT_Content_Entry* entry,
 	unsigned char* key
 ) {
-	uint32_t chnk_num;
+	uint32_t chunk_num;
 
 	memcpy (&key[0], entry->name, entry->name_len);
 	key[entry->name_len] 		= 0x00;
 	key[entry->name_len + 1] 	= 0x10;
 	key[entry->name_len + 2] 	= 0x00;
 	key[entry->name_len + 3] 	= 0x04;
-	chnk_num = htonl (entry->chnk_num);
-	memcpy (&key[entry->name_len + 4], &chnk_num, sizeof (uint32_t));
+	chunk_num = htonl (entry->chunk_num);
+	memcpy (&key[entry->name_len + 4], &chunk_num, sizeof (uint32_t));
 
 	return (entry->name_len + 4 + sizeof (uint32_t));
 }
@@ -310,8 +313,8 @@ cef_csmgr_con_entry_create (
 	unsigned char* ucp;
 	uint16_t pkt_len = 0;
 	uint16_t hdr_len = 0;
-	CefT_Parsed_Message pm;
-	CefT_Parsed_Opheader poh;
+	CefT_CcnMsg_MsgBdy 	pm = { 0 };
+	CefT_CcnMsg_OptHdr 	poh = { 0 };
 	int res;
 	
 /*                          1                   2                   3
@@ -335,10 +338,10 @@ cef_csmgr_con_entry_create (
 		return (-1);
 	}
 	if (pm.org.version_f) {
-		entry->ver_len = pm.org.ver_len;
-		if (pm.org.ver_len) {
-			entry->version = (unsigned char*) malloc (pm.org.ver_len);
-			memcpy (entry->version, pm.org.content_ver, pm.org.ver_len);
+		entry->ver_len = pm.org.version_len;
+		if (pm.org.version_len) {
+			entry->version = (unsigned char*) malloc (pm.org.version_len);
+			memcpy (entry->version, pm.org.version_val, pm.org.version_len);
 		} else {
 			entry->version = NULL;
 		}
@@ -379,7 +382,7 @@ cef_csmgr_con_entry_create (
 	
 	/* Get chunk num */
 	memcpy (&value32, &buff[index], CefC_S_ChunkNum);
-	entry->chnk_num = ntohl (value32);
+	entry->chunk_num = ntohl (value32);
 	index += CefC_S_ChunkNum;
 	
 	/* Get cache time */

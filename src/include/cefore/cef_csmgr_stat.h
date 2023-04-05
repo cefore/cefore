@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -92,7 +92,7 @@ typedef struct CsmgrT_Stat {
 	/* FILE/DB Cob size information */
 	uint32_t			cob_size;
 	uint32_t			last_cob_size;
-	uint32_t			last_chnk_num;
+	uint32_t			last_chunk_num;
 	
 	uint64_t 			cob_num;
 	uint64_t 			access;
@@ -526,6 +526,15 @@ csmgr_stat_request_count_update_db (
 	uint16_t name_len
 ); 
 /*--------------------------------------------------------------------------------------
+	Clear request count & access count
+----------------------------------------------------------------------------------------*/
+void 
+csmgr_stat_count_clear_db (
+	CsmgrT_Stat_Handle hdl, 
+	const unsigned char* name, 
+	uint16_t name_len
+); 
+/*--------------------------------------------------------------------------------------
 	Init the valiables of the specified content
 ----------------------------------------------------------------------------------------*/
 CsmgrT_Stat* 
@@ -676,15 +685,19 @@ csmgr_stat_my_node_id_get_db(
 #define conpubd_stat_content_info_is_exist(hdl, name, name_len, cob_map) \
 		 csmgr_stat_content_info_is_exist(hdl, name, name_len, cob_map)
 #define conpubd_stat_content_info_get(hdl, name, name_len) \
-		  csmgr_stat_content_info_get_for_pub(hdl, name, name_len)
+		  csmgr_stat_content_info_get(hdl, name, name_len)
+//		  csmgr_stat_content_info_get_for_pub(hdl, name, name_len)
 #define conpubd_stat_content_info_gets(hdl, name, name_len, partial_match_f, retARY) \
 		  csmgr_stat_content_info_gets_for_pub(hdl, name, name_len, partial_match_f, retARY)
+//		  csmgr_stat_content_info_gets(hdl, name, name_len, partial_match_f, retARY)
 #define conpubd_stat_expired_content_info_get(hdl, index) \
 		  csmgr_stat_expired_content_info_get(hdl, index)
 #define conpubd_stat_cob_update(hdl, name, name_len, seq, cob_size, expiry, cached_time, node) \
-		  csmgr_stat_cob_update_for_pub(hdl, name, name_len, seq, cob_size, expiry, cached_time, node)
+		  csmgr_stat_cob_update(hdl, name, name_len, seq, cob_size, expiry, cached_time, node)
+//		  csmgr_stat_cob_update_for_pub(hdl, name, name_len, seq, cob_size, expiry, cached_time, node)
 #define conpubd_stat_cob_remove(hdl, name, name_len, seq, cob_size) \
-		  csmgr_stat_cob_remove_for_pub(hdl, name, name_len, seq, cob_size)
+		  csmgr_stat_cob_remove(hdl, name, name_len, seq, cob_size)
+//		  csmgr_stat_cob_remove_for_pub(hdl, name, name_len, seq, cob_size)
 #define conpubd_stat_access_count_update(hdl, name, name_len) \
 		  csmgr_stat_access_count_update(hdl, name, name_len)
 #define conpubd_stat_content_info_init(hdl, name, name_len, cob_map) \
@@ -742,6 +755,8 @@ csmgr_stat_my_node_id_get_db(
 		 csmgr_stat_cache_capacity_get_db(hdl)
 #define csmgrd_stat_request_count_update(hdl, name, name_len) \
 		 csmgr_stat_request_count_update_db(hdl, name, name_len)
+#define csmgrd_stat_count_clear(hdl, name, name_len) \
+		 csmgr_stat_count_clear_db(hdl, name, name_len)
 #define csmgrd_stat_cefore_dir_set(conf_dir) \
 		 csmgr_stat_cefore_dir_set_db(conf_dir)
 #define csmgrd_stat_other_csmgrd_check(nodeid, nodeid_len) \

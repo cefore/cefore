@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -56,8 +56,7 @@
  ****************************************************************************************/
 
 #define CefC_Putfile_Max 					512000
-//#define CefC_RateMbps_Max				 	32.0
-#define CefC_RateMbps_Max				 	100000000.0
+#define CefC_RateMbps_Max				 	1000.0
 #define CefC_RateMbps_Min				 	0.001	/* 1Kbps */
 
 //#define TO_CSMGRD // Enable to connect directly to Csmgrd
@@ -108,7 +107,8 @@ int main (
 ) {
 	int res;
 	unsigned char buff[CefC_Max_Length];
-	CefT_Object_TLVs params;
+	CefT_CcnMsg_OptHdr opt;	
+	CefT_CcnMsg_MsgBdy params;
 	uint64_t seqnum = 0;
 	char uri[1024];
 	struct stat statBuf;
@@ -472,7 +472,8 @@ int main (
 	/*------------------------------------------
 		Creates the name from URI
 	--------------------------------------------*/
-	memset (&params, 0, sizeof (CefT_Object_TLVs));
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));	
+	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	cef_frame_init ();
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
@@ -489,7 +490,7 @@ int main (
 	fprintf (stdout, "OK\n");
 	
 	params.name_len 	= res;
-	params.chnk_num_f 	= 1;
+	params.chunk_num_f 	= 1;
 	
 	/*------------------------------------------
 		Sets Expiry Time and RCT
@@ -498,8 +499,8 @@ int main (
 //#832	now_ms = now_t.tv_sec * 1000 + now_t.tv_usec / 1000;
 	now_ms = now_t.tv_sec * 1000llu + now_t.tv_usec / 1000llu;	//#832
 	
-	params.opt.cachetime_f 	= 1;
-	params.opt.cachetime 	= now_ms + cache_time * 1000;
+	opt.cachetime_f 	= 1;
+	opt.cachetime 	= now_ms + cache_time * 1000;
 	
 	if (expiry) {
 		params.expiry = now_ms + expiry * 1000;
@@ -627,14 +628,14 @@ int main (
 			if (res > 0) {
 				memcpy (params.payload, buff, res);
 				params.payload_len = (uint16_t) res;
-				params.chnk_num = (uint32_t)seqnum;
+				params.chunk_num = (uint32_t)seqnum;
 				
 				if ( (stat_send_bytes + res) == statBuf.st_size ) {
 					params.end_chunk_num_f = 1;
 					params.end_chunk_num = seqnum;
 				}
 #ifndef TO_CSMGRD
-				cob_len = cef_frame_object_create (cob_buff, &params);
+				cob_len = cef_frame_object_create (cob_buff, &opt, &params);
 #else
 				cob_len = cef_frame_object_create_for_csmgrd (wbuff, &params);
 {
@@ -643,8 +644,8 @@ int main (
 	uint16_t	pkt_len;
 	uint16_t	hdr_len;
 	int res;
-	CefT_Parsed_Message pm;
-	CefT_Parsed_Opheader poh;
+	CefT_CcnMsg_MsgBdy pm;
+	CefT_CcnMsg_OptHdr poh;
 	uint16_t index = 0;
 	uint16_t value16;
 	uint32_t value32;
@@ -697,12 +698,12 @@ int main (
 		index += CefC_S_Length + value16_namelen;
 		
 	/* set chunk num */
-	value32 = htonl (params.chnk_num);
+	value32 = htonl (params.chunk_num);
 	memcpy (cob_buff + index, &value32, CefC_S_ChunkNum);
 	index += CefC_S_ChunkNum;
 		
 	/* set cache time */
-	value64 = cef_client_htonb (params.opt.cachetime*1000);
+	value64 = cef_client_htonb (opt.cachetime*1000);
 	memcpy (cob_buff + index, &value64, CefC_S_Cachetime);
 	index += CefC_S_Cachetime;
 		
@@ -797,11 +798,6 @@ int main (
 		free (work_buff);
 	}
 
-	if ( params.AppComp_num > 0 ) {
-		/* Free AppComp */
-		cef_frame_app_components_free ( params.AppComp_num, params.AppComp );
-	}
-	
 	post_process ();
 	exit (0);
 }
@@ -811,11 +807,18 @@ print_usage (
 	void
 ) {
 	
-	fprintf (stdout, "\nUsage: \n");
+	fprintf (stdout, "\nUsage: cefputfile\n");
 	fprintf (stdout, "  cefputfile uri -f path [-r rate] [-b block_size] [-e expiry] "
 					 "[-t cache_time] [-v valid_algo] [-d config_file_dir] [-p port_num] \n\n");
-	fprintf (stdout, 
-		" valid_algo   Specify the validation algorithm (crc32 or sha256)\n\n");
+	fprintf (stderr, "  uri              Specify the URI.\n");
+	fprintf (stdout, "  path             Specify the file path of output. \n");
+	fprintf (stdout, "  rate             Transfer rate to cefnetd (Mbps)\n");
+	fprintf (stdout, "  block_size       Specifies the max payload length (bytes) of the Content Object.\n");
+	fprintf (stdout, "  expiry           Specifies the lifetime (seconds) of the Content Object.\n");
+	fprintf (stdout, "  cache_time       Specifies the period (seconds) after which Content Objects are cached before they are deleted.\n");
+	fprintf (stdout, "  valid_algo       Specify the validation algorithm (crc32 or sha256)\n");
+	fprintf (stderr, "  config_file_dir  Configure file directory\n");
+	fprintf (stderr, "  port_num         Port Number\n\n");
 }
 
 static void

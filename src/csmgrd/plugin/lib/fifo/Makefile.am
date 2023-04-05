@@ -1,7 +1,7 @@
 #
-# Copyright (c) 2016-2021, National Institute of Information and Communications
+# Copyright (c) 2016-2023, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
 # met:
@@ -13,7 +13,7 @@
 # 3. Neither the name of the NICT nor the names of its contributors may be
 #    used to endorse or promote products derived from this software
 #    without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE NICT AND CONTRIBUTORS "AS IS" AND ANY
 # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,7 +25,7 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
-# 
+#
 
 # set include file directory
 AM_CFLAGS = -I$(top_srcdir)/src/include -I$(top_srcdir)/src/csmgrd/include
@@ -48,16 +48,6 @@ libcsmgrd_fifo_la_LIBADD =
 # check default cache
 noinst_LTLIBRARIES += libcef_fifo.la
 libcef_fifo_la_CFLAGS  = $(AM_CFLAGS) -Wall -O2 -fPIC
-
-# check ccninfo
-if CCNINFO_ENABLE
-libcef_fifo_la_CFLAGS += -DCefC_Ccninfo
-endif # CCNINFO_ENABLE
-
-# check cefping
-if CEFPING_ENABLE
-libcef_fifo_la_CFLAGS += -DCefC_Cefping
-endif # CEFPING_ENABLE
 
 libcef_fifo_la_SOURCES = fifo.c fifo.h cache_replace_lib.c cache_replace_lib.h
 libcef_fifo_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)

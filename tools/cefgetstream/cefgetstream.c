@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -52,7 +52,8 @@
  Macros
  ****************************************************************************************/
 
-#define CefC_Max_PileLine 		16
+#define CefC_Max_PipeLine 		1024	/* MAX Pipeline */
+#define CefC_Def_PipeLine 		8		/* Default Pipeline */
 
 /****************************************************************************************
  Structures Declaration
@@ -107,10 +108,11 @@ int main (
 	char** argv
 ) {
 	int res;
-	int pipeline = 4;
+	int pipeline = CefC_Def_PipeLine;
 	int index = 0;
 	char uri[1024];
-	CefT_Interest_TLVs params;
+	CefT_CcnMsg_OptHdr opt;
+	CefT_CcnMsg_MsgBdy params;
 	struct timeval t;
 	uint64_t dif_time;
 	uint64_t nxt_time;
@@ -154,7 +156,8 @@ int main (
 	uint32_t 	sv_max_seq 		= UINT_MAX - 1;
 	int			sg_lifetime		= 4;
 	
-	memset (&params, 0, sizeof (CefT_Interest_TLVs));
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));
+	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	
 	
 	/*---------------------------------------------------------------------------
@@ -190,8 +193,13 @@ int main (
 			}
 			work_arg = argv[i + 1];
 			pipeline = atoi (work_arg);
-			if ((pipeline < 1) || (pipeline > CefC_Max_PileLine)) {
-				pipeline = 1;
+//			if ((pipeline < 1) || (pipeline > CefC_Max_PileLine)) {
+//				pipeline = 1;
+//			}
+			if ( pipeline < 1 ) {
+				pipeline = CefC_Def_PipeLine;
+			} else if ( pipeline > CefC_Max_PipeLine ) {
+				pipeline = CefC_Max_PipeLine;
 			}
 			pipeline_f++;
 			i++;
@@ -415,30 +423,30 @@ int main (
 		Sets Interest parameters
 	-----------------------------------------------------------------------------*/
 	params.hoplimit 				= 32;
-	params.opt.lifetime_f 			= 1;
+	opt.lifetime_f 			= 1;
 	
 	if (nsg_flag) {
-		params.opt.symbolic_f		= CefC_T_LONGLIFE;
-		params.opt.lifetime 		= sg_lifetime * 1000;	//0.8.3
+		Cef_Int_Symbolic(params);
+		opt.lifetime 		= sg_lifetime * 1000;	//0.8.3
 	} else {
-		params.opt.symbolic_f		= CefC_T_OPT_REGULAR;
-		params.opt.lifetime 		= CefC_Default_LifetimeSec * 1000;
+		Cef_Int_Regular(params);
+		opt.lifetime 		= CefC_Default_LifetimeSec * 1000;
 		params.chunk_num			= 0;
 		params.chunk_num_f			= 1;
 	}
 	
 	if (from_pub_f) {
-		params.app_comp 			= CefC_T_APP_FROM_PUB;
+		params.org.from_pub_f			= CefC_T_FROM_PUB;
 	}
 	
 	gettimeofday (&t, NULL);
 	now_time = cef_client_covert_timeval_to_us (t);
 	if (nsg_flag) {
-		dif_time = (uint64_t)((double) params.opt.lifetime * 0.8) * 1000;
+		dif_time = (uint64_t)((double) opt.lifetime * 0.8) * 1000;
 		nxt_time = 0;
 		end_time = now_time + 10000000;
 	} else {
-		dif_time = (uint64_t)((double) params.opt.lifetime * 0.3) * 1000;
+		dif_time = (uint64_t)((double) opt.lifetime * 0.3) * 1000;
 		nxt_time = now_time + dif_time;
 	}
 	
@@ -448,14 +456,14 @@ int main (
 	app_running_f = 1;
 	fprintf (stderr, "[cefgetstream] URI=%s\n", uri);
 	if (nsg_flag) {
-		cef_client_interest_input (fhdl, &params);
+		cef_client_interest_input (fhdl, &opt, &params);
 		fprintf (stderr, "[cefgetstream] Start sending Long Life Interests\n");
 	} else {
 		fprintf (stderr, "[cefgetstream] Start sending Interests\n");
 		
 		/* Sends Initerest(s) 		*/
 		for (i = 0 ; i < pipeline ; i++) {
-			cef_client_interest_input (fhdl, &params);
+			cef_client_interest_input (fhdl, &opt, &params);
 			params.chunk_num++;
 			
 			usleep (100000);
@@ -592,11 +600,11 @@ int main (
 						
 						rxwnd = rxwnd_head;
 						
-						for (i = 0 ; i < diff_seq + 1 ; i++) {
+						for (i = 0 ; i < pipeline; i++) {
 							
 							if (rxwnd->flag == 0) {
 								params.chunk_num = rxwnd->seq;
-								cef_client_interest_input (fhdl, &params);
+								cef_client_interest_input (fhdl, &opt, &params);
 								break;
 							}
 							stat_recv_frames++;
@@ -628,7 +636,7 @@ int main (
 							/* Sends an interest with the next chunk number 	*/
 							params.chunk_num = rxwnd_tail->seq;
 							if (params.chunk_num <= UINT32_MAX) {
-								cef_client_interest_input (fhdl, &params);
+								cef_client_interest_input (fhdl, &opt, &params);
 							}
 						}
 					}
@@ -647,7 +655,7 @@ int main (
 		/* Sends Interest with Symbolic flag to CEFORE 		*/
 		if (nsg_flag) {
 			if (now_time > nxt_time) {
-				cef_client_interest_input (fhdl, &params);
+				cef_client_interest_input (fhdl, &opt, &params);
 				fprintf (stderr, "[cefgetstream] Send Long Life Interest\n");
 				nxt_time = now_time + dif_time;
 			}
@@ -663,8 +671,8 @@ IR_RCV:;
 		if (index > 0) {
 			fwrite (buff, index, 1, stdout);
 		}
-		params.opt.lifetime = 0;
-		cef_client_interest_input (fhdl, &params);
+		opt.lifetime = 0;
+		cef_client_interest_input (fhdl, &opt, &params);
 	}
 	
 	post_process ();
@@ -678,21 +686,17 @@ print_usage (
 ) {
 	
 	fprintf (stderr, "\nUsage: cefgetstream\n\n");
-	fprintf (stderr, "  cefgetstream uri [-o] [-m chunks] [-v valid_algo] [-d config_file_dir] [-p port_num] [-z Lifetime] [-l block_mode]\n\n");
-	fprintf (stderr, "  uri               Specify the URI.\n");
-	fprintf (stderr, "  -o                Specify this option, if you require the content\n"
-	                 "                    that the owner is caching\n");
-	fprintf (stderr, "  chunks            Specify the number of chunk that you want to obtain\n");
-	fprintf (stderr, 
-		"  valid_algo        Specify the validation algorithm (crc32 or sha256)\n");
-	fprintf (stderr, 
-		"  config_file_dir   Configure file directory\n");
-	fprintf (stderr, 
-		"  port_num          Port Number\n");
-	fprintf (stderr, 
-		"  Lifetime       Send Long Life Intereset Lifetime\n\n");
-	fprintf (stderr, 
-		"  block_mode     0:BLOCK    1:NONBLOCK\n");
+	fprintf (stderr, "  cefgetstream uri [-o] [-m chunks] [-s pipeline] [-v valid_algo] [-d config_file_dir] [-p port_num] [-z Lifetime] [-l block_mode]\n\n");
+	fprintf (stderr, "  uri              Specify the URI.\n");
+	fprintf (stderr, "  -o               Specify this option, if you require the content\n"
+	                 "                   that the owner is caching\n");
+	fprintf (stderr, "  chunks           Specify the number of chunk that you want to obtain\n");
+	fprintf (stdout, "  pipeline         Number of pipeline\n");
+	fprintf (stderr, "  valid_algo       Specify the validation algorithm (crc32 or sha256)\n");
+	fprintf (stderr, "  config_file_dir  Configure file directory\n");
+	fprintf (stderr, "  port_num         Port Number\n");
+	fprintf (stderr, "  Lifetime         Send Long Life Intereset Lifetime\n\n");
+	fprintf (stderr, "  block_mode       0:BLOCK    1:NONBLOCK\n\n");
 }
 
 static void

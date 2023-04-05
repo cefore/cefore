@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -58,6 +58,7 @@ typedef struct CefT_List_Hash_Cell {
 	unsigned char* 			key;
 	void* 					elem;
 	uint32_t 				klen;
+	uint8_t					opt_f;		//only use at app, c3
 	struct CefT_List_Hash_Cell*	next;
 } CefT_List_Hash_Cell;
 
@@ -65,6 +66,7 @@ typedef struct CefT_List_Hash {
 	CefT_List_Hash_Cell**	tbl;
 	uint32_t 			elem_max;
 	uint32_t 			elem_num;
+	uint32_t 			def_elem_max;		/* User defined maximum size	*/
 } CefT_List_Hash;
 
 
@@ -139,9 +141,6 @@ cef_hash_tbl_create (
 	ht->seed = (uint32_t)(rand () + 1);
 	ht->elem_max = table_size;
 	ht->def_elem_max = def_tbl_size;
-	ht->cleanup_step = CefC_Cleanup_Smin;
-	ht->cleanup_mwin = CefC_Cleanup_Wmin;
-	ht->cleanup_cwin = 0;
 
 	return ((CefT_Hash_Handle) ht);
 }
@@ -200,9 +199,6 @@ cef_hash_tbl_create_ext (
 	ht->seed = (uint32_t)(rand () + 1);
 	ht->elem_max = table_size;
 	ht->def_elem_max = def_tbl_size;
-	ht->cleanup_step = CefC_Cleanup_Smin;
-	ht->cleanup_mwin = CefC_Cleanup_Wmin;
-	ht->cleanup_cwin = 0;
 
 	return ((CefT_Hash_Handle) ht);
 }
@@ -239,9 +235,6 @@ cef_hash_tbl_item_set (
 	if ((klen > CefC_Max_KLen) || (ht == NULL)) {
 		return (CefC_Hash_Faile);
 	}
-	ht->cleanup_step = CefC_Cleanup_Smin;
-	ht->cleanup_mwin = CefC_Cleanup_Wmin;
-	ht->cleanup_cwin = 0;
 
 	hash = cef_hash_number_create (ht->seed, key, klen);
 	index = hash % ht->elem_max;
@@ -337,10 +330,6 @@ cef_hash_tbl_item_set_for_app (
 	if ( res > 0 ) {
 		return (CefC_Hash_Faile);
 	}
-
-	ht->cleanup_step = CefC_Cleanup_Smin;
-	ht->cleanup_mwin = CefC_Cleanup_Wmin;
-	ht->cleanup_cwin = 0;
 
 	hash = cef_hash_number_create (ht->seed, key, klen);
 	index = hash % ht->elem_max;
@@ -872,6 +861,7 @@ cef_lhash_tbl_create (
 	CefT_List_Hash* ht = NULL;
 	int i, n;
 	int flag;
+	int def_tbl_size = table_size;
 
 	if (table_size > INT32_MAX) {
 		table_size = INT32_MAX;
@@ -906,6 +896,7 @@ cef_lhash_tbl_create (
 	}
 	memset (ht->tbl, 0, sizeof (CefT_List_Hash_Cell*) * table_size);
 	
+	ht->def_elem_max = def_tbl_size;
 	ht->elem_max = table_size;
 
 	return ((CefT_Hash_Handle) ht);
@@ -920,6 +911,7 @@ cef_lhash_tbl_create_ext (
 	int i, n;
 	int flag;
 	uint64_t table_size64;
+	int def_tbl_size = table_size;
 	
 	table_size64 = table_size * coef;
 	
@@ -957,6 +949,7 @@ cef_lhash_tbl_create_ext (
 	}
 	memset (ht->tbl, 0, sizeof (CefT_List_Hash_Cell*) * table_size);
 	
+	ht->def_elem_max = def_tbl_size;
 	ht->elem_max = table_size;
 
 	return ((CefT_Hash_Handle) ht);
@@ -969,6 +962,8 @@ cef_lhash_tbl_create_u32 (
 	CefT_List_Hash* ht = NULL;
 	int i, n;
 	int flag;
+	int def_tbl_size = table_size;
+	
 	for (i = table_size ; i > 1 ; i++) {
 		flag = 0;
 		
@@ -1003,6 +998,7 @@ cef_lhash_tbl_create_u32 (
 	memset (ht->tbl, 0, sizeof (CefT_List_Hash_Cell*) * table_size);
 	
 	ht->elem_max = table_size;
+	ht->def_elem_max = def_tbl_size;
 
 	return ((CefT_Hash_Handle) ht);
 }
@@ -1016,6 +1012,7 @@ cef_lhash_tbl_create_u32_ext (
 	int i, n;
 	int flag;
 	uint64_t table_size64;
+	int def_tbl_size = table_size;
 	
 	table_size64 = table_size * coef;
 	
@@ -1054,6 +1051,7 @@ cef_lhash_tbl_create_u32_ext (
 	memset (ht->tbl, 0, sizeof (CefT_List_Hash_Cell*) * table_size);
 	
 	ht->elem_max = table_size;
+	ht->def_elem_max = def_tbl_size;
 
 	return ((CefT_Hash_Handle) ht);
 }
@@ -1199,24 +1197,24 @@ cef_lhash_tbl_item_remove (
 		return (NULL);
 	}
 	if (cp != NULL) {
-		if((cp->klen == klen) &&
-		   (memcmp (cp->key, key, klen) == 0)){
-		   	ht->tbl[index] = cp->next;
+		if ((cp->klen == klen) &&
+			(memcmp (cp->key, key, klen) == 0)){
+			ht->tbl[index] = cp->next;
 			ht->elem_num--;
-		   	ret_elem = cp->elem;
-		   	free(cp);
-		   	return ((void *)ret_elem);
+			ret_elem = cp->elem;
+			free(cp);
+			return ((void *)ret_elem);
 		} else {
 			cp = ht->tbl[index];
 			for (; cp->next != NULL; cp = cp->next) {
-				if((cp->next->klen == klen) &&
-				   (memcmp (cp->next->key, key, klen) == 0)){
-				   	wcp = cp->next;
-				   	cp->next = cp->next->next;
+				if ((cp->next->klen == klen) &&
+					(memcmp (cp->next->key, key, klen) == 0)){
+					wcp = cp->next;
+					cp->next = cp->next->next;
 					ht->elem_num--;
-				   	ret_elem = wcp->elem;
-		   			free(wcp);
-		   			return ((void *)ret_elem);
+					ret_elem = wcp->elem;
+					free(wcp);
+					return ((void *)ret_elem);
 				}
 			}
 		}
@@ -1224,6 +1222,257 @@ cef_lhash_tbl_item_remove (
 
 	return (NULL);
 }
+
+//+++++ 0.9.0b : 2022.07.11
+int
+cef_lhash_tbl_item_num_get (
+	CefT_Hash_Handle handle
+) {
+	return ((int)(((CefT_List_Hash*) handle)->elem_num));
+}
+
+int
+cef_lhash_tbl_def_max_get (
+	CefT_Hash_Handle handle
+) {
+	return ((int)(((CefT_List_Hash*) handle)->def_elem_max));
+}
+
+int
+cef_lhash_tbl_item_max_idx_get (
+	CefT_Hash_Handle handle
+) {
+	return ((int)(((CefT_List_Hash*) handle)->elem_max));
+}
+
+void*
+cef_lhash_tbl_elem_get (
+	CefT_Hash_Handle handle,
+	uint32_t* index,
+	uint32_t* elem_num
+) {
+	CefT_List_Hash* ht = (CefT_List_Hash*) handle;
+	uint32_t i, cnt;
+	CefT_List_Hash_Cell* cp;
+	
+	if (*index > ht->elem_max) {
+		return ((void*) NULL);
+	}
+	
+	cnt = 0;
+	for (i = *index ; i < ht->elem_max ; i++) {
+		if (ht->tbl[i] != NULL) {
+			*index = i;
+			cnt++;
+			for (cp = ht->tbl[i]; cp->next != NULL; cp = cp->next) {
+				cnt++;
+			}
+			*elem_num = cnt;
+			return ((void*) ht->tbl[i]->elem);
+		}
+	}
+
+	for (i = 0 ; i < *index ; i++) {
+		if (ht->tbl[i] != NULL) {
+			*index = i;
+			cnt++;
+			for (cp = ht->tbl[i]; cp->next != NULL; cp = cp->next) {
+				cnt++;
+			}
+			*elem_num = cnt;
+			return ((void*) ht->tbl[i]->elem);
+		}
+	}
+	*index = 0;
+	
+	return ((void*) NULL);
+}
+
+uint32_t
+cef_lhash_tbl_hashv_get (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen
+) {
+	CefT_List_Hash* ht = (CefT_List_Hash*) handle;
+
+	if ((klen > CefC_Max_KLen) || (ht == NULL)) {
+		return (0);
+	}
+	return (cef_lhash_number_create (key, klen));
+}
+
+void*
+cef_lhash_tbl_item_get_from_index (
+	CefT_Hash_Handle handle,
+	uint32_t index,
+	uint32_t lindex
+) {
+	CefT_List_Hash* ht = (CefT_List_Hash*) handle;
+	uint32_t cnt = 0;
+	CefT_List_Hash_Cell* cp;
+
+	if (index > ht->elem_max) {
+		return ((void*) NULL);
+	}
+	
+	cp = ht->tbl[index];
+	
+	if (cp == NULL) {
+		return ((void*) NULL);
+	}
+	
+	if (cp->klen != 0 && cp->klen != -1) {
+		for (cnt = 0; cp != NULL; cp = cp->next, cnt++) {
+			if (cnt == lindex) {
+				return ((void*) cp->elem);
+			}
+		}
+	} else {
+		return ((void*) NULL);
+	}
+
+	return ((void*) NULL);
+}
+
+int
+cef_lhash_tbl_item_set_for_app (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen,
+	uint8_t opt,
+	void* elem
+) {
+	CefT_List_Hash* ht = (CefT_List_Hash*) handle;
+	uint32_t hash;
+	uint32_t index;
+	CefT_List_Hash_Cell* cp;
+	CefT_List_Hash_Cell* wcp;
+	int res;
+
+	if ((klen > CefC_Max_KLen) || (ht == NULL)) {
+		return (CefC_Hash_Faile);
+	}
+	res = cef_lhash_tbl_item_check_exact(handle, key, klen);
+	if (res > 0) {
+		return (CefC_Hash_Faile);
+	}
+
+	hash = cef_lhash_number_create (key, klen);
+	index = hash % ht->elem_max;
+
+	if(ht->tbl[index] == NULL){
+		ht->tbl[index] = (CefT_List_Hash_Cell*) calloc (1, sizeof(CefT_List_Hash_Cell) + klen);
+		if (ht->tbl[index] == NULL) {
+			return (-1);
+		}
+		ht->tbl[index]->key = ((unsigned char*)ht->tbl[index]) + sizeof(CefT_List_Hash_Cell);
+		cp = ht->tbl[index];
+		cp->elem = elem;
+		cp->klen = klen;
+		memcpy (cp->key, key, klen);
+		cp->opt_f = opt;
+		ht->elem_num++;
+		return (0);
+	} else {
+		/* exist check & replace */
+		for (cp = ht->tbl[index]; cp != NULL; cp = cp->next) {
+			if((cp->klen == klen) &&
+			   (memcmp (cp->key, key, klen) == 0)){
+				cp->elem = elem;
+				cp->opt_f = opt;
+				return (0);
+		   }
+		}
+		/* insert */
+		wcp = ht->tbl[index];
+		ht->tbl[index] = (CefT_List_Hash_Cell*) calloc (1, sizeof(CefT_List_Hash_Cell) + klen);
+		if (ht->tbl[index] == NULL) {
+			return (-1);
+		}
+		ht->tbl[index]->key = ((unsigned char*)ht->tbl[index]) + sizeof(CefT_List_Hash_Cell);
+		cp = ht->tbl[index];
+		cp->next = wcp;
+		cp->elem = elem;
+		cp->klen = klen;
+		memcpy (cp->key, key, klen);
+		cp->opt_f = opt;
+		ht->elem_num++;
+		return (0);
+	}
+}
+
+void*
+cef_lhash_tbl_item_get_for_app (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen
+) {
+	CefT_List_Hash* ht = (CefT_List_Hash*) handle;
+	uint32_t hash;
+	uint32_t index;
+	CefT_List_Hash_Cell* cp;
+
+	if ((klen > CefC_Max_KLen) || (ht == NULL)) {
+		return ((void*) NULL);
+	}
+
+	hash = cef_lhash_number_create (key, klen);
+	index = hash % ht->elem_max;
+
+	cp = ht->tbl[index];
+	if(cp == NULL){
+		return (NULL);
+	} 
+	for (cp = ht->tbl[index]; cp != NULL; cp = cp->next) {
+		if (cp->opt_f) {
+			/* prefix match */
+			//entry_klen = cp->klen;
+			if ((cp->klen <= klen) &&
+				(memcmp (cp->key, key, klen) == 0)) {
+				if (cp->klen == klen) {
+					return ((void*) cp->elem);
+				}
+			} else if (cp->klen + 5 <= klen) {
+				/* eg) ccn:/test, ccn:/test/a */
+				/*                         ^^ */
+				/* separator(4) and prefix(more than 1) */
+				if ((key[cp->klen] == 0x00) &&
+					(key[cp->klen + 1] == 0x01)) {
+					return ((void*) cp->elem);
+				}
+			} else {
+				continue;
+			}
+		} else {
+			/* exact match */
+			if ((cp->klen == klen) &&
+				(memcmp (cp->key, key, klen) == 0)) {
+				return ((void*) cp->elem);
+			}
+		}
+	}
+	return ((void*) NULL);
+}
+
+int
+cef_lhash_tbl_item_check_exact (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen
+) {
+	CefT_List_Hash* ht = (CefT_List_Hash*) handle;
+	
+	if ((klen > CefC_Max_KLen) || (ht == NULL)) {
+		return (-1);
+	}
+	if(cef_lhash_tbl_item_get(handle, key, klen) == NULL){
+		return (-1);
+	} else {
+		return (1);
+	}
+}
+//----- 0.9.0b : 2022.07.11
 
 /****************************************************************************************
  ****************************************************************************************/

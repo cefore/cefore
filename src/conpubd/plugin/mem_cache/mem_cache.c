@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -81,7 +81,7 @@ typedef struct {
 	unsigned char	*name;						/* Content name							*/
 	uint16_t		name_len;					/* Content name length					*/
 	uint16_t		pay_len;					/* Payload length						*/
-	uint32_t		chnk_num;					/* Chunk num							*/
+	uint32_t		chunk_num;					/* Chunk num							*/
 	uint64_t		rct;						/* RCT									*/
 	uint64_t		expiry;						/* Expiry								*/
 	uint64_t		cachetime;					/* cachetime							*/
@@ -158,8 +158,10 @@ mem_cache_item_get (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 mem_cache_item_puts (
-	ConpubdT_Content_Entry* entry, 
-	int size
+//JK	ConpubdT_Content_Entry* entry, 
+	void* in_entry, 
+	int size,
+	void* conpubd_hdl
 );
 /*--------------------------------------------------------------------------------------
 	writes the cobs to memry cache
@@ -234,7 +236,7 @@ int												/* length of the created key 			*/
 conpubd_key_create_by_Mem_Entry (
 	unsigned char*	name,
 	uint16_t		name_len,
-	uint32_t		chnk_num,
+	uint32_t		chunk_num,
 	unsigned char* key
 );
 
@@ -381,11 +383,11 @@ mem_cs_expire_check (
 				if (((entry->expiry != 0) && (entry->expiry < nowt))) {
 					/* Removes the expiry cache entry 		*/
 					trg_key_len = conpubd_key_create_by_Mem_Entry 
-									(entry->name, entry->name_len, entry->chnk_num, trg_key);
+									(entry->name, entry->name_len, entry->chunk_num, trg_key);
 					entry1 = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
 					conpubd_stat_cob_remove (
 						conpub_stat_hdl, entry->name, entry->name_len, 
-						entry->chnk_num, entry->pay_len);
+						entry->chunk_num, entry->pay_len);
 					cobpub_hdl->cache_cobs--;
 					free (entry1->msg);
 					free (entry1->name);
@@ -430,7 +432,7 @@ mem_cache_item_get (
 		
 		if (((entry->expiry == 0) || (nowt < entry->expiry))) {
 			
-			if (entry->chnk_num == 0) {
+			if (entry->chunk_num == 0) {
 				conpubd_stat_access_count_update (
 					conpub_stat_hdl, entry->name, entry->name_len);
 			}
@@ -453,7 +455,7 @@ mem_cache_item_get (
 			entry = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
 			conpubd_stat_cob_remove (
 				conpub_stat_hdl, entry->name, entry->name_len, 
-				entry->chnk_num, entry->pay_len);
+				entry->chunk_num, entry->pay_len);
 			cobpub_hdl->cache_cobs--;
 			
 			free (entry->msg);
@@ -471,10 +473,14 @@ mem_cache_item_get (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 mem_cache_item_puts (
-	ConpubdT_Content_Entry* entry, 
-	int size
+//JK	ConpubdT_Content_Entry* entry, 
+	void* in_entry, 
+	int size,
+	void* conpubd_hdl
 ) {
 	int rtc = 0;
+	ConpubdT_Content_Entry* entry = (ConpubdT_Content_Entry*)in_entry;
+	
 	if (entry == NULL) {
 		return (rtc);
 	}
@@ -520,7 +526,7 @@ mem_cache_cob_write (
 		/* Creates the key 				*/
 		trg_key_len = conpubd_name_chunknum_concatenate (
 						cobs[index].name, cobs[index].name_len, 
-						cobs[index].chnk_num, trg_key);
+						cobs[index].chunk_num, trg_key);
 		
 		/* Inserts the cache entry 		*/
 		entry->msg			 = cobs[index].msg;
@@ -528,7 +534,7 @@ mem_cache_cob_write (
 		entry->name			 = cobs[index].name;
 		entry->name_len		 = cobs[index].name_len;
 		entry->pay_len		 = cobs[index].pay_len;
-		entry->chnk_num		 = cobs[index].chnk_num;
+		entry->chunk_num	 = cobs[index].chunk_num;
 		entry->rct	 		 = cobs[index].rct;
 		entry->expiry		 = cobs[index].expiry;
 		entry->node			 = cobs[index].node;
@@ -542,7 +548,7 @@ mem_cache_cob_write (
 		
 		/* Updates the content information 			*/
 		conpubd_stat_cob_update (conpub_stat_hdl, entry->name, entry->name_len, 
-			entry->chnk_num, entry->pay_len, entry->expiry, nowt, entry->node);
+			entry->chunk_num, entry->pay_len, entry->expiry, nowt, entry->node);
 		
 		if (old_entry) {
 			free (old_entry->msg);
@@ -572,7 +578,7 @@ mem_cs_ac_cnt_inc (
 		return;
 	}
 	
-	if ((seq_num == 0) && (entry->chnk_num == 0)) {
+	if ((seq_num == 0) && (entry->chunk_num == 0)) {
 		conpubd_stat_access_count_update (
 			conpub_stat_hdl, entry->name, entry->name_len);
 	}
@@ -611,7 +617,7 @@ mem_content_del (
 	}
 	conpubd_stat_cob_remove (
 		conpub_stat_hdl, entry->name, entry->name_len, 
-		entry->chnk_num, entry->pay_len);
+		entry->chunk_num, entry->pay_len);
 		cobpub_hdl->cache_cobs--;
 	free (entry->msg);
 	free (entry->name);
@@ -946,7 +952,7 @@ int												/* length of the created key 			*/
 conpubd_key_create_by_Mem_Entry (
 	unsigned char*	name,
 	uint16_t		name_len,
-	uint32_t		chnk_num,
+	uint32_t		chunk_num,
 	unsigned char* key
 ) {
 
@@ -955,8 +961,8 @@ conpubd_key_create_by_Mem_Entry (
 	key[name_len + 1] 	= 0x10;
 	key[name_len + 2] 	= 0x00;
 	key[name_len + 3] 	= 0x04;
-	chnk_num = htonl (chnk_num);
-	memcpy (&key[name_len + 4], &chnk_num, sizeof (uint32_t));
+	chunk_num = htonl (chunk_num);
+	memcpy (&key[name_len + 4], &chunk_num, sizeof (uint32_t));
 
 	return (name_len + 4 + sizeof (uint32_t));
 }

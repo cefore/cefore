@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -272,7 +272,7 @@ static void lfu_store_entry(
 	unsigned char* q;
     
     key_len = csmgrd_name_chunknum_concatenate (
-                    entry->name, entry->name_len, entry->chnk_num, key);
+                    entry->name, entry->name_len, entry->chunk_num, key);
     rsentry = (LfuT_Entry*)cef_mpool_alloc(lfu_mp);
     rsentry->key_len = key_len;
   	q = calloc(1, key_len);
@@ -314,7 +314,7 @@ static int lfu_is_already_cached(CsmgrdT_Content_Entry* entry) {
     int 			key_len;
     
     key_len = csmgrd_name_chunknum_concatenate (
-                    entry->name, entry->name_len, entry->chnk_num, key);
+                    entry->name, entry->name_len, entry->chunk_num, key);
     LfuT_Entry* tmpentry = (LfuT_Entry*) crlib_lookup_table_search_v(key, key_len);
     return tmpentry != NULL;
 }

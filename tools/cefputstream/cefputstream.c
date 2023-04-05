@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -53,6 +53,9 @@
  ****************************************************************************************/
 #define	T_USEC				(1000000)		/* 1(sec) = 1000000(usec)	*/
 
+#define CefC_RateMbps_Max				 	1000.0
+#define CefC_RateMbps_Min				 	1.0
+
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
@@ -99,9 +102,9 @@ int main (
 ) {
 	int res;
 	unsigned char buff[CefC_Max_Length];
-	CefT_Object_TLVs params;
+	CefT_CcnMsg_OptHdr opt;	
+	CefT_CcnMsg_MsgBdy params;
 	uint64_t seqnum = 0;
-	int opt;
 	char uri[1024];
 
 	double interval;
@@ -119,6 +122,8 @@ int main (
 	int 	port_num = CefC_Unset_Port;
 	
 	char valid_type[1024];
+	
+	long int int_rate;
 	
 	/***** flags 		*****/
 	int uri_f 		= 0;
@@ -168,10 +173,18 @@ int main (
 				return (-1);
 			}
 			work_arg = argv[i + 1];
-			rate = atoi (work_arg);
-			if ((rate < 1) || (rate > 32)) {
-				rate = 1;
+			rate = atof (work_arg);
+//			if ((rate < 1) || (rate > 32)) {
+//				rate = 1;
+//			}
+			if (rate < CefC_RateMbps_Min) {
+				rate = CefC_RateMbps_Min;
 			}
+			if (rate > CefC_RateMbps_Max) {
+				rate = CefC_RateMbps_Max;
+			}
+			int_rate = (long int)(rate * 1000.0);
+			rate = (double)int_rate / 1000.0;
 			rate_f++;
 			i++;
 		} else if (strcmp (work_arg, "-b") == 0) {
@@ -329,7 +342,8 @@ int main (
 	/*------------------------------------------
 		Creates the name from URI
 	--------------------------------------------*/
-	memset (&params, 0, sizeof (CefT_Object_TLVs));
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));	
+	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	cef_frame_init ();
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
@@ -344,7 +358,7 @@ int main (
 		exit (1);
 	}
 	params.name_len 	= res;
-	params.chnk_num_f 	= 1;
+	params.chunk_num_f 	= 1;
 	fprintf (stderr, "OK\n");
 	
 	/*------------------------------------------
@@ -355,11 +369,11 @@ int main (
 	now_ms = now_t.tv_sec * 1000llu + now_t.tv_usec / 1000llu;	//#382
 	
 	if (cache_time > 0) {
-		params.opt.cachetime_f 	= 1;
-		params.opt.cachetime 	= now_ms + cache_time * 1000;
+		opt.cachetime_f 	= 1;
+		opt.cachetime 	= now_ms + cache_time * 1000;
 	} else {
-		params.opt.cachetime_f 	= 1;
-		params.opt.cachetime 	= now_ms;
+		opt.cachetime_f 	= 1;
+		opt.cachetime 	= now_ms;
 	}
 	
 	if (expiry > 0) {
@@ -448,9 +462,9 @@ int main (
 			if (res > 0) {
 				memcpy (params.payload, buff, res);
 				params.payload_len = (uint16_t) res;
-				params.chnk_num = seqnum;
+				params.chunk_num = seqnum;
 				//0.8.3
-				input_res = cef_client_object_input (fhdl, &params);
+				input_res = cef_client_object_input (fhdl, &opt, &params);
 				if ( input_res < 0 ) {
 					fprintf (stdout, "ERROR: Content Object frame size over(%d).\n", input_res*(-1));
 					fprintf (stdout, "       Try shortening the block size specification.\n");
@@ -476,10 +490,17 @@ print_usage (
 	void
 ) {
 	
-	fprintf (stderr, "\nUsage: \n");
+	fprintf (stderr, "\nUsage: cefputstream\n");
 	fprintf (stderr, "  cefputstream uri [-r rate] [-b block_size] [-e expiry] "
 					 "[-t cache_time] [-v valid_algo] [-d config_file_dir] [-p port_num]\n\n");
-	
+	fprintf (stderr, "  uri              Specify the URI.\n");
+	fprintf (stdout, "  rate             Transfer rate to cefnetd (Mbps)\n");
+	fprintf (stdout, "  block_size       Specifies the max payload length (bytes) of the Content Object.\n");
+	fprintf (stdout, "  expiry           Specifies the lifetime (seconds) of the Content Object.\n");
+	fprintf (stdout, "  cache_time       Specifies the period (seconds) after which Content Objects are cached before they are deleted.\n");
+	fprintf (stdout, "  valid_algo       Specify the validation algorithm (crc32 or sha256)\n");
+	fprintf (stderr, "  config_file_dir  Configure file directory\n");
+	fprintf (stderr, "  port_num         Port Number\n\n");
 }
 
 static void

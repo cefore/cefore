@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -58,6 +58,7 @@
 #define CefC_Fib_Entry_Static			0x02
 #define CefC_Fib_Entry_Ctrl				0x04
 
+#define	CefC_PluginArea_Size			CefC_InbandTelem_Size
 
 /****************************************************************************************
  Structure Declarations
@@ -68,33 +69,34 @@
 typedef struct CefT_Fib_Metric {
 	int  cost;				      		/* Route Cost from Cefbabeld 			*/
 	int  dummy_metric;			    	/* Dummy Metric from Cefbabeld			*/
+	char plugin_area[CefC_PluginArea_Size];	/* Plugin Workarea		*/
 } CefT_Fib_Metric;
 //0.8.3c E
 
 typedef struct CefT_Fib_Face {
-	
+
 	int 	faceid;							/* Face-ID 									*/
 	struct CefT_Fib_Face* 	next;			/* Pointer to next Face Information 		*/
 	int 	type;							/* CefC_Fib_Entry_XXX 						*/
 	CefT_Fib_Metric	metric;					/* 0.8.3c */
 	uint64_t		tx_int;					/* 0.8.3c */
-	uint64_t		tx_int_types[3];		/* 0.8.3c */
-	
+	uint64_t		tx_int_types[CefC_PIT_TYPE_MAX];		/* 0.8.3c */
+
 } CefT_Fib_Face;
 
 /***** FIB entry 						*****/
 typedef struct {
-	
+
 	unsigned char* 	key;					/* Key of the entry 						*/
 	unsigned int 	klen;					/* Length of the key 						*/
 	CefT_Fib_Face	faces;					/* Faces to forward interest 				*/
 	uint64_t		rx_int;					/* 0.8.3c */
-	uint64_t		rx_int_types[3];		/* 0.8.3c */
-	
+	uint64_t		rx_int_types[CefC_PIT_TYPE_MAX];	/* 0.8.3c */
+
 	/* for Application Components */
 	uint16_t 		app_comp;				/* index of Application Components 			*/
 	uint64_t 		lifetime;				/* lifetime in UNIX time[us] 				*/
-	
+
 } CefT_Fib_Entry;
 
 /****************************************************************************************
@@ -111,7 +113,12 @@ typedef struct {
 ----------------------------------------------------------------------------------------*/
 int											/* Returns a negative value if it fails 	*/
 cef_fib_init (
-	CefT_Hash_Handle fib					/* FIB										*/
+	CefT_Hash_Handle fib,					/* FIB										*/
+	int				 nodeid4_num,
+	int				 nodeid16_num,
+	char*			 nodeid4_c[],
+	char*			 nodeid16_c[],
+	uint16_t		 port_num
 );
 /*--------------------------------------------------------------------------------------
 	Searches FIB entry matching the specified Key
@@ -142,7 +149,7 @@ cef_fib_forward_faceid_select (
 /*--------------------------------------------------------------------------------------
 	Receive the FIB route message
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_fib_route_msg_read (
 	CefT_Hash_Handle fib,					/* FIB										*/
 	unsigned char* msg, 					/* the received message(s)					*/
@@ -154,16 +161,16 @@ cef_fib_route_msg_read (
 /*--------------------------------------------------------------------------------------
 	Obtain the Name from the received route message
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_fib_name_get_from_route_msg (
 	unsigned char* msg, 					/* the received message(s)					*/
-	int msg_size, 
+	int msg_size,
 	unsigned char* name
 );
 /*--------------------------------------------------------------------------------------
 	Removes the specified Faceid from the specified FIB entry
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_fib_faceid_remove (
 	CefT_Hash_Handle fib,					/* FIB										*/
 	CefT_Fib_Entry* entry, 					/* FIB entry								*/
@@ -205,12 +212,12 @@ cef_fib_faceid_cleanup (
 /*--------------------------------------------------------------------------------------
 	Obtains the FIB information
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_fib_info_get (
-	CefT_Hash_Handle* fib, 
-	char* info_buff, 
-	const unsigned char* name, 
-	int name_len, 
+	CefT_Hash_Handle* fib,
+	char* info_buff,
+	const unsigned char* name,
+	int name_len,
 	int partial_match_f
 );
 /*--------------------------------------------------------------------------------------

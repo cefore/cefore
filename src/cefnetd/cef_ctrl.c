@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -59,14 +59,7 @@
 #define CefC_Arg_Route_Ope_Enable	"enable"
 #define CefC_Arg_Route_Pro_TCP		"tcp"
 #define CefC_Arg_Route_Pro_UDP		"udp"
-#ifdef CefC_Ser_Log
-#define CefC_Arg_Ser_Log			"serlog"
-#endif // CefC_Ser_Log
-#ifndef CefC_Nwproc
 #define CefC_StatusRspWait			200000		/* usec */
-#else // CefC_Nwproc
-#define CefC_StatusRspWait			2000000
-#endif // CefC_Nwproc
 
 /****************************************************************************************
  Structures Declaration
@@ -85,7 +78,7 @@ static int
 cef_ctrl_create_route_msg (
 	unsigned char* buff,
 	int argc,
-	char** argv, 
+	char** argv,
 	char* user_name
 );
 
@@ -104,18 +97,21 @@ int main (
 	int dir_path_f 		= 0;
 	int port_num_f 		= 0;
 	int pit_f			= 0;
+	int numpit_f		= 0;
+	int16_t numofpit_i	= 0;
+	uint16_t numofpit	= 0;
 	uint16_t output_opt_f = 0;
 	char*	work_arg;
 	char 	file_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
 	unsigned char rsp_msg[CefC_Max_Length];
-	
+
 	char*	wp;
 	char launched_user_name[CefC_Ctrl_User_Len];
-	
+
 	/* Inits logging 		*/
 	cef_log_init ("cefctrl", 1);
-	
+
 	if (argc < 2) {
 		cef_log_write (CefC_Log_Error, "Parameters are not specified.\n");
 		exit (1);
@@ -124,15 +120,15 @@ int main (
 		cef_log_write (CefC_Log_Error, "Parameters are too many.\n");
 		exit (1);
 	}
-	
+
 	/* Obtains options 		*/
 	for (i = 1 ; i < argc ; i++) {
-		
+
 		work_arg = argv[i];
 		if (work_arg == NULL || work_arg[0] == 0) {
 			break;
 		}
-		
+
 		if (strcmp (work_arg, "-d") == 0) {
 			if (i + 1 == argc) {
 				cef_log_write (CefC_Log_Error, "[-d] has no parameter.\n");
@@ -143,7 +139,7 @@ int main (
 				cef_log_write (CefC_Log_Error, "[-d] parameter is too long.\n");
 				exit (1);
 			}
-			
+
 			strcpy (file_path, argv[i + 1]);
 			dir_path_f++;
 			i++;
@@ -169,6 +165,25 @@ int main (
 				cef_log_write (CefC_Log_Error, "[-m] has no parameter.\n");
 				exit (1);
 			}
+		} else if (strcmp (work_arg, "-n") == 0) {			//Number of PIT
+			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
+				if ( i + 1 == argc ) {
+					cef_log_write (CefC_Log_Error, "[-n] has no parameter.\n");
+					exit (1);
+				}
+				output_opt_f |= CefC_Ctrl_StatusOpt_Numofpit;
+				numofpit_i = atoi (argv[i + 1]);
+				if ( numofpit_i <= 0 ) {
+					cef_log_write (CefC_Log_Error, "[-n] parameter is invalid value(%d).\n", numofpit_i);
+					exit (1);
+				}
+				numofpit = numofpit_i;
+				numpit_f++;
+				i++;
+			} else {
+				cef_log_write (CefC_Log_Error, "[-n] has no parameter.\n");
+				exit (1);
+			}
 #if ((defined CefC_CefnetdCache) && (defined CefC_Develop))
 		} else if (strcmp (work_arg, "-lc") == 0) {			//Secret option
 			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
@@ -186,9 +201,9 @@ int main (
 			port_num = atoi (argv[i + 1]);
 			port_num_f++;
 			i++;
-		} else if ( (strcmp (work_arg, "-v") == 0) || 
+		} else if ( (strcmp (work_arg, "-v") == 0) ||
 					(strcmp (work_arg, "--version") == 0)) {
-			
+
 			fprintf (stdout, "%s\n", CEFORE_VERSION);
 			exit (1);
 		} else {
@@ -198,7 +213,7 @@ int main (
 			}
 		}
 	}
-	
+
 	if (dir_path_f > 1) {
 		cef_log_write (CefC_Log_Error, "[-d] is specified more than once\n");
 		exit (1);
@@ -212,58 +227,67 @@ int main (
 	cef_dbg_init ("cefctrl", file_path, 1);
 	cef_dbg_write (CefC_Dbg_Fine, "operation is %s\n", argv[1]);
 #endif // CefC_Debug
-	
+
 	res = cef_client_init (port_num, file_path);
 	if (res < 0) {
 		cef_log_write (CefC_Log_Error, "Failed to init client package.\n");
 		exit (1);
 	}
-	
+
 	fhdl = cef_client_connect ();
 	if (fhdl < 1) {
 		cef_log_write (CefC_Log_Error, "Failed to connect to cefnetd.\n");
 		exit (1);
 	}
-	
+
 	/* Records the user which launched cefnetd 		*/
 	wp = getenv ("USER");
 	if (wp == NULL) {
-		cef_log_write (CefC_Log_Error, 
+		cef_log_write (CefC_Log_Error,
 			"Failed to obtain $USER launched cefctrl\n");
 		exit (1);
 	}
 	memset (launched_user_name, 0, CefC_Ctrl_User_Len);
 	strcpy (launched_user_name, wp);
-	
+
 	if (strcmp (argv[1], CefC_Arg_Kill) == 0) {
 		sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_Kill);
-		memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_Kill_Len], 
+		memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_Kill_Len],
 						launched_user_name, CefC_Ctrl_User_Len);
-		cef_client_message_input (fhdl, buff, 
+		cef_client_message_input (fhdl, buff,
 			CefC_Ctrl_Len + CefC_Ctrl_Kill_Len + CefC_Ctrl_User_Len);
 	} else if (pit_f && strcmp (argv[1], CefC_Arg_Status) == 0) {
 		sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_StatusPit);
-		memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_StatusPit_Len], 
+		memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_StatusPit_Len],
 						launched_user_name, CefC_Ctrl_User_Len);
-		cef_client_message_input (fhdl, buff, 
+		cef_client_message_input (fhdl, buff,
 			CefC_Ctrl_Len + CefC_Ctrl_StatusPit_Len + CefC_Ctrl_User_Len);
 	} else if (strcmp (argv[1], CefC_Arg_Status) == 0) {
 		if (output_opt_f) {
 			sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_StatusStat);
-			memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len], 
+			memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len],
 						&output_opt_f, sizeof (uint16_t));
-			memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len + sizeof (uint16_t)], 
-						launched_user_name, CefC_Ctrl_User_Len);
-			cef_client_message_input (fhdl, buff, 
-				CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len + sizeof (uint16_t) + CefC_Ctrl_User_Len);
+			if ( output_opt_f & CefC_Ctrl_StatusOpt_Numofpit ) {
+				memcpy( &buff[CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len + sizeof (uint16_t)],
+						&numofpit, sizeof (uint16_t));
+				memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len + sizeof (uint16_t) + sizeof (uint16_t)],
+							launched_user_name, CefC_Ctrl_User_Len);
+				cef_client_message_input (fhdl, buff,
+					CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len + sizeof (uint16_t) + sizeof (uint16_t) + CefC_Ctrl_User_Len);
+			} else {
+				memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len + sizeof (uint16_t)],
+							launched_user_name, CefC_Ctrl_User_Len);
+				cef_client_message_input (fhdl, buff,
+					CefC_Ctrl_Len + CefC_Ctrl_StatusStat_Len + sizeof (uint16_t) + CefC_Ctrl_User_Len);
+			}
 		} else {
 			sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_Status);
-			memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_Status_Len], 
+			memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_Status_Len],
 						launched_user_name, CefC_Ctrl_User_Len);
-			cef_client_message_input (fhdl, buff, 
+			cef_client_message_input (fhdl, buff,
 				CefC_Ctrl_Len + CefC_Ctrl_Status_Len + CefC_Ctrl_User_Len);
 		}
-		
+
 		usleep (CefC_StatusRspWait);
 		int ff = 1;
 		int resped = 0;
@@ -298,21 +322,13 @@ int main (
 	} else if (strcmp (argv[1], CefC_Arg_Route) == 0) {
 		sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_Route);
 		len = cef_ctrl_create_route_msg (
-			buff + CefC_Ctrl_Len + CefC_Ctrl_Route_Len, 
+			buff + CefC_Ctrl_Len + CefC_Ctrl_Route_Len,
 				argc - (dir_path_f * 2 + port_num_f * 2), argv, launched_user_name);
 		if (len > 0) {
 			cef_client_message_input (
-				fhdl, buff, 
+				fhdl, buff,
 				CefC_Ctrl_Len + CefC_Ctrl_Route_Len + len);
 		}
-#ifdef CefC_Ser_Log
-	} else if (strcmp (argv[1], CefC_Arg_Ser_Log) == 0) {
-		sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_Ser_Log);
-		memcpy (&buff[CefC_Ctrl_Len + CefC_Ctrl_Ser_Log_Len], 
-						launched_user_name, CefC_Ctrl_User_Len);
-		cef_client_message_input (fhdl, buff, 
-			CefC_Ctrl_Len + CefC_Ctrl_Ser_Log_Len + CefC_Ctrl_User_Len);
-#endif // CefC_Ser_Log
 	}
 	usleep (100000);
 	cef_client_close (fhdl);
@@ -324,7 +340,7 @@ static int
 cef_ctrl_create_route_msg (
 	unsigned char* buff,
 	int argc,
-	char** argv, 
+	char** argv,
 	char* user_name
 ) {
 	uint8_t host_len;
@@ -333,18 +349,18 @@ cef_ctrl_create_route_msg (
 	int index = 0;
 	uint16_t uri_len;
 	int i;
-	
+
 	/* check the number of parameters 		*/
 	if (argc > 37) {
 		cef_log_write (CefC_Log_Error, "Invalid parameter(s) is(are) specified.\n");
 		return (-1);
 	}
 	if (argc < 6) {
-		cef_log_write (CefC_Log_Error, 
+		cef_log_write (CefC_Log_Error,
 			"Required parameter(s) is(are) not specified.\n");
 		return (-1);
 	}
-	
+
 	/* check operation */
 	if (strcmp (argv[2], CefC_Arg_Route_Ope_Add) == 0) {
 		/* operation is add route */
@@ -356,11 +372,11 @@ cef_ctrl_create_route_msg (
 		/* operation is delete route */
 		op = CefC_Fib_Route_Ope_Add;
 	} else {
-		cef_log_write (CefC_Log_Error, 
+		cef_log_write (CefC_Log_Error,
 			"Option that is neither add nor del for cefroute is specified.\n");
 		return (-1);
 	}
-	
+
 	/* check protocol */
 	if (strcmp (argv[4], CefC_Arg_Route_Pro_TCP) == 0) {
 		prot = CefC_Fib_Route_Pro_TCP;
@@ -368,30 +384,30 @@ cef_ctrl_create_route_msg (
 		/* protocol is UDP */
 		prot = CefC_Fib_Route_Pro_UDP;
 	} else {
-		cef_log_write (CefC_Log_Error, 
+		cef_log_write (CefC_Log_Error,
 			"Protocol that is neither udp nor tcp for cefroute is specified.\n");
 		return (-1);
 	}
-	
+
 	/* set user name 	*/
 	memcpy (buff + index, user_name, CefC_Ctrl_User_Len);
 	index += CefC_Ctrl_User_Len;
-	
+
 	/* set operation 	*/
 	memcpy (buff + index, &op, sizeof (op));
 	index += sizeof (op);
-	
+
 	/* set protocol 	*/
 	memcpy (buff + index, &prot, sizeof (prot));
 	index += sizeof (prot);
-	
+
 	/* set URI */
 	uri_len = (uint16_t) strlen (argv[3]);
 	memcpy (buff + index, &uri_len, sizeof (uint16_t));
 	index += sizeof (uint16_t);
 	memcpy (buff + index, argv[3], uri_len);
 	index += uri_len;
-	
+
 	for (i = 5 ; i < argc ; i++) {
 		/* set host IPaddress */
 		host_len = strlen (argv[i]);
@@ -400,6 +416,6 @@ cef_ctrl_create_route_msg (
 		memcpy (buff + index, argv[i], host_len);
 		index += host_len;
 	}
-	
+
 	return (index);
 }

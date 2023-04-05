@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2021, National Institute of Information and Communications
+# Copyright (c) 2016-2023, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -115,7 +115,7 @@ ccninfo_rt-public-key: ccninfo_rt-public-key.pem
 	else \
 		echo "***" You may need to rerun ./configure in the src directory. >&2; \
 	fi
-	
+
 ccninfo_user-private-key: ccninfo_user-private-key.pem
 	@if [ -f $(@:=.pem) ]; then \
 		cat $(@:=.pem) >> $@; \
@@ -131,12 +131,12 @@ ccninfo_user-public-key: ccninfo_user-public-key.pem
 	else \
 		echo "***" You may need to rerun ./configure in the src directory. >&2; \
 	fi
-	
+
 install:
 	@if [ ! -d $(INSTALLDIR) ]; then \
 		mkdir $(INSTALLDIR); \
 	fi
-	
+
 	@if [ ! -d $(CCNINFORTDIR) ]; then \
 		mkdir $(CCNINFORTDIR); \
 	fi
@@ -181,7 +181,7 @@ install:
 	@if [ ! -f $(INSTALLDIR)/conpubd.conf ]; then \
 		cp -p conpubd.conf $(INSTALLDIR)/conpubd.conf; \
 	fi
-	
+
 
 uninstall:
 	for i in $(CEF_CONF) ""; do test -z "$$i" || rm -f $(CCNINFOUSERDIR)/$$i; done

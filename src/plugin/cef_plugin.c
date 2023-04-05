@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,9 +45,6 @@
 
 #include <cefore/cef_client.h>
 #include <cefore/cef_plugin.h>
-#ifdef CefC_Android
-#include <cefore/cef_android.h>
-#endif // CefC_Android
 
 /****************************************************************************************
  Macros
@@ -78,7 +75,7 @@ static FILE* plugin_log_fp = NULL;
 /*--------------------------------------------------------------------------------------
 	Trims the specified line
 ----------------------------------------------------------------------------------------*/
-static void 
+static void
 cef_plugin_line_trim (
 	const char* p1, 								/* line to trim 					*/
 	char* p2										/* trimmed line 					*/
@@ -92,22 +89,20 @@ cef_plugin_list_insert (
 	void* element_ptr								/* data to insert 					*/
 );
 
-#ifndef CefC_Android
 /*--------------------------------------------------------------------------------------
 	Init log process for plugin
 ----------------------------------------------------------------------------------------*/
-static void 
+static void
 cef_plugin_log_init (
-	void 
+	void
 );
 /*--------------------------------------------------------------------------------------
 	Stops logging
 ----------------------------------------------------------------------------------------*/
-static void 
+static void
 cef_plugin_log_stop (
-	void 
+	void
 );
-#endif // CefC_Android
 
 /****************************************************************************************
  For Debug Trace
@@ -124,25 +119,22 @@ int
 cef_plugin_init (
 	CefT_Plugin_Handle* plgin_hdl					/* plugin handle 					*/
 ) {
-	
+
 	/* Reads the plugin.conf and stores values as the string 	*/
 	cef_plugin_config_read ();
-	
+
 	/* Creates the tx buffer 									*/
 	plgin_hdl->tx_que = cef_rngque_create (CefC_Tx_Que_Size);
-	plgin_hdl->tx_que_mp 
+	plgin_hdl->tx_que_mp
 		= cef_mpool_init ("CefTxMSF", sizeof (CefT_Tx_Elem), CefC_Tx_Que_Size);
-	
-#ifndef CefC_Android
+
 	/* Init logging 		*/
 	cef_plugin_log_init ();
-	
+
 	/* Output log 			*/
-	cef_plugin_log_write (CefT_Log_General, "plugin", 
+	cef_plugin_log_write (CefT_Log_General, "plugin",
 		"Initialization process is completed.");
-	
-#endif // CefC_Android
-	
+
 	return (1);
 }
 
@@ -153,19 +145,17 @@ int
 cef_plugin_destroy (
 	CefT_Plugin_Handle* plgin_hdl					/* plugin handle 					*/
 ) {
-	
-#ifndef CefC_Android
+
 	/* Output log 			*/
-	cef_plugin_log_write (CefT_Log_General, "plugin", 
+	cef_plugin_log_write (CefT_Log_General, "plugin",
 		"Post process is completed.");
-	
+
 	/* Stop logging 		*/
 	cef_plugin_log_stop ();
-#endif // CefC_Android
-	
+
 	cef_rngque_destroy (plgin_hdl->tx_que);
 	cef_mpool_destroy (plgin_hdl->tx_que_mp);
-	
+
 	return (1);
 }
 
@@ -190,7 +180,7 @@ cef_plugin_list_access (
 ) {
 	int i;
 	CefT_List_Elem* list_elem_ptr;
-	
+
 	/* Adjusts the specified position 		*/
 	if (pos_index < 0) {
 		return (list_ptr->head_ptr->elem_ptr);
@@ -198,14 +188,14 @@ cef_plugin_list_access (
 	if (pos_index > list_ptr->size) {
 		return (list_ptr->tail_ptr->elem_ptr);
 	}
-	
+
 	/* Gets the stored data which is listed in the specified position  */
 	list_elem_ptr = list_ptr->head_ptr;
-	
+
 	for (i = 0 ; i < pos_index ; i++) {
 		list_elem_ptr = list_elem_ptr->next;
 	}
-	
+
 	return (list_elem_ptr->elem_ptr);
 }
 
@@ -217,11 +207,11 @@ cef_plugin_tag_get (
 	const char* tag 								/* tag 								*/
 ) {
 	CefT_Plugin_Tag* 	tp;
-	
+
 	tp = plugin_tag.next;
-	
+
 	while (tp) {
-		
+
 		if (strcmp (tag, tp->tag) == 0) {
 			return (tp);
 		}
@@ -240,14 +230,14 @@ cef_plugin_parameter_value_get (
 ) {
 	CefT_Plugin_Tag* 	tp;
 	CefT_Plugin_Param* 	pp;
-	
+
 	tp = plugin_tag.next;
-	
+
 	while (tp) {
-		
+
 		if (strcmp (tag, tp->tag) == 0) {
 			pp = tp->params.next;
-			
+
 			while (pp) {
 				if (strcasecmp (parameter, pp->param) == 0) {
 					return (pp->values);
@@ -263,9 +253,9 @@ cef_plugin_parameter_value_get (
 /*--------------------------------------------------------------------------------------
 	Reads the plugin.conf and stores values as the string
 ----------------------------------------------------------------------------------------*/
-void 
+void
 cef_plugin_config_read (
-	void 
+	void
 ) {
 //	char 	ws[1024];
 	char 	ws[2048];
@@ -280,29 +270,24 @@ cef_plugin_config_read (
 	char* 	vp;
 	CefT_Plugin_Tag* 	tp;
 	CefT_Plugin_Param* 	pp;
-	
+
 	/* Obtains the directory path where the plugin.conf file is located. */
-#ifndef CefC_Android
 	cef_client_config_dir_get (ws_w);
-#else // CefC_Android
-	/* Android local cache storage is data/data/package_name/	*/
-	cef_android_conf_path_get (ws_w);
-#endif // CefC_Android
-	
+
 	if (mkdir (ws_w, 0777) != 0) {
 		if (errno == ENOENT) {
 			return;
 		}
 	}
-	
+
 	sprintf (dirpath, "%s/plugin", ws_w);
-	
+
 	if (mkdir (dirpath, 0777) != 0) {
 		if (errno == ENOENT) {
 			return;
 		}
 	}
-	
+
 	sprintf (ws, "%s/plugin.conf", ws_w);
 
 	/* Opens the cefnetd's config file. */
@@ -310,47 +295,47 @@ cef_plugin_config_read (
 	if (fp == NULL) {
 		return;
 	}
-	
+
 	/* Inits the structure to store the parameters of plugin 		*/
 	memset (&plugin_tag, 0, sizeof (CefT_Plugin_Tag));
 	tp = &plugin_tag;
 	pp = &(plugin_tag.params);
-	
+
 	while (fgets (buff, 1024, fp) != NULL) {
 		cef_plugin_line_trim (buff, work);
-		
+
 		if (work[0] == 0x00) {
 			continue;
 		}
 		if (strchr (work, '[') && strchr (work, ']')) {
-			
+
 			tp->next = (CefT_Plugin_Tag*) malloc (sizeof (CefT_Plugin_Tag));
 			tp = tp->next;
 			memset (tp, 0, sizeof (CefT_Plugin_Tag));
-			
+
 			/* Sets the tag 			*/
 			strncpy (tp->tag, &work[1], (int) strlen (work) - 1);
 			tp->tag[strlen (work) - 2] = 0x00;
-			
+
 			pp = &(tp->params);
-			
+
 		} else {
 			if (strchr (work, '=') == NULL) {
 				continue;
 			}
-			
+
 			pp->next = (CefT_Plugin_Param*) malloc (sizeof (CefT_Plugin_Param));
 			pp = pp->next;
 			memset (pp, 0, sizeof (CefT_Plugin_Param));
 			tp->num++;
-			
+
 			pp->values = (CefT_List*) malloc (sizeof (CefT_List));
 			pp->values->size = 0;
 			pp->values->head_ptr = (CefT_List_Elem*) NULL;
 			pp->values->tail_ptr = (CefT_List_Elem*) NULL;
-			
+
 			len = (int) strlen (work);
-			
+
 			for (i = 0 ; i < len ; i++) {
 				if (work[i] == '=') {
 					pp->param[i] = 0x00;
@@ -359,7 +344,7 @@ cef_plugin_config_read (
 				}
 				pp->param[i] = work[i];
 			}
-			
+
 			for (n = 0 ; i < len ; i++, n++) {
 				if (work[i] == ',') {
 					val[n] = 0x00;
@@ -377,9 +362,9 @@ cef_plugin_config_read (
 			cef_plugin_list_insert (pp->values, vp);
 		}
 	}
-	
+
 	fclose (fp);
-	
+
 	return;
 }
 
@@ -392,89 +377,87 @@ cef_plugin_list_insert (
 	void* element_ptr								/* data to insert 					*/
 ) {
 	CefT_List_Elem* list_elem_ptr;
-	
+
 	list_elem_ptr = (CefT_List_Elem*) malloc (sizeof (CefT_List_Elem));
 	list_elem_ptr->next     = (CefT_List_Elem*) NULL;
 	list_elem_ptr->prev     = (CefT_List_Elem*) NULL;
 	list_elem_ptr->elem_ptr = element_ptr;
-	
+
 	if (list_ptr->size != 0) {
-		
+
 		list_ptr->tail_ptr->next = list_elem_ptr;
 		list_elem_ptr->prev = list_ptr->tail_ptr;
 		list_ptr->tail_ptr = list_elem_ptr;
-		
+
 	} else {
-		
+
 		list_ptr->head_ptr = list_elem_ptr;
 		list_ptr->tail_ptr = list_elem_ptr;
-		
+
 	}
-	
+
 	list_ptr->size++;
-	
+
 	return;
 }
 
 /*--------------------------------------------------------------------------------------
 	Trims the specified line
 ----------------------------------------------------------------------------------------*/
-static void 
+static void
 cef_plugin_line_trim (
 	const char* p1, 								/* line to trim 					*/
 	char* p2										/* trimmed line 					*/
 ) {
-	
+
 	while (*p1) {
 		if ((*p1 == 0x0d) || (*p1 == 0x0a)) {
 			break;
 		}
-		
+
 		if ((*p1 == 0x20) || (*p1 == 0x09)) {
 			p1++;
 			continue;
 		} else {
 			*p2 = *p1;
 		}
-		
+
 		p1++;
 		p2++;
 	}
 	*p2 = 0x00;
-	
+
 	return;
 }
-
-#ifndef CefC_Android
 
 /*--------------------------------------------------------------------------------------
 	Output log
 ----------------------------------------------------------------------------------------*/
-void 
+void
 cef_plugin_log_write (
-	uint16_t log_level, 
-	const char* plugin, 
+	uint16_t log_level,
+	const char* plugin,
 	const char* log
 ) {
 	struct timeval t;
 	unsigned long long tus;
-	
+
 	if (log_level & plugin_log_lv) {
 		gettimeofday (&t, NULL);
 		tus = t.tv_sec * 1000000llu + t.tv_usec;
-		
+
 		fprintf (plugin_log_fp, "[%llu][%s] %s\n", tus, plugin, log);
 	}
-	
+
 	return;
 }
 
 /*--------------------------------------------------------------------------------------
 	Init log process for plugin
 ----------------------------------------------------------------------------------------*/
-static void 
+static void
 cef_plugin_log_init (
-	void 
+	void
 ) {
 	CefT_List* lp 		= NULL;
 	char* value_str 	= NULL;
@@ -484,68 +467,67 @@ cef_plugin_log_init (
 	char fname2[2048];
 	char fpath[1024];
 	int i;
-	
+
 	/* Obtains level of logging 			*/
 	lp = cef_plugin_parameter_value_get ("COMMON", "log");
-	
+
 	if (lp) {
 		value_str = (char*) cef_plugin_list_access (lp, 0);
 		if (strcmp (value_str, "yes") == 0) {
 			plugin_log_lv = CefT_Log_General;
 		}
 	}
-	
+
 	if (plugin_log_lv == CefT_Log_None) {
 		return;
 	}
-	
+
 	/* Obtains path to output log files		*/
 	lp = cef_plugin_parameter_value_get ("COMMON", "logpath");
-	
+
 	if (lp) {
 		value_str = (char*) cef_plugin_list_access (lp, 0);
 		strcpy (fpath, value_str);
 	} else {
 		cef_client_config_dir_get (fpath);
 	}
-	
+
 	/* Removes the most old log file  		*/
 	sprintf (fname1, "%s/plugin5.log", fpath);
 	remove (fname1);
-	
+
 	/* Renames the old log files 			*/
 	for (i = 4 ; i > 0 ; i--) {
 		sprintf (fname1, "%s/plugin%d.log", fpath, i + 1);
 		sprintf (fname2, "%s/plugin%d.log", fpath, i);
-		rename (fname2, fname1); 
+		rename (fname2, fname1);
 	}
 	sprintf (fname1, "%s/plugin1.log", fpath);
 	sprintf (fname2, "%s/plugin.log", fpath);
-	rename (fname2, fname1); 
-	
+	rename (fname2, fname1);
+
 	/* Creates the new log file 			*/
 	plugin_log_fp = fopen (fname2, "w");
 	if (plugin_log_fp == NULL) {
 		plugin_log_lv = CefT_Log_None;
 		return;
 	}
-	
+
 	return;
 }
 
 /*--------------------------------------------------------------------------------------
 	Stops logging
 ----------------------------------------------------------------------------------------*/
-static void 
+static void
 cef_plugin_log_stop (
-	void 
+	void
 ) {
-	
+
 	if (plugin_log_fp) {
 		fclose (plugin_log_fp);
 	}
-	
+
 	return;
 }
-#endif // CefC_Android
 

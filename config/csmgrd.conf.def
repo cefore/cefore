@@ -40,7 +40,7 @@
 # Type of cache policy by cache plugin.
 # If None is specified, no caching policy is used.
 #
-#CACHE_ALGORITHM=libcsmgrd_lru
+#CACHE_ALGORITHM=None
 
 #
 # The average name size of Cob processed by the cache policy.

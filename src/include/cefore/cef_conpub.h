@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -62,6 +62,8 @@
 													/* by conpubd						*/
 #define CefC_Cnpb_filesystem_Cache_Type		"filesystem"
 													/* Plugin name (string) used		*/
+													/* by conpubd						*/
+#define CefC_Cnpb_db_Cache_Type		"db"			/* Plugin name (string) used		*/
 													/* by conpubd						*/
 #define CefC_CnpbDefault_Purge_Interval		60		/* Interval (seconds) at which 		*/
 													/* conpubd checks 					*/
@@ -216,7 +218,7 @@ typedef struct {
 	unsigned char	name[CefC_Max_Msg_Size];
 	uint16_t		name_len;
 	uint16_t		pay_len;
-	uint32_t		chnk_num;
+	uint32_t		chunk_num;
 	uint64_t		cache_time;
 	uint64_t		expiry;
 } CefT_Conpubd_Content_Info;

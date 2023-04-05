@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -75,37 +75,37 @@ cefnetd_interest_forward (
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
-	CefT_Parsed_Message* pm, 				/* Parsed message 							*/
-	CefT_Parsed_Opheader* poh, 				/* Parsed Option Header						*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed message 							*/
+	CefT_CcnMsg_OptHdr* poh, 				/* Parsed Option Header						*/
 	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
 	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
 ) {
 	CefT_FwdStrtgy_Param		fwdstr;
-	
+
 	if (fe != NULL) {
-		
+
 		/* Forwards the Interest to next node 		*/
 		if (pm->hoplimit < 1) {
 			return (1);
 		}
-		
+
 	} else {
 		/* Forwards the Interest to local process, if it matches the Interest Filter 	*/
 		// TBD: interest filter
 	}
-	
+
 	if (!cef_face_is_local_face (peer_faceid)) {
 		/* Updates Hoplimit 		*/
 		pm->hoplimit--;
 		msg[CefC_O_Fix_HopLimit] = pm->hoplimit;
 	}
-	
+
 	if (pm->hoplimit < 1) {
 		return (1);
 	}
-	
+
 	if (hdl->fwd_strtgy_hdl->fwd_int) {
-		
+
 		/* Set parameters */
 		fwdstr.faceids         = faceids;
 		fwdstr.faceid_num      = faceid_num;
@@ -119,11 +119,11 @@ cefnetd_interest_forward (
 		fwdstr.fe              = fe;
 		fwdstr.cnt_send_frames = &(hdl->stat_send_interest);
 		fwdstr.cnt_send_types  = hdl->stat_send_interest_types;
-		
+
 		/* Forwards the Interest according to Forwarding Strategy. */
 		hdl->fwd_strtgy_hdl->fwd_int(&fwdstr);
 	}
-	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -139,26 +139,26 @@ cefnetd_ccninforeq_forward (
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
-	CefT_Parsed_Message* pm, 				/* Parsed message 							*/
-	CefT_Parsed_Opheader* poh, 				/* Parsed Option Header						*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed message 							*/
+	CefT_CcnMsg_OptHdr* poh, 				/* Parsed Option Header						*/
 	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
 	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
 ) {
 	int fulldiscovery_authNZ = 0;
 	CefT_FwdStrtgy_Param		fwdstr;
-	
+
 	/* Ccninfo Full discovery authentication & authorization */
 	if (hdl->ccninfo_full_discovery == 2 /* Authentication and Authorization */
 		&& poh->ccninfo_flag & CefC_CtOp_FullDisCover) {
 		fulldiscovery_authNZ = cefnetd_ccninfo_fulldiscovery_authNZ(
-													hdl->ccninfousr_id_len, 
+													hdl->ccninfousr_id_len,
 													hdl->ccninfousr_node_id,
 													hdl->ccninfo_rcvdpub_key_bi_len,
 													hdl->ccninfo_rcvdpub_key_bi);
 	}
-	
+
 	if (hdl->fwd_strtgy_hdl->fwd_ccninforeq) {
-		
+
 		/* Set parameters */
 		fwdstr.faceids         = faceids;
 		fwdstr.faceid_num      = faceid_num;
@@ -170,12 +170,12 @@ cefnetd_ccninforeq_forward (
 		fwdstr.poh             = poh;
 		fwdstr.pe              = pe;
 		fwdstr.fe              = fe;
-		
+
 		/* Forwards the CcninfoReq according to Forwarding Strategy. */
 		hdl->fwd_strtgy_hdl->fwd_ccninforeq(&fwdstr, fulldiscovery_authNZ, hdl->ccninfo_full_discovery);
-		
+
 	}
-	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -191,37 +191,37 @@ cefnetd_cefpingreq_forward (
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
-	CefT_Parsed_Message* pm, 				/* Parsed message 							*/
-	CefT_Parsed_Opheader* poh, 				/* Parsed Option Header						*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed message 							*/
+	CefT_CcnMsg_OptHdr* poh, 				/* Parsed Option Header						*/
 	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
 	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
 ) {
 	CefT_FwdStrtgy_Param		fwdstr;
-	
+
 	if (fe != NULL) {
-		
+
 		/* Forwards the Interest to next node 		*/
 		if (pm->hoplimit < 1) {
 			return (1);
 		}
-		
+
 	} else {
 		/* Forwards the Interest to local process, if it matches the Interest Filter 	*/
 		// TBD: interest filter
 	}
-	
+
 	if (!cef_face_is_local_face (peer_faceid)) {
 		/* Updates Hoplimit 		*/
 		pm->hoplimit--;
 		msg[CefC_O_Fix_HopLimit] = pm->hoplimit;
 	}
-	
+
 	if (pm->hoplimit < 1) {
 		return (1);
 	}
-	
+
 	if (hdl->fwd_strtgy_hdl->fwd_cefpingreq) {
-		
+
 		/* Set parameters */
 		fwdstr.faceids         = faceids;
 		fwdstr.faceid_num      = faceid_num;
@@ -233,12 +233,12 @@ cefnetd_cefpingreq_forward (
 		fwdstr.poh             = poh;
 		fwdstr.pe              = pe;
 		fwdstr.fe              = fe;
-		
+
 		/* Forwards the CefpingReq according to Forwarding Strategy. */
 		hdl->fwd_strtgy_hdl->fwd_cefpingreq(&fwdstr);
-		
+
 	}
-	
+
 	return (1);
 }
 
@@ -253,15 +253,15 @@ cefnetd_object_forward (
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
-	CefT_Parsed_Message* pm, 				/* Parsed message 							*/
-	CefT_Parsed_Opheader* poh, 				/* Parsed Option Header						*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed message 							*/
+	CefT_CcnMsg_OptHdr* poh, 				/* Parsed Option Header						*/
 	CefT_Pit_Entry* pe	 					/* PIT entry matching this Interest 		*/
 ) {
 	CefT_FwdStrtgy_Param		fwdstr;
 	uint16_t					name_len;
-	
+
 	if (hdl->fwd_strtgy_hdl->fwd_cob) {
-		
+
 		/* Set parameters */
 		fwdstr.faceids         = faceids;
 		fwdstr.faceid_num      = faceid_num;
@@ -272,31 +272,21 @@ cefnetd_object_forward (
 		fwdstr.poh             = poh;
 		fwdstr.pe              = pe;
 		fwdstr.cnt_send_frames = &(hdl->stat_send_frames);
-		
+
 		/* Searches a FIB entry matching the Interest requested this ContentObject */
-#ifdef CefC_Nwproc
-		if (pm->chnk_num_f) {
-			name_len = pm->name_wo_attr_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
-		} else {
-			name_len = pm->name_wo_attr_len;
-		}
-		
-		fwdstr.fe = cef_fib_entry_search (hdl->fib, pm->name_wo_attr, name_len);
-#else // CefC_Nwproc
-		if (pm->chnk_num_f) {
+		if (pm->chunk_num_f) {
 			name_len = pm->name_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
 		} else {
 			/* Symbolic Interest	*/
 			name_len = pm->name_len;
 		}
-		
+
 		fwdstr.fe = cef_fib_entry_search (hdl->fib, pm->name, name_len);
-#endif // CefC_Nwproc
-		
+
 		/* Forwards the ContentObject according to Forwarding Strategy. */
 		hdl->fwd_strtgy_hdl->fwd_cob(&fwdstr);
-		
+
 	}
-	
+
 	return (1);
 }

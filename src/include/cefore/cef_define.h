@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,9 +40,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <ctype.h>
-//#ifdef CefC_Android			//20210408
 #include <inttypes.h>
-//#endif // CefC_Android		//20210408
 
 /****************************************************************************************
  Macros
@@ -56,7 +54,7 @@
     // iOS device
 #elif TARGET_OS_MAC
     // Other kinds of Mac OS
-    #define CefC_MACOS   1       
+    #define CefC_MACOS   1
 #else
 #   error "Unknown Apple platform"
 #endif // TARGET_IPHONE_SIMULATOR
@@ -67,19 +65,13 @@
 
 #else // __APPLE__
 
-#ifdef CefC_Android
-#define FMTU64 		"%"PRIu64
-#else // CefC_Android
 //#define FMTU64 		"%lu"	//20210408
 #define FMTU64 		"%"PRIu64
 #define FMTLINT 	"%03ld"
-#endif // CefC_Android
 
 #endif // __APPLE__
 
-#ifndef CefC_Android
 //#define CefC_DebugOld
-#endif // CefC_Android
 
 /*************** Version 		****************/
 #define CefC_Version					0x01
@@ -121,13 +113,6 @@
 #define CefC_ParamName_Node_Name		"NODE_NAME"
 #define CefC_ParamName_PitSize_App		"PIT_SIZE_APP"
 #define CefC_ParamName_FibSize_App		"FIB_SIZE_APP"
-//C3
-#define CefC_ParamName_C3Log			"CEF_C3_LOG"
-#define CefC_ParamName_C3Log_Dir		"CEF_C3_LOG_DIR"
-#define CefC_ParamName_C3log_Period		"CEF_C3_LOG_PERIOD"
-#define	CefC_C3_LOG_TAPP_MAX			32
-#define	CefC_C3_URI_Prefix				"ccnx:/ClapCorner"
-#define	CefC_C3_URI_Prefix_Len			strlen(CefC_C3_URI_Prefix)
 //0.8.3
 #define	CefC_ParamName_InterestRetrans	"INTEREST_RETRANSMISSION"
 #define	CefC_ParamName_SelectiveForward	"SELECTIVE_FORWARDING"
@@ -146,25 +131,15 @@
 //20220311
 #define CefC_ParamName_SELECTIVE_MAX	"SELECTIVE_INTEREST_MAX_RANGE"
 
-#ifdef CefC_Ser_Log
-#define CefC_ParamName_Log_Size			"SER_LOG_SIZE"
-#define CefC_ParamName_Log_Enable		"SER_LOG_ENABLE"
-#define CefC_ParamName_Log_Dir			"SER_LOG_DIR"
-#endif // CefC_Ser_Log
-#ifdef CefC_Ccninfo
 #define CefC_ParamName_CcninfoAccessPolicy	"CCNINFO_ACCESS_POLICY"
 #define CefC_ParamName_CcninfoFullDiscovery	"CCNINFO_FULL_DISCOVERY"
 #define CefC_ParamName_CcninfoValidAlg		"CCNINFO_VALID_ALG"
 #define CefC_ParamName_CcninfoSha256KeyPrfx	"CCNINFO_SHA256_KEY_PRFX"
 #define CefC_ParamName_CcninfoReplyTimeout	"CCNINFO_REPLY_TIMEOUT"
-#endif // CefC_Ccninfo
+
 /*************** Default Values ***************/
 #define CefC_Default_PortNum			9896
-#ifndef CefC_Nwproc
-#define CefC_Default_PitSize			2048
-#else // CefC_Nwproc
-#define CefC_Default_PitSize			40000
-#endif // CefC_Nwproc
+#define CefC_Default_PitSize			65535
 #define CefC_Default_FibSize			1024
 #define CefC_Default_Sktype				SOCK_STREAM
 #define CefC_Default_NbrSize			1
@@ -190,13 +165,11 @@
 #define CefC_Default_CSMGR_ACCESS_RO	1
 #define CefC_Default_BUFFER_CACHE_TIME	10000
 
-#ifdef CefC_Ccninfo
 #define CefC_Default_CcninfoAccessPolicy	0
 #define CefC_Default_CcninfoFullDiscovery	0
 #define CefC_Default_CcninfoValidAlg		"crc32"		/* ccninfo-05 */
 #define CefC_Default_CcninfoSha256KeyPrfx	"cefore"
 #define CefC_Default_CcninfoReplyTimeout	4
-#endif // CefC_Ccninfo
 
 /*************** Applications   ***************/
 #define CefC_App_Version				0xCEF00101
@@ -210,21 +183,17 @@
 #define CefC_Face_Router_Max		1024
 #define CefC_Face_Publisher_Max		256
 
-#ifdef CefC_Nwproc
-/*************** For NWProc ***************/
-#define CefC_NWP_Delimiter			';'
-#define CefC_NWP_CID_Prefix			";CID="
-#define CefC_NWP_CID_Prefix_Len		(sizeof (CefC_NWP_CID_Prefix) - 1)	/* Except terminating characters */
-#endif // CefC_Nwproc
-
 //0.8.3
 #define	CefC_IntRetrans_Type_RFC	0
 #define	CefC_IntRetrans_Type_SUP	1
 #define	CefC_Selet_FWD_OFF			0
 #define	CefC_Selet_FWD_ON			1
-#define	CefC_PIT_TYPE_Rgl	0
-#define	CefC_PIT_TYPE_Sym	1
-#define	CefC_PIT_TYPE_Sel	2
+typedef	enum	{
+	CefC_PIT_TYPE_Rgl = 0,
+	CefC_PIT_TYPE_Sym = 1,
+	CefC_PIT_TYPE_Sel = 2,
+	CefC_PIT_TYPE_MAX
+}	CefT_PIT_TYPE;
 #define	CefC_Select_Cob_Num	256
 #define	CefC_MANIFEST_NAME	"/manifest"
 #define	CefC_MANIFEST_REC_MAX	200
@@ -244,7 +213,6 @@
 #define	CefC_IR_UNSUPPORTED_COBHASH 0x08
 #define	CefC_IR_MALFORMED_INTEREST	0x09
 
-
 //0.8.3c S
 #define	CefC_DB_LOCK			"LOCK"
 #define	CefC_DB_STAT_TBL		"DB_STAT_TBL"
@@ -261,6 +229,8 @@
 #define	CefC_SELECTIVE_MIN			1
 #define	CefC_SELECTIVE_MAX			2048
 #define	CefC_Default_SELECTIVE_MAX	512
+
+#define CefC_InbandTelem_Size	64			/* In-band Telemetry Metric Size		*/
 
 #ifdef CefC_DebugOld
 /****************************************************************************************

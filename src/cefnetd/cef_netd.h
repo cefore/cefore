@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,11 +46,7 @@
 #include <openssl/md5.h>
 #include <dlfcn.h>
 
-#ifndef CefC_Android
 #include <ifaddrs.h>
-#else // CefC_Android
-#include <cefore/cef_android.h>
-#endif // CefC_Android
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -78,12 +74,7 @@
 #include <ccore/ccore_valid.h>
 #endif // CefC_Ccore
 
-#ifdef CefC_Ccninfo
 #include <cefore/cef_ccninfo.h>
-#endif // CefC_Ccninfo
-#ifdef CefC_Ser_Log
-#include <cefore/cef_ser_log.h>
-#endif // CefC_Ser_Log
 
 /****************************************************************************************
  Macros
@@ -122,10 +113,6 @@
 #define CefC_Ctrl_Babel				"BABEL"
 #define CefC_Ctrl_Babel_Len			strlen(CefC_Ctrl_Babel)
 #define CefC_Ctrl_User_Len			256
-#ifdef CefC_Ser_Log
-#define CefC_Ctrl_Ser_Log			"SERLOG"
-#define CefC_Ctrl_Ser_Log_Len		strlen(CefC_Ctrl_Route)
-#endif // CefC_Ser_Log
 #define CefC_App_Conn_Num			64
 #define CefC_Cmd_Num_Max			256
 #define CefC_Cmd_Len_Max			1024
@@ -133,11 +120,7 @@
 #define CefC_Nbr_Len_Max			64
 #define CefC_Protocol_Name			8
 
-#ifdef CefC_Android
-#define CefC_Listen_Face_Max		8
-#else // CefC_Android
 #define CefC_Listen_Face_Max		CefC_Face_Router_Max
-#endif // CefC_Android
 
 /* cefstatus output option */
 #define CefC_Ctrl_StatusOpt_Stat	0x0001
@@ -145,6 +128,7 @@
 #if ((defined CefC_CefnetdCache) && (defined CefC_Develop))
 #define CefC_Ctrl_StatusOpt_LCache	0x0004
 #endif //((defined CefC_CefnetdCache) && (defined CefC_Develop))
+#define CefC_Ctrl_StatusOpt_Numofpit	0x0008
 
 
 /*------------------------------------------------------------------*/
@@ -155,57 +139,28 @@
 #define CefC_Max_Nbr 				32			/* Maximum Neighbor Count 				*/
 #define CefC_Fail_Thred				3			/* Threadshold to estimate link failure	*/
 
-#ifdef CefC_C3
-/*------------------------------------------------------------------*/
-/* C3																*/
-/*------------------------------------------------------------------*/
-#define	CefC_C3Log_File_Prefix		"cef_c3_"
-#define	CefC_C3Log_File_Suffix_fmt	"%02d%02d%02d_%02d%02d%02d.log"
-#define	CefC_C3Log_Dir_Default		"/usr/local/cefore/logs"
-#endif
-
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
 
 /********** Neighbor Management 	***********/
 typedef struct {
-	
+
 	char 				uri[CefC_Name_Len_Max];
 	unsigned char 		name[CefC_Max_Length];
 	int 				name_len;
 	int* 				nbr_idx;
 	int* 				nbr_shnum;
 	int 				nbr_num;
-	
+
 	int 				con_max;
 	int* 				con_nbr;
 	int 				con_num;
-	
+
 } CefT_Uris;
 
-#ifdef CefC_C3
-/* C3 Log */
 typedef struct {
-	char*			uri;
-	unsigned char*	name;
-	unsigned int	name_len;
-	int				index;
-	unsigned char	hash_uri[MD5_DIGEST_LENGTH];
-	char			hash_char[MD5_DIGEST_LENGTH*2+1];
-	int				del_f;						/* 0: Not delete 1:Is Delete */
-	time_t			add_time;
-	time_t			del_time;
-	int				c3_join_L;
-	int				c3_join_R;
-	int				c3_leave;
-	int				c3_publish;
-	int				c3_publish_data[CefC_C3_LOG_TAPP_MAX];
-} CefT_C3_LOG;
-#endif	// CefC_C3
 
-typedef struct {
-	
 	char 				nbr[CefC_Nbr_Len_Max];
 	char 				protocol[8];
 	uint16_t 			faceid;
@@ -214,18 +169,18 @@ typedef struct {
 	uint8_t 			active_f;
 	uint8_t 			fd_tcp_f;
 	int 				fail_num;
-	
+
 } CefT_Nbrs;
 
 /********** cefned main handle  	***********/
 typedef struct {
-	
+
 	char 				launched_user_name[CefC_Ctrl_User_Len];
-	
+
 	/********** Key Information 	***********/
 	uint8_t				node_type;				/* CefC_Node_Type_xxx					*/
 	uint64_t 			nowtus;
-	
+
 	/********** NodeID (IP Address) ***********/
 	unsigned char 		top_nodeid[16];
 	uint16_t 			top_nodeid_len;
@@ -233,11 +188,13 @@ typedef struct {
 	unsigned char** 	nodeid16;
 	int 				nodeid4_num;
 	int 				nodeid16_num;
+	char**				nodeid4_c;		/* char */
+	char**				nodeid16_c;		/* char */
 	unsigned int** 		nodeid4_mtu;	/* For ccninfo reply size check */
 	unsigned int** 		nodeid16_mtu;	/* For ccninfo reply size check */
 	unsigned int		lo_mtu;			/* For ccninfo reply size check */
 	unsigned int		top_nodeid_mtu;	/* For ccninfo reply size check */
-	
+
 	/********** Listen Port 		***********/
 	struct pollfd 		inudpfds[CefC_Listen_Face_Max];
 	uint16_t 			inudpfaces[CefC_Listen_Face_Max];
@@ -246,11 +203,7 @@ typedef struct {
 	struct pollfd 		intcpfds[CefC_Listen_Face_Max];
 	uint16_t 			intcpfaces[CefC_Listen_Face_Max];
 	uint16_t			intcpfdc;
-	
-	struct pollfd 		inndnfds[CefC_Listen_Face_Max];
-	uint16_t 			inndnfaces[CefC_Listen_Face_Max];
-	uint16_t			inndnfdc;
-	
+
 	/********** Parameters 			***********/
 	uint16_t 			port_num;				/* Port Number							*/
 	uint16_t 			fib_max_size;			/* Maximum FIB entry 					*/
@@ -301,13 +254,6 @@ typedef struct {
 	//20220311
 	uint32_t			Selective_max_range;
 
-#ifdef CefC_C3
-	int					c3_log;					/* C3_Log	0:OFF 1:ON					*/
-	int					c3_log_period;			/* C3_Log_Period (Second)				*/
-	char*				c3_log_dir;				/* C3_Log_Dir							*/
-#endif	// CefC_C3
-
-#ifdef CefC_Ccninfo
 	uint32_t 			ccninfo_access_policy;	/* CCNinfo access policy				*/
 												/*   0: No limit						*/
 												/*   1: Permit transfer only			*/
@@ -336,7 +282,7 @@ typedef struct {
 												/*  This value must be 					*/
 												/*  higher than or equal to 2 			*/
 												/*  and lower than or equal to 5.		*/
-#endif // CefC_Ccninfo
+
 	/********** Tables				***********/
 	CefT_Hash_Handle	fib;					/* FIB 									*/
 	CefT_Hash_Handle	pit;					/* PIT 									*/
@@ -356,7 +302,7 @@ typedef struct {
 	uint32_t 			pit_clean_i;
 	uint64_t			fib_clean_t;
 	uint32_t 			fib_clean_i;
-	
+
 	/********** Statistics 			***********/
 	uint64_t 			stat_recv_frames;				/* Count of Received ContentObject */
 	uint64_t 			stat_send_frames;				/* Count of Send ContentObject	*/
@@ -369,12 +315,12 @@ typedef struct {
 
 	/********** Content Store		***********/
 	CefT_Cs_Stat*		cs_stat;				/* Status of Content Store				*/
-#if (defined CefC_ContentStore) || (defined CefC_Dtc) \
+#if (defined CefC_ContentStore) \
 	|| (defined CefC_Conpub) || (defined CefC_CefnetdCache)
 	double				send_rate;				/* send content rate					*/
 	uint64_t			send_next;				/* Send content next					*/
 #endif // CefC_ContentStore || CefC_Conpub
-	
+
 	/********** Neighbor Management ***********/
 	CefT_Uris* 			uris;				/* URIs are specified in neighbor list 		*/
 	uint8_t 			uri_num;			/* URI count in neighbor list 				*/
@@ -386,60 +332,39 @@ typedef struct {
 											/* two cefnetds [unit:us]					*/
 	uint64_t 			nbr_base_t;
 	uint64_t 			nbr_wait_t;
-	
+
 	/********** App Resister 		***********/
 	CefT_Hash_Handle	app_reg;				/* App Resister table					*/
 	CefT_Hash_Handle	app_pit;				/* App Resister PIT						*/
-	
+
 	/********** Plugin 				***********/
 	CefT_Plugin_Handle 	plugin_hdl;
-	
+
 #ifdef CefC_Ccore
 	/********** Controller 			***********/
 	CcoreT_Rt_Handle* 	rt_hdl;
 #endif
-	
+
 	/********** Babel 				***********/
 	int 				babel_use_f;
 	int 				babel_sock;
 	int 				babel_face;
 	int 				babel_route;
 
-#ifdef CefC_Dtc
-	/********** Cefore-DTC 			***********/
-	uint64_t			dtc_resnd_t;
-#endif // CefC_Dtc
-	
-#ifdef CefC_Ccninfo
 	/********** Ccninfo				***********/
 	uint16_t 			ccninfousr_id_len;
 	unsigned char   	ccninfousr_node_id[CefC_Max_Node_Id];
 	int 				ccninfo_rcvdpub_key_bi_len;
 	unsigned char* 		ccninfo_rcvdpub_key_bi;
-#endif //CefC_Ccninfo
 
 	//0.8.3
 	/********** Plugin Interface for libcefnetd_plugin **********/
 	char					bw_stat_pin_name[128];
 	CefT_Plugin_Bw_Stat*	bw_stat_hdl;
 	void*					mod_lib;	/* plugin library	*/
-	
+
 	/********** cefstatus pipe **********/
 	int		cefstatus_pipe_fd[2];
-
-#ifdef CefC_C3
-	/* C3 Log */
-	FILE*				c3_log_fp;
-	char*				c3_log_fname;
-	uint64_t			c3_log_next;
-	int					c3_log_unknown;
-	int					c3_fib_add;
-	int					c3_fib_del;
-	int					c3_pit_add;
-	int					c3_pit_del;
-	CefT_Hash_Handle	c3_log_sum_fib;
-	CefT_Hash_Handle	c3_log_sum_pit;
-#endif	//CefC_C3
 
 	/********** Forwarding Strategy Plugin **********/
 	CefT_Plugin_Fwd_Strtgy*		fwd_strtgy_hdl;
@@ -499,8 +424,8 @@ cefnetd_interest_forward (
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
-	CefT_Parsed_Message* pm, 				/* Parsed message 							*/
-	CefT_Parsed_Opheader* poh, 				/* Parsed Option Header						*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed message 							*/
+	CefT_CcnMsg_OptHdr* poh, 				/* Parsed Option Header						*/
 	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
 	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
 );
@@ -517,8 +442,8 @@ cefnetd_ccninforeq_forward (
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
-	CefT_Parsed_Message* pm, 				/* Parsed message 							*/
-	CefT_Parsed_Opheader* poh, 				/* Parsed Option Header						*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed message 							*/
+	CefT_CcnMsg_OptHdr* poh, 				/* Parsed Option Header						*/
 	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
 	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
 );
@@ -535,8 +460,8 @@ cefnetd_cefpingreq_forward (
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
-	CefT_Parsed_Message* pm, 				/* Parsed message 							*/
-	CefT_Parsed_Opheader* poh, 				/* Parsed Option Header						*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed message 							*/
+	CefT_CcnMsg_OptHdr* poh, 				/* Parsed Option Header						*/
 	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
 	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
 );
@@ -551,8 +476,8 @@ cefnetd_object_forward (
 	unsigned char* msg, 					/* received message to handle				*/
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
-	CefT_Parsed_Message* pm, 				/* Parsed message 							*/
-	CefT_Parsed_Opheader* poh, 				/* Parsed Option Header						*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed message 							*/
+	CefT_CcnMsg_OptHdr* poh, 				/* Parsed Option Header						*/
 	CefT_Pit_Entry* pe	 					/* PIT entry matching this Interest 		*/
 );
 
@@ -585,7 +510,7 @@ cefnetd_nbr_rtt_record (
 /*--------------------------------------------------------------------------------------
 	Close neighbor management
 ----------------------------------------------------------------------------------------*/
-void 
+void
 cefnetd_nbr_destroy (
 	CefT_Netd_Handle* hdl					/* cefnetd handle							*/
 );

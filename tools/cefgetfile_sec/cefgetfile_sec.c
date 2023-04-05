@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -57,7 +57,8 @@
  Macros
  ****************************************************************************************/
 
-#define CefC_Max_PileLine 		16
+#define CefC_Max_PipeLine 		1024	/* MAX Pipeline */
+#define CefC_Def_PipeLine 		8		/* Default Pipeline */
 
 #define CefC_Resend_Interval	10000		/* 10 ms 		*/
 #define CefC_Max_Retry 			5
@@ -127,21 +128,23 @@ int main (
 	char** argv
 ) {
 	int res;
-	int pipeline = 4;
+	int pipeline = CefC_Def_PipeLine;
 	int index = 0;
 	char uri[1024] = {0};
 	char fpath[1024] = {0};
 	char man_uri[1048] = {0};
 	char man_fpath[1024] = {0};
-	CefT_Interest_TLVs params;
-	CefT_Interest_TLVs man_params;
+	CefT_CcnMsg_OptHdr opt;
+	CefT_CcnMsg_OptHdr man_opt;	
+	CefT_CcnMsg_MsgBdy params;
+	CefT_CcnMsg_MsgBdy man_params;
 	struct timeval t;
 	uint64_t dif_time;
 	uint64_t nxt_time;
 	uint64_t now_time;
 	uint64_t end_time;
 	uint64_t val;
-	uint32_t chnk_num = 0;
+	uint32_t chunk_num = 0;
 	uint32_t diff_seq;
 	int send_cnt = 0;
 	int i;
@@ -191,9 +194,11 @@ int main (
 	int man_res;
 	/***** state variavles 	*****/
 	uint32_t 	sv_max_seq 		= UINT_MAX - 1;
-	
-	memset (&params, 0, sizeof (CefT_Interest_TLVs));
-	memset (&man_params, 0, sizeof (CefT_Interest_TLVs));
+
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));	
+	memset (&man_opt, 0, sizeof (CefT_CcnMsg_OptHdr));	
+	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
+	memset (&man_params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	
 	
 	/*---------------------------------------------------------------------------
@@ -244,8 +249,13 @@ int main (
 			}
 			work_arg = argv[i + 1];
 			pipeline = atoi (work_arg);
-			if ((pipeline < 1) || (pipeline > CefC_Max_PileLine)) {
-				pipeline = 1;
+//			if ((pipeline < 1) || (pipeline > CefC_Max_PileLine)) {
+//				pipeline = 1;
+//			}
+			if ( pipeline < 1 ) {
+				pipeline = CefC_Def_PipeLine;
+			} else if ( pipeline > CefC_Max_PipeLine ) {
+				pipeline = CefC_Max_PipeLine;
 			}
 			pipeline_f++;
 			i++;
@@ -428,9 +438,9 @@ int main (
 		Sets Interest parameters
 	-----------------------------------------------------------------------------*/
 	params.hoplimit 			= 32;
-	params.opt.lifetime_f 		= 1;
-	params.opt.symbolic_f		= CefC_T_OPT_REGULAR;
-	params.opt.lifetime 		= CefC_Default_LifetimeSec * 1000;
+	opt.lifetime_f 		= 1;
+	Cef_Int_Regular(params);
+	opt.lifetime 		= CefC_Default_LifetimeSec * 1000;
 	params.chunk_num			= 0;
 	params.chunk_num_f			= 1;
 
@@ -463,9 +473,9 @@ printf ("Manifest URI=%s\n", man_uri);
 		man_params.name_len = res;
 
 		man_params.hoplimit 			= 32;
-		man_params.opt.lifetime_f 		= 1;
-		man_params.opt.symbolic_f		= CefC_T_OPT_REGULAR;
-		man_params.opt.lifetime 		= CefC_Default_LifetimeSec * 1000;
+		man_opt.lifetime_f 		= 1;
+		Cef_Int_Regular(params);
+		man_opt.lifetime 		= CefC_Default_LifetimeSec * 1000;
 		man_params.chunk_num			= 0;
 		man_params.chunk_num_f			= 1;
 		
@@ -479,7 +489,7 @@ printf ("Manifest URI=%s\n", man_uri);
 		
 		/* Sends Initerest(s) 		*/
 		for (i = 0 ; i < pipeline ; i++) {
-			cef_client_interest_input (fhdl, &man_params);
+			cef_client_interest_input (fhdl, &opt, &man_params);
 			man_params.chunk_num++;
 			
 			usleep (100000);
@@ -510,7 +520,7 @@ printf ("Manifest URI=%s\n", man_uri);
 		gettimeofday (&t, NULL);
 		now_time = cef_client_covert_timeval_to_us (t);
 
-		dif_time = (uint64_t)((double) params.opt.lifetime * 0.3) * 1000;
+		dif_time = (uint64_t)((double) opt.lifetime * 0.3) * 1000;
 		nxt_time = now_time + dif_time;
 		end_time = now_time;
 
@@ -583,7 +593,7 @@ printf( "Manifest man_end_chunk_num+1:%ld\n", man_end_chunk_num );
 						
 						man_rxwnd = man_rxwnd_head;
 							
-						for (i = 0 ; i < diff_seq + 1 ; i++) {
+						for (i = 0 ; i < pipeline; i++) {
 								
 							if (man_rxwnd->flag == 0) {
 								break;
@@ -634,7 +644,7 @@ printf( "Manifest man_stat_recv_frames:%ld   man_end_chunk_num+1:%ld\n", man_sta
 							/* Sends an interest with the next chunk number 	*/
 							man_params.chunk_num = man_rxwnd_tail->seq;
 							if (man_params.chunk_num <= UINT32_MAX) {
-								cef_client_interest_input (fhdl, &man_params);
+								cef_client_interest_input (fhdl, &opt, &man_params);
 							}
 						}
 					} else {
@@ -675,7 +685,7 @@ printf( "Manifest man_stat_recv_frames:%ld   man_end_chunk_num+1:%ld\n", man_sta
 					if ((man_rxwnd->seq <= sv_max_seq) && 
 						(man_rxwnd->flag == 0)) {
 						man_params.chunk_num = man_rxwnd->seq;
-						cef_client_interest_input (fhdl, &params);
+						cef_client_interest_input (fhdl, &opt, &params);
 						send_cnt++;
 					}
 					man_rxwnd = man_rxwnd->next;
@@ -713,8 +723,8 @@ printf( "man_rec_num:%d\n", man_rec_num );
 		cef_valid_init (conf_path);
 		pubkey_len = (uint16_t)cef_valid_keyid_create( params.name, params.name_len, pubkey, keyid );
 		
-		params.KeyIdRest_f = 1;
-		memcpy( params.KeyIdRestSel, keyid, 32 );
+		params.KeyIdRester_f = 1;
+		memcpy( params.KeyIdRester_val, keyid, 32 );
 #ifdef __DEB_GET_KEY__
 		{
 			int dbg_x;
@@ -726,7 +736,7 @@ printf( "man_rec_num:%d\n", man_rec_num );
 		}
 #endif
 	} else {
-		params.KeyIdRest_f = 0;
+		params.KeyIdRester_f = 0;
 	}
 
 	if ( (mode_val == 1) || (mode_val == 2) ) {
@@ -800,8 +810,8 @@ if ( (mode_val == 1) || ( mode_val == 2) ) {
 	}
 }
 #endif
-					params.CobHRest_f = 1;
-					memcpy( params.CobHash, man_rec.cob_hash, 32 );
+					params.ObjHash_f= 1;
+					memcpy( params.ObjHash_val, man_rec.cob_hash, 32 );
 					man_rec_ctr++;
 					if ( man_rec_ctr > man_rec_num ) {
 						man_res = fread (man_buff, sizeof (unsigned char), man_buff_size, man_fp);
@@ -865,8 +875,8 @@ if ( (mode_val == 1) || ( mode_val == 2) ) {
 #ifdef __DEV_COBH__
 printf( "CKP-006 params.chunk_num:%d   man_rec.chunk:%d\n", params.chunk_num, man_rec.chunk );
 #endif
-					params.CobHRest_f = 1;
-					memcpy( params.CobHash, man_rec.cob_hash, 32 );
+					params.ObjHash_f= 1;
+					memcpy( params.ObjHash_val, man_rec.cob_hash, 32 );
 					man_rec_ctr++;
 					if ( man_rec_ctr > man_rec_num ) {
 						man_res = fread (man_buff, sizeof (unsigned char), man_buff_size, man_fp);
@@ -900,7 +910,7 @@ printf( "CKP-010 man_rec.chunk:%d   man_buff_idx:%d   man_rec_ctr:%d\n", man_rec
 #endif
 			}
 		}
-		cef_client_interest_input (fhdl, &params);
+		cef_client_interest_input (fhdl, &opt, &params);
 		params.chunk_num++;
 
 		usleep (100000);
@@ -918,7 +928,7 @@ printf( "CKP-010 man_rec.chunk:%d   man_buff_idx:%d   man_rec_ctr:%d\n", man_rec
 	gettimeofday (&t, NULL);
 	now_time = cef_client_covert_timeval_to_us (t);
 
-	dif_time = (uint64_t)((double) params.opt.lifetime * 0.3) * 1000;
+	dif_time = (uint64_t)((double) opt.lifetime * 0.3) * 1000;
 	nxt_time = now_time + dif_time;
 	end_time = now_time;
 
@@ -1010,7 +1020,7 @@ printf( "app_frame.end_chunk_num:%ld  end_chunk_num+1:%ld\n", app_frame.end_chun
 						
 					rxwnd = rxwnd_head;
 					
-					for (i = 0 ; i < diff_seq + 1 ; i++) {
+					for (i = 0 ; i < pipeline; i++) {
 						
 						if (rxwnd->flag == 0) {
 							break;
@@ -1078,8 +1088,8 @@ if ( (mode_val == 1) || ( mode_val == 2) ) {
 #ifdef __DEV_COBH__
 printf( "CKP-101 params.chunk_num:%u   man_rec.chunk:%u\n", params.chunk_num, man_rec.chunk );
 #endif
-									params.CobHRest_f = 1;
-									memcpy( params.CobHash, man_rec.cob_hash, 32 );
+									params.ObjHash_f= 1;
+									memcpy( params.ObjHash_val, man_rec.cob_hash, 32 );
 									man_rec_ctr++;
 									if ( man_rec_ctr > man_rec_num ) {
 										man_res = fread (man_buff, sizeof (unsigned char), man_buff_size, man_fp);
@@ -1112,7 +1122,7 @@ printf( "CKP-105 man_rec.chunk:%u   man_buff_idx:%d   man_rec_ctr:%d\n", man_rec
 #endif
 								}
 							}
-							cef_client_interest_input (fhdl, &params);
+							cef_client_interest_input (fhdl, &opt, &params);
 						}
 					}
 				} else {
@@ -1177,11 +1187,11 @@ if ( (mode_val == 1) || ( mode_val == 2) ) {
 #endif
 					if ( (mode_val == 1) || (mode_val == 2) ) {
 						if (rxwnd_head->CobHash_f == 1) {
-							params.CobHRest_f = 1;
-							memcpy( params.CobHash, rxwnd->cob_hash, 32 );
+							params.ObjHash_f= 1;
+							memcpy( params.ObjHash_val, rxwnd->cob_hash, 32 );
 						}
 					}
-					cef_client_interest_input (fhdl, &params);
+					cef_client_interest_input (fhdl, &opt, &params);
 					send_cnt++;
 				}
 				rxwnd = rxwnd->next;
@@ -1214,6 +1224,14 @@ print_usage (
 	
 	fprintf (stdout, "\nUsage: cefgetfile_sec\n\n");
 	fprintf (stdout, "  cefgetfile_sec uri -f file [-m mode] [-s pipeline] [-d config_file_dir] [-p port_num]\n\n");
+	fprintf (stdout, "  uri              Specify the URI.\n");
+	fprintf (stdout, "  file             Specify the file name of output. \n");
+	fprintf (stdout, "  mode             0: Send Interest with KeyIdRestriction TLV set.\n"
+	                 "                   1: Send Interest requesting Manifest, and send Interest with a CobHash value set.\n"
+	                 "                   2: Send Interest requesting Manifest, and send Interest with KeyIdRestriction TLV and CobHash value set.\n");
+	fprintf (stdout, "  pipeline         Number of pipeline\n");
+	fprintf (stderr, "  config_file_dir  Configure file directory\n");
+	fprintf (stderr, "  port_num         Port Number\n\n");
 }
 
 static void

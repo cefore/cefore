@@ -1,7 +1,7 @@
 #
-# Copyright (c) 2016-2021, National Institute of Information and Communications
+# Copyright (c) 2016-2023, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
 # met:
@@ -13,7 +13,7 @@
 # 3. Neither the name of the NICT nor the names of its contributors may be
 #    used to endorse or promote products derived from this software
 #    without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE NICT AND CONTRIBUTORS "AS IS" AND ANY
 # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,7 +25,7 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
-# 
+#
 
 # set include file directory
 AM_CFLAGS = -I$(top_srcdir)/src/include -I$(top_srcdir)/src/conpubd/include
@@ -43,28 +43,33 @@ if CEFDBG_ENABLE
 CONPUBD_CFLAGS+=-DCefC_Debug -g
 endif # CEFDBG_ENABLE
 
-# check ccninfo
-if CCNINFO_ENABLE
-CONPUBD_CFLAGS += -DCefC_Ccninfo
-endif # CCNINFO_ENABLE
-
-# check cefping
-if CEFPING_ENABLE
-CONPUBD_CFLAGS += -DCefC_Cefping
-endif # CEFPING_ENABLE
-
 # set bin programs
 bin_PROGRAMS=$(CONPUBD_BIN_PROGRAM)
 
 # set conpubd option
 conpubd_LDFLAGS = $(AM_LDFLAGS)
-conpubd_LDADD = -lcefore -ldl -lconpubd_plugin -lpthread -lssl -lcrypto
+conpubd_LDADD = -lcefore -ldl -lconpubd_plugin
+
+if OPENSSL_STATIC
+conpubd_LDADD+=-l:libssl.a -l:libcrypto.a
+else  #OPENSSL_STATIC
+conpubd_LDADD+=-lssl -lcrypto
+endif #OPENSSL_STATIC
+conpubd_LDADD += -lpthread -ldl
+
 conpubd_CFLAGS = $(CONPUBD_CFLAGS) -Wall -O2 -fPIC
 conpubd_SOURCES = conpubd.c conpubd.h
 
 # set conpubctrl option
 conpubctrl_LDFLAGS = $(AM_LDFLAGS)
-conpubctrl_LDADD = -lcefore -lconpubd_plugin -lpthread -lssl -lcrypto
+conpubctrl_LDADD = -lcefore -lconpubd_plugin
+if OPENSSL_STATIC
+conpubctrl_LDADD+=-l:libssl.a -l:libcrypto.a
+else  #OPENSSL_STATIC
+conpubctrl_LDADD+=-lssl -lcrypto
+endif #OPENSSL_STATIC
+conpubctrl_LDADD += -lpthread -ldl
+
 conpubctrl_CFLAGS = $(CONPUBD_CFLAGS) -Wall -O2 -fPIC
 conpubctrl_SOURCES = conpubctrl.c
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -616,18 +616,18 @@ csmgr_stat_cob_update (
 	if (rcd->cob_size == 0) {
 		rcd->cob_size = cob_size;
 		rcd->last_cob_size = cob_size;
-		rcd->last_chnk_num = seq;
+		rcd->last_chunk_num = seq;
 	}
 	if (rcd->cob_size > cob_size) {
 		rcd->last_cob_size = cob_size;
-		rcd->last_chnk_num = seq;
+		rcd->last_chunk_num = seq;
 	} else {
 		if (rcd->cob_size < cob_size) {
 		rcd->cob_size = cob_size;
 		}
 	}
-	if (rcd->last_chnk_num < seq) {
-		rcd->last_chnk_num = seq;
+	if (rcd->last_chunk_num < seq) {
+		rcd->last_chunk_num = seq;
 	}
 	
 	if (rcd->cob_num < 1) {
@@ -695,7 +695,7 @@ csmgr_stat_cob_remove (
 	mask <<= (seq % 64);
 
 	if (cob_size == 0) {
-		if (seq == rcd->last_chnk_num) {
+		if (seq == rcd->last_chunk_num) {
 			cob_size = rcd->last_cob_size;
 		} else {
 			cob_size = rcd->cob_size;

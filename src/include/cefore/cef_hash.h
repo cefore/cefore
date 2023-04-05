@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -63,9 +63,6 @@
 
 #if 1
 #define CefC_Max_KLen 				1024
-#define CefC_Cleanup_Wmin	 		16
-#define CefC_Cleanup_Smin	 		0
-#define CefC_Cleanup_Smax	 		4
 #endif
 
 /* [Coefficients for expanding hash tables]                                         */
@@ -95,10 +92,6 @@ typedef struct CefT_Hash {
 	uint32_t 			elem_max;			/* Prime numbers larger than the user defined maximum size */
 	uint32_t 			elem_num;
 	uint32_t 			def_elem_max;		/* User defined maximum size	*/
-
-	uint32_t 			cleanup_mwin;
-	uint32_t 			cleanup_cwin;
-	uint32_t 			cleanup_step;
 } CefT_Hash;
 #endif
 /****************************************************************************************
@@ -278,4 +271,65 @@ cef_lhash_tbl_item_remove (
 	const unsigned char* key,
 	uint32_t klen
 );
+
+//+++++ 0.9.0b : 2022.07.11
+int
+cef_lhash_tbl_item_num_get (
+	CefT_Hash_Handle handle
+);
+
+int
+cef_lhash_tbl_def_max_get (
+	CefT_Hash_Handle handle
+);
+
+int
+cef_lhash_tbl_item_max_idx_get (
+	CefT_Hash_Handle handle
+);
+
+void*
+cef_lhash_tbl_elem_get (
+	CefT_Hash_Handle handle,
+	uint32_t* index,
+	uint32_t* elem_num
+);
+
+uint32_t
+cef_lhash_tbl_hashv_get (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen
+);
+
+void*
+cef_lhash_tbl_item_get_from_index (
+	CefT_Hash_Handle handle,
+	uint32_t index,
+	uint32_t lindex
+);
+
+int
+cef_lhash_tbl_item_set_for_app (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen,
+	uint8_t opt,
+	void* elem
+);
+
+void*
+cef_lhash_tbl_item_get_for_app (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen
+);
+
+int
+cef_lhash_tbl_item_check_exact (
+	CefT_Hash_Handle handle,
+	const unsigned char* key,
+	uint32_t klen
+);
+//----- 0.9.0b : 2022.07.11
 #endif // __CEF_HASH_HEADER__

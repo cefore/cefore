@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,10 +46,7 @@
 
 #include <cefore/cef_define.h>
 #include <cefore/cef_log.h>
-
-#ifdef CefC_Android
-#include <android/log.h>
-#endif // CefC_Android
+#include <cefore/cef_frame.h>
 
 /****************************************************************************************
  Macros
@@ -103,13 +100,13 @@ cef_log_init (
 ) {
 
 	assert (proc_name != NULL);
-	
+
 	strcpy (log_porc, proc_name);
-	log_lv = level;	
+	log_lv = level;
 }
 void
 cef_log_init2 (
-	const char* config_file_dir, 
+	const char* config_file_dir,
 	int cefnetd_f
 ) {
 	char* 	wp;
@@ -129,7 +126,7 @@ cef_log_init2 (
 		} else {
 			sprintf (file_path, "%s/csmgrd.conf", config_file_dir);
 		}
-		
+
 	} else {
 		wp = getenv (CefC_CEFORE_DIR);
 		if (wp != NULL && wp[0] != 0) {
@@ -160,7 +157,7 @@ cef_log_init2 (
 	/* Reads and records written values in the cefnetd's config file. */
 	while (fgets (buff, 1023, fp) != NULL) {
 		buff[1023] = 0;
-		
+
 		if (buff[0] == 0x23/* '#' */) {
 			continue;
 		}
@@ -168,7 +165,7 @@ cef_log_init2 (
 		if (res < 0) {
 			continue;
 		}
-		
+
 		if (strcmp (pname, "CEF_LOG_LEVEL") == 0) {
 			log_lv = atoi (ws);
 			if (!(0<=log_lv && log_lv <= 2)){
@@ -177,7 +174,7 @@ cef_log_init2 (
 		}
 	}
 	fclose (fp);
-	
+
 }
 
 void
@@ -188,18 +185,15 @@ cef_log_write (
 ) {
 	va_list arg;
 	int		use_log_level;
-#ifndef CefC_Android
 	char 		time_str[64];
 	struct tm* 	timeptr;
 	time_t 		timer;
 	struct timeval t;
-#endif // CefC_Android
-	
-	
+
 	assert (level <= CefC_Log_Critical);
 	assert (log_porc[0] != 0x00);
 
-	
+
     if (log_lv == 0) {
 		use_log_level = CefC_Log_Error;
 	} else if (log_lv == 1) {
@@ -207,22 +201,17 @@ cef_log_write (
 	} else {
 		use_log_level = -1;
 	}
-	
+
 	if (level >= use_log_level) {
 		va_start (arg, fmt);
-#ifdef CefC_Android
-		__android_log_vprint(
-			level + ANDROID_LOG_INFO - CefC_Log_Info, log_porc, fmt, arg);
-#else // CefC_Android
 		timer 	= time (NULL);
 		timeptr = localtime (&timer);
 		strftime (time_str, 64, "%Y-%m-%d %H:%M:%S", timeptr);
 		gettimeofday (&t, NULL);
-		
+
 		fprintf (stdout, "%s."FMTLINT" [%s] %s: "
 			, time_str, t.tv_usec / 1000, log_porc, log_lv_str[level]);
 		vfprintf (stdout, fmt, arg);
-#endif // CefC_Android
 		va_end (arg);
 	}
 }
@@ -232,7 +221,7 @@ cef_log_write (
 void
 cef_dbg_init (
 	const char* proc_name,
-	const char* config_file_dir, 
+	const char* config_file_dir,
 	int cefnetd_f
 ) {
 	char* 	wp;
@@ -242,11 +231,11 @@ cef_dbg_init (
 	char 	ws[1024];
 	char 	pname[1024];
 	int 	res;
-	
+
 	/* Records the process name 		*/
 	assert (proc_name != NULL);
 	strcpy (dbg_proc, proc_name);
-	
+
 	/* Records the debug level information 			*/
 	if (config_file_dir[0] != 0x00) {
 		if (cefnetd_f==1) {
@@ -256,7 +245,7 @@ cef_dbg_init (
 		} else {
 			sprintf (file_path, "%s/csmgrd.conf", config_file_dir);
 		}
-		
+
 	} else {
 		wp = getenv (CefC_CEFORE_DIR);
 		if (wp != NULL && wp[0] != 0) {
@@ -277,16 +266,16 @@ cef_dbg_init (
 			}
 		}
 	}
-	
+
 	fp = fopen (file_path, "r");
 	if (fp == NULL) {
 		return;
 	}
-	
+
 	/* Reads and records written values in the cefnetd's config file. */
 	while (fgets (buff, 1023, fp) != NULL) {
 		buff[1023] = 0;
-		
+
 		if (buff[0] == 0x23/* '#' */) {
 			continue;
 		}
@@ -294,13 +283,13 @@ cef_dbg_init (
 		if (res < 0) {
 			continue;
 		}
-		
+
 		if (strcmp (pname, "CEF_DEBUG_LEVEL") == 0) {
 			dbg_lv = atoi (ws);
 		}
 	}
 	fclose (fp);
-	
+
 	if (dbg_lv > CefC_Dbg_Finest) {
 		dbg_lv = CefC_Dbg_Finest;
 	}
@@ -317,29 +306,23 @@ cef_dbg_write (
 	...												/* parameters						*/
 ) {
 	va_list arg;
-#ifndef CefC_Android
 	char 		time_str[64];
 	struct tm* 	timeptr;
 	time_t 		timer;
 	struct timeval t;
-#endif // CefC_Android
 	assert (level >= CefC_Dbg_Fine && level <= CefC_Dbg_Finest);
 	assert (dbg_proc[0] != 0x00);
-	
+
 	if (level < dbg_lv) {
 		va_start (arg, fmt);
-#ifdef CefC_Android
-		__android_log_vprint(ANDROID_LOG_DEBUG, dbg_proc, fmt, arg);
-#else // CefC_Android
 		timer 	= time (NULL);
 		timeptr = localtime (&timer);
 		strftime (time_str, 64, "%Y-%m-%d %H:%M:%S", timeptr);
 		gettimeofday (&t, NULL);
-		
-		fprintf (stdout, 
+
+		fprintf (stdout,
 			"%s."FMTLINT" [%s] DEBUG: ", time_str, t.tv_usec / 1000, dbg_proc);
 		vfprintf (stdout, fmt, arg);
-#endif // CefC_Android
 		va_end (arg);
 	}
 }
@@ -353,9 +336,9 @@ cef_dbg_buff_write (
 	int i;
 	int n = 0;
 	int s = 0;
-	
+
 	if (level < dbg_lv) {
-		
+
 		fprintf (stderr, "------------------------------------------------------\n");
 		fprintf (stderr, "      0  1  2  3  4  5  6  7    8  9  0  1  2  3  4  5\n");
 		for (i = 0 ; i < len ; i++) {
@@ -364,7 +347,7 @@ cef_dbg_buff_write (
 				s++;
 			}
 			fprintf (stderr, "%02X ", buff[i]);
-			
+
 			if (n == 7) {
 				fprintf (stderr, "  ");
 			}
@@ -375,6 +358,62 @@ cef_dbg_buff_write (
 			}
 		}
 		fprintf (stderr, "\n------------------------------------------------------\n");
+	}
+}
+
+void
+cef_dbg_buff_write_name (
+	int level, 										/* debug level 						*/
+	const unsigned char* hdr_buff,
+	int hdr_len,
+	const unsigned char* buff,
+	int len,
+	const unsigned char* ftr_buff,
+	int ftr_len
+) {
+	if (level < dbg_lv) {
+		char workstr[CefC_Max_Length];
+		char* wkp = workstr;
+		
+		if (hdr_len + len + ftr_len > CefC_Max_Length)
+			return;
+		
+		memset (wkp, 0, sizeof (workstr));
+		
+		/* header */
+		if (hdr_buff != NULL && hdr_len > 0) {
+			memcpy (wkp, hdr_buff, hdr_len);
+			wkp += hdr_len;
+		}
+		
+		/* main */
+		if ((dbg_lv-1) == CefC_Dbg_Finer) {
+			if (buff != NULL && len > 0) {
+				char xstr[CefC_Max_Length/2];
+				int xlen = 0;
+				xlen = cef_frame_conversion_name_to_uri ((unsigned char*)buff, len, xstr);
+				strcat (wkp, xstr);
+				wkp += xlen;
+			}
+		} else if ((dbg_lv-1) == CefC_Dbg_Finest){
+			if (buff != NULL && len > 0) {
+				char xstr[16];
+				int dbg_x;
+				int xlen = 0;
+				for (dbg_x = 0; dbg_x < len; dbg_x++) {
+					xlen += sprintf (xstr, " %02X", buff[dbg_x]);
+					strcat (wkp, xstr);
+				}
+				wkp += xlen;
+			}
+		}
+		
+		/* footer */
+		if (ftr_buff != NULL && ftr_len > 0) {
+			memcpy (wkp, ftr_buff, ftr_len);
+			wkp += ftr_len;
+		}
+		cef_dbg_write (level, "%s", workstr);
 	}
 }
 
@@ -425,7 +464,38 @@ cef_dbg_trim_line_string (
 
 	return (equal_f);
 }
+
+void
+cef_dbg_out (
+	int level, 										/* debug level 						*/
+	const char* func, 								/* function name					*/
+	const int   lineno, 							/* line number						*/
+	const char* usrfmt,								/* output format					*/
+	...												/* parameters						*/
+) {
+	va_list arg;
+	char 		time_str[64], fmtbuf[512];
+	struct tm* 	timeptr;
+	time_t 		timer;
+	struct timeval t;
+	assert (level >= CefC_Dbg_Fine && level <= CefC_Dbg_Finest);
+	assert (dbg_proc[0] != 0x00);
+
+	if (level < dbg_lv) {
+		va_start (arg, usrfmt);
+		timer 	= time (NULL);
+		timeptr = localtime (&timer);
+		strftime (time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", timeptr);
+		gettimeofday (&t, NULL);
+
+		snprintf(fmtbuf, sizeof(fmtbuf), "%s." FMTLINT " [%s] DEBUG: %s(%u) %s",
+			time_str, t.tv_usec / 1000, dbg_proc, func, lineno, usrfmt);
+		vfprintf (stdout, usrfmt, arg);
+		va_end (arg);
+	}
+}
 #endif // CefC_Debug
+
 static int
 cef_log_trim_line_string (
 	const char* p1, 							/* target string for trimming 			*/

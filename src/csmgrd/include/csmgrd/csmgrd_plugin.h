@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,9 +45,7 @@
 #include <cefore/cef_csmgr.h>
 #include <cefore/cef_csmgr_stat.h>
 
-#ifdef CefC_Ccninfo
 #include <cefore/cef_ccninfo.h>
-#endif // CefC_Ccninfo
 #include <cefore/cef_log.h>
 
 /****************************************************************************************
@@ -73,11 +71,11 @@ typedef struct {
 	unsigned char*	name;						/* Content name							*/
 	uint16_t		name_len;					/* Content name length					*/
 	uint16_t		pay_len;					/* Payload length						*/
-	uint32_t		chnk_num;					/* Chunk num							*/
+	uint32_t		chunk_num;					/* Chunk num							*/
 	uint64_t		cache_time;					/* Cache time							*/
 	uint64_t		expiry;						/* Expiry								*/
 	struct in_addr	node;						/* Node address							*/
-	
+
 	uint64_t		ins_time;					/* Insert time(use mem cache only)		*/
 	unsigned char*	version;					/* version								*/
 	uint16_t		ver_len;					/* Length of version					*/
@@ -86,34 +84,34 @@ typedef struct {
 typedef struct CsmgrdT_Plugin_Interface {
 	/* Initialize process */
 	int (*init)(CsmgrT_Stat_Handle, int);		//0.8.3c
-	
+
 	/* Destroy process */
 //0.8.3c	void (*destroy)(void);
 	void (*destroy)(int);		//0.8.3c
-	
+
 	/* Check expiry */
 	void (*expire_check)(void);
-	
+
 	/* Get Cob Entry */
 	int (*cache_item_get)(unsigned char*, uint16_t, uint32_t, int, unsigned char*, uint16_t);
-	
+
 	/* Put contents */
 	int (*cache_item_puts)(unsigned char*, int);
-	
+
 	/* Increment access count */
 	void (*ac_cnt_inc)(unsigned char*, uint16_t, uint32_t);
-	
+
 #ifdef CefC_Ccore
 	/* Set cache capacity */
 	int (*cache_cap_set) (uint64_t);
-	
+
 	/* Set cache lifetime 	*/
 	int (*content_lifetime_set) (unsigned char*, uint16_t, uint64_t);
-	
+
 	/* Delete cache entry */
 	int (*content_cache_del) (unsigned char*, uint16_t, uint32_t);
 #endif // CefC_Ccore
-	
+
 	int (*content_lifetime_get) (unsigned char*, uint16_t, uint32_t*, uint32_t*, uint8_t);
 
 } CsmgrdT_Plugin_Interface;
@@ -227,7 +225,7 @@ csmgrd_name_chunknum_concatenate (
 /*--------------------------------------------------------------------------------------
 	Creates the content entry
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_csmgr_con_entry_create (
 	unsigned char* buff,						/* receive message						*/
 	int buff_len,								/* message length						*/
@@ -253,7 +251,7 @@ csmgrd_log_init (
 
 void
 csmgrd_log_init2 (
-	const char* config_file_dir 
+	const char* config_file_dir
 );
 
 void

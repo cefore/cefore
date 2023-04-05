@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -127,7 +127,7 @@ typedef struct _CefT_List {
 
 /***** store the values of one parameter 	*****/
 typedef struct plugin_param {
-	
+
 	char 					param[33];			/* name of parameter 					*/
 	CefT_List* 				values;				/* values of this parameter 			*/
 	struct plugin_param* 	next;				/* pointer to next parameter 			*/
@@ -135,29 +135,29 @@ typedef struct plugin_param {
 
 /***** store the parameters of one tag 	*****/
 typedef struct plugin_tag {
-	
+
 	char 					tag[33];			/* name of tag 							*/
 	CefT_Plugin_Param		params;				/* parameters of this tag 				*/
 	struct plugin_tag* 		next;				/* pointer to next tag 					*/
 	int 					num;
-	
+
 } CefT_Plugin_Tag;
 
 
 /***** Data of Rx Queue Element for Interest/Object 	*****/
 typedef struct {
-	
+
 	int 					plugin_variant;			/* plugin variant 					*/
 	int 					type;					/* CefC_Elem_Type_XXX 				*/
 	uint32_t 				hashv;					/* Hash value 						*/
 	uint16_t 				in_faceid;				/* FaceID that the message arrived 	*/
-	CefT_Parsed_Message* 	parsed_msg;				/* parsed message information 		*/
+	CefT_CcnMsg_MsgBdy* 	parsed_msg;				/* parsed message information 		*/
 	unsigned char			ophdr[CefC_Max_Header_Size];
 													/* value field in hop-by-hop option */
 													/* header relating to this plugin	*/
 													/* valiant 							*/
 	uint16_t 				ophdr_len;				/* length of ophder value field 	*/
-	unsigned char			msg[CefC_Max_Msg_Size]; 
+	unsigned char			msg[CefC_Max_Msg_Size];
 													/* message 							*/
 	uint16_t 				msg_len;				/* length of the message 			*/
 	uint16_t 				out_faceids[CefC_Elem_Face_Num];
@@ -181,7 +181,7 @@ typedef struct {
 
 	int 			type;							/* CefC_Elem_Type_XXX 				*/
 	unsigned char	msg[CefC_Max_Msg_Size]; 		/* message 							*/
-	
+
 	uint16_t 		msg_len;						/* length of the message 			*/
 	uint16_t 		faceids[CefC_Elem_Face_Num];	/* outgoing FaceIDs that were 		*/
 													/* searched from PIT/FIB 			*/
@@ -195,29 +195,29 @@ typedef struct {
 -----------------------------------------------------------*/
 
 typedef struct _CefT_Plugin_Tp {
-	
+
 	/*** transport variant 							***/
 	int 			variant;
-	
+
 	/*** callback to init the transport plugin 		***/
 	int (*init)(struct _CefT_Plugin_Tp*, void*);
-	
+
 	/*** callback to process the received cob		***/
 	int (*cob)(struct _CefT_Plugin_Tp*, CefT_Rx_Elem*);
-	
+
 	/*** callback to process the received interest	***/
 	int (*interest)(struct _CefT_Plugin_Tp*, CefT_Rx_Elem*);
-	
+
 	/*** callback to signal the PIT entries delete	***/
 	void (*pit)(struct _CefT_Plugin_Tp*, CefT_Rx_Elem_Sig_DelPit*);
-	
+
 	/*** callback to post process					***/
 	void (*destroy)(struct _CefT_Plugin_Tp*);
-	
+
 	/*** tx queue 									***/
 	CefT_Rngque* 		tx_que;
 	CefT_Mp_Handle 		tx_que_mp;
-	
+
 } CefT_Plugin_Tp;
 
 /*---------------------------------------------------------
@@ -225,10 +225,10 @@ typedef struct _CefT_Plugin_Tp {
 -----------------------------------------------------------*/
 
 typedef struct _CefT_Plugin_Cp {
-	
+
 	/*** cache policy variant 						***/
 	int 			variant;
-	
+
 } CefT_Plugin_Cp;
 
 /*---------------------------------------------------------
@@ -236,10 +236,10 @@ typedef struct _CefT_Plugin_Cp {
 -----------------------------------------------------------*/
 
 typedef struct _CefT_Plugin_Efi {
-	
+
 	/*** EFI variant 								***/
 	int 			variant;
-	
+
 } CefT_Plugin_Efi;
 
 /*---------------------------------------------------------
@@ -247,69 +247,41 @@ typedef struct _CefT_Plugin_Efi {
 -----------------------------------------------------------*/
 
 typedef struct _CefT_Plugin_Mb {
-	
+
 	/*** callback to init the mobility plugin 		***/
 	int (*init)(struct _CefT_Plugin_Mb*, const CefT_Rtts*, void**);
-	
+
 	/*** callback to process the received cob		***/
 	int (*cob)(struct _CefT_Plugin_Mb*, CefT_Rx_Elem*);
-	
+
 	/*** callback to process the received interest	***/
 	int (*interest)(struct _CefT_Plugin_Mb*, CefT_Rx_Elem*);
-	
+
 	/*** callback to post process					***/
 	void (*destroy)(struct _CefT_Plugin_Mb*);
-	
+
 	/*** tx queue 									***/
 	CefT_Rngque* 		tx_que;
 	CefT_Mp_Handle 		tx_que_mp;
-	
+
 	/*** Neighbor Management						***/
 	int 				face_num;					/* Number of RTT record table 		*/
 	uint32_t 			rtt_interval;				/* Interval of measuring RTT[ms]	*/
-	
+
 } CefT_Plugin_Mb;
-
-/*---------------------------------------------------------
-	NDN Plugin
------------------------------------------------------------*/
-
-typedef struct _CefT_Plugin_Ndn {
-	
-	/*** callback to init the NDN plugin 			***/
-	int (*init)(struct _CefT_Plugin_Ndn*, CefT_Hash_Handle);
-	
-	/*** callback to process the received NDN msg	***/
-	int (*ndn_msg)(struct _CefT_Plugin_Ndn*);
-	
-	/*** callback to process the received CCN msg	***/
-	int (*cef_int)(struct _CefT_Plugin_Ndn*, unsigned char*, 
-			uint16_t, CefT_Parsed_Message*, CefT_Parsed_Opheader*, uint16_t);
-	int (*cef_cob)(struct _CefT_Plugin_Ndn*, 
-			unsigned char*, uint16_t, CefT_Parsed_Message*, CefT_Parsed_Opheader*);
-	
-	/*** callback to post process					***/
-	void (*destroy)(struct _CefT_Plugin_Ndn*);
-	
-	uint16_t 	port_num;
-	uint16_t	listen_faceid;
-	uint16_t 	listen_fd;
-	
-} CefT_Plugin_Ndn;
 
 /*---------------------------------------------------------
 	Plugin Manager which cefnetd uses
 -----------------------------------------------------------*/
 typedef struct {
-	
+
 	CefT_Plugin_Tp* 	tp;							/* Transport Plugin 				*/
 	CefT_Plugin_Cp* 	cp;							/* Cache Policy Plugin 				*/
 	CefT_Plugin_Efi* 	efi;						/* EFI Plugin 						*/
 	CefT_Plugin_Mb* 	mb;							/* Mobility Plugin 					*/
-	CefT_Plugin_Ndn* 	ndn;						/* NDN Plugin 						*/
 	CefT_Rngque* 		tx_que;						/* TX ring buffer 					*/
 	CefT_Mp_Handle 		tx_que_mp;					/* Memory Pool for CefT_Tx_Elem 	*/
-	
+
 } CefT_Plugin_Handle;
 
 //0.8.3
@@ -319,13 +291,13 @@ typedef struct {
 typedef struct _CefT_Plugin_Bw_Stat {
 	/* Initialize process */
 	int (*init)(int congesion_threshold);
-	
+
 	/* Destroy process */
 	void (*destroy)(void);
-	
+
 	/* Congesion status get */
 	double (*stat_get)(int if_idx);
-	
+
 	/* Get Table Index */
 	int (*stat_tbl_index_get)(char* ip_str);
 } CefT_Plugin_Bw_Stat;
@@ -349,8 +321,8 @@ typedef struct CefT_FwdStrtgy_Param {
 	unsigned char*			msg;				/* I/C  */
 	uint16_t				payload_len;		/* I/C  */
 	uint16_t				header_len;			/* I/C  */
-	CefT_Parsed_Message*	pm;					/* I/C  */
-	CefT_Parsed_Opheader*	poh;				/* I/C  */
+	CefT_CcnMsg_MsgBdy*	pm;					/* I/C  */
+	CefT_CcnMsg_OptHdr*	poh;				/* I/C  */
 	CefT_Pit_Entry*			pe;					/* I/C  */
 	CefT_Fib_Entry*			fe;					/* I/C  */
 
@@ -364,22 +336,22 @@ typedef struct CefT_FwdStrtgy_Param {
 typedef struct _CefT_Plugin_Fwd_Strtgy {
 	/* Initialize process */
 	int (*init)(void);
-	
+
 	/* Destroy process */
 	void (*destroy)(void);
-	
+
 	/* Forward Interest */
 	void (*fwd_int)(CefT_FwdStrtgy_Param* fwdstr);
-	
+
 	/* Forward ContentObject */
 	void (*fwd_cob)(CefT_FwdStrtgy_Param* fwdstr);
-	
+
 	/* Forward CcninfoReq */
 	void (*fwd_ccninforeq)(CefT_FwdStrtgy_Param* fwdstr, int authNZ, uint32_t fulldcv_f);
-	
+
 	/* Forward CefpingReq */
 	void (*fwd_cefpingreq)(CefT_FwdStrtgy_Param* fwdstr);
-	
+
 } CefT_Plugin_Fwd_Strtgy;
 
 
@@ -455,7 +427,7 @@ cef_tp_plugin_init (
 /*--------------------------------------------------------------------------------------
 	Post process for Transport Plugin
 ----------------------------------------------------------------------------------------*/
-void 
+void
 cef_tp_plugin_destroy (
 	CefT_Plugin_Tp* 	tp 							/* Transport Plugin Handle			*/
 );
@@ -481,29 +453,9 @@ cef_mb_plugin_init (
 /*--------------------------------------------------------------------------------------
 	Post process for Mobility Plugin
 ----------------------------------------------------------------------------------------*/
-void 
+void
 cef_mb_plugin_destroy (
 	CefT_Plugin_Mb* 	mv 							/* Mobility Plugin Handle			*/
-);
-
-/*=======================================================================================
-	NDN Plugin
- =======================================================================================*/
-
-/*--------------------------------------------------------------------------------------
-	Inits NDN Plugin
-----------------------------------------------------------------------------------------*/
-int 												/* variant caused the problem		*/
-cef_ndn_plugin_init (
-	CefT_Plugin_Ndn** 	ndn, 						/* NDN Plugin Handle				*/
-	const CefT_Hash_Handle  cefore_fib				/* FIB of cefnetd (Cefore) 			*/
-);
-/*--------------------------------------------------------------------------------------
-	Post process for NDN Plugin
-----------------------------------------------------------------------------------------*/
-void 
-cef_ndn_plugin_destroy (
-	CefT_Plugin_Ndn* 	ndn							/* NDN Plugin Handle				*/
 );
 
 /*=======================================================================================
@@ -513,21 +465,19 @@ cef_ndn_plugin_destroy (
 /*--------------------------------------------------------------------------------------
 	Reads the plugin.conf and stores values as the string
 ----------------------------------------------------------------------------------------*/
-void 
+void
 cef_plugin_config_read (
-	void 
+	void
 );
 
-#ifndef CefC_Android
 /*--------------------------------------------------------------------------------------
 	Outputs log
 ----------------------------------------------------------------------------------------*/
-void 
+void
 cef_plugin_log_write (
-	uint16_t log_level, 
-	const char* plugin, 
+	uint16_t log_level,
+	const char* plugin,
 	const char* log
 );
-#endif // CefC_Android
 
 #endif // __CEF_PLUGIN_HEADER__

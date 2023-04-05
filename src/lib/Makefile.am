@@ -1,7 +1,7 @@
 #
-# Copyright (c) 2016-2021, National Institute of Information and Communications
+# Copyright (c) 2016-2023, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
 # met:
@@ -13,7 +13,7 @@
 # 3. Neither the name of the NICT nor the names of its contributors may be
 #    used to endorse or promote products derived from this software
 #    without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE NICT AND CONTRIBUTORS "AS IS" AND ANY
 # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,13 +25,18 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
-# 
+#
 
 AM_CFLAGS=-I$(top_srcdir)/src/include -Wall -O2 -fPIC
+if OPENSSL_STATIC
+AM_LDFLAGS=-l:libssl.a -l:libcrypto.a
+else  #OPENSSL_STATIC
 AM_LDFLAGS=-lssl -lcrypto
+endif #OPENSSL_STATIC
+
 
 AM_CSOURCES=cef_hash.c cef_client.c cef_fib.c cef_pit.c cef_face.c cef_frame.c \
-	cef_log.c cef_print.c cef_mpool.c cef_rngque.c cef_valid.c 
+	cef_log.c cef_print.c cef_mpool.c cef_rngque.c cef_valid.c
 
 
 # check debug build
@@ -42,24 +47,9 @@ endif # CEFDBG_ENABLE
 # check csmgr
 if CSMGR_ENABLE
 AM_CFLAGS+=-DCefC_ContentStore
-#AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c 
+#AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c
 AM_CSOURCES+=cef_csmgr.c
 endif
-
-# check cefping
-if CEFPING_ENABLE
-AM_CFLAGS+=-DCefC_Cefping
-endif # CEFPING_ENABLE
-
-# check NDN Plugin
-if NDNPLUGIN_ENABLE
-AM_CFLAGS+=-DCefC_NdnPlugin
-endif # NDNPLUGIN_ENABLE
-
-# check ccninfo
-if CCNINFO_ENABLE
-AM_CFLAGS+=-DCefC_Ccninfo
-endif # CCNINFO_ENABLE
 
 # check cache
 if CACHE_ENABLE

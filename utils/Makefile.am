@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2021, National Institute of Information and Communications
+# Copyright (c) 2016-2023, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -33,15 +33,14 @@ CEF_UTIL=cefnetdstart cefnetdstop cefstatus cefroute
 SH=/bin/sh
 INSTALLDIR=$(CEFORE_DIR_PATH)/bin
 
-# check csmgrd 
+# check csmgrd
 if CSMGR_ENABLE
 EXTRA_DIST+=csmgrdstart.sh csmgrdstop.sh
 SCRIPTSRC+=csmgrdstart.sh csmgrdstop.sh
 CEF_UTIL+=csmgrdstart csmgrdstop
 endif # CSMGR_ENABLE
 
-
-# check conpubd 
+# check conpubd
 if CONPUB_ENABLE
 EXTRA_DIST+=conpubdstart.sh conpubdstop.sh
 SCRIPTSRC+=conpubdstart.sh conpubdstop.sh

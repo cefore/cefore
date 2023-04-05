@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,8 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
+#include <arpa/inet.h>
+#include <limits.h>
 
 #include <cefore/cef_frame.h>
 #include <cefore/cef_fib.h>
@@ -59,12 +61,7 @@
 #define CefC_Fib_Param_Addr		2
 
 #define CefC_Fib_Default_Len	4
-#ifndef CefC_Android
 #define CefC_Fib_Addr_Max		32
-#else // CefC_Android
-#define CefC_Fib_Addr_Max		3
-#endif // CefC_Android
-
 
 /****************************************************************************************
  Structures Declaration
@@ -89,8 +86,12 @@ static char 	fib_dbg_msg[2048];
 ----------------------------------------------------------------------------------------*/
 static int									/* Returns a negative value if it fails 	*/
 cef_fib_config_file_read (
-	CefT_Hash_Handle fib					/* FIB										*/
-);
+	CefT_Hash_Handle fib,					/* FIB										*/
+	int				 nodeid4_num,
+	int				 nodeid16_num,
+	char*			 nodeid4_c[],
+	char*			 nodeid16_c[],
+	uint16_t		 port_num);
 static int
 cef_fib_trim_line_string (
 	char* p, 									/* target string for trimming 			*/
@@ -106,7 +107,7 @@ cef_fib_entry_create (
 static void
 cef_fib_set_faceid_to_entry (
 	CefT_Fib_Entry* entry,
-	int faceid, 
+	int faceid,
 	uint8_t type,							//0.8.3c
 	CefT_Fib_Metric*	fib_metric			//0.8.3c
 );
@@ -130,10 +131,10 @@ cef_fib_route_del (
 	char* uri,								/* URI										*/
 	uint8_t type							/* CefC_Fib_Entry_XXX						*/
 );
-static int 
+static int
 cef_fib_remove_faceid_from_entry (
 	CefT_Fib_Entry* entry,
-	int faceid, 
+	int faceid,
 	uint8_t type
 );
 
@@ -145,10 +146,15 @@ cef_fib_remove_faceid_from_entry (
 ----------------------------------------------------------------------------------------*/
 int											/* Returns a negative value if it fails 	*/
 cef_fib_init (
-	CefT_Hash_Handle fib					/* FIB										*/
+	CefT_Hash_Handle fib,					/* FIB										*/
+	int				 nodeid4_num,
+	int				 nodeid16_num,
+	char*			 nodeid4_c[],
+	char*			 nodeid16_c[],
+	uint16_t		 port_num
 ){
 	/* Reads the FIB configuration file 	*/
-	cef_fib_config_file_read (fib);
+	cef_fib_config_file_read (fib, nodeid4_num, nodeid16_num, nodeid4_c, nodeid16_c, port_num);
 	cef_fib_faceid_cleanup (fib);
 	return (0);
 }
@@ -172,32 +178,20 @@ cef_fib_entry_search (
 
 		if (entry != NULL) {
 #ifdef CefC_Debug
-#if 0
-			{
-				int dbg_x;
-				
-				sprintf (fib_dbg_msg, "[fib] matched to the entry [");
-				for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
-					sprintf (fib_dbg_msg, "%s %02X", fib_dbg_msg, entry->key[dbg_x]);
-				}
-				cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
-			}
-#else
 			{
 				int dbg_x;
 				int len = 0;
-				
+
 				len = sprintf (fib_dbg_msg, "[fib] matched to the entry [");
 				for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
 					len = len + sprintf (fib_dbg_msg + len, " %02X", entry->key[dbg_x]);
 				}
 				cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
 			}
-#endif
 #endif // CefC_Debug
 			return (entry);
 		}
-		
+
 		msp = name;
 		mep = name + len - 1;
 		while (msp < mep) {
@@ -232,27 +226,15 @@ cef_fib_forward_faceid_get (
 		i++;
 	}
 #ifdef CefC_Debug
-#if 0
-	{
-		int dbg_x;
-		
-		for (dbg_x = 0 ; dbg_x < i ; dbg_x++) {
-			sprintf (fib_dbg_msg, "%s %d", fib_dbg_msg, faceids[dbg_x]);
-		}
-		cef_dbg_write (CefC_Dbg_Finest, "%s\n", fib_dbg_msg);
-	}
-#else
 	{
 		int dbg_x;
 		int len = 0;
-		
+
 		for (dbg_x = 0 ; dbg_x < i ; dbg_x++) {
 			len = len + sprintf (fib_dbg_msg + len, " %d", faceids[dbg_x]);
 		}
 		cef_dbg_write (CefC_Dbg_Finest, "%s\n", fib_dbg_msg);
 	}
-
-#endif
 #endif // CefC_Debug
 	return (i);
 }
@@ -269,13 +251,13 @@ cef_fib_forward_faceid_select (
 	CefT_Fib_Face* face = &(entry->faces);
 	int incoming_face_type;
 	int face_type;
-	
+
 	incoming_face_type = cef_face_type_get (incoming_faceid);
-	
+
 	while (face->next) {
 		face = face->next;
 		face_type = cef_face_type_get (face->faceid);
-		
+
 		if (incoming_face_type == face_type) {
 			faceids[i] = face->faceid;
 			i++;
@@ -290,31 +272,18 @@ cef_fib_forward_faceid_select (
 		}
 	}
 #ifdef CefC_Debug
-#if 0
-	{
-		int dbg_x;
-		
-		sprintf (fib_dbg_msg, "[fib] Select Faces:");
-		
-		for (dbg_x = 0 ; dbg_x < i ; dbg_x++) {
-			sprintf (fib_dbg_msg, "%s %d", fib_dbg_msg, faceids[dbg_x]);
-		}
-		cef_dbg_write (CefC_Dbg_Finest, "%s\n", fib_dbg_msg);
-	}
-#else
 	{
 		int dbg_x;
 		int len = 0;
-		
+
 		len = sprintf (fib_dbg_msg, "[fib] Select Faces:");
 		for (dbg_x = 0 ; dbg_x < i ; dbg_x++) {
 			len = len + sprintf (fib_dbg_msg + len, " %d", faceids[dbg_x]);
 		}
 		cef_dbg_write (CefC_Dbg_Finest, "%s\n", fib_dbg_msg);
 	}
-#endif
 #endif // CefC_Debug
-	
+
 	return (i);
 }
 /*--------------------------------------------------------------------------------------
@@ -330,31 +299,18 @@ cef_fib_faceid_remove (
 	CefT_Fib_Face* prev = face;
 	int remove_f = 0;
 #ifdef CefC_Debug
-#if 0
-	{
-		int dbg_x;
-		
-		sprintf (fib_dbg_msg, "[fib] Remove Face#%d from [", faceid);
-		
-		for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
-			sprintf (fib_dbg_msg, "%s %02X", fib_dbg_msg, entry->key[dbg_x]);
-		}
-		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
-	}
-#else
 	{
 		int dbg_x;
 		int len = 0;
-		
+
 		len = sprintf (fib_dbg_msg, "[fib] Remove Face#%d from [", faceid);
 		for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
 			len = len + sprintf (fib_dbg_msg + len, " %02X", entry->key[dbg_x]);
 		}
 		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
 	}
-#endif
 #endif // CefC_Debug
-	
+
 	while (face->next) {
 		face = face->next;
 		if (face->faceid == faceid) {
@@ -365,7 +321,7 @@ cef_fib_faceid_remove (
 		}
 		prev = face;
 	}
-	
+
 	/* check fib entry */
 	if (entry->faces.next == NULL) {
 		entry = (CefT_Fib_Entry*) cef_hash_tbl_item_remove (fib, entry->key, entry->klen);
@@ -376,7 +332,7 @@ cef_fib_faceid_remove (
 		free (entry);
 		entry = NULL;
 	}
-	
+
 	return (remove_f);
 }
 /*--------------------------------------------------------------------------------------
@@ -388,42 +344,36 @@ cef_fib_faceid_insert (
 	uint16_t faceid							/* set Face-ID to forward the Interest		*/
 ) {
 	CefT_Fib_Face* face = &(entry->faces);
-	
+
 #ifdef CefC_Debug
-#if 0
-	{
-		int dbg_x;
-		
-		sprintf (fib_dbg_msg, "[fib] Insert Face#%d to [", faceid);
-		
-		for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
-			sprintf (fib_dbg_msg, "%s %02X", fib_dbg_msg, entry->key[dbg_x]);
-		}
-		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
-	}
-#else 
 	{
 		int dbg_x;
 		int len = 0;
-		
+
 		len = sprintf (fib_dbg_msg, "[fib] Insert Face#%d to [", faceid);
 		for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
 			len = len + sprintf (fib_dbg_msg + len, " %02X", entry->key[dbg_x]);
 		}
 		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", fib_dbg_msg);
 	}
-
-#endif
 #endif // CefC_Debug
-	
+
 	while (face->next) {
 		face = face->next;
 		if (face->faceid == faceid) {
 			return (0);
 		}
 	}
-	
+
 	face->next = (CefT_Fib_Face*) malloc (sizeof (CefT_Fib_Face));
+	if ( !face->next ){
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "malloc(CefT_Fib_Face), failed.");
+#endif // CefC_Debug
+		return (-1);
+	}
+
+	memset(face->next, 0x00, sizeof (CefT_Fib_Face));
 	face->next->faceid = faceid;
 	face->next->next = NULL;
 
@@ -439,23 +389,23 @@ cef_fib_entry_lookup (
 	uint16_t name_len						/* Length of Key							*/
 ) {
 	CefT_Fib_Entry* entry;
-	
+
 	entry = (CefT_Fib_Entry*) cef_hash_tbl_item_get (fib, name, name_len);
-	
+
 	if (entry == NULL) {
 		if(cef_hash_tbl_item_num_get(fib) == cef_hash_tbl_def_max_get(fib)) {
-			cef_log_write (CefC_Log_Warn, 
+			cef_log_write (CefC_Log_Warn,
 				"FIB table is full(FIB_SIZE = %d)\n", cef_hash_tbl_def_max_get(fib));
 			return (NULL);
 		}
 		entry = cef_fib_entry_create (name, name_len);
 		cef_hash_tbl_item_set (fib, name, name_len, entry);
-		
+
 		if (name_len == CefC_Fib_Default_Len) {
 			default_entry = entry;
 		}
 	}
-	
+
 	return (entry);
 }
 /*--------------------------------------------------------------------------------------
@@ -470,14 +420,14 @@ cef_fib_faceid_cleanup (
 	uint32_t index = 0;
 	CefT_Fib_Face* face;
 	CefT_Fib_Face* prev;
-	
+
 	do {
 		entry = (CefT_Fib_Entry*) cef_hash_tbl_item_check_from_index (fib, &index);
-		
+
 		if (entry) {
 			face = &(entry->faces);
 			prev = face;
-			
+
 			while (face->next) {
 				face = face->next;
 				if (cef_face_check_close (face->faceid)) {
@@ -487,10 +437,10 @@ cef_fib_faceid_cleanup (
 				}
 				prev = face;
 			}
-			
+
 			if (entry->faces.next == NULL) {
 				work = (CefT_Fib_Entry*) cef_hash_tbl_item_remove_from_index (fib, index);
-				
+
 				if (work->klen == CefC_Fib_Default_Len) {
 					default_entry = NULL;
 				}
@@ -500,7 +450,7 @@ cef_fib_faceid_cleanup (
 		}
 		index++;
 	} while (entry);
-	
+
 	return;
 }
 /*--------------------------------------------------------------------------------------
@@ -508,8 +458,12 @@ cef_fib_faceid_cleanup (
 ----------------------------------------------------------------------------------------*/
 static int									/* Returns a negative value if it fails 	*/
 cef_fib_config_file_read (
-	CefT_Hash_Handle fib					/* FIB										*/
-) {
+	CefT_Hash_Handle fib,					/* FIB										*/
+	int				 nodeid4_num,
+	int				 nodeid16_num,
+	char*			 nodeid4_c[],
+	char*			 nodeid16_c[],
+	uint16_t		 port_num) {
 //	char 	ws[1024];
 	char 	ws[2048];
 	char 	ws_w[1024];
@@ -523,14 +477,19 @@ cef_fib_config_file_read (
 	int 	faceid;
 	CefT_Fib_Entry* entry;
 	int 	i, addr_num;
-	
-//	cef_client_config_dir_get (ws);
-	
-//	sprintf (ws, "%s/cefnetd.fib", ws);
+	int		addri, i_4, i_16, find_own_id, find_invalid_port, find_invalid_addr;
+
+	struct	in_addr		input_v4_addr;
+	struct	in_addr		node_v4_addr;
+	struct	in6_addr	input_v6_addr;
+	struct	in6_addr	node_v6_addr;
+	uint16_t	in_port;
+	int		rc;
+
 	cef_client_config_dir_get (ws_w);
-	
+
 	sprintf (ws, "%s/cefnetd.fib", ws_w);
-	
+
 	fp = fopen (ws, "r");
 	if (fp == NULL) {
 		fp = fopen (ws, "w");
@@ -544,34 +503,177 @@ cef_fib_config_file_read (
 
 	while (fgets (buff, 65600, fp) != NULL) {
 		buff[65599] = 0;
-		
+
 		if (strlen (buff) >= CefC_Max_Length) {
-			cef_log_write (CefC_Log_Warn, 
+			cef_log_write (CefC_Log_Warn,
 				"[cefnetd.fib] Detected the too long line:%s\n", buff);
 			continue;
 		}
-		
+
 		if (buff[0] == 0x23/* '#' */) {
 			continue;
 		}
 		if (isspace(buff[0])) {
 			continue;
 		}
-		
+
 		/* parse the read line 		*/
 		addr_num = cef_fib_trim_line_string (buff, uri, prot, addr);
 		if (addr_num < 1) {
 			cef_log_write (CefC_Log_Warn, "[cefnetd.fib] Invalid line:%s\n", buff);
 			continue;
 		}
-		
+
+		/* Own IP_addr Check */
+		find_own_id = 0;
+		find_invalid_port = 0;
+		find_invalid_addr = 0;
+		for ( addri = 0; addri < addr_num; addri++ ) {
+			if ( addr[addri][0] == '[' ) {		//IPv6
+				char	v6_host[64] = {0};
+				in_port = 0;
+				long	port_l;
+				char*	end_p;
+				{
+				int	diff1;
+				int	diff2;
+				char*	p1;
+				char*	p2;
+				p1 = strchr( &addr[addri][1], ']' );
+				if ( p1 == NULL ) {
+					/* Error */
+					find_invalid_addr = 1;
+					cef_log_write (CefC_Log_Error, "[cefnetd.fib] Invalid NextHop(']' NotFound). %s %s\n", buff, addr[addri]);
+					goto OWN_ID;
+				}
+				diff1 = p1 - &addr[addri][1];
+				p2 = strchr( &addr[addri][1], '%' );
+				if ( p2 == NULL ) {
+					diff2 = diff1;
+				} else {
+					diff2 = p2 - &addr[addri][1];
+				}
+				strncpy( v6_host, &addr[addri][1], diff2 );
+				diff1+=2;
+				if ( addr[addri][diff1] == ':' ) {
+					diff1++;
+					port_l = strtol( &addr[addri][diff1], &end_p, 10 );
+					if ( &addr[addri][diff1] == end_p ) {
+						/* Error */
+						find_invalid_port = 1;
+						goto OWN_ID;
+					}
+					if ( (port_l > INT_MAX) || (port_l < INT_MIN) ) {
+						/* Error */
+						find_invalid_port = 1;
+						goto OWN_ID;
+					}
+					if ( (port_l < 0) || (port_l > 65535) ) {
+						/* Error */
+						find_invalid_port = 1;
+						goto OWN_ID;
+					}
+					in_port = (uint16_t)port_l;
+				} else {
+					in_port = port_num;
+				}
+				}
+				rc = inet_pton( AF_INET6, v6_host, &input_v6_addr );
+				if ( rc != 1 ) {
+					/* Error */
+					find_invalid_addr = 1;
+					cef_log_write (CefC_Log_Error, "[cefnetd.fib] Invalid NextHop. %s %s\n", buff, addr[addri]);
+					goto OWN_ID;
+				}
+				for ( i_16 = 0; i_16 < nodeid16_num; i_16++ ) {
+					rc = inet_pton( AF_INET6, nodeid16_c[i_16], &node_v6_addr );
+					if ( memcmp( &input_v6_addr, &node_v6_addr, 16 ) == 0 ) {
+						if ( in_port == port_num ) {
+							/* Error */
+							find_own_id = 1;
+							goto OWN_ID;
+						}
+					}
+				}
+			} else { 							//IPv4
+				char	v4_host[64] = {0};
+				in_port = 0;
+				long	port_l;
+				char*	end_p;
+				{
+				int	diff1;
+				char*	p1;
+				in_port = 0;
+				p1 = strchr( &addr[addri][0], ':' );
+				if ( p1 == NULL ) {
+					in_port = port_num;
+					strcpy( v4_host, addr[addri] );
+				} else {
+					diff1 = p1 - &addr[addri][0];
+					strncpy( v4_host, &addr[addri][0], diff1 );
+					diff1++;
+					port_l = strtol( &addr[addri][diff1], &end_p, 10 );
+					if ( &addr[addri][diff1] == end_p ) {
+						/* Error */
+						find_invalid_port = 1;
+						goto OWN_ID;
+					}
+					if ( (port_l > INT_MAX) || (port_l < INT_MIN) ) {
+						/* Error */
+						find_invalid_port = 1;
+						goto OWN_ID;
+					}
+					if ( (port_l < 0) || (port_l > 65535) ) {
+						/* Error */
+						find_invalid_port = 1;
+						goto OWN_ID;
+					}
+					in_port = (uint16_t)port_l;
+				}
+				}
+				rc = inet_pton( AF_INET, v4_host, &input_v4_addr );
+				if ( rc != 1 ) {
+					/* Error */
+					find_invalid_addr = 1;
+					cef_log_write (CefC_Log_Error, "[cefnetd.fib] Invalid NextHop. %s %s\n", buff, addr[addri]);
+					goto OWN_ID;
+				}
+				for ( i_4 = 0; i_4 < nodeid4_num; i_4++ ) {
+					rc = inet_pton( AF_INET, nodeid4_c[i_4], &node_v4_addr );
+					if ( memcmp( &input_v4_addr, &node_v4_addr, 4 ) == 0 ) {
+						if ( in_port == port_num ) {
+							/* Error */
+							find_own_id = 1;
+							goto OWN_ID;
+						}
+					}
+				}
+			}
+		}
+OWN_ID:
+		if ( find_invalid_addr == 1 ) {
+			continue;
+		}
+
+		if ( find_own_id == 1 ) {
+			/* Error */
+			cef_log_write (CefC_Log_Error, "[cefnetd.fib] Invalid NextHop(Own address):%s %s\n", buff, addr[addri]);
+			continue;
+		}
+
+		if ( find_invalid_port == 1 ) {
+			/* Error */
+			cef_log_write (CefC_Log_Error, "[cefnetd.fib] Invalid NextHop(port):%s %s\n", buff, addr[addri]);
+			continue;
+		}
+
 		/* translation the string uri to Name TLV */
 		res = cef_frame_conversion_uri_to_name (uri, name);
 		if ((res < 0) || (res > CefC_Max_Length)){
 			cef_log_write (CefC_Log_Warn, "[cefnetd.fib] Invalid URI:%s\n", uri);
 			continue;
 		}
-		
+
 		/* search this name from FIB */
 		entry = (CefT_Fib_Entry*) cef_hash_tbl_item_get (fib, name, res);
 		if (entry == NULL) {
@@ -580,36 +682,36 @@ cef_fib_config_file_read (
 				break;
 			}
 			if(cef_hash_tbl_item_num_get(fib) == cef_hash_tbl_def_max_get(fib)) {
-				cef_log_write (CefC_Log_Warn, 
+				cef_log_write (CefC_Log_Warn,
 					"FIB table is full(FIB_SIZE = %d)\n", cef_hash_tbl_def_max_get(fib));
 				break;
 			}
 			entry = cef_fib_entry_create (name, res);
 			cef_hash_tbl_item_set (fib, name, res, entry);
 		}
-		
+
 		if (res == CefC_Fib_Default_Len) {
 			default_entry = entry;
 		}
-		
+
 		for (i = 0 ; i < addr_num ; i++) {
-			
+
 			/* lookup Face-ID */
 			faceid = cef_face_lookup_faceid_from_addrstr (addr[i], prot);
 			if (faceid < 0) {
 				cef_log_write (CefC_Log_Warn, "[cefnetd.fib] Failed to create Face\n");
 				continue;
 			}
-			
-			cef_log_write (CefC_Log_Info, 
-				"Creation the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n", 
+
+			cef_log_write (CefC_Log_Info,
+				"Creation the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n",
 				uri, prot, addr[i], faceid);
 
 #ifdef __FIB_DEV__
 			fprintf( stderr, "[%s] Creation the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n",
 				__func__, uri, prot, addr[i], faceid);
 #endif
-			
+
 //0.8.3c			cef_fib_set_faceid_to_entry (entry, faceid, CefC_Fib_Entry_Static);
 			cef_fib_set_faceid_to_entry (entry, faceid, CefC_Fib_Entry_Static, NULL);	//0.8.3c
 		}
@@ -638,7 +740,7 @@ cef_fib_check_addr(const char *addr) {
 	int link_addr_num = 6;
 	if (addr[0] == '[') {
 		if (strchr(&addr[1],'[')) {
-			cef_log_write (CefC_Log_Error, 
+			cef_log_write (CefC_Log_Error,
 				"Invalid ip address format:%s\n", addr);
 			return 0;
 		}
@@ -652,9 +754,9 @@ cef_fib_check_addr(const char *addr) {
 			}
 		}
 		if (cnt < 2) {
-			cef_log_write (CefC_Log_Error, 
+			cef_log_write (CefC_Log_Error,
 				"Invalid ip address format:%s\n", addr);
-			return 0;			
+			return 0;
 		}
 		/* ipv6 */
 		percent_ptr = strchr(&addr[0],'%');
@@ -663,7 +765,7 @@ cef_fib_check_addr(const char *addr) {
 			bracket_ptr = strchr(&addr[percent_pos],']');
 			if (bracket_ptr) {
 				bracket_pos = bracket_ptr - percent_ptr + percent_pos -1;
-				// check invalid charactor 
+				// check invalid charactor
 				for (i = percent_pos ; i < bracket_pos; i++) {
 					if (!isprint(addr[i]) || isspace(addr[i])) {
 						rc = 0;
@@ -724,18 +826,18 @@ cef_fib_check_addr(const char *addr) {
 	{
 		if (!error_status)
 		{
-			cef_log_write (CefC_Log_Error, 
+			cef_log_write (CefC_Log_Error,
 				"Invalid ip address format:%s\n", addr);
 		}
 		else
 		{
-			cef_log_write (CefC_Log_Error, 
+			cef_log_write (CefC_Log_Error,
 				"Interface name is not specified in link local IPv6:%s\n", addr);
 		}
 	}
 	return rc;
 }
-	
+
 /*--------------------------------------------------------------------------------------
 	Remove a FIB entry from FIB
 ----------------------------------------------------------------------------------------*/
@@ -748,31 +850,31 @@ cef_fib_entry_destroy (
 	CefT_Fib_Entry* entry;
 	CefT_Fib_Face* face;
 	CefT_Fib_Face* work;
-	
+
 	entry = (CefT_Fib_Entry*) cef_hash_tbl_item_remove (fib, name, name_len);
-	
+
 	if (entry == NULL) {
 		return (0);
 	}
-	
+
 	face = entry->faces.next;
-	
+
 	while (face) {
 		work = face;
 		face = work->next;
 		free (work);
 	}
-	
+
 	free (entry->key);
 	free (entry);
-	
+
 	return (1);
 }
 
 static void
 cef_fib_set_faceid_to_entry (
 	CefT_Fib_Entry* entry,
-	int faceid, 
+	int faceid,
 	uint8_t type,							//0.8.3c
 	CefT_Fib_Metric*	fib_metric			//0.8.3c
 ) {
@@ -785,8 +887,15 @@ cef_fib_set_faceid_to_entry (
 			return;
 		}
 	}
-	
+
 	face->next = (CefT_Fib_Face*) malloc (sizeof (CefT_Fib_Face));
+	if ( !face->next ){
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "malloc(CefT_Fib_Face), failed.");
+#endif // CefC_Debug
+		return;
+	}
+	memset(face->next, 0x00, sizeof (CefT_Fib_Face));
 	face->next->faceid = faceid;
 	face->next->type = type;
 	face->next->next = NULL;
@@ -794,12 +903,8 @@ cef_fib_set_faceid_to_entry (
 	face->next->tx_int_types[0] = 0;
 	face->next->tx_int_types[1] = 0;
 	face->next->tx_int_types[2] = 0;
-	if ( fib_metric == NULL ) {
-		face->next->metric.cost = 0;
-		face->next->metric.dummy_metric = 0;
-	} else {
-		face->next->metric.cost = fib_metric->cost;
-		face->next->metric.dummy_metric = fib_metric->dummy_metric;
+	if ( fib_metric != NULL ) {
+		memcpy(&(face->next->metric), fib_metric, sizeof(CefT_Fib_Metric));
 	}
 #ifdef	__FIB_METRIC_DEV__
 	fprintf( stderr, "[%s] face->next->metric.cost:%d   face->next->metric.dummy_metric:%d \n",
@@ -809,20 +914,20 @@ cef_fib_set_faceid_to_entry (
 	return;
 }
 
-static int 
+static int
 cef_fib_remove_faceid_from_entry (
 	CefT_Fib_Entry* entry,
-	int faceid, 
+	int faceid,
 	uint8_t type
 ) {
 	CefT_Fib_Face* face = &(entry->faces);
 	CefT_Fib_Face* prev = face;
-	
+
 	while (face->next) {
 		face = face->next;
 		if (face->faceid == faceid) {
 			face->type &= ~type;
-			
+
 			if (type > face->type) {
 				prev->next = face->next;
 				free (face);
@@ -865,12 +970,12 @@ cef_fib_trim_line_string (
 ) {
 	int addr_num = 0;
 	char* wp;
-	
-	
+
+
 	if ((*p == 0x23) || (*p == 0x0D) || (*p == 0x0A)|| (*p == 0x00)) {
 		return (0);
 	}
-	
+
 	wp = p;
 	while (*wp) {
 		if ((*wp == 0x0D) || (*wp == 0x0A)) {
@@ -878,7 +983,7 @@ cef_fib_trim_line_string (
 		}
 		wp++;
 	}
-	
+
 	/* URI 				*/
 	wp = strtok (p," \t");
 	if (wp) {
@@ -886,7 +991,7 @@ cef_fib_trim_line_string (
 	} else {
 		return (0);
 	}
-	
+
 	/* protocol			*/
 	wp = strtok (NULL, " \t");
 	if (wp) {
@@ -897,31 +1002,31 @@ cef_fib_trim_line_string (
 	} else {
 		return (0);
 	}
-	
+
 	/* addresses		*/
 	while (wp != NULL) {
-		
+
 		wp = strtok (NULL, " \t");
-		
+
 		if (wp) {
 			if (cef_fib_check_addr(wp)) {
 				strcpy (addr[addr_num], wp);
 				addr_num++;
 			}
 		}
-		
+
 		if (addr_num == CefC_Fib_Addr_Max) {
 			break;
 		}
 	}
-	
+
 	return (addr_num);
 }
 
 /*--------------------------------------------------------------------------------------
 	Receive the FIB route message
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_fib_route_msg_read (
 	CefT_Hash_Handle fib,					/* FIB										*/
 	unsigned char* msg, 					/* the received message(s)					*/
@@ -949,10 +1054,10 @@ cef_fib_route_msg_read (
 	int			a_type_c = 0;
 	int			a_type_s = 0;
 	//
-	
+
 	/* Inits the return code 		*/
 	*rc = 0x00;
-	
+
 	/* get operation */
 	if ((msg_size - index) < sizeof (op)) {
 		/* message is too short */
@@ -960,7 +1065,7 @@ cef_fib_route_msg_read (
 	}
 	op = msg[index];
 	index += sizeof (op);
-	
+
 	/* get protocol */
 	if ((msg_size - index) < sizeof (prot)) {
 		/* message is too short */
@@ -968,7 +1073,7 @@ cef_fib_route_msg_read (
 	}
 	prot = msg[index];
 	index += sizeof (prot);
-	
+
 	/* get uri */
 	memcpy (&uri_len, &msg[index], sizeof (uint16_t));
 	index += sizeof (uint16_t);
@@ -983,7 +1088,7 @@ cef_fib_route_msg_read (
 	memcpy (uri, &msg[index], uri_len);
 	uri[uri_len] = 0x00;
 	index += uri_len;
-	
+
 	name_len = cef_frame_conversion_uri_to_name ((const char*) uri, name);
 	if ((name_len < 0) || (name_len > CefC_Max_Length)) {
 		cef_log_write (CefC_Log_Error, "Invalid URI\n", uri);
@@ -994,7 +1099,7 @@ cef_fib_route_msg_read (
 	if ( bentry != NULL ) {
 		faces = bentry->faces.next;
 		while (faces != NULL) {
-			
+
 			if ( (faces->type >> 2) & 0x01 ) {
 				b_type_c = 1;
 			}
@@ -1004,7 +1109,7 @@ cef_fib_route_msg_read (
 			faces = faces->next;
 		}
 	}
-	
+
 	while (index < msg_size) {
 		/* get host */
 		if ((msg_size - index) < sizeof (host_len)) {
@@ -1020,7 +1125,7 @@ cef_fib_route_msg_read (
 		memcpy (host, &msg[index], host_len);
 		host[host_len] = 0x00;
 		index += host_len;
-		
+
 		if (!cef_fib_check_addr(host)) {
 			continue;
 		}
@@ -1036,7 +1141,7 @@ cef_fib_route_msg_read (
 	if ( aentry != NULL ) {
 		faces = aentry->faces.next;
 		while (faces != NULL) {
-			
+
 			if ( (faces->type >> 2) & 0x01 ) {
 				a_type_c = 1;
 			}
@@ -1070,33 +1175,33 @@ cef_fib_route_msg_read (
 			*rc = 0x00;
 		}
 	}
-	
+
 	return (res);
 }
 /*--------------------------------------------------------------------------------------
 	Obtain the Name from the received route message
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_fib_name_get_from_route_msg (
 	unsigned char* msg, 					/* the received message(s)					*/
-	int msg_size, 
+	int msg_size,
 	unsigned char* name
 ) {
 	int index = 0;
 	char uri[CefC_Max_Length];
 	uint16_t uri_len;
 	int name_len;
-	
+
 	if ((msg_size - index) < sizeof (uint8_t)) {
 		return (-1);
 	}
 	index += sizeof (uint8_t);
-	
+
 	if ((msg_size - index) < sizeof (uint8_t)) {
 		return (-1);
 	}
 	index += sizeof (uint8_t);
-	
+
 	memcpy (&uri_len, &msg[index], sizeof (uint16_t));
 	index += sizeof (uint16_t);
 	if (uri_len <= 0) {
@@ -1108,13 +1213,13 @@ cef_fib_name_get_from_route_msg (
 	memcpy (uri, &msg[index], uri_len);
 	uri[uri_len] = 0x00;
 	index += uri_len;
-	
+
 	name_len = cef_frame_conversion_uri_to_name ((const char*) uri, name);
 	if ((name_len < 0) || (name_len > CefC_Max_Length)) {
 		cef_log_write (CefC_Log_Error, "Invalid URI\n", uri);
 		return (-1);
 	}
-	
+
 	return (name_len);
 }
 /*--------------------------------------------------------------------------------------
@@ -1137,7 +1242,7 @@ cef_fib_route_add (
 	/* lookup Face-ID */
 	faceid = cef_face_lookup_faceid_from_addrstr (host, prot_str[prot]);
 	if (faceid < 0) {
-		cef_log_write (CefC_Log_Error, 
+		cef_log_write (CefC_Log_Error,
 			"Failed to create Face:ID=%s, Prot=%s\n", host, prot_str[prot]);
 		return (-1);
 	}
@@ -1148,12 +1253,12 @@ cef_fib_route_add (
 		cef_log_write (CefC_Log_Error, "Invalid URI\n", uri);
 		return (-1);
 	}
-	
+
 	/* search this name from FIB */
 	entry = (CefT_Fib_Entry*) cef_hash_tbl_item_get (fib, name, res);
 	if (entry == NULL) {
 		if(cef_hash_tbl_item_num_get(fib) == cef_hash_tbl_def_max_get(fib)) {
-			cef_log_write (CefC_Log_Error, 
+			cef_log_write (CefC_Log_Error,
 				"FIB table is full(FIB_SIZE = %d)\n", cef_hash_tbl_def_max_get(fib));
 			return (-1);
 		}
@@ -1162,16 +1267,16 @@ cef_fib_route_add (
 		entry = cef_fib_entry_create (name, res);
 		cef_hash_tbl_item_set (fib, name, res, entry);
 	}
-	cef_log_write (CefC_Log_Info, 
-		"Insert the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n", 
+	cef_log_write (CefC_Log_Info,
+		"Insert the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n",
 		uri, prot_str[prot], host, faceid);
-	
+
 	cef_fib_set_faceid_to_entry (entry, faceid, type, fib_metric);
 
 	if (res == CefC_Fib_Default_Len) {
 		default_entry = entry;
 	}
-	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -1187,18 +1292,18 @@ cef_fib_route_del (
 ) {
 	CefT_Fib_Entry* fib_entry;
 	int faceid;
-	
+
 	unsigned char name[CefC_Max_Length];
 	int res, name_len;
-	
+
 	/* translation the string uri to Name TLV */
 	name_len = cef_frame_conversion_uri_to_name ((const char*)uri, name);
-	
+
 	if ((name_len < 0) || (name_len > CefC_Max_Length)) {
 		cef_log_write (CefC_Log_Error, "Invalid URI\n", uri);
 		return (-1);
 	}
-	
+
 	/* search this name from FIB */
 	fib_entry = (CefT_Fib_Entry*) cef_hash_tbl_item_get (fib, name, name_len);
 	if (fib_entry == NULL) {
@@ -1206,35 +1311,35 @@ cef_fib_route_del (
 		cef_log_write (CefC_Log_Error, "%s is not registered in FIB\n", uri);
 		return (-1);
 	}
-	
+
 	/* remove faceid from fib entry */
 	if (fib_entry->faces.next != NULL) {
 		/* lookup Face-ID */
 		faceid = cef_face_search_faceid (host, prot_str[prot]);
-		
+
 		if (faceid > 0) {
 			res = cef_fib_remove_faceid_from_entry (fib_entry, faceid, type);
-			
+
 			if (res > 0) {
-				cef_log_write (CefC_Log_Info, 
-					"Remove the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n", 
+				cef_log_write (CefC_Log_Info,
+					"Remove the FIB entry: URI=%s, Prot=%s, Next=%s, Face=%d\n",
 					uri, prot_str[prot], host, faceid);
 			} else {
-				cef_log_write (CefC_Log_Error, 
-					"%s (%s) is not registered in FIB entry [ %s ]\n", 
+				cef_log_write (CefC_Log_Error,
+					"%s (%s) is not registered in FIB entry [ %s ]\n",
 					host, prot_str[prot], uri);
 			}
 		} else {
-			cef_log_write (CefC_Log_Error, 
-				"%s (%s) is not registered in the Face Table\n", 
+			cef_log_write (CefC_Log_Error,
+				"%s (%s) is not registered in the Face Table\n",
 				host, prot_str[prot]);
 		}
-{		
+{
 		uint32_t index = 0;
 		CefT_Fib_Entry* check_fib_entry;
 		CefT_Fib_Face* current;
 		int	 existed_face = 0;
-		
+
 		do {
 			check_fib_entry = (CefT_Fib_Entry*) cef_hash_tbl_item_check_from_index (fib, &index);
 			if (check_fib_entry != NULL && fib_entry != check_fib_entry) {
@@ -1252,17 +1357,17 @@ cef_fib_route_del (
 			}
 			index++;
 		} while (check_fib_entry);
-		
+
 		if (!existed_face) {
 			cef_face_close (faceid);
 		}
 }
 	}
-	
+
 	/* check fib entry */
 	if (fib_entry->faces.next == NULL) {
 		cef_log_write (CefC_Log_Info, "Delete the FIB entry: URI=%s\n", uri);
-		
+
 		/* fib entry is empty */
 		fib_entry = (CefT_Fib_Entry*) cef_hash_tbl_item_remove (fib, name, name_len);
 		free (fib_entry->key);
@@ -1270,18 +1375,18 @@ cef_fib_route_del (
 		free (fib_entry);
 		fib_entry = NULL;
 	}
-	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
 	Obtains the FIB information
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_fib_info_get (
-	CefT_Hash_Handle* fib, 
-	char* info_buff, 
-	const unsigned char* name, 
-	int name_len, 
+	CefT_Hash_Handle* fib,
+	char* info_buff,
+	const unsigned char* name,
+	int name_len,
 	int partial_match_f
 ) {
 	CefT_Fib_Entry* entry;
@@ -1297,15 +1402,15 @@ cef_fib_info_get (
 	char face_info[8192];
 	uint8_t def_name_f = 0;
 	char work_buff[CefC_Max_Length];
-	
+
 	index = 0;
-	
+
 	/* get table num		*/
 	table_num = cef_hash_tbl_item_num_get (*fib);
 	if (table_num == 0) {
 		return (0);
 	}
-	
+
 	/* output table		*/
 	for (i = 0; i < table_num; i++) {
 		entry = (CefT_Fib_Entry*) cef_hash_tbl_elem_get (*fib, &index);
@@ -1330,7 +1435,7 @@ cef_fib_info_get (
 			index++;
 			continue;
 		}
-		
+
 		memset (uri, 0, sizeof (uri));
 		res = cef_frame_conversion_name_to_uri (entry->key, entry->klen, uri);
 		if (res < 0) {
@@ -1339,10 +1444,10 @@ cef_fib_info_get (
 		}
 		/* output faces	*/
 		fib_face = entry->faces.next;
-		
+
 		while (fib_face != NULL) {
 			res = cef_face_info_get (face_info, fib_face->faceid);
-			
+
 			if (res > 0) {
 				snprintf (work_buff, CefC_Max_Length, "%sFIB: %s %s\n", info_buff, uri, face_info);
 				memcpy (info_buff, work_buff, strlen(work_buff));

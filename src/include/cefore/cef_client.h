@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,11 +46,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#ifndef CefC_Android
 #include <sys/fcntl.h>
-#else // CefC_Android
-#include <fcntl.h>
-#endif // CefC_Android
 #include <unistd.h>
 #include <sys/un.h>
 
@@ -66,16 +62,14 @@
 #define CefC_App_RegPrefix			0x03		/* for prefix match 					*/
 #define CefC_App_RegPit				0x04
 #define CefC_App_DeRegPit			0x05
+//$$$$$
 #define CefC_Dev_RegPit				0x06
+//$$$$$
 
 #define CefC_Unset_Port 			0
 #define CefC_Unset_Id 				NULL
 
-#ifndef CefC_Android
 #define CefC_AppBuff_Size			10000000
-#else // CefC_Android
-#define CefC_AppBuff_Size			200000
-#endif // CefC_Android
 
 #define CefC_App_Magic_No		0xbe736ffa
 
@@ -105,40 +99,40 @@ typedef struct {
  ****************************************************************************************/
 
 /*--------------------------------------------------------------------------------------
-	Sets the local socket name 
+	Sets the local socket name
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_client_init (
-	int port_num, 
+	int port_num,
 	const char* config_file_dir
 );
 /*--------------------------------------------------------------------------------------
-	Gets the local socket name 
+	Gets the local socket name
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_client_local_sock_name_get (
 	char* local_sock_name
 );
 /*--------------------------------------------------------------------------------------
 	Gets the local socket name for cefbabeld
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_client_babel_sock_name_get (
 	char* local_sock_name
 );
 /*--------------------------------------------------------------------------------------
 	Gets the config file directory
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_client_config_dir_get (
 	char* config_dir
 );
 /*--------------------------------------------------------------------------------------
 	Gets the listen port number
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_client_listen_port_get (
-	void 
+	void
 );
 /*--------------------------------------------------------------------------------------
 	Creats the client handle
@@ -175,7 +169,7 @@ cef_client_connect_cli_core (
 /*--------------------------------------------------------------------------------------
 	Destroys the specified client handle
 ----------------------------------------------------------------------------------------*/
-void 
+void
 cef_client_close (
 	CefT_Client_Handle fhdl 					/* client handle to be destroyed 		*/
 );
@@ -194,7 +188,8 @@ cef_client_message_input (
 int												/* length of the created interest 		*/
 cef_client_interest_input (
 	CefT_Client_Handle fhdl,					/* client handle 						*/
-	CefT_Interest_TLVs* tlvs					/* parameters to create the interest 	*/
+	CefT_CcnMsg_OptHdr* opt,					/* parameters to Option Header(s)		*/
+	CefT_CcnMsg_MsgBdy* tlvs					/* parameters to create the interest 	*/
 );
 /*--------------------------------------------------------------------------------------
 	Reads the message from the specified connection (socket)
@@ -229,8 +224,8 @@ cef_client_payload_get (
 ----------------------------------------------------------------------------------------*/
 int 											/* remaining length of buffer 			*/
 cef_client_payload_get_with_info (
-	unsigned char* buff, 
-	int buff_len, 
+	unsigned char* buff,
+	int buff_len,
 	struct cef_app_frame* app_frame
 );
 /*--------------------------------------------------------------------------------------
@@ -238,8 +233,8 @@ cef_client_payload_get_with_info (
 ----------------------------------------------------------------------------------------*/
 int 											/* remaining length of buffer 			*/
 cef_client_request_get_with_info (
-	unsigned char* buff, 
-	int buff_len, 
+	unsigned char* buff,
+	int buff_len,
 	struct cef_app_request* app_request
 );
 /*--------------------------------------------------------------------------------------
@@ -259,15 +254,8 @@ cef_client_rawdata_get (
 int												/* length of the created object 		*/
 cef_client_object_input (
 	CefT_Client_Handle fhdl,					/* client handle 						*/
-	CefT_Object_TLVs* tlvs						/* parameters to create the object 		*/
-);
-/*--------------------------------------------------------------------------------------
-	Inputs the cefping to the cefnetd
-----------------------------------------------------------------------------------------*/
-int												/* length of the created cefping 		*/
-cef_client_cefping_input (
-	CefT_Client_Handle fhdl,					/* client handle 						*/
-	CefT_Ping_TLVs* tlvs						/* parameters to create the cefping		*/
+	CefT_CcnMsg_OptHdr* opt,					/* parameters to Option Header(s)		*/
+	CefT_CcnMsg_MsgBdy* tlvs					/* parameters to create the object 		*/
 );
 /*--------------------------------------------------------------------------------------
 	Inputs the ccninfo request to the cefnetd

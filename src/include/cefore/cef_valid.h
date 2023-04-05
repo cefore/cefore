@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -59,7 +59,7 @@ int
 cef_valid_init (
 	const char* conf_path
 );
-#ifdef CefC_Ccninfo
+
 int
 cef_valid_init_ccninfoUSER (
 	const char* conf_path,
@@ -70,65 +70,65 @@ int
 cef_valid_init_ccninfoRT (
 	const char* conf_path
 );
-#endif //CefC_Ccninfo
+
 int
 cef_valid_type_get (
 	const char* type
 );
-uint32_t 
+uint32_t
 cef_valid_crc32_calc (
-	const unsigned char* buf, 
+	const unsigned char* buf,
 	size_t len
 );
 int
 cef_valid_get_pubkey (
-	const unsigned char* msg, 
-	unsigned char* key 
+	const unsigned char* msg,
+	unsigned char* key
 );
-int 
+int
 cef_valid_keyid_create (
-	unsigned char* name, 
-	int name_len, 
-	unsigned char* pubkey, 
+	unsigned char* name,
+	int name_len,
+	unsigned char* pubkey,
 	unsigned char* keyid
 );
 int
 cef_valid_dosign (
-	const unsigned char* msg, 
-	uint16_t msg_len, 
-	const unsigned char* name, 
-	int name_len, 
-	unsigned char* sign, 
+	const unsigned char* msg,
+	uint16_t msg_len,
+	const unsigned char* name,
+	int name_len,
+	unsigned char* sign,
 	unsigned int* sign_len
 );
 int 								/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
 cef_valid_msg_verify (
-	const unsigned char* msg, 
+	const unsigned char* msg,
 	int msg_len
 );
-#ifdef CefC_Ccninfo
-int 
+
+int
 cef_valid_keyid_create_forccninfo (
-	unsigned char* pubkey, 
+	unsigned char* pubkey,
 	unsigned char* keyid
 );
 int
 cef_valid_get_pubkey_forccninfo (
-	const unsigned char* msg, 
-	unsigned char* key 
+	const unsigned char* msg,
+	unsigned char* key
 );
 int
 cef_valid_dosign_forccninfo (
-	const unsigned char* msg, 
-	uint16_t msg_len, 
-	unsigned char* sign, 
+	const unsigned char* msg,
+	uint16_t msg_len,
+	unsigned char* sign,
 	unsigned int* sign_len
 );
 int 								/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
 cef_valid_msg_verify_forccninfo (
-	const unsigned char* msg, 
+	const unsigned char* msg,
 	int msg_len,
 	int* 				rcvdpub_key_bi_len_p,
 	unsigned char** 	rcvdpub_key_bi_pp
@@ -136,14 +136,9 @@ cef_valid_msg_verify_forccninfo (
 
 uint16_t							/* new msg length									*/
 cef_valid_remove_valdsegs_fr_msg_forccninfo (
-	const unsigned char* msg, 
+	const unsigned char* msg,
 	int msg_len
 );
-
-#endif //CefC_Ccninfo
-
-
-
 
 
 #endif // __CEF_VALID_HEADER__

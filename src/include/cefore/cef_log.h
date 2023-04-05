@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,6 +55,18 @@
 #define CefC_Dbg_Finer 		0x02			/* Debug Level : Finer 					*/
 #define CefC_Dbg_Finest 	0x03			/* Debug Level : Finest 				*/
 
+#ifdef CefC_Debug
+#define CEF_DBG_OUT(...)     cef_dbg_out(CefC_Dbg_Fine,__func__,__LINE__,__VA_ARGS__)
+#define CEF_DBG_Fine(...)    cef_dbg_out(CefC_Dbg_Fine,__func__,__LINE__,__VA_ARGS__)
+#define CEF_DBG_Finer(...)   cef_dbg_out(CefC_Dbg_Finer,__func__,__LINE__,__VA_ARGS__)
+#define CEF_DBG_Finest(...)  cef_dbg_out(CefC_Dbg_Finest,__func__,__LINE__,__VA_ARGS__)
+#else  // CefC_Debug
+#define CEF_DBG_OUT(...)
+#define CEF_DBG_Fine(...)
+#define CEF_DBG_Finer(...)
+#define CEF_DBG_Finest(...)
+#endif // CefC_Debug
+
 
 /****************************************************************************************
  Structure Declarations
@@ -103,10 +115,30 @@ cef_dbg_write (
 );
 
 void
+cef_dbg_out (
+	int level, 										/* debug level 						*/
+	const char* func, 								/* function name					*/
+	const int   lineno, 							/* line number						*/
+	const char* usrfmt,								/* output format					*/
+	...												/* parameters						*/
+);
+
+void
 cef_dbg_buff_write (
 	int level, 										/* debug level 						*/
 	const unsigned char* buff,
 	int len
+);
+
+void
+cef_dbg_buff_write_name (
+	int level, 										/* debug level 						*/
+	const unsigned char* hdr_buff,
+	int hdr_len,
+	const unsigned char* buff,
+	int len,
+	const unsigned char* ftr_buff,
+	int ftr_len
 );
 
 #endif // __CEF_LOG_HEADER__

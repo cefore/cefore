@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -56,7 +56,8 @@
  Macros
  ****************************************************************************************/
 
-#define CefC_Max_PileLine 		16
+#define CefC_Max_PipeLine 		1024	/* MAX Pipeline */
+#define CefC_Def_PipeLine 		8		/* Default Pipeline */
 
 #define CefC_Resend_Interval	10000		/* 10 ms 		*/
 #define CefC_Max_Retry 			5
@@ -126,7 +127,7 @@ int main (
 	char** argv
 ) {
 	int res;
-	int pipeline = 4;
+	int pipeline = CefC_Def_PipeLine;
 	int index = 0;
 	char uri[1024];
 	char fpath[1024];
@@ -136,7 +137,8 @@ int main (
 	uint16_t rcvd_ver_len = 0;
 	unsigned char name[CefC_Max_Length];
 	int name_len;
-	CefT_Interest_TLVs params;
+	CefT_CcnMsg_OptHdr opt;
+	CefT_CcnMsg_MsgBdy params;
 	struct timeval t;
 	uint64_t now_time;
 	uint64_t end_time;
@@ -183,7 +185,8 @@ int main (
 	int vlen = 0;
 #endif // CefC_Develop
 	
-	memset (&params, 0, sizeof (CefT_Interest_TLVs));
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));
+	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	
 	
 	/*---------------------------------------------------------------------------
@@ -234,8 +237,13 @@ int main (
 			}
 			work_arg = argv[i + 1];
 			pipeline = atoi (work_arg);
-			if ((pipeline < 1) || (pipeline > CefC_Max_PileLine)) {
-				pipeline = 1;
+//			if ((pipeline < 1) || (pipeline > CefC_Max_PileLine)) {
+//				pipeline = 1;
+//			}
+			if ( pipeline < 1 ) {
+				pipeline = CefC_Def_PipeLine;
+			} else if ( pipeline > CefC_Max_PipeLine ) {
+				pipeline = CefC_Max_PipeLine;
 			}
 			pipeline_f++;
 			i++;
@@ -405,18 +413,18 @@ int main (
 	/*---------------------------------------------------------------------------
 		Gets Version
 	-----------------------------------------------------------------------------*/
-	memset (&params, 0, sizeof (CefT_Interest_TLVs));
+	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	params.hoplimit 		= 32;
-	params.opt.lifetime_f 	= 1;
-	params.opt.lifetime 	= CefC_Default_LifetimeSec * 1000;
+	opt.lifetime_f 	= 1;
+	opt.lifetime 	= CefC_Default_LifetimeSec * 1000;
 	memcpy (params.name, name, name_len);
 	params.name_len = name_len;
 	params.alg.valid_type = valid_alg;
 	/* Version Request */
-	params.opt.version_f = 1;
-	params.opt.ver_len   = 0;
+	params.org.version_f = 1;
+	params.org.version_len  = 0;
 	
-	cef_client_interest_input (fhdl, &params);
+	cef_client_interest_input (fhdl, &opt, &params);
 	app_running_f = 1;
 	gettimeofday (&t, NULL);
 	end_time = (t.tv_sec + 4) * 1000000llu + t.tv_usec;
@@ -510,7 +518,8 @@ GETCONTENT:;
 	/*---------------------------------------------------------------------------
 		Sets Interest parameters
 	-----------------------------------------------------------------------------*/
-	memset (&params, 0, sizeof (CefT_Interest_TLVs));
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));
+	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	
 	/* Creates the name with Version	*/
 	memcpy (params.name, name, name_len);
@@ -519,25 +528,25 @@ GETCONTENT:;
 #ifdef CefC_Develop
 	if (!version_f) {
 #endif // CefC_Develop
-	params.opt.ver_len = req_ver_len;
+	params.org.version_len= req_ver_len;
 	if (req_ver_len) {
 		/* Versioned Contents */
-		params.opt.version_f = 1;
-		memcpy (&params.opt.version, req_version, params.opt.ver_len);
+		params.org.version_f = 1;
+		memcpy (&params.org.version_val, req_version, params.org.version_len);
 	} else {
 		/* Unversioned Contents */
-		params.opt.version_f = 0;
-		params.opt.version[0] = 0x00;
+		params.org.version_f = 0;
+		params.org.version_val[0] = 0x00;
 	}
 #ifdef CefC_Develop
 	} else {
 		if (vlen == 4 && strncmp (version, "None", vlen) == 0) {
-			params.opt.version_f = 0;
-			params.opt.version[0] = 0x00;
+			params.org.version_f = 0;
+			params.org.version_val[0] = 0x00;
 		} else {
-			params.opt.version_f = 1;
-			params.opt.ver_len = vlen;
-			memcpy (&params.opt.version, version, params.opt.ver_len);
+			params.org.version_f = 1;
+			params.org.version_len = vlen;
+			memcpy (&params.org.version_val, version, params.org.version_len);
 			req_ver_len = vlen;
 			memcpy (req_version, version, req_ver_len);
 		}
@@ -545,9 +554,9 @@ GETCONTENT:;
 #endif // CefC_Develop
 	
 	params.hoplimit 		= 32;
-	params.opt.lifetime_f 	= 1;
-	params.opt.lifetime 	= CefC_Default_LifetimeSec * 1000;
-	params.opt.symbolic_f	= CefC_T_OPT_REGULAR;
+	opt.lifetime_f 	= 1;
+	opt.lifetime 	= CefC_Default_LifetimeSec * 1000;
+	Cef_Int_Regular(params);	
 	params.chunk_num		= 0;
 	params.chunk_num_f		= 1;
 	
@@ -566,7 +575,7 @@ GETCONTENT:;
 		
 	/* Sends Initerest(s) 		*/
 	for (i = 0 ; i < pipeline ; i++) {
-		cef_client_interest_input (fhdl, &params);
+		cef_client_interest_input (fhdl, &opt, &params);
 		params.chunk_num++;
 			
 		usleep (100000);
@@ -712,7 +721,7 @@ GETCONTENT:;
 					
 					rxwnd = rxwnd_head;
 					
-					for (i = 0 ; i < diff_seq + 1 ; i++) {
+					for (i = 0 ; i < pipeline; i++) {
 						
 						if (rxwnd->flag == 0) {
 							break;
@@ -746,7 +755,7 @@ GETCONTENT:;
 						/* Sends an interest with the next chunk number 	*/
 						params.chunk_num = rxwnd_tail->seq;
 						if (params.chunk_num <=  UINT32_MAX/* sv_max_seq+1 */) {
-							cef_client_interest_input (fhdl, &params);
+							cef_client_interest_input (fhdl, &opt, &params);
 						}
 					}
 				} else {
@@ -792,7 +801,7 @@ GETCONTENT:;
 				if ((rxwnd->seq <= sv_max_seq) && 
 					(rxwnd->flag == 0)) {
 					params.chunk_num = rxwnd->seq;
-					cef_client_interest_input (fhdl, &params);
+					cef_client_interest_input (fhdl, &opt, &params);
 					send_cnt++;
 				}
 				rxwnd = rxwnd->next;
@@ -821,15 +830,15 @@ print_usage (
 	void
 ) {
 	
-	fprintf (stderr, "\nUsage: \n");
+	fprintf (stderr, "\nUsage: cefgetcontent\n");
 	fprintf (stderr, "  cefgetcontent uri -f file [-s pipeline] [-d config_file_dir] [-p port_num] [-v valid_alg] [-gv]\n\n");
-	fprintf (stderr, "  uri                 URI of the content that you want to get\n");
-	fprintf (stderr, "  -f file             File name that you save\n");
-	fprintf (stderr, "  -s pipeline         Number of pipeline\n");
-	fprintf (stderr, "  -d config_file_dir  Configure file directory\n");
-	fprintf (stderr, "  -p port_num         Port Number\n");
-	fprintf (stderr, "  -v valid_alg        Validation Algorithm\n");
-	fprintf (stderr, "  -gv                 Just get the version of the content indicated by URI\n");
+	fprintf (stderr, "  uri              URI of the content that you want to get\n");
+	fprintf (stderr, "  file             File name that you save\n");
+	fprintf (stderr, "  pipeline         Number of pipeline\n");
+	fprintf (stderr, "  config_file_dir  Configure file directory\n");
+	fprintf (stderr, "  port_num         Port Number\n");
+	fprintf (stderr, "  valid_alg        Validation Algorithm\n");
+	fprintf (stderr, "  -gv              Just get the version of the content indicated by URI\n\n");
 }
 
 static void

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -86,11 +86,12 @@ int main (
 	int res;
 	int index = 0;
 	char uri[1024];
-	CefT_Interest_TLVs params;
+	CefT_CcnMsg_OptHdr opt;	
+	CefT_CcnMsg_MsgBdy params;
 	struct timeval t;
 	uint64_t now_time;
 	uint64_t end_time;
-	uint32_t chnk_num = 0;
+	uint32_t chunk_num = 0;
 	int i;
 	char*	work_arg;
 	
@@ -107,7 +108,8 @@ int main (
 	int dir_path_f 		= 0;
 	int port_num_f 		= 0;
 	
-	memset (&params, 0, sizeof (CefT_Interest_TLVs));
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));	
+	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	
 	fprintf (stderr, "[cefgetchunk] Start\n");
 	fprintf (stderr, "[cefgetchunk] Parsing parameters ... ");
@@ -135,7 +137,7 @@ int main (
 				return (-1);
 			}
 			work_arg = argv[i + 1];
-			chnk_num = (uint32_t) atoi (work_arg);
+			chunk_num = (uint32_t) atoi (work_arg);
 			chunk_num_f++;
 			i++;
 		} else if (strcmp (work_arg, "-h") == 0) {
@@ -250,19 +252,19 @@ int main (
 	
 	/* Sets Interest parameters 			*/
 	params.hoplimit 			= 32;
-	params.opt.lifetime_f 		= 1;
-	params.opt.lifetime 		= 10000;
+	opt.lifetime_f 		= 1;
+	opt.lifetime 		= 10000;
 	
-	params.opt.symbolic_f	= CefC_T_OPT_REGULAR;
+	Cef_Int_Regular(params);
 	params.chunk_num_f 		= 1;
-	params.chunk_num		= chnk_num;
+	params.chunk_num		= chunk_num;
 	
 	gettimeofday (&t, NULL);
 	now_time = cef_client_covert_timeval_to_us (t);
 	end_time = now_time + 3000000;
 	
 	app_running_f = 1;
-	cef_client_interest_input (fhdl, &params);
+	cef_client_interest_input (fhdl, &opt, &params);
 	fprintf (stderr, "[cefgetchunk] Send an Interest\n");
 	
 	while (app_running_f) {
@@ -335,9 +337,11 @@ print_usage (
 	void
 ) {
 	fprintf (stderr, "\nUsage: cefgetchunk\n\n");
-	fprintf (stderr, "  cefgetchunk uri -c chunk_number [-d config_file_dir] [-p port_num]\n\n");
-	fprintf (stderr, "  uri          Specify the URI.\n");
-	fprintf (stderr, "  chunk_num    Specify the chunk number.\n\n");
+	fprintf (stderr, "  cefgetchunk uri -c chunk_num [-d config_file_dir] [-p port_num]\n\n");
+	fprintf (stderr, "  uri              Specify the URI.\n");
+	fprintf (stderr, "  chunk_num        Specify the chunk number.\n");
+	fprintf (stderr, "  config_file_dir  Configure file directory\n");
+	fprintf (stderr, "  port_num         Port Number\n\n");
 }
 
 static void

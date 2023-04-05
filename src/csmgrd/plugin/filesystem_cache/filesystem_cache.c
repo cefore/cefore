@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -509,9 +509,9 @@ fsc_compare_name (const void *a, const void *b) {
 	}
 	ret = memcmp (cobs_arr[*(int *)a].name, cobs_arr[*(int *)b].name, len);
 	if (ret == 0) {
-		if (cobs_arr[*(int *)a].chnk_num > cobs_arr[*(int *)b].chnk_num)
+		if (cobs_arr[*(int *)a].chunk_num > cobs_arr[*(int *)b].chunk_num)
 			ret = 1;
-		else if (cobs_arr[*(int *)a].chnk_num < cobs_arr[*(int *)b].chnk_num)
+		else if (cobs_arr[*(int *)a].chunk_num < cobs_arr[*(int *)b].chunk_num)
 			ret = -1;
 		else
 			ret = 0;
@@ -657,7 +657,7 @@ fsc_cs_expire_check (
 	char			file_path[PATH_MAX];
 	uint32_t 		i, n;
 	uint64_t 		mask;
-	uint32_t 		chnk_num, net_chnk_num;
+	uint32_t 		chunk_num, net_chunk_num;
 	unsigned char 	trg_key[65535];
 	int 			trg_key_len = 0;
 	int 			name_len;
@@ -695,15 +695,15 @@ fsc_cs_expire_check (
 							trg_key[name_len + 1] 	= 0x10;
 							trg_key[name_len + 2] 	= 0x00;
 							trg_key[name_len + 3] 	= 0x04;
-							chnk_num = (i * 64 + n);
-							net_chnk_num = htonl (chnk_num);
-							memcpy (&trg_key[name_len + 4], &net_chnk_num, sizeof (uint32_t));
+							chunk_num = (i * 64 + n);
+							net_chunk_num = htonl (chunk_num);
+							memcpy (&trg_key[name_len + 4], &net_chunk_num, sizeof (uint32_t));
 							trg_key_len = name_len + 4 + sizeof (uint32_t);
 
 							(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
 
 							csmgrd_stat_cob_remove (
-								csmgr_stat_hdl, rcd->name, name_len, chnk_num, 0);
+								csmgr_stat_hdl, rcd->name, name_len, chunk_num, 0);
 							
 							hdl->cache_cobs--;
 							cob_cnt--;
@@ -1130,7 +1130,7 @@ fsc_cache_cob_write (
 		if (!fsc_thread_f) {
 			goto NEXTCOB;
 		}
-		uint32_t chunk_num = cobs[index].chnk_num;
+		uint32_t chunk_num = cobs[index].chunk_num;
 		if (cobs[index].expiry < nowt) {
 			goto NEXTCOB;
 		}
@@ -1449,7 +1449,7 @@ fsc_config_read (
 	memset (params, 0, sizeof (FscT_Config_Param));
 	strcpy (params->fsc_root_path, csmgr_conf_dir);
 	params->cache_capacity = 819200;
-	strcpy (params->algo_name, "libcsmgrd_lru");
+	strcpy (params->algo_name, "None");
 	params->algo_name_size = 256;
 	params->algo_cob_size = 2048;
 	

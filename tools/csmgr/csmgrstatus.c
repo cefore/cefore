@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -79,7 +79,8 @@ main (
 static void
 output_result (
 	unsigned char* frame,
-	int frame_size
+	int frame_size,
+	int32_t stt_num
 );
 /*--------------------------------------------------------------------------------------
 	Output Usage
@@ -121,6 +122,12 @@ main (
 	int port_f 			= 0;
 	int uri_f 			= 0;
 	int clear_f 		= 0;
+	int stt_f			= 0;
+	int	num_f			= 0;
+
+	int32_t	stt_num		= -1;	//Default
+	int32_t	out_num		= 100;	//Default
+	int32_t disp_stt;
 
 	/***** state variavles 	*****/
 	uint16_t index 		= 0;
@@ -171,6 +178,47 @@ main (
 				return (-1);
 			}
 			clear_f++;
+			i++;
+		} else if (strcmp (work_arg, "-s") == 0) {
+			if (stt_f) {
+				fprintf (stderr, "csmgrstatus: [ERROR] Range option(s) is duplicated.");
+				print_usage ();
+				return (-1);
+			}
+			if (i + 1 == argc) {
+				fprintf (stderr, "csmgrstatus: [ERROR] Range option start is not specified.");
+				print_usage ();
+				return (-1);
+			}
+			work_arg = argv[i + 1];
+			stt_num = atoi(work_arg);
+			if (stt_num <= 0) {
+				fprintf (stderr, "csmgrstatus: [ERROR] Range option start less than or equal to 0.");
+				print_usage ();
+				return (-1);
+			}
+			stt_f++;
+			i++;
+		} else if (strcmp (work_arg, "-n") == 0) {
+			if (num_f) {
+				fprintf (stderr, "csmgrstatus: [ERROR] Range option(n) is duplicated.");
+				print_usage ();
+				return (-1);
+			}
+			if (i + 1 == argc) {
+				fprintf (stderr, "csmgrstatus: [ERROR] Range option(n) is not specified.");
+				print_usage ();
+				return (-1);
+			}
+			work_arg = argv[i + 1];
+			out_num = atoi(work_arg);
+			if (out_num <= 0) {
+				fprintf (stderr, "csmgrstatus: [ERROR] Range option num less than or equal to 0.");
+				print_usage ();
+				return (-1);
+			}
+			num_f++;
+			i++;
 		} else {
 
 			work_arg = argv[i];
@@ -242,8 +290,23 @@ main (
 	if (clear_f) {
 		option |= CefC_Csmgr_Stat_Opt_Clear;
 	}
+	if (stt_f) {
+		option |= CefC_Csmgr_Stat_Opt_Range;
+	}
 	buff[index] = option;
 	index++;
+	if (stt_f) {
+		memcpy(buff + index, &stt_num, sizeof(int32_t) );
+		index += sizeof(int32_t);
+		memcpy(buff + index, &out_num, sizeof(int32_t) );
+		index += sizeof(int32_t);
+	} else {
+		memcpy(buff + index, &stt_num, sizeof(int32_t) );
+		index += sizeof(int32_t);
+		memcpy(buff + index, &out_num, sizeof(int32_t) );
+		index += sizeof(int32_t);
+	}
+	
 	/* set uri flag	*/
 	memcpy (buff + index, &uri_value, sizeof (uint8_t));
 	index += sizeof (uint8_t);
@@ -364,7 +427,13 @@ RERECV:;
 		goto RERECV;
 	}
 	frame_size = msg_len;
-	output_result (&frame[6/* Ver(1)+Type(1)+Length(4) */], frame_size-6/* Ver(1)+Type(1)+Length(4) */);
+	if (stt_num == -1) {
+		disp_stt = 1;
+	} else {
+		disp_stt = stt_num;
+	}
+
+	output_result (&frame[6/* Ver(1)+Type(1)+Length(4) */], frame_size-6/* Ver(1)+Type(1)+Length(4) */, disp_stt);
 	cef_csmgr_buffer_destroy ();
 	close (tcp_sock);
 	free (frame);
@@ -376,14 +445,15 @@ RERECV:;
 static void
 output_result (
 	unsigned char* frame,
-	int frame_size
+	int frame_size,
+	int32_t	disp_stt
 ) {
 	struct CefT_Csmgr_Status_Hdr stat_hdr;
 	struct CefT_Csmgr_Status_Rep stat_rep;
 	unsigned char name[65535];
 	char get_uri[65535];
 	uint32_t index = 0;
-	int con_no = 0;
+	int con_no = disp_stt;
 	unsigned char version[65535];
 	
 	if (frame_size < sizeof (struct CefT_Csmgr_Status_Hdr)) {
@@ -463,11 +533,13 @@ print_usage (
 ) {
 	fprintf (stderr,
 		"\nUsage: csmgrstatus\n\n"
-		"  csmgrstatus [uri] [-h host] [-p port] [-c]\n\n"
+		"  csmgrstatus [uri] [-h host] [-p port] [-c] [-s start] [-n num]\n\n"
 		"  uri    Name prefix of the content to output.\n"
 		"  host   Specify the host identifier (e.g., IP address) on which csmgrd \n"
 		"         is running. The default value is localhost (i.e., 127.0.0.1).\n"
-		"  port   Port number to connect csmgrd. The default value is 9799.\n\n"
+		"  port   Port number to connect csmgrd. The default value is 9799.\n"
+		"  start  Top of content to display.\n"
+		"  num    Number of pieces of content to display.\n\n"
 	);
 	return;
 }

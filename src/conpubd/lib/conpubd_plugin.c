@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -134,6 +134,9 @@ conpubd_plugin_cob_msg_send (
 					}
 				}
 				send_count++;
+				if ( send_count > 10 ) {
+					break;
+				}
 			}
 		} else {
 			if ( send_count == 0 ) {
@@ -168,15 +171,15 @@ conpubd_key_create (
 	ConpubdT_Content_Entry* entry,
 	unsigned char* key
 ) {
-	uint32_t chnk_num;
+	uint32_t chunk_num;
 
 	memcpy (&key[0], entry->name, entry->name_len);
 	key[entry->name_len] 		= 0x00;
 	key[entry->name_len + 1] 	= 0x10;
 	key[entry->name_len + 2] 	= 0x00;
 	key[entry->name_len + 3] 	= 0x04;
-	chnk_num = htonl (entry->chnk_num);
-	memcpy (&key[entry->name_len + 4], &chnk_num, sizeof (uint32_t));
+	chunk_num = htonl (entry->chunk_num);
+	memcpy (&key[entry->name_len + 4], &chunk_num, sizeof (uint32_t));
 
 	return (entry->name_len + 4 + sizeof (uint32_t));
 }

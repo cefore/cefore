@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -47,11 +47,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#ifndef CefC_Android
 #include <sys/fcntl.h>
-#else // CefC_Android
-#include <fcntl.h>
-#endif // CefC_Android
 #include <unistd.h>
 #include <sys/un.h>
 
@@ -73,23 +69,11 @@
 #define CefC_Faceid_ListenTcpv4		6
 #define CefC_Faceid_ListenTcpv6		7
 
-#define CefC_Faceid_ListenNdnv4		8
-#define CefC_Faceid_ListenNdnv6		9
-
-#define CefC_Faceid_ListenBabel		10
+#define CefC_Faceid_ListenBabel		8
 
 
 /********** FD for UNIX domain socket 		**********/
-#ifndef CefC_Android
 #define CefC_Local_Sock_Name		".cefore.sock"
-#else // CefC_Android
-/*
- * For Android Unix domain socket.
- * Android socket require special name.
- */
-#define CefC_Local_Sock_Name		"\0org.app.cefore"
-#define CefC_Local_Sock_Name_Len	14
-#endif // CefC_Android
 
 /********** Identifier to close Face 		**********/
 #define CefC_Face_Close				"/CLOSE:Face"
@@ -175,13 +159,6 @@ cef_face_tcp_listen_face_create (
 	int*			res_v6
 );
 /*--------------------------------------------------------------------------------------
-	Creates the listening UDP socket for NDN with the specified port
-----------------------------------------------------------------------------------------*/
-int											/* Returns a negative value if it fails 	*/
-cef_face_ndn_listen_face_create (
-	uint16_t 		port_num				/* Port Number that cefnetd listens			*/
-);
-/*--------------------------------------------------------------------------------------
 	Accepts the TCP socket
 ----------------------------------------------------------------------------------------*/
 int
@@ -226,7 +203,7 @@ cef_face_check_close (
 /*--------------------------------------------------------------------------------------
 	Obtains the Face structure from the specified Face-ID
 ----------------------------------------------------------------------------------------*/
-uint32_t 
+uint32_t
 cef_face_get_seqnum_from_faceid (
 	uint16_t 	faceid						/* Face-ID									*/
 );
@@ -236,10 +213,10 @@ cef_face_get_seqnum_from_faceid (
 int											/* number of the listen face with TCP 		*/
 cef_face_update_listen_faces (
 	struct pollfd* inudpfds,
-	uint16_t* inudpfaces, 
-	uint16_t* inudpfdc, 
+	uint16_t* inudpfaces,
+	uint16_t* inudpfdc,
 	struct pollfd* intcpfds,
-	uint16_t* intcpfaces, 
+	uint16_t* intcpfaces,
 	uint16_t* intcpfdc
 );
 /*--------------------------------------------------------------------------------------
@@ -327,7 +304,7 @@ cef_face_object_send (
 	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
 	unsigned char* 	msg, 					/* a message to send						*/
 	size_t			msg_len,				/* length of the message to send 			*/
-	CefT_Parsed_Message* pm 				/* Parsed message 							*/
+	CefT_CcnMsg_MsgBdy* pm 				/* Parsed message 							*/
 );
 /*--------------------------------------------------------------------------------------
 	Sends a Content Object if the specified is local Face
@@ -377,29 +354,29 @@ cef_face_get_protocol_from_fd (
 /*--------------------------------------------------------------------------------------
 	Obtains the neighbor information
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_neighbor_info_get (
 	char* info_buff
 );
 /*--------------------------------------------------------------------------------------
 	Obtains the node id of the specified face
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_node_id_get (
-	uint16_t faceid, 
+	uint16_t faceid,
 	unsigned char* node_id
 );
 /*--------------------------------------------------------------------------------------
 	Obtains the face num
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_num_get ();
 /*--------------------------------------------------------------------------------------
 	Obtains the face information
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_info_get (
-	char* face_info, 
+	char* face_info,
 	uint16_t faceid
 );
 
@@ -407,14 +384,14 @@ cef_face_info_get (
 /*--------------------------------------------------------------------------------------
 	Obtains the bw_stat_i get of the specified face
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_bw_stat_i_get (
 	uint16_t faceid
 );
 /*--------------------------------------------------------------------------------------
 	Obtains the bw_stat_i set of the specified face
 ----------------------------------------------------------------------------------------*/
-int 
+int
 cef_face_bw_stat_i_set (
 	uint16_t faceid,
 	int		 index

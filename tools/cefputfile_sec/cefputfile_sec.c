@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -57,8 +57,7 @@
  ****************************************************************************************/
 
 #define CefC_Putfile_Max 					512000
-//#define CefC_RateMbps_Max				 	32.0
-#define CefC_RateMbps_Max				 	10240.0
+#define CefC_RateMbps_Max				 	1000.0
 #define CefC_RateMbps_Min				 	0.001	/* 1Kbps */
 
 //#define	CefC_MANIFEST_REC_MAX				200
@@ -108,7 +107,8 @@ int main (
 ) {
 	int res;
 	unsigned char buff[CefC_Max_Length];
-	CefT_Object_TLVs params;
+	CefT_CcnMsg_OptHdr opt;	
+	CefT_CcnMsg_MsgBdy params;
 	int seqnum = 0;
 	char uri[1024];
 	struct stat statBuf;
@@ -137,7 +137,8 @@ int main (
 	long sending_time_us;
 	
 	/* For Manifest */
-	CefT_Object_TLVs man_params;
+	CefT_CcnMsg_MsgBdy man_params;
+	CefT_CcnMsg_OptHdr man_opt;
 	int 			man_seqnum = 0;
 	int 			man_len;
 	unsigned char 	man_buff[8192];
@@ -421,7 +422,8 @@ int main (
 	/*------------------------------------------
 		Creates the name from URI
 	--------------------------------------------*/
-	memset (&params, 0, sizeof (CefT_Object_TLVs));
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));	
+	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	cef_frame_init ();
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
@@ -438,7 +440,7 @@ int main (
 	fprintf (stdout, "OK\n");
 	
 	params.name_len 	= res;
-	params.chnk_num_f 	= 1;
+	params.chunk_num_f 	= 1;
 	
 	/*------------------------------------------
 		Sets Expiry Time and RCT
@@ -447,8 +449,8 @@ int main (
 //#832	now_ms = now_t.tv_sec * 1000 + now_t.tv_usec / 1000;
 	now_ms = now_t.tv_sec * 1000llu + now_t.tv_usec / 1000llu;	//#832
 	
-	params.opt.cachetime_f 	= 1;
-	params.opt.cachetime 	= now_ms + cache_time * 1000;
+	opt.cachetime_f 	= 1;
+	opt.cachetime 	= now_ms + cache_time * 1000;
 	
 	if (expiry) {
 		params.expiry = now_ms + expiry * 1000;
@@ -480,7 +482,7 @@ int main (
 	--------------------------------------------*/
 	if ((mode_val == 0) || (mode_val == 2)) {
 		cef_valid_init (conf_path);
-		params.KeyIdRest_f = 1;
+		params.KeyIdRester_f = 1;
 		params.alg.valid_type = (uint16_t) cef_valid_type_get ("sha256");
 		if (params.alg.valid_type == CefC_T_ALG_INVALID) {
 			fprintf (stdout, "ERROR: KeyIdRestriction not get KeyId.\n");
@@ -492,7 +494,8 @@ int main (
 		For ConHash
 	--------------------------------------------*/
 	if ( (mode_val == 1) || ( mode_val == 2) ) {
-		memset (&man_params, 0, sizeof (CefT_Object_TLVs));
+		memset (&man_opt, 0, sizeof (CefT_CcnMsg_OptHdr));	
+		memset (&man_params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 		strcat( man_uri, CefC_MANIFEST_NAME );
 		res = cef_frame_conversion_uri_to_name (man_uri, man_params.name);
 		if (res < 0) {
@@ -500,14 +503,14 @@ int main (
 			exit (1);
 		}
 		man_params.name_len 	= res;
-		man_params.chnk_num_f 	= 1;
+		man_params.chunk_num_f 	= 1;
 		
 		gettimeofday (&now_t, NULL);
 //#832		now_ms = now_t.tv_sec * 1000 + now_t.tv_usec / 1000;
 		now_ms = now_t.tv_sec * 1000llu + now_t.tv_usec / 1000llu;	//#832
 	
-		man_params.opt.cachetime_f 	= 1;
-		man_params.opt.cachetime 	= now_ms + cache_time * 1000;
+		man_opt.cachetime_f 	= 1;
+		man_opt.cachetime 	= now_ms + cache_time * 1000;
 	
 		if (expiry) {
 			man_params.expiry = now_ms + expiry * 1000;
@@ -573,7 +576,7 @@ printf ( "CKP-000 work_buff_idx:%d  res:%d\n", work_buff_idx, res );
 			if (res > 0) {
 				memcpy (params.payload, buff, res);
 				params.payload_len = (uint16_t) res;
-				params.chnk_num = seqnum;
+				params.chunk_num = seqnum;
 				
 				if ( (stat_send_bytes + res) == statBuf.st_size ) {
 					params.end_chunk_num_f = 1;
@@ -584,14 +587,14 @@ printf ( "CKP-010 params.end_chunk_num_f:%d  params.end_chunk_num:%d\n", params.
 				}
 				//0.8.3
 				if ( (mode_val == 1) || ( mode_val == 2) ) {
-					params.CobHRest_f = 1;
-					memset( params.CobHash, 0x00, 32 );
+					params.ObjHash_f= 1;
+					memset( params.ObjHash_val, 0x00, 32 );
 					man_params.end_chunk_num_f = params.end_chunk_num_f;
 				} else {
-					params.CobHRest_f = 0;
+					params.ObjHash_f = 0;
 				}
 				
-				cob_len = cef_frame_object_create (cob_buff, &params);
+				cob_len = cef_frame_object_create (cob_buff, &opt, &params);
 #ifdef	__DEB_PUT__
 printf ( "CKP-020 cob_len:%d\n", cob_len );
 #endif				
@@ -623,7 +626,7 @@ if ( (mode_val == 1) || ( mode_val == 2) ) {
 #endif				
 					//Cob:ManRec Create
 					man_rec.chunk = seqnum;
-					memcpy( man_rec.cob_hash, params.CobHash, 32 );
+					memcpy( man_rec.cob_hash, params.ObjHash_val, 32 );
 					memcpy( &man_buff[man_buff_idx], &man_rec, man_rec_size );
 					man_buff_idx += man_rec_size;
 					man_rec_num++;
@@ -635,7 +638,7 @@ printf ( "CKP-031 man_buff_idx:%d   man_rec_num:%d\n", man_buff_idx, man_rec_num
 						memcpy( man_buff, &man_rec_num, 4 );
 						memcpy( man_params.payload, man_buff, man_buff_idx );
 						man_params.payload_len = (uint16_t)man_buff_idx;
-						man_params.chnk_num = man_seqnum;
+						man_params.chunk_num = man_seqnum;
 						if ( man_params.end_chunk_num_f == 1 ) {
 							man_params.end_chunk_num = man_seqnum;
 #ifdef	__DEB_PUT__
@@ -643,9 +646,9 @@ printf ( "CKP-032 man_params.end_chunk_num_f:%d   man_params.end_chunk_num:%d\n"
 #endif				
 						}
 #ifdef	__DEB_PUT__
-printf ( "CKP-033 man_params.payload_len:%d   man_params.chnk_num:%d\n", man_params.payload_len, man_params.chnk_num );
+printf ( "CKP-033 man_params.payload_len:%d   man_params.chunk_num:%d\n", man_params.payload_len, man_params.chunk_num );
 #endif				
-						man_len = cef_frame_object_create (man_cob_buff, &man_params);
+						man_len = cef_frame_object_create (man_cob_buff, &man_opt, &man_params);
 #ifdef	__DEB_PUT__
 printf ( "CKP-034 man_len:%d\n", man_len );
 #endif				
@@ -735,11 +738,6 @@ printf ( "CKP-061 work_buff_idx:%d\n", work_buff_idx );
 		free (work_buff);
 	}
 
-	if ( params.AppComp_num > 0 ) {
-		/* Free AppComp */
-		cef_frame_app_components_free ( params.AppComp_num, params.AppComp );
-	}
-	
 	post_process ();
 	exit (0);
 }
@@ -749,9 +747,20 @@ print_usage (
 	void
 ) {
 	
-	fprintf (stdout, "\nUsage: \n");
+	fprintf (stdout, "\nUsage: cefputfile_sec\n");
 	fprintf (stdout, "  cefputfile_sec uri -f path [-r rate] [-b block_size] [-e expiry] "
 					 "[-t cache_time] [-m mode] [-d config_file_dir] [-p port_num] \n\n");
+	fprintf (stderr, "  uri              Specify the URI.\n");
+	fprintf (stdout, "  path             Specify the file path of output. \n");
+	fprintf (stdout, "  rate             Transfer rate to cefnetd (Mbps)\n");
+	fprintf (stdout, "  block_size       Specifies the max payload length (bytes) of the Content Object.\n");
+	fprintf (stdout, "  expiry           Specifies the lifetime (seconds) of the Content Object.\n");
+	fprintf (stdout, "  cache_time       Specifies the period (seconds) after which Content Objects are cached before they are deleted.\n");
+	fprintf (stdout, "  m                0: Create Cob with added security information corresponding to KeyIdRestriction.\n"
+	                 "                   1: Create a Manifest paired with the content and register it as content.\n"
+	                 "                   2: Create a Cob with added security information corresponding to KeyIdRestriction, create a Manifest paired with the content, and register it as content.\n");
+	fprintf (stderr, "  config_file_dir  Configure file directory\n");
+	fprintf (stderr, "  port_num         Port Number\n\n");
 }
 
 static void

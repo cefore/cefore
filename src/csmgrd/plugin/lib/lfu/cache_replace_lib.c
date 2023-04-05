@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -251,7 +251,7 @@ void crlib_force_print_entry(CsmgrdT_Content_Entry* entry) {
     int i, j, clen;
     const unsigned char *name = entry->name;
     int len = entry->name_len;
-    int chunk_num = entry->chnk_num;
+    int chunk_num = entry->chunk_num;
 	char buf[4096];
 	char *cur = buf;
 	memset(buf, 0, len + 10);

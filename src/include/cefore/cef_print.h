@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021, National Institute of Information and Communications
+ * Copyright (c) 2016-2023, National Institute of Information and Communications
  * Technology (NICT). All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,15 +40,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#ifdef CefC_Android
-#include <android/log.h>
-#define TAG "ndk"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__);
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__);
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__);
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__);
-#endif // CefC_Android
-
 /****************************************************************************************
  Macros
  ****************************************************************************************/
@@ -73,7 +64,7 @@ cef_print (
 );
 void
 cef_buff_print (
-	const unsigned char* buff, 
+	const unsigned char* buff,
 	uint16_t len
 );
 #endif // __CEF_PRINT_HEADER__

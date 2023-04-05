@@ -1,7 +1,7 @@
 #
-# Copyright (c) 2016-2021, National Institute of Information and Communications
+# Copyright (c) 2016-2023, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
 # met:
@@ -13,7 +13,7 @@
 # 3. Neither the name of the NICT nor the names of its contributors may be
 #    used to endorse or promote products derived from this software
 #    without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE NICT AND CONTRIBUTORS "AS IS" AND ANY
 # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,7 +25,7 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
-# 
+#
 
 # set
 AM_CFLAGS=-I$(top_srcdir)/src/include -Wall
@@ -42,26 +42,11 @@ if CSMGR_ENABLE
 CEF_NETD_CFLAGS+=-DCefC_ContentStore
 endif # CSMGR_ENABLE
 
-# check ccninfo
-if CCNINFO_ENABLE
-CEF_NETD_CFLAGS+=-DCefC_Ccninfo
-endif # CCNINFO_ENABLE
-
 # check cache
 if CACHE_ENABLE
 CEF_NETD_CFLAGS+=-DCefC_CefnetdCache
 endif # CACHE_ENABLE
 
-
-# check cefping
-if CEFPING_ENABLE
-CEF_NETD_CFLAGS+=-DCefC_Cefping
-endif # CEFPING_ENABLE
-
-# check NDN Plugin
-if NDNPLUGIN_ENABLE
-CEF_NETD_CFLAGS+=-DCefC_NdnPlugin
-endif # NDNPLUGIN_ENABLE
 
 # set bin programs
 bin_PROGRAMS=$(CEF_NETD_BIN_PROGRAM)
@@ -71,7 +56,15 @@ cefnetd_LDFLAGS=-L$(top_srcdir)/src/lib/ -L$(top_srcdir)/src/plugin/ -L$(top_src
 if LINUX
 cefnetd_LDFLAGS+=-pthread
 endif # LINUX
-cefnetd_LDADD=-lcef_plugin -lcefnetd_fwd_plugin -lcefore -lssl -lcrypto -ldl
+cefnetd_LDADD=-lcef_plugin -lcefnetd_fwd_plugin -lcefore
+
+if OPENSSL_STATIC
+cefnetd_LDADD+=-l:libssl.a -l:libcrypto.a
+else  #OPENSSL_STATIC
+cefnetd_LDADD+=-lssl -lcrypto
+endif #OPENSSL_STATIC
+
+cefnetd_LDADD+=-ldl
 
 cefnetd_CFLAGS=$(CEF_NETD_CFLAGS)
 cefnetd_SOURCES=cef_main.c cef_node.c cef_sched.c cef_netd.c cef_status.c cef_netd.h cef_status.h
@@ -80,7 +73,13 @@ cefnetd_SOURCES=cef_main.c cef_node.c cef_sched.c cef_netd.c cef_status.c cef_ne
 
 # set cefctrl option
 cefctrl_LDFLAGS=-L$(top_srcdir)/src/lib/
-cefctrl_LDADD=-lcefore -lssl -lcrypto
+cefctrl_LDADD=-lcefore
+if OPENSSL_STATIC
+cefctrl_LDADD+=-l:libssl.a -l:libcrypto.a -lpthread -ldl
+else  #OPENSSL_STATIC
+cefctrl_LDADD+=-lssl -lcrypto
+endif #OPENSSL_STATIC
+
 cefctrl_CFLAGS=$(AM_CFLAGS)
 cefctrl_SOURCES=cef_ctrl.c cef_netd.h
 
