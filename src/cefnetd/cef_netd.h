@@ -232,7 +232,7 @@ typedef struct {
 	unsigned char*		My_Node_Name_TLV;		/* Node Name TLV						*/
 	int					My_Node_Name_TLV_len;	/* Node Name TLV Length					*/
 	//0.8.3
-	int					IntrestRetrans;			/* 0:RFC8599 1:SUPPRESSIVE */
+	int					InterestRetrans;		/* 0:RFC8599 1:SUPPRESSIVE */
 	int					Selective_fwd;			/* 0:Not FWD 1:FWD */
 	int					SymbolicBack;			/* */
 	double				IR_Congesion;			/* */

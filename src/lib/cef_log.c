@@ -61,7 +61,7 @@
  State Variables
  ****************************************************************************************/
 
-static char log_porc[256] = {"unknown"};
+static char log_proc[256] = {"unknown"};
 static int 	log_lv = 0;
 static char log_lv_str[4][16] = {"INFO", "WARNING", "ERROR", "CRITICAL"};
 
@@ -101,7 +101,7 @@ cef_log_init (
 
 	assert (proc_name != NULL);
 
-	strcpy (log_porc, proc_name);
+	strcpy (log_proc, proc_name);
 	log_lv = level;
 }
 void
@@ -191,7 +191,7 @@ cef_log_write (
 	struct timeval t;
 
 	assert (level <= CefC_Log_Critical);
-	assert (log_porc[0] != 0x00);
+	assert (log_proc[0] != 0x00);
 
 
     if (log_lv == 0) {
@@ -210,7 +210,7 @@ cef_log_write (
 		gettimeofday (&t, NULL);
 
 		fprintf (stdout, "%s."FMTLINT" [%s] %s: "
-			, time_str, t.tv_usec / 1000, log_porc, log_lv_str[level]);
+			, time_str, t.tv_usec / 1000, log_proc, log_lv_str[level]);
 		vfprintf (stdout, fmt, arg);
 		va_end (arg);
 	}

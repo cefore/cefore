@@ -47,14 +47,14 @@
 
 #include <sys/time.h>
 
-#ifdef	CefC_PitEntryMutex
-#include <pthread.h>
-#endif	// CefC_PitEntryMutex
-
 #include <cefore/cef_pit.h>
 #include <cefore/cef_face.h>
 #include <cefore/cef_client.h>
 #include <cefore/cef_log.h>
+
+#ifdef	CefC_PitEntryMutex
+#include <pthread.h>
+#endif	// CefC_PitEntryMutex
 
 /****************************************************************************************
  Macros
@@ -151,56 +151,87 @@ cef_pit_init (
 /*--------------------------------------------------------------------------------------
 	Looks up and creates a PIT entry matching the specified Name
 ----------------------------------------------------------------------------------------*/
+#define	CefC_WITHOUT_LOCK	0
+#define	CefC_WITH_LOCK		(~CefC_WITHOUT_LOCK)
 CefT_Pit_Entry* 							/* a PIT entry								*/
-cef_pit_entry_lookup (
+cef_pit_entry_lookup_with_lock (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh				/* Parsed Option Header						*/
-	, unsigned char* ccninfo_pit,			/* pit name for ccninfo ccninfo-03			*/
-	int	ccninfo_pit_len						/* ccninfo pit length						*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned char* name,					/* pit name (for ccninfo ccninfo-03)		*/
+	int	name_len,							/* pit name length							*/
+	int	with_lock							/* entry lock flag							*/
 ) {
 	CefT_Pit_Entry* entry;
-	unsigned char* tmp_name = NULL;
-	uint16_t tmp_name_len = 0;
+	int		f_new_entry = 0;
 
 #ifdef	__PIT_DEBUG__
 	fprintf (stderr, "[%s] IN\n",
 			 "cef_pit_entry_lookup" );
 #endif
 
-	if (pm->top_level_type == CefC_T_DISCOVERY) {  /* for CCNINFO */
-		/* KEY: Name + NodeIdentifier + RequestID */
-		tmp_name_len = ccninfo_pit_len;
-		tmp_name = (unsigned char*)malloc( sizeof(char) * tmp_name_len );
-		memcpy( tmp_name, ccninfo_pit, tmp_name_len );
-	} else {
-		tmp_name = pm->name;
-		tmp_name_len = pm->name_len;
-	}
 	/* Searches a PIT entry 	*/
-	entry = (CefT_Pit_Entry*) cef_lhash_tbl_item_get (pit, tmp_name, tmp_name_len);
+	entry = (CefT_Pit_Entry*) cef_lhash_tbl_item_get (pit, name, name_len);
 #ifdef	__PIT_DEBUG__
 	if (entry)
 		fprintf (stderr, "\t entry=%p\n", (void*)entry);
 	else
 		fprintf (stderr, "\t entry=(NULL)\n");
 #endif
-	/* Creates a new PIT entry, if it dose not match 	*/
+
+	/* allocate a new PIT entry, if it dose not match 	*/
 	if (entry == NULL) {
+		size_t	alloc_size = (((sizeof (CefT_Pit_Entry) + name_len + 15) / 16) * 16);
+
 		if(cef_lhash_tbl_item_num_get(pit) == cef_lhash_tbl_def_max_get(pit)) {
 			cef_log_write (CefC_Log_Warn,
 				"PIT table is full(PIT_SIZE = %d)\n", cef_lhash_tbl_def_max_get(pit));
 			return (NULL);
 		}
 
-		entry = (CefT_Pit_Entry*) malloc (sizeof (CefT_Pit_Entry));
-		memset (entry, 0, sizeof (CefT_Pit_Entry));
-		entry->key = (unsigned char*) malloc (sizeof (char) * tmp_name_len);
-		entry->klen = tmp_name_len;
-		memcpy (entry->key, tmp_name, tmp_name_len);
+		entry = (CefT_Pit_Entry*) malloc (alloc_size);
+
+#ifdef CefC_Debug_20230404
+cef_dbg_write(CefC_Dbg_Fine, "malloc(CefT_Pit_Entry=%p)\n", entry);
+#endif // CefC_Debug_20230404
+		if ( entry == NULL ){
+			cef_log_write (CefC_Log_Error, "%s(%u) malloc(%ld) failed, %s\n", __func__, __LINE__,
+				alloc_size, strerror(errno));
+			return (NULL);
+		}
+		memset (entry, 0, alloc_size);
+		entry->key = (unsigned char*)entry + sizeof (CefT_Pit_Entry);
+
+#ifdef	CefC_PitEntryMutex
+		pthread_mutex_init (&entry->pe_mutex_pt, NULL);
+#endif	// CefC_PitEntryMutex
+
+		f_new_entry = 1;
+	}
+
+	/* lock a PIT entry */
+	if (with_lock && !cef_pit_entry_lock (entry) ) {
+		cef_log_write (CefC_Log_Warn, "%s(%u) cef_pit_entry_lock failed.\n", __func__, __LINE__);
+		if (f_new_entry) {
+#ifdef CefC_Debug_20230404
+cef_dbg_write(CefC_Dbg_Fine, "free(CefT_Pit_Entry=%p)\n", entry);
+#endif // CefC_Debug_20230404
+			free(entry);
+		}
+		return (NULL);
+	}
+
+	/* Creates a new PIT entry, if it dose not match 	*/
+	if (f_new_entry) {
+		int res = cef_lhash_tbl_item_set (pit, name, name_len, entry);
+		if (res) {
+			cef_log_write (CefC_Log_Warn, "%s(%u) cef_lhash_tbl_item_set=%d\n", __func__, __LINE__, res);
+		}
+
+		entry->klen = name_len;
+		memcpy (entry->key, name, name_len);
 		entry->hashv = cef_lhash_tbl_hashv_get (pit, entry->key, entry->klen);
-		entry->clean_us = cef_client_present_timeus_get () + 1000000;
-		cef_lhash_tbl_item_set (pit, entry->key, entry->klen, entry);
+		entry->clean_us = cef_client_present_timeus_get () + CefC_Pit_CleaningTime;
 		entry->tp_variant = poh->org.tp_variant;
 		entry->nonce = 0;
 		entry->adv_lifetime_us = 0;
@@ -226,9 +257,6 @@ cef_pit_entry_lookup (
 #ifdef __RESTRICT__
 		printf( "%s entry->KIDR_len:%d   entry->COBHR_len:%d\n", __func__, entry->KIDR_len, entry->COBHR_len );
 #endif
-#ifdef	CefC_PitEntryMutex
-		pthread_mutex_init (&entry->pe_mutex_pt, NULL);
-#endif	// CefC_PitEntryMutex
 	}
 #ifdef CefC_Debug
 	{
@@ -255,11 +283,36 @@ cef_pit_entry_lookup (
 	}
 #endif // __PIT_DEBUG__
 
-	if (pm->top_level_type == CefC_T_DISCOVERY) {  /* for CCNINFO */
-		free (tmp_name);
-	}
 	return (entry);
 }
+CefT_Pit_Entry* 							/* a PIT entry								*/
+cef_pit_entry_lookup (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned char* ccninfo_pit,				/* pit name for ccninfo ccninfo-03			*/
+	int	ccninfo_pit_len						/* ccninfo pit length						*/
+) {
+	CefT_Pit_Entry* entry = NULL;			/* PIT entry								*/
+
+	if (pm->top_level_type == CefC_T_DISCOVERY && 0 < ccninfo_pit_len ) {  /* for CCNINFO */
+		unsigned char* tmp_name = (unsigned char*)malloc( ccninfo_pit_len );
+
+		/* KEY: Name + NodeIdentifier + RequestID */
+		if ( tmp_name != NULL ){
+			memcpy( tmp_name, ccninfo_pit, ccninfo_pit_len );
+			// entry lookup without lock
+			entry = cef_pit_entry_lookup_with_lock(pit, pm, poh, tmp_name, ccninfo_pit_len, CefC_WITHOUT_LOCK);
+			free(tmp_name);
+		}
+	} else {
+		// entry lookup without lock
+		entry = cef_pit_entry_lookup_with_lock(pit, pm, poh, pm->name, pm->name_len, CefC_WITHOUT_LOCK);
+	}
+
+	return entry;
+}
+
 /*--------------------------------------------------------------------------------------
 	Searches a PIT entry matching the specified Name
 ----------------------------------------------------------------------------------------*/
@@ -267,8 +320,8 @@ CefT_Pit_Entry* 							/* a PIT entry								*/
 cef_pit_entry_search (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh				/* Parsed Option Header						*/
-	, unsigned char* ccninfo_pit,			/* pit name for ccninfo ccninfo-03			*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned char* ccninfo_pit,			/* pit name for ccninfo ccninfo-03			*/
 	int	ccninfo_pit_len						/* ccninfo pit length						*/
 ) {
 	CefT_Pit_Entry* entry;
@@ -630,7 +683,7 @@ cef_pit_entry_down_face_update (
 	unsigned char* msg,						/* cefore packet 							*/
 	int		 Resend_method					/* Resend method 0.8.3 						*/
 ) {
-	CefT_Down_Faces* face;
+	CefT_Down_Faces* face = NULL;
 #ifdef	__PIT_DEBUG__
 	fprintf (stderr, "[%s] IN faceid=%d\n",
 			 "cef_pit_entry_down_face_update", faceid );
@@ -653,6 +706,9 @@ cef_pit_entry_down_face_update (
 	/* Looks up a Down Face entry 		*/
 	new_downface_f = cef_pit_entry_down_face_lookup (
 						entry, faceid, &face, 0, pm->org.longlife_f);
+	if ( !face ){
+		return (0);		// lookup failed
+	}
 
 #ifdef	__PIT_DEBUG__
 	fprintf (stderr, "\t new_downface_f=%d (1:NEW)\n",
@@ -721,8 +777,6 @@ cef_pit_entry_down_face_update (
 	if (poh->app_reg_f == CefC_Dev_RegPit) {
 		/* Use cache time instead of lifetime */
 		extent_us = poh->cachetime;	/* poh->cachetime is usec */
-		entry->drp_lifetime_us = face->lifetime_us + extent_us;
-		entry->adv_lifetime_us = face->lifetime_us;
 	}
 	prev_lifetime_us  = face->lifetime_us;
 	face->lifetime_us = nowt_us + extent_us;
@@ -741,13 +795,13 @@ cef_pit_entry_down_face_update (
 #endif // CefC_Debug
 
 	/* Checks the advertised lifetime to upstream 		*/
-	if (face->lifetime_us > entry->drp_lifetime_us) {
+	if (face->lifetime_us > entry->adv_lifetime_us) {
 #ifdef	__PIT_DEBUG__
 		fprintf (stderr, "\t (face->lifetime_us > entry->drp_lifetime_us)\n" );
 #endif
 		forward_interest_f = 1;
-		entry->drp_lifetime_us = face->lifetime_us + 1000000;
 		entry->adv_lifetime_us = face->lifetime_us;
+		entry->drp_lifetime_us = face->lifetime_us + CefC_Pit_CleaningTime;
 	} else {
 #ifdef	__PIT_DEBUG__
 		fprintf (stderr, "\t !(face->lifetime_us > entry->drp_lifetime_us)\n" );
@@ -785,7 +839,7 @@ cef_pit_entry_down_face_update (
 #endif // CefC_Debug
 				}
 				entry->adv_lifetime_us = max_lifetime_us;
-				entry->drp_lifetime_us = max_lifetime_us + 1000000;
+				entry->drp_lifetime_us = max_lifetime_us + CefC_Pit_CleaningTime;
 			}
 
 			/* If the other down stream node exists, we do not forward 		*/
@@ -858,6 +912,53 @@ cef_pit_entry_down_face_update (
 
 	return (forward_interest_f);
 }
+
+CefT_Pit_Entry*
+cef_pit_entry_lookup_and_down_face_update (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned char* ccninfo_pit,				/* pit name for ccninfo ccninfo-03			*/
+	int	ccninfo_pit_len,					/* ccninfo pit length						*/
+	uint16_t faceid,						/* Face-ID									*/
+	unsigned char* msg,						/* cefore packet 							*/
+	int		 Resend_method,					/* Resend method 0.8.3 						*/
+	int		 *pit_res						/* Returns 1 if the return entry is new	 	*/
+) {
+	CefT_Pit_Entry* entry = NULL;			/* PIT entry								*/
+	int	 forward_interest_f = 0;
+
+	// entry lookup with lock
+	if (pm->top_level_type == CefC_T_DISCOVERY
+			&& 0 < ccninfo_pit_len ) {  /* for CCNINFO */
+
+		unsigned char* tmp_name = NULL;
+		uint16_t tmp_name_len = 0;
+
+		/* KEY: Name + NodeIdentifier + RequestID */
+		tmp_name_len = ccninfo_pit_len;
+		tmp_name = (unsigned char*)malloc( sizeof(char) * tmp_name_len );
+		if ( tmp_name != NULL ){
+			memcpy( tmp_name, ccninfo_pit, tmp_name_len );
+			// entry lookup with lock
+			entry = cef_pit_entry_lookup_with_lock (pit, pm, poh, tmp_name, tmp_name_len, CefC_WITH_LOCK);
+			free(tmp_name);
+		}
+	} else {
+		// entry lookup with lock
+		entry = cef_pit_entry_lookup_with_lock (pit, pm, poh, pm->name, pm->name_len, CefC_WITH_LOCK);
+	}
+
+	if (entry != NULL) {
+		forward_interest_f = cef_pit_entry_down_face_update (entry, faceid, pm, poh, msg, Resend_method);
+		cef_pit_entry_unlock (entry);
+	}
+	if (pit_res != NULL) {
+		*pit_res = forward_interest_f;
+	}
+	return entry;
+}
+
 /*--------------------------------------------------------------------------------------
 	Looks up and creates the specified Up Face entry
 ----------------------------------------------------------------------------------------*/
@@ -888,72 +989,64 @@ cef_pit_entry_free (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_Pit_Entry* entry 					/* PIT entry 								*/
 ) {
-	CefT_Up_Faces* upface_next;
-	CefT_Up_Faces* upface = entry->upfaces.next;
-	CefT_Down_Faces* dnface_next;
-	CefT_Down_Faces* dnface = entry->dnfaces.next;
+	CefT_Pit_Entry* rm_entry;
 
 #ifdef	__PIT_CLEAN__
 	fprintf( stderr, "[%s] IN entry->dnfacenum:%d\n", __func__, entry->dnfacenum );
 #endif
 
-	entry = (CefT_Pit_Entry*) cef_lhash_tbl_item_remove (pit, entry->key, entry->klen);
-	if ( !entry )
-		return;
-
-#ifdef	CefC_PitEntryMutex
-	{	int res;
-		while ((res = pthread_mutex_trylock (&entry->pe_mutex_pt)) != 0) {
-			if (EBUSY != res) {
-				return;
-			}
-		}
+	rm_entry = (CefT_Pit_Entry*) cef_lhash_tbl_item_remove (pit, entry->key, entry->klen);
+	if ( rm_entry != entry ){
+		cef_log_write (CefC_Log_Warn, "%s(%u) cef_lhash_tbl_item_remove() failed, entry=%p, rm_entry=%p.\n",
+			__func__, __LINE__, entry, rm_entry);
 	}
-#endif	// CefC_PitEntryMutex
 
-#ifdef CefC_Debug
-	{
-		int dbg_x;
-		int len = 0;
-
-		len = sprintf (pit_dbg_msg, "[pit] Free the entry [");
-		for (dbg_x = 0 ; dbg_x < entry->klen ; dbg_x++) {
-			len = len + sprintf (pit_dbg_msg + len, " %02X", entry->key[dbg_x]);
-		}
-		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
-	}
-#endif // CefC_Debug
-
+	// =========== free up faces ==============
+{	CefT_Up_Faces* upface = entry->upfaces.next;
 	while (upface) {
-		upface_next = upface->next;
+		CefT_Up_Faces* upface_next = upface->next;
+#ifdef CefC_Debug_20230404
+cef_dbg_write (CefC_Dbg_Fine, "free(upface=%p)\n", upface);
+#endif // CefC_Debug_20230404
 		free (upface);
 		upface = upface_next;
 	}
+}
 
+	// =========== free down faces ==============
+{	CefT_Down_Faces* dnface = entry->dnfaces.next;
 	while (dnface) {
-		dnface_next = dnface->next;
+		CefT_Down_Faces* dnface_next = dnface->next;
 		if ( dnface->IR_len > 0 ) {
 #ifdef	__PIT_CLEAN__
 	fprintf( stderr, "\t dnface->IR_len:%d Type:%d\n", dnface->IR_len, dnface->IR_Type );
 #endif
 			free( dnface->IR_msg );
 		}
+#ifdef CefC_Debug_20230404
+cef_dbg_write (CefC_Dbg_Fine, "free(dnface=%p)\n", dnface);
+#endif // CefC_Debug_20230404
 		free (dnface);
 		dnface = dnface_next;
 	}
 
+	// =========== free cleand down faces ==============
 	dnface = entry->clean_dnfaces.next;
 	while (dnface) {
-		dnface_next = dnface->next;
+		CefT_Down_Faces* dnface_next = dnface->next;
 		if ( dnface->IR_len > 0 ) {
 #ifdef	__PIT_CLEAN__
 	fprintf( stderr, "\t clean dnface->IR_len:%d Type:%d\n", dnface->IR_len, dnface->IR_Type );
 #endif
 			free( dnface->IR_msg );
 		}
+#ifdef CefC_Debug_20230404
+cef_dbg_write (CefC_Dbg_Fine, "free(dnface=%p)\n", dnface);
+#endif // CefC_Debug_20230404
 		free (dnface);
 		dnface = dnface_next;
 	}
+}
 
 	//0.8.3
 	if ( entry->KIDR_len > 0 ) {
@@ -966,7 +1059,9 @@ cef_pit_entry_free (
 	pthread_mutex_destroy (&entry->pe_mutex_pt);
 #endif	// CefC_PitEntryMutex
 
-	free (entry->key);
+#ifdef CefC_Debug_20230404
+cef_dbg_write (CefC_Dbg_Fine, "free(entry=%p)\n", entry);
+#endif // CefC_Debug_20230404
 	free (entry);
 
 	return;
@@ -981,8 +1076,8 @@ cef_pit_clean (
 ) {
 	CefT_Down_Faces* dnface;
 	CefT_Down_Faces* dnface_prv;
-	uint64_t now;
 	CefT_Down_Faces* clean_dnface;
+	uint64_t now;
 
 	now = cef_client_present_timeus_get ();
 
@@ -990,10 +1085,6 @@ cef_pit_clean (
 	fprintf( stderr, "[%s] IN entry->dnfacenum:%d\n", __func__, entry->dnfacenum );
 #endif
 	if (now > entry->adv_lifetime_us) {
-#ifdef	__PIT_CLEAN__
-	fprintf( stderr, "\t(now > entry->adv_lifetime_us)\n" );
-#endif
-
 		clean_dnface = &(entry->clean_dnfaces);
 		while (clean_dnface->next) {
 			clean_dnface = clean_dnface->next;
@@ -1003,29 +1094,20 @@ cef_pit_clean (
 
 		while (dnface->next) {
 			dnface = dnface->next;
+#ifdef CefC_Debug_20230404
+cef_dbg_write (CefC_Dbg_Fine, "dnface=%p, next=%p\n", dnface, dnface->next);
+#endif // CefC_Debug_20230404
 			clean_dnface->next = dnface;
 			clean_dnface = dnface;
-			clean_dnface->next = NULL;
-#ifdef	__PIT_CLEAN__
-	fprintf( stderr, "\t move to clean\n" );
-#endif
-#ifdef	__PIT_CLEAN__
-	fprintf( stderr, "\t clean dnface->IR_len:%d Type:%d\n", dnface->IR_len, dnface->IR_Type );
-#endif
-			if (cef_face_check_active (dnface->faceid) > 0) {
-#ifdef	__PIT_CLEAN__
-	fprintf( stderr, "\t Send IR\n" );
-#endif
+//			clean_dnface->next = NULL;	// CefC_Debug_20230404
+
+			if (cef_face_check_active (dnface->faceid) > 0 && dnface->IR_msg) {
 				cef_face_frame_send_forced (dnface->faceid, dnface->IR_msg, dnface->IR_len);
 			}
-
 		}
 		entry->dnfaces.next = NULL;
 		entry->dnfacenum = 0;
 
-#ifdef	__PIT_CLEAN__
-	fprintf( stderr, "\t entry->dnfacenum:%d\n", entry->dnfacenum );
-#endif
 		return;
 	}
 
@@ -1035,37 +1117,29 @@ cef_pit_clean (
 #endif
 		return;
 	}
-	entry->clean_us = now + 1000000;
+	entry->clean_us = now + CefC_Pit_CleaningTime;
 
 	dnface = &(entry->dnfaces);
 	dnface_prv = dnface;
 
-#ifdef	__PIT_CLEAN__
-	fprintf( stderr, "\t Before while\n" );
-#endif
 	while (dnface->next) {
 		dnface = dnface->next;
 
 		if (now > dnface->lifetime_us) {
-#ifdef	__PIT_CLEAN__
-	fprintf( stderr, "\t(now > dnface->lifetime_us)\n" );
-#endif
 			dnface_prv->next = dnface->next;
 			clean_dnface = &(entry->clean_dnfaces);
 			while (clean_dnface->next) {
 				clean_dnface = clean_dnface->next;
 			}
 			clean_dnface->next = dnface;
+#ifdef CefC_Debug_20230404
+cef_dbg_write (CefC_Dbg_Fine, "clean_dnface=%p, next=%p\n", clean_dnface, clean_dnface->next);
+#endif // CefC_Debug_20230404
 			clean_dnface->next->next = NULL;
 			dnface = dnface_prv;
 			entry->dnfacenum--;
-#ifdef	__PIT_CLEAN__
-	fprintf( stderr, "\t move to clean\n" );
-#endif
-#ifdef	__PIT_CLEAN__
-	fprintf( stderr, "\t dnface->IR_len:%d Type:%d\n", dnface->IR_len, dnface->IR_Type );
-#endif
-			if (cef_face_check_active (dnface->faceid) > 0) {
+
+			if (cef_face_check_active (dnface->faceid) > 0 && dnface->IR_msg) {
 #ifdef	__PIT_CLEAN__
 	fprintf( stderr, "\t Send IR\n" );
 #endif
@@ -1074,6 +1148,9 @@ cef_pit_clean (
 		} else {
 			dnface_prv = dnface;
 		}
+#ifdef CefC_Debug_20230404
+cef_dbg_write (CefC_Dbg_Fine, "dnface_prv=%p, next=%p\n", dnface_prv, dnface_prv->next);
+#endif // CefC_Debug_20230404
 	}
 #ifdef	__PIT_CLEAN__
 	fprintf( stderr, "\t After while RETURN entry->dnfacenum:%d\n", entry->dnfacenum );
@@ -1081,6 +1158,7 @@ cef_pit_clean (
 
 	return;
 }
+
 /*--------------------------------------------------------------------------------------
 	Looks up and creates the specified Down Face entry
 ----------------------------------------------------------------------------------------*/
@@ -1094,6 +1172,7 @@ cef_pit_entry_down_face_lookup (
 ) {
 	CefT_Down_Faces* dnface = &(entry->dnfaces);
 
+	*rt_dnface = NULL;
 	while (dnface->next) {
 		dnface = dnface->next;
 
@@ -1110,12 +1189,19 @@ cef_pit_entry_down_face_lookup (
 		}
 	}
 
-	entry->dnfacenum++;
 	dnface->next = (CefT_Down_Faces*) malloc (sizeof (CefT_Down_Faces));
+	if (dnface->next == NULL) {
+		cef_log_write (CefC_Log_Error, "%s(%u) malloc(%ld) failed\n", __func__, __LINE__, sizeof (CefT_Down_Faces));
+		return (0);
+	}
 	memset (dnface->next, 0, sizeof (CefT_Down_Faces));
 	dnface->next->faceid = faceid;
 	dnface->next->nonce  = nonce;
 	*rt_dnface = dnface->next;
+	entry->dnfacenum++;
+#ifdef CefC_Debug_20230404
+cef_dbg_write (CefC_Dbg_Fine, "malloc(dnface->next=%p), dnface=%p\n", dnface->next, dnface);
+#endif // CefC_Debug_20230404
 	//0.8.3
 	dnface->next->IR_Type = 0;
 	dnface->next->IR_len  = 0;
@@ -1301,16 +1387,6 @@ cef_pit_down_faceid_remove (
 	CefT_Down_Faces* prev = dnface;
 	CefT_Down_Faces* clean_dnface;
 
-#ifdef	CefC_PitEntryMutex
-	{	int res;
-		while ((res = pthread_mutex_trylock (&entry->pe_mutex_pt)) != 0) {
-			if (EBUSY != res) {
-				return;
-			}
-		}
-	}
-#endif	// CefC_PitEntryMutex
-
 	while (dnface->next) {
 		dnface = dnface->next;
 
@@ -1329,9 +1405,6 @@ cef_pit_down_faceid_remove (
 		}
 		prev = dnface;
 	}
-#ifdef	CefC_PitEntryMutex
-	pthread_mutex_unlock (&entry->pe_mutex_pt);
-#endif	// CefC_PitEntryMutex
 
 	return;
 }
@@ -1346,33 +1419,17 @@ cef_pit_entry_up_face_lookup (
 ) {
 	CefT_Up_Faces* face = &(entry->upfaces);
 
-#ifdef	CefC_PitEntryMutex
-	{	int res;
-		while ((res = pthread_mutex_trylock (&entry->pe_mutex_pt)) != 0) {
-			if (EBUSY != res) {
-				*rt_face = NULL;
-				return 0;
-			}
-		}
-	}
-#endif	// CefC_PitEntryMutex
 
 	while (face->next) {
 		face = face->next;
 		if (face->faceid == faceid) {
 			*rt_face = face;
-#ifdef	CefC_PitEntryMutex
-			pthread_mutex_unlock (&entry->pe_mutex_pt);
-#endif	// CefC_PitEntryMutex
 			return (0);
 		}
 	}
 	face->next = (CefT_Up_Faces*) malloc (sizeof (CefT_Up_Faces));
 	face->next->faceid = faceid;
 	face->next->next = NULL;
-#ifdef	CefC_PitEntryMutex
-	pthread_mutex_unlock (&entry->pe_mutex_pt);
-#endif	// CefC_PitEntryMutex
 
 	*rt_face = face->next;
 
@@ -1389,16 +1446,6 @@ cef_pit_entry_up_face_search (
 	CefT_Up_Faces* face = &(entry->upfaces);
 	CefT_Up_Faces* ret = NULL;
 
-#ifdef	CefC_PitEntryMutex
-	{	int res;
-		while ((res = pthread_mutex_trylock (&entry->pe_mutex_pt)) != 0) {
-			if (EBUSY != res) {
-				return NULL;
-			}
-		}
-	}
-#endif	// CefC_PitEntryMutex
-
 	while (face->next) {
 		face = face->next;
 		if (face->faceid == faceid) {
@@ -1406,10 +1453,6 @@ cef_pit_entry_up_face_search (
 			break;
 		}
 	}
-
-#ifdef	CefC_PitEntryMutex
-	pthread_mutex_unlock (&entry->pe_mutex_pt);
-#endif	// CefC_PitEntryMutex
 
 	return (ret);
 }
@@ -1421,39 +1464,44 @@ cef_pit_cleanup (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_Pit_Entry* entry 					/* PIT entry 								*/
 ) {
-	CefT_Down_Faces* dnface;
-	CefT_Down_Faces* dnface_prv;
-	int fd;
 	uint64_t now;
-	CefT_Down_Faces* clean_dnface;
 
 	now = cef_client_present_timeus_get ();
 
 	if (now < entry->clean_us) {
 		return (entry);
 	}
-	entry->clean_us = now + 1000000;
 
-	dnface = &(entry->dnfaces);
-	dnface_prv = dnface;
+	if ( cef_pit_entry_lock (entry) ){
+		CefT_Down_Faces* dnface = &(entry->dnfaces);
+		CefT_Down_Faces* dnface_prv = dnface;
 
-	while (dnface->next) {
-		dnface = dnface->next;
-		fd = cef_face_get_fd_from_faceid (dnface->faceid);
+		now = cef_client_present_timeus_get ();
+		entry->clean_us = now + CefC_Pit_CleaningTime;
 
-		if ((now > dnface->lifetime_us) || (fd < 3)) {
-			dnface_prv->next = dnface->next;
-			clean_dnface = &(entry->clean_dnfaces);
-			while (clean_dnface->next) {
-				clean_dnface = clean_dnface->next;
+		while (dnface->next) {
+			int fd;
+
+			dnface = dnface->next;
+			fd = cef_face_get_fd_from_faceid (dnface->faceid);
+
+			if ((now > dnface->lifetime_us) || (fd < 3)) {
+				CefT_Down_Faces* clean_dnface;
+
+				dnface_prv->next = dnface->next;
+				clean_dnface = &(entry->clean_dnfaces);
+				while (clean_dnface->next) {
+					clean_dnface = clean_dnface->next;
+				}
+				clean_dnface->next = dnface;
+				clean_dnface->next->next = NULL;
+				dnface = dnface_prv;
+				entry->dnfacenum--;
+			} else {
+				dnface_prv = dnface;
 			}
-			clean_dnface->next = dnface;
-			clean_dnface->next->next = NULL;
-			dnface = dnface_prv;
-			entry->dnfacenum--;
-		} else {
-			dnface_prv = dnface;
 		}
+		cef_pit_entry_unlock(entry);
 	}
 
 	return (entry);
@@ -1693,3 +1741,34 @@ cef_pit_interest_return_set (
 
 	return(-1);
 }
+/*--------------------------------------------------------------------------------------
+	Lock/Unlock the specified PIT entry
+----------------------------------------------------------------------------------------*/
+int
+cef_pit_entry_lock (
+	CefT_Pit_Entry* entry 					/* PIT entry 								*/
+) {
+	int	ret = -1;
+#ifdef	CefC_PitEntryMutex
+	{	int res;
+		while ((res = pthread_mutex_trylock (&entry->pe_mutex_pt)) != 0) {
+			if (EBUSY != res) {
+				cef_log_write (CefC_Log_Warn, "%s(%u) pthread_mutex_trylock=%d:%s\n", __func__, __LINE__, res, strerror(errno));
+				ret = 0;	// failed
+				break;
+			}
+		}
+	}
+#endif	// CefC_PitEntryMutex
+	return ret;
+}
+void
+cef_pit_entry_unlock (
+	CefT_Pit_Entry* entry 					/* PIT entry 								*/
+) {
+#ifdef	CefC_PitEntryMutex
+	pthread_mutex_unlock (&entry->pe_mutex_pt);
+#endif	// CefC_PitEntryMutex
+	return;
+}
+

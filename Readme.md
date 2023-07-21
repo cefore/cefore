@@ -27,14 +27,11 @@ Cefore is a software platform that enables ICN-based communications using CCNx-1
 | cefgetstream | tool    | Standard | Display the stream received by Cefore on stdout |
 | cefputfile_sec | tool  | develop  | Obtain security content from Cefore and output it as a file |
 | cefgetfile_sec | tool  | develop	| Convert a file to Named Cob with security features and input it into Cefore |
-| cefping      | tool    | cefping  | cefping                                     |
-| cefinfo      | tool    | cefinfo  | cefinfo (aka ccninfo)                       |
 | csmgrd       | daemon  | csmgr    | Content Store manager daemon                |
 | csmgrdstart  | utility | csmgr    | Utility of starting csmgr daemon            |
 | csmgrdstop   | utility | csmgr    | Utility of stopping csmgr daemon            |
 | csmgrstatus  | utility | csmgr    | Utility of showing csmgrd status on stdout  |
 | Sample Transport | plugin | samptp | Sample transport plugin library            |
-| NDN Plugin   | plugin  | ndn      | NDN plugin library (experimental)           |
 | cefore.lua   | application | Standard | Wireshark's LUA script file             |
 
 
@@ -64,10 +61,7 @@ Run configure first. The following options are available for configure command:
 | Option           | Description                                      |
 |:---------------- |:------------------------------------------------ |
 | --enable-csmgr   | Enable Content Store managed by csmgr daemon.    |
-| --enable-cefping | Enable cefping tool.                             |
-| --enable-cefinfo | Enable cefinfo tool (aka CCNinfo).               |
 | --enable-cache   | Enable cefnetd's local cache.                    |
-| --enable-ndn     | Enable NDN plugin library (experimental).        |
 | --enable-debug   | Enable debug mode (Attn: show lots of messages). |
 
 Specify the installation directory. The default installation directory is "$CEFORE_DIR/sbin" for daemons such as cefnetd, "$CEFORE_DIR/bin" for utilities such as cefnetdstart and tools such as cefgetfile, and "$CEFORE_DIR/cefore" for configuration files such as cefnetd.conf. The default for the environment variable CEFORE_DIR is "/usr/local." Set the installation directory to the environment variable, CEFORE_DIR, if you want to change the installation directory.
@@ -90,11 +84,7 @@ If you installed OpenSSL using homebrew on macOS, you need to run configure as f
 
 `export PATH="/usr/local/opt/openssl/bin:$PATH"`
 
-`./configure opssl_header_path=/usr/local/opt/openssl/include/ LDFLAGS='-L/usr/local/opt/openssl/lib' CPPFLAGS='-I/usr/local/opt/openssl/include'`
-
-To build cefping and csmgr daemon, you need to specify these options:  
-
-`./configure --enable-cefping --enable-csmgr`
+`./configure --with-openssl-dir=/usr/local/opt/openssl LDFLAGS='-L/usr/local/opt/openssl/lib'`
 
 After the configure command completes successfully, run "make" and "make install". "make install" must be run with sudo.
 

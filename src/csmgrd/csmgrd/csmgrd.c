@@ -1997,8 +1997,8 @@ void
 csmgrd_tcp_connect_accept (
 	CefT_Csmgrd_Handle* hdl					/* csmgr daemon handle						*/
 ) {
-	struct sockaddr_storage* sa;
-	socklen_t len = sizeof (struct sockaddr_storage);
+	struct sockaddr_storage sa;
+	socklen_t sa_len = sizeof (struct sockaddr_storage);
 	int cs;
 	int flag;
 	char ip_str[NI_MAXHOST];
@@ -2008,11 +2008,9 @@ csmgrd_tcp_connect_accept (
 	int err;
 
 	/* Accepts the TCP SYN 		*/
-	sa = (struct sockaddr_storage*) malloc (sizeof (struct sockaddr_storage));
-	memset (sa, 0, sizeof (struct sockaddr_storage));
-	cs = accept (hdl->tcp_listen_fd, (struct sockaddr*) sa, &len);
+	memset (&sa, 0, sizeof (struct sockaddr_storage));
+	cs = accept (hdl->tcp_listen_fd, (struct sockaddr*) &sa, &sa_len);
 	if (cs < 0) {
-		free (sa);
 		return;
 	}
 
@@ -2021,10 +2019,10 @@ csmgrd_tcp_connect_accept (
 		"Received the new connection request. Check whitelist\n");
 #endif // CefC_Debug
 	/* Check address */
-	if (csmgrd_white_list_reg_check (hdl, sa) < 0) {
+	if (csmgrd_white_list_reg_check (hdl, &sa) < 0) {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Could not find the node in the whitelist.\n");
-		if (getnameinfo ((struct sockaddr*) sa, len, ip_str, sizeof (ip_str),
+		if (getnameinfo ((struct sockaddr*) &sa, sa_len, ip_str, sizeof (ip_str),
 				port_str, sizeof (port_str), NI_NUMERICHOST | NI_NUMERICSERV) == 0) {
 			cef_dbg_write (CefC_Dbg_Fine, "rejected node = %s:%s\n", ip_str, port_str);
 		}
@@ -2046,7 +2044,7 @@ csmgrd_tcp_connect_accept (
 			"Failed to create new tcp connection : %s\n", strerror (errno));
 		goto POST_ACCEPT;
 	}
-	if ((err = getnameinfo ((struct sockaddr*) sa, len, ip_str, sizeof (ip_str),
+	if ((err = getnameinfo ((struct sockaddr*) &sa, sa_len, ip_str, sizeof (ip_str),
 			port_str, sizeof (port_str), NI_NUMERICHOST | NI_NUMERICSERV)) != 0) {
 		cef_log_write (CefC_Log_Warn,
 			"Failed to create new tcp connection : %s\n", gai_strerror (err));
@@ -2057,12 +2055,15 @@ csmgrd_tcp_connect_accept (
 	for (i = 1 ; i < CsmgrdC_Max_Sock_Num ; i++) {
 		if ((strcmp (hdl->peer_id_str[i], ip_str) == 0) &&
 			(strcmp (hdl->peer_sv_str[i], port_str) == 0)) {
-			cef_log_write (CefC_Log_Info, "Close TCP peer: [%d] %s:%s\n",
-				i, hdl->peer_id_str[i], hdl->peer_sv_str[i]);
-			close (hdl->tcp_fds[i]);
-			hdl->tcp_fds[i] 	= -1;
-			hdl->tcp_index[i] 	= 0;
-			new_accept_f = 0;
+			if (hdl->tcp_fds[i] != -1) {
+				cef_log_write (CefC_Log_Info, "Close TCP peer: [%d] %s:%s, socket : %d\n",
+					i, hdl->peer_id_str[i], hdl->peer_sv_str[i], hdl->tcp_fds[i]);
+				close (hdl->tcp_fds[i]);
+				hdl->tcp_fds[i] 	= -1;
+				hdl->tcp_index[i] 	= 0;
+				hdl->peer_num--;
+				new_accept_f = 0;
+			}
 			break;
 		}
 	}
@@ -2090,6 +2091,7 @@ csmgrd_tcp_connect_accept (
 	} else {
 		cef_log_write (CefC_Log_Info, "Open TCP peer: %s:%s, socket : %d\n",
 			hdl->peer_id_str[i], hdl->peer_sv_str[i], cs);
+		hdl->peer_num++;
 		hdl->tcp_fds[i] 	= cs;
 		hdl->tcp_index[i] 	= 0;
 
@@ -2100,9 +2102,6 @@ csmgrd_tcp_connect_accept (
 
 POST_ACCEPT:
 	close (cs);
-	if (sa) {
-		free (sa);
-	}
 	return;
 }
 
@@ -5014,7 +5013,7 @@ csmgrd_resource_mon_thread (
 		rc = get_mem_info (cs_type, &m_total, &m_avaliable, &m_cob_info);
 		if (rc != 0) {
 			cef_log_write (CefC_Log_Error, "%s(%d): Could not get memory information.\n", __FUNCTION__, __LINE__);
-			sleep (30);
+			break;
 		}
 		if (m_cob_info > m_cob_info_max) {
 			m_cob_info_max = m_cob_info;
@@ -5185,7 +5184,7 @@ get_mem_info (
 	char* meminfo = "/proc/meminfo";
 	int avaliable;
 	if ((fp = fopen (meminfo, "r")) == NULL) {
-		cef_log_write (CefC_Log_Critical, "%s(%d): Could not open %s to get memory information.\n", __FUNCTION__, meminfo);
+		cef_log_write (CefC_Log_Critical, "%s(%d): Could not open %s to get memory information.\n", __FUNCTION__, __LINE__, meminfo);
 	}
 	avaliable = 0;
 	while (fgets (buf, sizeof (buf), fp) != NULL) {
@@ -5203,7 +5202,7 @@ get_mem_info (
 		}
 	}
 	if (avaliable == 0) {
-		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n", __FUNCTION__, key);
+		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n", __FUNCTION__, __LINE__, key);
 	}
 	if (fp != NULL) {
 		fclose (fp);
@@ -5211,33 +5210,67 @@ get_mem_info (
 #else // CefC_MACOS
 	/************************************************************************************/
 	/* ["top -l 1 | grep -e PhysMem: -e csmgrd" format]									*/
-	/*	PhysMem: 7272M used (1075M wired), 919M unused.									*/
+	/*	PhysMem: 7272M used (1075M wired), 919M unused.		or							*/
+	/*	PhysMem: 8028M used (1167M wired, 142M compressor), 7632M unused.				*/
 	/*	85341  csmgrd           0.0  00:00.10 6     0   25     28M   0B    0B ..		*/
 	/*														   ^^^						*/
 	/************************************************************************************/
 	FILE* fp;
 	char buf[1024];
 	char* cmd = "top -l 1 | grep -e PhysMem: -e csmgrd";
-		char* tag = "PhysMem:";
+	char* tag = "PhysMem:";
 	char* pname = "csmgrd";
-	int	 used = 0, unused = 0;
-	int  csused = 0;
+	int	 used = -1, unused = -1;
+	int  csused = -1;
 	char fld01[128], fld02[128], fld03[128], fld04[128],
 		 fld05[128], fld06[128], fld07[128], fld08[128];
+	char unit;
 
 	if ((fp = popen (cmd, "r")) != NULL) {
 		while (fgets (buf, sizeof (buf), fp) != NULL) {
 			if (strstr (buf, tag) != NULL) {
-				char* pos = strchr (buf, ' ');
-				sscanf (pos, "%d", &used);
-				pos = strchr (pos, ',');
-				sscanf (pos+1, "%d", &unused);
+				char* token = NULL;
+				char* token1 = NULL;
+				char* saveptr = NULL;
+				token = strtok_r (buf, " ", &saveptr);
+				while (token) {
+					token = strtok_r (NULL, " ", &saveptr);
+					if (token == NULL) {
+						break;
+					}
+					token1 = token;
+					token = strtok_r (NULL, " ", &saveptr);
+					if (token == NULL) {
+						break;
+					}
+
+					if (strcmp (token, "used") == 0) {
+						sscanf (token1, "%d%c", &used, &unit);
+						if (unit == 'G') {
+							used *= 1024;
+						} else if (unit != 'M') {
+							used = 0;
+						}
+					} else if (strncmp (token, "unused.", strlen("unused.")) == 0) {
+						sscanf (token1, "%d%c", &unused, &unit);
+						if (unit == 'G') {
+							unused *= 1024;
+						} else if (unit != 'M') {
+							unused = 0;
+						}
+					}
+				}
 			} else {
 				if (strstr (buf, pname) != NULL) {
 					sscanf (buf, "%s %s %s %s %s %s %s %s",
 							fld01, fld02, fld03, fld04,
 							fld05, fld06, fld07, fld08);
-					sscanf (fld08, "%d", &csused);
+					sscanf (fld08, "%d%c", &csused, &unit);
+					if (unit == 'G') {
+						csused *= 1024;
+					} else if (unit != 'M') {
+						csused = 0;
+					}
 				}
 			}
 		}
@@ -5245,13 +5278,15 @@ get_mem_info (
 	} else {
 		cef_log_write (CefC_Log_Critical, "%s(%d): Could not get memory information.\n", __FUNCTION__, __LINE__);
 	}
-	if (unused == 0) {
+	if (used == -1 || unused == -1) {
 		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n",
-					__FUNCTION__, tag);
+					__FUNCTION__, __LINE__, tag);
+		return (-1);
 	}
-	if (csused == 0) {
+	if (csused == -1) {
 		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n",
-					__FUNCTION__, pname);
+					__FUNCTION__, __LINE__, pname);
+		return (-1);
 	}
 	if (total_mega == 0) {
 		total_mega = unused;

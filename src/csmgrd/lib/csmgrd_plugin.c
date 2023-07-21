@@ -66,7 +66,7 @@
 /****************************************************************************************
  State Variables
  ****************************************************************************************/
-static char log_porc[256] = {0};
+static char log_proc[256] = {0};
 static int 	log_lv = 0;
 static char log_lv_str[4][16] = {"INFO", "WARNING", "ERROR", "CRITICAL"};
 
@@ -436,7 +436,7 @@ csmgrd_cache_algo_availability_check (
 	char* meminfo = "/proc/meminfo";
 	int val;
 	if ((fp = fopen (meminfo, "r")) == NULL) {
-		cef_log_write (CefC_Log_Critical, "%s(%d): Could not open %s to get memory information.\n", __FUNCTION__, meminfo);
+		cef_log_write (CefC_Log_Critical, "%s(%d): Could not open %s to get memory information.\n", __FUNCTION__, __LINE__, meminfo);
 		return (-1);
 	}
 	while (fgets (buf, sizeof (buf), fp) != NULL) {
@@ -451,13 +451,13 @@ csmgrd_cache_algo_availability_check (
 	}
 	if (total_mega == 0) {
 		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n", 
-						__FUNCTION__, key_total);
+						__FUNCTION__, __LINE__, key_total);
 		fclose (fp);
 		return (-1);
 	}
 	if (free_mega == 0) {
 		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n", 
-						__FUNCTION__, key_free);
+						__FUNCTION__, __LINE__, key_free);
 		fclose (fp);
 		return (-1);
 	}
@@ -465,19 +465,48 @@ csmgrd_cache_algo_availability_check (
 #else // CefC_MACOS
 	/************************************************************************************/
 	/* ["top -l 1 | grep PhysMem:" format]												*/
-	/*		PhysMem: 7080M used (1078M wired), 1109M unused.							*/
+	/*		PhysMem: 7080M used (1078M wired), 1109M unused.	or						*/
+	/*		PhysMem: 8028M used (1167M wired, 142M compressor), 7632M unused.			*/
 	/************************************************************************************/
 	char buf[1024];
 	char* cmd = "top -l 1 | grep PhysMem:";
 	char* tag = "PhysMem:"; 
-	int	 used = 0, unused = 0;
+	int	 used = -1, unused = -1;
 	if ((fp = popen (cmd, "r")) != NULL) {
 		while (fgets (buf, sizeof (buf), fp) != NULL) {
 			if (strstr (buf, tag) != NULL) {
-				char* pos = strchr (buf, ' ');
-				sscanf (pos, "%d", &used);
-				pos = strchr (pos, ',');
-				sscanf (pos+1, "%d", &unused);
+				char* token = NULL;
+				char* token1 = NULL;
+				char* saveptr = NULL;
+				char unit;
+				token = strtok_r (buf, " ", &saveptr);
+				while (token) {
+					token = strtok_r (NULL, " ", &saveptr);
+					if (token == NULL) {
+						break;
+					}
+					token1 = token;
+					token = strtok_r (NULL, " ", &saveptr);
+					if (token == NULL) {
+						break;
+					}
+
+					if (strcmp (token, "used") == 0) {
+						sscanf (token1, "%d%c", &used, &unit);
+						if (unit == 'G') {
+							used *= 1024;
+						} else if (unit != 'M') {
+							used = 0;
+						}
+					} else if (strncmp (token, "unused.", strlen("unused.")) == 0) {
+						sscanf (token1, "%d%c", &unused, &unit);
+						if (unit == 'G') {
+							unused *= 1024;
+						} else if (unit != 'M') {
+							unused = 0;
+						}
+					}
+				}
 			} 
 		}
 		pclose (fp);
@@ -485,9 +514,9 @@ csmgrd_cache_algo_availability_check (
 		cef_log_write (CefC_Log_Critical, "%s(%d): Could not get memory information.\n", __FUNCTION__, __LINE__);
 		return (-1);
 	}		
-	if (unused == 0 || used == 0) {
+	if (unused == -1 || used == -1) {
 		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n", 
-					__FUNCTION__, tag);
+					__FUNCTION__, __LINE__, tag);
 		return (-1);
 	}
 	total_mega = used + unused;
@@ -540,7 +569,7 @@ csmgrd_log_init (
 	
 	assert (proc_name != NULL);
 	
-	strcpy (log_porc, proc_name);
+	strcpy (log_proc, proc_name);
 	log_lv = level;
 }
 void
@@ -611,7 +640,7 @@ csmgrd_log_write (
 
 	
 	assert (level <= CefC_Log_Critical);
-	assert (log_porc[0] != 0x00);
+	assert (log_proc[0] != 0x00);
 	
     if (log_lv == 0) {
 		use_log_level = CefC_Log_Error;
@@ -630,7 +659,7 @@ csmgrd_log_write (
 		gettimeofday (&t, NULL);
 		
 		fprintf (stdout, "%s."FMTLINT" [%s] %s: "
-			, time_str, t.tv_usec / 1000, log_porc, log_lv_str[level]);
+			, time_str, t.tv_usec / 1000, log_proc, log_lv_str[level]);
 		vfprintf (stdout, fmt, arg);
 		
 		va_end (arg);

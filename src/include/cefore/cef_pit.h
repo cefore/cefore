@@ -40,6 +40,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <sys/time.h>
+//#define	CefC_PitEntryMutex
+#ifdef	CefC_PitEntryMutex
+#include <pthread.h>
+#endif	// CefC_PitEntryMutex
 
 #include <cefore/cef_hash.h>
 #include <cefore/cef_define.h>
@@ -50,6 +54,10 @@
  ****************************************************************************************/
 #define CefC_PitEntryVersion_Max		2	/* Max number of versions that can be 		*/
 											/* registered in 1 Down Face Entry (other than AnyVer) */
+
+#define	CefC_Pit_CleaningTime		1000000U
+#define	CefC_Pit_WithoutLOCK	0
+#define	CefC_Pit_WithLOCK		(~CefC_Pit_WithoutLOCK)
 
 /****************************************************************************************
  Structure Declarations
@@ -109,6 +117,8 @@ typedef struct CefT_Up_Faces {
 /*------------------------------------------------------------------*/
 
 typedef struct {
+
+	unsigned char 		resv4malloc[16];	/* reserved area for malloc					*/
 
 	unsigned char* 		key;				/* Key of the PIT entry 					*/
 	unsigned int 		klen;				/* Length of this key 						*/
@@ -220,6 +230,18 @@ cef_pit_entry_down_face_update (
 	unsigned char* msg,						/* cefore packet 							*/
 	int		 Resend_method					/* Resend method 0.8.3						*/
 );
+CefT_Pit_Entry*
+cef_pit_entry_lookup_and_down_face_update (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned char* ccninfo_pit,				/* pit name for ccninfo ccninfo-03			*/
+	int	ccninfo_pit_len,					/* ccninfo pit length						*/
+	uint16_t faceid,						/* Face-ID									*/
+	unsigned char* msg,						/* cefore packet 							*/
+	int		 Resend_method,					/* Resend method 0.8.3 						*/
+	int		 *pit_res						/* Returns 1 if the return entry is new	 	*/
+);
 /*--------------------------------------------------------------------------------------
 	Looks up and creates the specified Up Face entry
 ----------------------------------------------------------------------------------------*/
@@ -293,7 +315,6 @@ cef_pit_entry_search_without_chunk (
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
 	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
 );
-
 /*--------------------------------------------------------------------------------------
 	Set InterestReturn Info to DownFace
 ----------------------------------------------------------------------------------------*/
@@ -334,5 +355,25 @@ CefT_Up_Faces*								/* Returns  Up Face info				 	*/
 cef_pit_entry_up_face_search (
 	CefT_Pit_Entry* entry, 					/* PIT entry 								*/
 	uint16_t faceid 						/* Face-ID									*/
+);
+/*--------------------------------------------------------------------------------------
+	Lock/Unlock the specified PIT entry
+----------------------------------------------------------------------------------------*/
+int
+cef_pit_entry_lock (
+	CefT_Pit_Entry* entry 					/* PIT entry 								*/
+);
+void
+cef_pit_entry_unlock (
+	CefT_Pit_Entry* entry 					/* PIT entry 								*/
+);
+CefT_Pit_Entry* 							/* a PIT entry								*/
+cef_pit_entry_lookup_with_lock (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned char* name,					/* pit name (for ccninfo ccninfo-03)		*/
+	int	name_len,							/* pit name length							*/
+	int	with_lock							/* entry lock flag							*/
 );
 #endif // __CEF_PIT_HEADER__

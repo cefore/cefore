@@ -554,6 +554,9 @@ cef_status_forward_output (
 /*--------------------------------------------------------------------------------------
 	Output PIT status
 ----------------------------------------------------------------------------------------*/
+#define	NUM_PIT_OUT_MAX	128
+#define	MIN(a,b)		((a)>(b)?(b):(a))
+#define	MAX(a,b)		((a)<(b)?(b):(a))
 static int
 cef_status_pit_output (
 	CefT_Hash_Handle* handle,
@@ -582,6 +585,7 @@ cef_status_pit_output (
 	char work_str[CefC_Max_Length*2];
 	int fret = 0;
 	uint32_t elem_num, elem_index;
+	uint64_t nowt = cef_client_present_timeus_get ();		// 2023/04/05 by iD
 
 	/* get table num		*/
 	table_num = cef_lhash_tbl_item_num_get (*handle);
@@ -605,7 +609,7 @@ cef_status_pit_output (
 	}
 
 	/* output table		*/
-	for (i = 0; i < table_num; /*i++ 20230324*/) {
+	for (i = 0; i < MIN(NUM_PIT_OUT_MAX,table_num); ) {			// 2023/03/29 by iD
 		elem_num = 0;
 
 		if (!cef_lhash_tbl_elem_get (*handle, &index, &elem_num)) {
@@ -620,6 +624,8 @@ cef_status_pit_output (
 			entry = (CefT_Pit_Entry*) cef_lhash_tbl_item_get_from_index (*handle, index, elem_index);
 
 			if ( !entry )
+				continue;
+			if (entry->adv_lifetime_us < nowt)				// 2023/04/05 by iD
 				continue;
 
 			/* Gets Chunk Number 	*/
@@ -653,11 +659,6 @@ cef_status_pit_output (
 				}
 				name_index += sub_length;
 			}
-
-			if ( 16 < name_index ){			// 2023/03/24 by iD
-				int *nullptr = NULL;		// 2023/03/24 by iD
-				*nullptr = 0;				// 2023/03/24 by iD
-			}								// 2023/03/24 by iD
 
 			res = cef_frame_conversion_name_to_uri (entry->key, dec_name_len, uri);
 
@@ -716,6 +717,10 @@ cef_status_pit_output (
 		}
 		i += elem_num;	//20230324
 		index++;
+	}
+
+	if ( NUM_PIT_OUT_MAX < table_num ) {					// 2023/03/29 by iD
+		cef_status_add_output_to_rsp_buf("and more ....\n");
 	}
 
 	return (0);

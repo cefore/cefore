@@ -95,6 +95,7 @@ typedef	enum	{
 
 #define CefC_App_MatchType_Exact		0
 #define CefC_App_MatchType_Prefix		1
+#define CefC_Pthread_StackSize			(8*1024*1024)	/* Ubuntu-default:8MB */
 
 /****************************************************************************************
  Structures Declaration
@@ -904,6 +905,14 @@ cefnetd_adv_route_process (
 	CefT_CcnMsg_MsgBdy*	pm				/* Structure to set parsed CEFORE message	*/
 );
 
+static int
+cef_pthread_create (
+	pthread_t* thread,
+	pthread_attr_t* attr,
+	void* (*start_routine) (void*),
+	void* arg
+);
+
 /****************************************************************************************
  ****************************************************************************************/
 
@@ -962,7 +971,7 @@ cefnetd_handle_create (
 	hdl->ccninfo_reply_timeout = CefC_Default_CcninfoReplyTimeout;
 
 	//0.8.3
-	hdl->IntrestRetrans			= CefC_IntRetrans_Type_RFC;
+	hdl->InterestRetrans		= CefC_IntRetrans_Type_RFC;
 	hdl->Selective_fwd			= CefC_Default_SelectiveForward;
 	hdl->SymbolicBack			= CefC_Default_SymbolicBackBuff;
 	hdl->IR_Congesion			= CefC_Default_IR_Congesion;
@@ -1078,7 +1087,7 @@ cefnetd_handle_create (
 	/* Creates PIT 							*/
 	cef_pit_init (hdl->ccninfo_reply_timeout, hdl->Symbolic_max_lifetime, hdl->Regular_max_lifetime); //0.8.3
 	hdl->pit = cef_lhash_tbl_create_ext (hdl->pit_max_size, CefC_Hash_Coef_PIT);
-	hdl->pit_clean_t = cef_client_present_timeus_calc () + 1000000;
+	hdl->pit_clean_t = cef_client_present_timeus_calc () + CefC_Pit_CleaningTime;
 	cef_log_write (CefC_Log_Info, "Creation PIT ... OK\n");
 
 	/* Prepares sockets for applications 	*/
@@ -1242,6 +1251,8 @@ cefnetd_handle_create (
 	/*#####*/
 	{	/* cefstatus_thread */
 		int flags;
+		pthread_attr_t tattr;
+		size_t  stacksize;
 		/* Create socket for communication between cednetd and memory cache */
 		if ( socketpair(AF_UNIX,SOCK_DGRAM, 0, hdl->cefstatus_pipe_fd) == -1 ) {
 			cefnetd_handle_destroy (hdl);
@@ -1264,14 +1275,16 @@ cefnetd_handle_create (
 			return (NULL);
 		}
 
-		if (pthread_create(&cefnetd_cefstatus_th, NULL
-				, &cefnetd_cefstatus_thread, (hdl)) == -1) {
+		if (cef_pthread_create(&cefnetd_cefstatus_th, &tattr
+				, &cefnetd_cefstatus_thread, (hdl)) != 0) {
 				cefnetd_handle_destroy (hdl);
 				cef_log_write (CefC_Log_Error
 							, "%s Failed to create the new thread(cefnetd_cefstatus_thread)\n"
 							, __func__);
 			return (NULL);
 		}
+		pthread_attr_getstacksize(&tattr, &stacksize);
+		cef_log_write (CefC_Log_Info, "cefnetd_cefstatus_thread: stacksize=%u bytes.\n", stacksize);
 	}
 
 	/*#####*/
@@ -2185,21 +2198,21 @@ cefnetd_input_app_reg_command (
 	} else if (poh->app_reg_f == CefC_Dev_RegPit) {
 		int cnt;
 		unsigned char tmp_msg[1024];
-		int pit_max, pit_size;
+		int pit_max, pit_num;
 
-		pit_size = cef_lhash_tbl_item_num_get(hdl->pit);
+		pit_num = cef_lhash_tbl_item_num_get(hdl->pit);
 		pit_max = cef_lhash_tbl_def_max_get(hdl->pit);
 
 		if ( pm->InterestType == CefC_PIT_TYPE_Sym ) {
-			pe = cef_pit_entry_lookup (hdl->pit, pm, poh, NULL, 0);
+			pe = cef_pit_entry_lookup_and_down_face_update (hdl->pit, pm, poh, NULL, 0,
+						faceid, tmp_msg, CefC_IntRetrans_Type_SUP, NULL);
 			if (pe) {
-				cef_pit_entry_down_face_update (pe, faceid, pm, poh, tmp_msg, CefC_IntRetrans_Type_SUP);
 				/* Restore the length of the name */
 				pm->name_len -= (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
 			}
 		} else {
 			for (cnt = 0; cnt < poh->dev_reg_pit_num;cnt++) {
-				if (pit_size < pit_max) {
+				if (pit_num < pit_max) {
 					uint32_t chunk_num_wk;
 					uint16_t chunk_len_wk;
 					uint16_t ftvn_chunk;
@@ -2216,15 +2229,15 @@ cefnetd_input_app_reg_command (
 					memcpy (&(pm->name[pm->name_len+idx]), &chunk_num_wk, CefC_S_ChunkNum);
 					pm->name_len += (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
 
-					pe = cef_pit_entry_lookup (hdl->pit, pm, poh, NULL, 0);
+					pe = cef_pit_entry_lookup_and_down_face_update (hdl->pit, pm, poh, NULL, 0,
+								faceid, tmp_msg, CefC_IntRetrans_Type_SUP, NULL);
 					if (pe) {
-						cef_pit_entry_down_face_update (pe, faceid, pm, poh, tmp_msg, CefC_IntRetrans_Type_SUP);
 						/* Restore the length of the name */
 						pm->name_len -= (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
 					} else {
 						break;
 					}
-					pit_size++;
+					pit_num++;
 				} else {
 					cef_log_write (CefC_Log_Warn, "PIT table is full(PIT_SIZE = %d)\n", pit_max);
 					break;
@@ -3345,7 +3358,6 @@ cefnetd_ccr_s_fib_node_chack(
 	char	v4_host[64] = {0};
 
 		if 	( node[0] == '[' ) {	//IPv6
-			{
 			int	diff1;
 			int	diff2;
 			char*	p1;
@@ -3386,7 +3398,6 @@ cefnetd_ccr_s_fib_node_chack(
 			} else {
 				in_port = hdl->port_num;
 			}
-			}
 			rc = inet_pton( AF_INET6, v6_host, &input_v6_addr );
 			if ( rc != 1 ) {
 				/* Error */
@@ -3404,7 +3415,6 @@ cefnetd_ccr_s_fib_node_chack(
 				}
 			}
 		} else {					//IPv4
-			{
 			int	diff1;
 			char*	p1;
 			p1 = strchr( &node[0], ':' );
@@ -3432,7 +3442,6 @@ cefnetd_ccr_s_fib_node_chack(
 					return(-1);
 				}
 				in_port = (uint16_t)atoi( &node[diff1] );
-			}
 			}
 			rc = inet_pton( AF_INET, v4_host, &input_v4_addr );
 			if ( rc != 1 ) {
@@ -4423,12 +4432,12 @@ cefnetd_incoming_interest_process (
 	CefT_CcnMsg_OptHdr poh = { 0 };
 
 	int res;
-	int pit_res;
+	int pit_res = 0;
 	CefT_Pit_Entry* pe = NULL;
 	CefT_Fib_Entry* fe = NULL;
 	uint16_t name_len;
 #ifdef CefC_ContentStore
-	unsigned int dnfaces = 0;
+	unsigned int prev_dnfacenum = 0;
 	int cs_res = -1;
 #endif // CefC_ContentStore
 	CefT_Rx_Elem elem;
@@ -4639,8 +4648,9 @@ SKIP_BW_STAT_CHECK:;
 		return (1);
 	}
 
-	/* Searches a PIT entry matching this Interest 	*/
-	pe = cef_pit_entry_lookup (hdl->pit, &pm, &poh, NULL, 0);
+
+	/* Searches a PIT entry matching this Interest with lock	*/
+	pe = cef_pit_entry_lookup_with_lock (hdl->pit, &pm, &poh, pm.name, pm.name_len, CefC_Pit_WithLOCK);
 
 	if (pe == NULL) {
 		return (-1);
@@ -4648,11 +4658,12 @@ SKIP_BW_STAT_CHECK:;
 
 #ifdef CefC_ContentStore
 	// TODO change process
-	dnfaces = pe->dnfacenum;
+	prev_dnfacenum = pe->dnfacenum;
 #endif // CefC_ContentStore
 
 	/* Updates the information of down face that this Interest arrived 	*/
-	pit_res = cef_pit_entry_down_face_update (pe, peer_faceid, &pm, &poh, msg, hdl->IntrestRetrans);	//0.8.3
+	pit_res = cef_pit_entry_down_face_update (pe, peer_faceid, &pm, &poh, msg, hdl->InterestRetrans);	//0.8.3
+	cef_pit_entry_unlock (pe);
 #ifdef CefC_Debug
 #ifdef __T_VERSION__
 	if (cef_dbg_loglv_finest) {
@@ -4668,7 +4679,7 @@ SKIP_BW_STAT_CHECK:;
 #endif
 
 	//0.8.3 HopLimit==1
-	if (pm.hoplimit == 1) {
+	if (pm.hoplimit == 1 && !cef_face_is_local_face (peer_faceid)) {
 		//Interest Return 0x02:HopLimit Exceeded
 #ifdef	__INTEREST__
 	fprintf (stderr, "\t Interest Return 0x02:HopLimit Exceeded HoldPIT\n" );
@@ -4815,11 +4826,12 @@ SKIP_BW_STAT_CHECK:;
 		}
 
 		/* Checks Reply 	*/
-		if (!pm.org.longlife_f) {
+		if (!pm.org.longlife_f)
+		{
 			if (pit_res != 0) {
 				pit_res = cef_csmgr_rep_f_check (pe, peer_faceid);
 			}
-			if ((pit_res == 0) || (dnfaces == pe->dnfacenum)) {
+			if ((pit_res == 0) || (prev_dnfacenum == pe->dnfacenum)) {
 				forward_interest_f = 1;			//#909
 				goto FORWARD_INTEREST;
 			}
@@ -5287,7 +5299,7 @@ cefnetd_incoming_object_process (
 						face_num++;
 					}
 					if (face_num > 0) {
-						if ( (tmpe->PitType == CefC_PIT_TYPE_Sym)
+						if ( tmpe->PitType == CefC_PIT_TYPE_Sym
 							&& ((tmpe->Last_chunk_num - hdl->SymbolicBack) <= pm.chunk_num) ) {
 							cefnetd_object_forward (hdl, faceids, face_num, msg,
 								payload_len, header_len, &pm, &poh, tmpe);
@@ -5847,6 +5859,7 @@ cefnetd_incoming_ccninforeq_process (
 
 		/* Obtains Face-ID(s) to forward the request 	*/
 		if (fe) {
+			int pit_res = 0;
 
 			/* Obtains the FaceID(s) to forward the request 	*/
 			face_num = cef_fib_forward_faceid_select (fe, peer_faceid, faceids);
@@ -5862,18 +5875,17 @@ cefnetd_incoming_ccninforeq_process (
 				return(-1);
 			}
 
-			pe = cef_pit_entry_lookup (hdl->pit, &pm, &poh, ccninfo_pit, ccninfo_pit_len);
+			/* Updates the information of down face that this request arrived 	*/
+			pe = cef_pit_entry_lookup_and_down_face_update (hdl->pit, &pm, &poh, ccninfo_pit, ccninfo_pit_len,
+						faceid, msg, CefC_IntRetrans_Type_SUP, &pit_res);
 
 			if (pe == NULL) {
 				cef_frame_ccninfo_parsed_free (pci);
 				return (-1);
 			}
 
-			/* Updates the information of down face that this request arrived 	*/
-			res = cef_pit_entry_down_face_update (pe, peer_faceid, &pm, &poh, msg, CefC_IntRetrans_Type_SUP);
-
 			/* Forwards the received Ccninfo Request */
-			if (res != 0) {
+			if (pit_res != 0) {
 				/* ccninfo-05 */
 				if (poh.skip_hop > 0) {
 					/* NOP */
@@ -6663,7 +6675,7 @@ cefnetd_incoming_csmgr_object_process (
 		pe = NULL;
 		if (j == 0) {
 			pe = cef_pit_entry_search_with_chunk (hdl->app_pit, &pm, &poh);	//0.8.3
-			if (pe == NULL)
+			if ( pe == NULL )
 				continue;
 
 		} else {
@@ -7104,10 +7116,10 @@ cefnetd_config_read (
 
 		else if ( strcasecmp (pname, CefC_ParamName_InterestRetrans) == 0 ) {
 			if ( strcasecmp( ws, CefC_Default_InterestRetrans ) == 0 ) {
-				hdl->IntrestRetrans = CefC_IntRetrans_Type_RFC;
+				hdl->InterestRetrans = CefC_IntRetrans_Type_RFC;
 			}
 			else if ( strcasecmp( ws, "SUPPRESSIVE" ) == 0 ) {
-				hdl->IntrestRetrans = CefC_IntRetrans_Type_SUP;
+				hdl->InterestRetrans = CefC_IntRetrans_Type_SUP;
 			}
 			else {
 				cef_log_write (CefC_Log_Error, "INTEREST_RETRANSMISSION must be RFC8569 or SUPPRESSIVE.\n");
@@ -7243,7 +7255,7 @@ cefnetd_config_read (
 				}
 			}
 		}
-#endif	//CefC_INTREST_RETURN
+#endif	//CefC_INTEREST_RETURN
 #ifdef CefC_Debug
 		else if (strcmp (pname, "CEF_DEBUG_LEVEL") == 0) {
 			int log_lv = 0;
@@ -7279,7 +7291,7 @@ cefnetd_config_read (
 	cef_dbg_write (CefC_Dbg_Fine, "FIB_SIZE_APP = %d\n", hdl->app_fib_max_size);
 	cef_dbg_write (CefC_Dbg_Fine, "FORWARDING_STRATEGY = %s\n", hdl->forwarding_strategy);
 	cef_dbg_write (CefC_Dbg_Fine, "INTEREST_RETRANSMISSION = %s\n",
-					(hdl->IntrestRetrans == CefC_IntRetrans_Type_RFC) ? "RFC8569" : "SUPPRESSIVE" );
+					(hdl->InterestRetrans == CefC_IntRetrans_Type_RFC) ? "RFC8569" : "SUPPRESSIVE" );
 	cef_dbg_write (CefC_Dbg_Fine, "SELECTIVE_FORWARDING    = %d\n", hdl->Selective_fwd);
 	cef_dbg_write (CefC_Dbg_Fine, "SYMBOLIC_BACKBUFFER     = %d\n", hdl->SymbolicBack);
 	cef_dbg_write (CefC_Dbg_Fine, "INTEREST_RETURN_CONGESTION_THRESHOLD = %f\n", hdl->IR_Congesion);
@@ -7595,10 +7607,10 @@ cefnetd_pit_cleanup (
 	int rec_index = 0;
 	int end_index;
 	int end_flag = 0;
-	int pit_num = cef_lhash_tbl_item_num_get(hdl->pit);
 	uint32_t elem_num, elem_index, eidx;
 
 	if (nowt > hdl->pit_clean_t) {
+		int pit_num = cef_lhash_tbl_item_num_get(hdl->pit);
 		end_index = hdl->pit_clean_i;
 
 #ifdef	__PIT_CLEAN__
@@ -7630,50 +7642,55 @@ cefnetd_pit_cleanup (
 				pe = (CefT_Pit_Entry*)
 						cef_lhash_tbl_item_get_from_index (hdl->pit, rec_index, eidx);
 
-				if (pe != NULL) {
-					clean_num++;
+				if (!pe || !cef_pit_entry_lock(pe) ){
+					eidx++;
+					continue;
+				}
+
+				clean_num++;
 #ifdef	__PIT_CLEAN__
-	fprintf( stderr, "[%s] cef_pit_clean(), elem_index=%d, eidx=%d\n", __func__, elem_index, eidx );
+fprintf( stderr, "[%s] cef_pit_clean(), elem_index=%d, eidx=%d\n", __func__, elem_index, eidx );
 #endif
-					cef_pit_clean (hdl->pit, pe);
+				cef_pit_clean (hdl->pit, pe);
 
-					/* Indicates that a PIT entry was deleted to Transport  	*/
-					if (hdl->plugin_hdl.tp[pe->tp_variant].pit) {
+				/* Indicates that a PIT entry was deleted to Transport  	*/
+				if (hdl->plugin_hdl.tp[pe->tp_variant].pit) {
 
-						/* Records PIT entries ware deleted  	*/
-						face = &(pe->clean_dnfaces);
-						idx = 0;
+					/* Records PIT entries ware deleted  	*/
+					face = &(pe->clean_dnfaces);
+					idx = 0;
 
-						while (face->next) {
-							face = face->next;
-							sig_delpit.faceids[idx] = face->faceid;
-							idx++;
-						}
-
-						if (idx > 0) {
-
-							sig_delpit.faceid_num = idx;
-							sig_delpit.hashv = pe->hashv;
-
-							(*(hdl->plugin_hdl.tp)[pe->tp_variant].pit)(
-								&(hdl->plugin_hdl.tp[pe->tp_variant]), &sig_delpit);
-						}
+					while (face->next) {
+						face = face->next;
+						sig_delpit.faceids[idx] = face->faceid;
+						idx++;
 					}
 
-					if (pe->dnfacenum < 1) {
+					if (idx > 0) {
+
+						sig_delpit.faceid_num = idx;
+						sig_delpit.hashv = pe->hashv;
+
+						(*(hdl->plugin_hdl.tp)[pe->tp_variant].pit)(
+							&(hdl->plugin_hdl.tp[pe->tp_variant]), &sig_delpit);
+					}
+				}
+
+//				if (pe->dnfacenum < 1) {
+				if (pe->drp_lifetime_us < nowt) {	// 2023/04/05 by iD
 #ifdef	__PIT_CLEAN__
-	fprintf( stderr, "[%s] cef_pit_entry_free()\n", __func__ );
+fprintf( stderr, "[%s] cef_pit_entry_free()\n", __func__ );
 #endif
 
-						cef_pit_entry_free (hdl->pit, pe);
+					cef_pit_entry_free (hdl->pit, pe);
 
-					} else {
-						eidx++;
-					}
+				} else {
+					cef_pit_entry_unlock(pe);
+					eidx++;
 				}
 			}
 		}
-		hdl->pit_clean_t = nowt + 1000000;
+		hdl->pit_clean_t = nowt + CefC_Pit_CleaningTime;
 	}
 
 	return;
@@ -7973,7 +7990,7 @@ cefnetd_cefcache_object_process (
 		pe = NULL;
 		if (j == 0) {
 			pe = cef_pit_entry_search_with_chunk (hdl->app_pit, &pm, &poh);	//0.8.3
-			if (pe == NULL)
+			if ( pe == NULL )
 				continue;
 
 		} else {
@@ -8516,7 +8533,7 @@ cefnetd_incoming_selective_interest_process (
 	uint16_t org_name_len;
 	uint16_t trg_name_len;
 	unsigned char 	org_name[CefC_Max_Length];
-	int pit_res;
+	int pit_res = 0;
 	int pit_res_first;
 
 #if defined(CSMFILE)
@@ -8600,7 +8617,9 @@ SELECT_OK:;
 		pm->chunk_num 	= (uint32_t)first_chunk;
 
 		/* Searches a PIT entry matching this Interest 	*/
-		pe = cef_pit_entry_lookup (hdl->pit, pm, poh, NULL, 0);
+		/* Updates the information of down face that this Interest arrived 	*/
+		pe = cef_pit_entry_lookup_and_down_face_update (hdl->pit, pm, poh,  NULL, 0,
+					faceid, msg, hdl->InterestRetrans, &pit_res);
 		if (pe == NULL) {
 #ifdef	__SELECTIVE__
 	fprintf( stderr, "[%s] CKP-020\n", __func__ );
@@ -8611,8 +8630,6 @@ SELECT_OK:;
 #ifdef	__SELECTIVE__
 	fprintf( stderr, "[%s] CKP-011\n", __func__ );
 #endif
-		/* Updates the information of down face that this Interest arrived 	*/
-		pit_res = cef_pit_entry_down_face_update (pe, peer_faceid, pm, poh, msg, hdl->IntrestRetrans);
 #ifdef	__SELECTIVE__
 	fprintf( stderr, "[%s] CKP-012\n", __func__ );
 #endif
@@ -9049,12 +9066,6 @@ cefnetd_fwd_plugin_load (
 		return (-1);
 	}
 
-	if (hdl->fwd_strtgy_hdl->fwd_cefpingreq == NULL) {
-		cef_log_write (CefC_Log_Error, "Forwarding Strategy Plugin function(fwd_cefpingreq) is not set.\n");
-		dlclose (hdl->fwd_strtgy_lib);
-		return (-1);
-	}
-
 	return( 0 );
 }
 
@@ -9332,7 +9343,6 @@ cefnetd_route_msg_check (
 		host[host_len] = 0x00;
 
 		if 	( host[0] == '[' ) {	//IPv6
-			{
 			int	diff1;
 			int	diff2;
 			char*	p1;
@@ -9373,8 +9383,7 @@ cefnetd_route_msg_check (
 			} else {
 				in_port = hdl->port_num;
 			}
-			
-			}
+
 			rc = inet_pton( AF_INET6, v6_host, &input_v6_addr );
 			if ( rc != 1 ) {
 				/* Error */
@@ -9392,7 +9401,6 @@ cefnetd_route_msg_check (
 				}
 			}
 		} else {					//IPv4
-			{
 			int	diff1;
 			char*	p1;
 			p1 = strchr( &host[0], ':' );
@@ -9421,7 +9429,6 @@ cefnetd_route_msg_check (
 				}
 				in_port = (uint16_t)port_l;
 			}
-			}
 			rc = inet_pton( AF_INET, v4_host, &input_v4_addr );
 			if ( rc != 1 ) {
 				/* Error */
@@ -9445,5 +9452,41 @@ cefnetd_route_msg_check (
 
 	return (0);
 
+}
+
+static int
+cef_pthread_create (
+	pthread_t* thread,
+	pthread_attr_t* attr,
+	void* (*start_routine) (void*),
+	void* arg
+) {
+	int		rc = -1;
+	size_t	s1 = CefC_Pthread_StackSize;
+
+	if (thread == NULL || attr == NULL || start_routine == NULL) {
+		cef_log_write (CefC_Log_Error, "parameter is NULL");
+		return rc;
+	}
+
+	rc = pthread_attr_init(attr);
+	if (rc != 0) {
+		cef_log_write (CefC_Log_Error, "error in pthread_attr_init");
+		return rc;
+	}
+
+	rc = pthread_attr_setstacksize(attr, s1);
+	if (rc != 0) {
+		cef_log_write (CefC_Log_Error, "error in pthread_attr_setstacksize\n");
+		return rc;
+	}
+
+	rc = pthread_create (thread, attr, start_routine, arg);
+	if (rc != 0) {
+		cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
+		return rc;
+	}
+
+	return rc;
 }
 

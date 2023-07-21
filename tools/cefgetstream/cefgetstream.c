@@ -708,10 +708,19 @@ post_process (
 	double thrpt = 0.0;
 	uint64_t recv_bits;
 	uint64_t jitter_ave;
+	struct timeval diff_tval;
+	int	invalid_end = 0;
 	
 	if (stat_recv_frames) {
-		diff_t = ((end_t.tv_sec - start_t.tv_sec) * 1000000llu
-								+ (end_t.tv_usec - start_t.tv_usec));
+		if ( timercmp( &start_t, &end_t, < ) == 0 ) {
+			// Invalid end time
+			fprintf (stdout, "[cefgetstream] Invalid end time. No time statistics reported.\n");
+			diff_t = 0;
+			invalid_end = 1;
+		} else {
+			timersub( &end_t, &start_t, &diff_tval );
+			diff_t = diff_tval.tv_sec * 1000000llu + diff_tval.tv_usec;
+		}
 	} else {
 		diff_t = 0;
 	}
@@ -732,7 +741,7 @@ post_process (
 	} else {
 		fprintf (stderr, "[cefgetstream] Duration  = 0.000 sec\n");
 	}
-	if (stat_recv_frames > 0) {
+	if ((stat_recv_frames > 0) && (invalid_end == 0)) {
 		jitter_ave = stat_jitter_sum / stat_recv_frames;
 
 		fprintf (stderr, "[cefgetstream] Jitter (Ave) = "FMTU64" us\n", jitter_ave);

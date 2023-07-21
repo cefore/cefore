@@ -70,6 +70,10 @@ cefnetd_CFLAGS=$(CEF_NETD_CFLAGS)
 cefnetd_SOURCES=cef_main.c cef_node.c cef_sched.c cef_netd.c cef_status.c cef_netd.h cef_status.h
 
 
+# check conpub
+if CONPUB_ENABLE
+CEF_NETD_CFLAGS+=-DCefC_Conpub
+endif # CONPUB_ENABLE
 
 # set cefctrl option
 cefctrl_LDFLAGS=-L$(top_srcdir)/src/lib/

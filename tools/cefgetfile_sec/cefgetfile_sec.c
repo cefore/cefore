@@ -93,6 +93,8 @@ static int app_running_f = 0;
 static uint64_t stat_recv_frames = 0;
 static uint64_t man_stat_recv_frames = 0;
 static uint64_t stat_recv_bytes = 0;
+static uint64_t stat_all_recv_frames = 0;	//20230522
+static uint64_t stat_all_recv_bytes = 0;	//20230522
 static uint64_t stat_jitter_sum = 0;
 static uint64_t stat_jitter_sq_sum = 0;
 static uint64_t stat_jitter_max = 0;
@@ -249,9 +251,6 @@ int main (
 			}
 			work_arg = argv[i + 1];
 			pipeline = atoi (work_arg);
-//			if ((pipeline < 1) || (pipeline > CefC_Max_PileLine)) {
-//				pipeline = 1;
-//			}
 			if ( pipeline < 1 ) {
 				pipeline = CefC_Def_PipeLine;
 			} else if ( pipeline > CefC_Max_PipeLine ) {
@@ -615,7 +614,7 @@ printf( "man_rec_num:%d   man_content_total_chunk:%u\n", man_rec_num, man_conten
 #ifdef __DEB_GET__
 printf( "Manifest man_stat_recv_frames:%ld   man_end_chunk_num+1:%ld\n", man_stat_recv_frames, man_end_chunk_num );
 #endif
-								fprintf (stdout, "[cefgetfile_sec] Manifest Complete\n");
+								fprintf (stdout, "[cefgetfile_sec] Manifest Completed to get all the chunks.\n");
 								app_running_f = 0;
 								goto MAN_IR_RCV;
 							}
@@ -668,13 +667,8 @@ printf( "Manifest man_stat_recv_frames:%ld   man_end_chunk_num+1:%ld\n", man_sta
 							break;
 						}
 					}
-					if (i != pipeline) {
-						fprintf (stdout, "[cefgetfile_sec] Manifest Incomplete\n");
-						man_fail_f = -1;
-						break;
-					} else {
-						fprintf (stdout, "[cefgetfile_sec] Manifest Complete\n");
-					}
+					fprintf (stdout, "[cefgetfile_sec] Manifest Suspended to retrieve the content because the number of Interest retransmission has reached its limit, 5.\n");
+					man_fail_f = -1;
 					break;
 				}
 				
@@ -993,6 +987,12 @@ printf( "arxwnd_head->seq:%ld  rxwnd_tail->seq:%ld\n", rxwnd_head->seq, rxwnd_ta
 printf( "app_frame.end_chunk_num:%ld  end_chunk_num+1:%ld\n", app_frame.end_chunk_num, end_chunk_num );
 #endif
 					}
+					stat_all_recv_frames++;								//20230522
+					stat_all_recv_bytes += app_frame.name_len			//20230522
+										 + app_frame.ver_len			//20230522
+										 + app_frame.hdr_org_len		//20230522
+										 + app_frame.msg_org_len		//20230522
+										 + app_frame.payload_len;		//20230522
 
 					/* Inserts the received frame to the buffer 	*/
 					if ((app_frame.chunk_num < rxwnd_head->seq) || 
@@ -1035,7 +1035,7 @@ printf( "app_frame.end_chunk_num:%ld  end_chunk_num+1:%ld\n", app_frame.end_chun
 #ifdef __DEV_COBH__
 printf( "Content stat_recv_frames:%ld   end_chunk_num+1:%ld\n", stat_recv_frames, end_chunk_num );
 #endif
-							fprintf (stdout, "[cefgetfile_sec] Complete\n");
+							fprintf (stdout, "[cefgetfile_sec] Completed to get all the chunks.\n");
 							app_running_f = 0;
 							goto IR_RCV;
 						}
@@ -1146,17 +1146,8 @@ printf( "CKP-105 man_rec.chunk:%u   man_buff_idx:%d   man_rec_ctr:%d\n", man_rec
 						break;
 					}
 				}
-				if (i != pipeline) {
-					fprintf (stdout, "[cefgetfile_sec] Incomplete\n");
-					rcv_ng_f = 1;
-				} else {
-					if (stat_recv_frames) {
-						fprintf (stdout, "[cefgetfile_sec] Complete\n");
-					} else {
-						fprintf (stdout, "[cefgetfile_sec] Incomplete\n");
-						rcv_ng_f = 1;
-					}
-				}
+				fprintf (stdout, "[cefgetfile_sec] Suspended to retrieve the content because the number of Interest retransmission has reached its limit, 5.\n");
+				rcv_ng_f = 1;
 				break;
 			}
 				
@@ -1241,12 +1232,23 @@ post_process (
 	uint64_t diff_t;
 	double diff_t_dbl = 0.0;
 	double thrpt = 0.0;
+	double goodpt = 0.0;	//20230522
 	uint64_t recv_bits;
+	uint64_t all_recv_bits;	//20230522
 	uint64_t jitter_ave;
+	struct timeval diff_tval;
+	int	invalid_end = 0;
 	
 	if (stat_recv_frames) {
-		diff_t = (end_t.tv_sec - start_t.tv_sec) * 1000000llu
-								+ (end_t.tv_usec - start_t.tv_usec);
+		if ( timercmp( &start_t, &end_t, < ) == 0 ) {
+			// Invalid end time
+			fprintf (stdout, "[cefgetfile_sec] Invalid end time. No time statistics reported.\n");
+			diff_t = 0;
+			invalid_end = 1;
+		} else {
+			timersub( &end_t, &start_t, &diff_tval );
+			diff_t = diff_tval.tv_sec * 1000000llu + diff_tval.tv_usec;
+		}
 	} else {
 		diff_t = 0;
 	}
@@ -1256,27 +1258,32 @@ post_process (
 	fprintf (stdout, "OK\n");
 	
 	fprintf (stdout, "[cefgetfile_sec] Terminate\n");
-	fprintf (stdout, "[cefgetfile_sec] Rx Frames = "FMTU64"\n", stat_recv_frames);
+	fprintf (stdout, "[cefgetfile_sec] Rx Frames (All)           = "FMTU64"\n", stat_all_recv_frames);			//20230522
+	fprintf (stdout, "[cefgetfile_sec] Rx Frames (ContentObject) = "FMTU64"\n", stat_recv_frames);				//20230522
 	if (rcv_ng_f) {
 		fprintf (stdout, "[cefgetfile_sec] Received frame ... NG\n");
 		fprintf (stdout, "[cefgetfile_sec] Could not receive anything\n");
 	} else {
-		fprintf (stdout, "[cefgetfile_sec] Rx Bytes  = "FMTU64"\n", stat_recv_bytes);
+		fprintf (stdout, "[cefgetfile_sec] Rx Bytes (All)           = "FMTU64"\n", stat_all_recv_bytes);		//20230522
+		fprintf (stdout, "[cefgetfile_sec] Rx Bytes (ContentObject) = "FMTU64"\n", stat_recv_bytes);			//20230522
 		if (diff_t > 0) {
 			diff_t_dbl = (double)diff_t / 1000000.0;
-			fprintf (stdout, "[cefgetfile_sec] Duration  = %.3f sec\n", diff_t_dbl + 0.0009);
+			fprintf (stdout, "[cefgetfile_sec] Duration                 = %.3f sec\n", diff_t_dbl + 0.0009);
 			recv_bits = stat_recv_bytes * 8;
-			thrpt = (double)(recv_bits) / diff_t_dbl;
-			fprintf (stdout, "[cefgetfile_sec] Throughput = "FMTU64" bps\n", (uint64_t)thrpt);
+			all_recv_bits = stat_all_recv_bytes * 8;															//20230522
+			thrpt = (double)(all_recv_bits) / diff_t_dbl;														//20230522
+			goodpt = (double)(recv_bits) / diff_t_dbl;															//20230522
+			fprintf (stdout, "[cefgetfile_sec] Throughput               = "FMTU64" bps\n", (uint64_t)thrpt);	//20230522
+			fprintf (stdout, "[cefgetfile_sec] Goodput                  = "FMTU64" bps\n", (uint64_t)goodpt);	//20230522
 		} else {
-			fprintf (stdout, "[cefgetfile_sec] Duration  = 0.000 sec\n");
+//			fprintf (stdout, "[cefgetfile_sec] Duration                 = 0.000 sec\n");
 		}
-		if (stat_recv_frames > 0) {
+		if ((stat_recv_frames > 0) && (invalid_end == 0)) {
 			jitter_ave = stat_jitter_sum / stat_recv_frames;
 	
-			fprintf (stdout, "[cefgetfile_sec] Jitter (Ave) = "FMTU64" us\n", jitter_ave);
-			fprintf (stdout, "[cefgetfile_sec] Jitter (Max) = "FMTU64" us\n", stat_jitter_max);
-			fprintf (stdout, "[cefgetfile_sec] Jitter (Var) = "FMTU64" us\n"
+			fprintf (stdout, "[cefgetfile_sec] Jitter (Ave)             = "FMTU64" us\n", jitter_ave);
+			fprintf (stdout, "[cefgetfile_sec] Jitter (Max)             = "FMTU64" us\n", stat_jitter_max);
+			fprintf (stdout, "[cefgetfile_sec] Jitter (Var)             = "FMTU64" us\n"
 				, (stat_jitter_sq_sum / stat_recv_frames) - (jitter_ave * jitter_ave));
 		}
 	}

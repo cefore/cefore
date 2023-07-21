@@ -80,6 +80,7 @@
 #define CefC_Cpub_Reserved_Disk_Mega 			 1000
 
 #define CefC_Cpub_InconsistentVersion			-1000
+#define CefC_Pthread_StackSize					(8*1024*1024)	/* Ubuntu-default:8MB */
 
 
 /****************************************************************************************
@@ -560,6 +561,14 @@ conpubd_dbg_convert_name_to_str_put_workstr (
 );
 #endif //CefC_Debug
 
+static int
+cef_pthread_create (
+	pthread_t* thread,
+	pthread_attr_t* attr,
+	void* (*start_routine) (void*),
+	void* arg
+);
+
 /****************************************************************************************
  ****************************************************************************************/
 /*--------------------------------------------------------------------------------------
@@ -575,7 +584,7 @@ main (
 	int i;
 	int dir_path_f 		= 0;
 	int rtc;
-	uint64_t free_mem_mega;
+	uint64_t free_mem_mega = 0;
 
 	char*	work_arg;
 	char file_path[PATH_MAX] = {0};
@@ -652,6 +661,7 @@ main (
 		return (-1);
 	}
 	/* Get free memory size */
+	free_mem_mega = 0;
 	conpubd_free_memsize_get (&free_mem_mega);
 	if (strcmp(hdl->cache_type, CefC_Cnpb_memory_Cache_Type) == 0
 		  &&
@@ -716,10 +726,14 @@ main (
 		}
 #endif
 		pthread_t th;
-		if (pthread_create (&th, NULL, conpubd_content_load_thread, hdl) == -1) {
+		pthread_attr_t tattr;
+		size_t  stacksize;
+		if (cef_pthread_create (&th, &tattr, conpubd_content_load_thread, hdl) != 0) {
 			cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 			return(-1);
 		}
+		pthread_attr_getstacksize(&tattr, &stacksize);
+		cef_log_write (CefC_Log_Info, "conpubd_content_load_thread: stacksize=%u bytes.\n", stacksize);
 	}
 
 	/* start main process */
@@ -2170,8 +2184,8 @@ void
 conpubd_tcp_connect_accept (
 	CefT_Conpubd_Handle* hdl				/* conpub daemon handle						*/
 ) {
-	struct sockaddr_storage* sa;
-	socklen_t len = sizeof (struct sockaddr_storage);
+	struct sockaddr_storage  sa;
+	socklen_t sa_len = sizeof (struct sockaddr_storage);
 	int cs;
 	int flag;
 	char ip_str[NI_MAXHOST];
@@ -2181,11 +2195,9 @@ conpubd_tcp_connect_accept (
 	int err;
 
 	/* Accepts the TCP SYN 		*/
-	sa = (struct sockaddr_storage*) malloc (sizeof (struct sockaddr_storage));
-	memset (sa, 0, sizeof (struct sockaddr_storage));
-	cs = accept (hdl->tcp_listen_fd, (struct sockaddr*) sa, &len);
+	memset (&sa, 0, sizeof (struct sockaddr_storage));
+	cs = accept (hdl->tcp_listen_fd, (struct sockaddr*) &sa, &sa_len);
 	if (cs < 0) {
-		free (sa);
 		return;
 	}
 
@@ -2200,7 +2212,7 @@ conpubd_tcp_connect_accept (
 			"Failed to create new tcp connection : %s\n", strerror (errno));
 		goto POST_ACCEPT;
 	}
-	if ((err = getnameinfo ((struct sockaddr*) sa, len, ip_str, sizeof (ip_str),
+	if ((err = getnameinfo ((struct sockaddr*) &sa, sa_len, ip_str, sizeof (ip_str),
 			port_str, sizeof (port_str), NI_NUMERICHOST | NI_NUMERICSERV)) != 0) {
 		cef_log_write (CefC_Log_Warn,
 			"Failed to create new tcp connection : %s\n", gai_strerror (err));
@@ -2254,9 +2266,6 @@ conpubd_tcp_connect_accept (
 
 POST_ACCEPT:
 	close (cs);
-	if (sa) {
-		free (sa);
-	}
 	return;
 }
 
@@ -2916,15 +2925,19 @@ conpubd_incoming_cnpbrload_msg (
 #endif // CefC_Debug
 	/* Send response */
 	cef_csmgr_send_msg (sock, ret_buff, index);
+	free (ret_buff);
 
 	if ( conpubd_cntent_load_stat == 0) {
 		pthread_t th;
-		if (pthread_create (&th, NULL, conpubd_content_load_thread, hdl) == -1) {
+		pthread_attr_t tattr;
+		size_t  stacksize;
+		if (cef_pthread_create (&th, &tattr, conpubd_content_load_thread, hdl) != 0) {
 			cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 			return;
 		}
+		pthread_attr_getstacksize(&tattr, &stacksize);
+		cef_log_write (CefC_Log_Info, "conpubd_content_load_thread: stacksize=%u bytes.\n", stacksize);
 	}
-	free (ret_buff);
 
 	return;
 }
@@ -4285,7 +4298,7 @@ conpubd_free_memsize_get (
 	char* meminfo = "/proc/meminfo";
 	int val;
 	if ((fp = fopen (meminfo, "r")) == NULL) {
-		cef_log_write (CefC_Log_Critical, "%s(%d): Could not open %s to get memory information.\n", __FUNCTION__, meminfo);
+		cef_log_write (CefC_Log_Critical, "%s(%d): Could not open %s to get memory information.\n", __FUNCTION__, __LINE__, meminfo);
 		return (-1);
 	}
 	while (fgets (buf, sizeof (buf), fp) != NULL) {
@@ -4296,26 +4309,55 @@ conpubd_free_memsize_get (
 	}
 	if (free_mem_mega == 0) {
 		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n",
-						__FUNCTION__, key_free);
+						__FUNCTION__, __LINE__, key_free);
 		return (-1);
 	}
 	fclose (fp);
 #else // CefC_MACOS
 	/************************************************************************************/
 	/* ["top -l 1 | grep PhysMem:" format]												*/
-	/*		PhysMem: 7080M used (1078M wired), 1109M unused.							*/
+	/*		PhysMem: 7080M used (1078M wired), 1109M unused.	or						*/
+	/*		PhysMem: 8028M used (1167M wired, 142M compressor), 7632M unused.			*/
 	/************************************************************************************/
 	char buf[1024];
 	char* cmd = "top -l 1 | grep PhysMem:";
 	char* tag = "PhysMem:";
-	int	 used = 0, unused = 0;
+	int	 used = -1, unused = -1;
 	if ((fp = popen (cmd, "r")) != NULL) {
 		while (fgets (buf, sizeof (buf), fp) != NULL) {
 			if (strstr (buf, tag) != NULL) {
-				char* pos = strchr (buf, ' ');
-				sscanf (pos, "%d", &used);
-				pos = strchr (pos, ',');
-				sscanf (pos+1, "%d", &unused);
+				char* token = NULL;
+				char* token1 = NULL;
+				char* saveptr = NULL;
+				char unit;
+				token = strtok_r (buf, " ", &saveptr);
+				while (token) {
+					token = strtok_r (NULL, " ", &saveptr);
+					if (token == NULL) {
+						break;
+					}
+					token1 = token;
+					token = strtok_r (NULL, " ", &saveptr);
+					if (token == NULL) {
+						break;
+					}
+
+					if (strcmp (token, "used") == 0) {
+						sscanf (token1, "%d%c", &used, &unit);
+						if (unit == 'G') {
+							used *= 1024;
+						} else if (unit != 'M') {
+							used = 0;
+						}
+					} else if (strncmp (token, "unused.", strlen("unused.")) == 0) {
+						sscanf (token1, "%d%c", &unused, &unit);
+						if (unit == 'G') {
+							unused *= 1024;
+						} else if (unit != 'M') {
+							unused = 0;
+						}
+					}
+				}
 			}
 		}
 		pclose (fp);
@@ -4323,9 +4365,9 @@ conpubd_free_memsize_get (
 		cef_log_write (CefC_Log_Critical, "%s(%d): Could not get memory information.\n", __FUNCTION__, __LINE__);
 		return (-1);
 	}
-	if (unused == 0 || used == 0) {
+	if (unused == -1 || used == -1) {
 		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n",
-					__FUNCTION__, tag);
+					__FUNCTION__, __LINE__, tag);
 		return (-1);
 	}
 	*free_mem_mega = unused;
@@ -4660,10 +4702,6 @@ conpubd_cnthdl_save (
 }
 #endif
 
-
-
-
-
 #ifdef CefC_Debug
 static void
 conpubd_dbg_convert_name_to_str_put_workstr (
@@ -4686,3 +4724,40 @@ conpubd_dbg_convert_name_to_str_put_workstr (
 	return;
 }
 #endif //CefC_Debug
+
+static int
+cef_pthread_create (
+	pthread_t* thread,
+	pthread_attr_t* attr,
+	void* (*start_routine) (void*),
+	void* arg
+) {
+	int		rc = -1;
+	size_t	s1 = CefC_Pthread_StackSize;
+
+	if (thread == NULL || attr == NULL || start_routine == NULL) {
+		cef_log_write (CefC_Log_Error, "parameter is NULL");
+		return rc;
+	}
+
+	rc = pthread_attr_init(attr);
+	if (rc != 0) {
+		cef_log_write (CefC_Log_Error, "error in pthread_attr_init");
+		return rc;
+	}
+
+	rc = pthread_attr_setstacksize(attr, s1);
+	if (rc != 0) {
+		cef_log_write (CefC_Log_Error, "error in pthread_attr_setstacksize\n");
+		return rc;
+	}
+
+	rc = pthread_create (thread, attr, start_routine, arg);
+	if (rc != 0) {
+		cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
+		return rc;
+	}
+
+	return rc;
+}
+
