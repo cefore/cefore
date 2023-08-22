@@ -712,14 +712,19 @@ post_process (
 	int	invalid_end = 0;
 	
 	if (stat_recv_frames) {
-		if ( timercmp( &start_t, &end_t, < ) == 0 ) {
-			// Invalid end time
-			fprintf (stdout, "[cefgetstream] Invalid end time. No time statistics reported.\n");
-			diff_t = 0;
-			invalid_end = 1;
+		if ( !timercmp( &start_t, &end_t, != ) == 0 ) {
+			if ( timercmp( &start_t, &end_t, < ) == 0 ) {
+				// Invalid end time
+				fprintf (stdout, "[cefgetstream] Invalid end time. No time statistics reported.\n");
+				diff_t = 0;
+				invalid_end = 1;
+			} else {
+				timersub( &end_t, &start_t, &diff_tval );
+				diff_t = diff_tval.tv_sec * 1000000llu + diff_tval.tv_usec;
+			}
 		} else {
-			timersub( &end_t, &start_t, &diff_tval );
-			diff_t = diff_tval.tv_sec * 1000000llu + diff_tval.tv_usec;
+			//Same Time
+			diff_t = 0;
 		}
 	} else {
 		diff_t = 0;

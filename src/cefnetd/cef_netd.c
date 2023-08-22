@@ -64,6 +64,10 @@
 #include <ctype.h>
 #endif //DEB_CCNINFO
 
+#ifndef CefC_Debug
+#define cef_dbg_write(...)
+#endif // CefC_Debug
+
 //#define	_DEBUG_BABEL_
 //#define __T_VERSION__
 
@@ -4761,6 +4765,7 @@ SKIP_BW_STAT_CHECK:;
 		elem.hashv 				= contents_hashv;
 		elem.in_faceid 			= (uint16_t) peer_faceid;
 		elem.parsed_msg 		= &pm;
+		elem.parsed_oph 		= &poh;
 		memcpy (&(elem.msg[0]), msg, payload_len + header_len);
 		elem.msg_len 			= payload_len + header_len;
 		elem.out_faceid_num 	= face_num;
@@ -4797,6 +4802,7 @@ SKIP_BW_STAT_CHECK:;
 				elem.out_faceids[i] = faceids[i];
 			}
 
+			elem.parsed_oph 		= &poh;
 			memcpy (elem.ophdr, poh.org.tp_val, poh.org.tp_len);
 			elem.ophdr_len = poh.org.tp_len;
 
@@ -4987,8 +4993,6 @@ cefnetd_incoming_object_process (
 	CefT_CcnMsg_MsgBdy pm = { 0 };
 	CefT_CcnMsg_OptHdr poh = { 0 };
 	CefT_Pit_Entry* pe = NULL;
-	int loop_max = 2;						/* For App(0), Trans(1)						*/
-	int pit_idx = 0;
 	int res;
 	uint16_t faceids[CefC_Fib_UpFace_Max];
 	uint16_t face_num = 0;
@@ -5076,42 +5080,44 @@ cefnetd_incoming_object_process (
 
 	/* Searches a PIT entry matching this Object 	*/
 
-	/* Initialize the loop counter */
-	pit_idx = 0;
-
-	for (; pit_idx < loop_max; pit_idx++) {
-		if (pit_idx == 0) {
-			pe = cef_pit_entry_search_with_chunk (hdl->app_pit, &pm, &poh);
-			if ( pe == NULL )
-				continue;
-		} else {
-			pe = cef_pit_entry_search_with_chunk (hdl->pit, &pm, &poh);
-			/*JK*///20210824 Cob without chunk number
-			if ( pm.chunk_num_f == 0 && pe ) {	//Cob without chunk number
-				if ( pe->PitType == CefC_PIT_TYPE_Rgl ) {	//PIT_Type is Reg
-					//NOP
-				} else {	// PIT_Type not Reg(Sym)
-					// Unmatch
-					return (-1);
+	/**** 1st. app_pit ****/
+	pe = cef_pit_entry_search_with_chunk (hdl->app_pit, &pm, &poh);
+	if ( pe == NULL ){
+		/**** 2nd. reguler pit ****/
+		pe = cef_pit_entry_search_with_chunk (hdl->pit, &pm, &poh);
+		if ( pe == NULL ){
+			/**** 3rd. symbolic pit ****/
+			pe = cef_pit_entry_search_without_chunk (hdl->pit, &pm, &poh);
+			if ( pe && pm.chunk_num_f ){
+				if ( pm.chunk_num < (pe->Last_chunk_num - hdl->SymbolicBack) ) {
+					cef_dbg_write (CefC_Dbg_Fine, "SymbolicBack drop, chunk_num=%u\n", pm.chunk_num);
+					pe = NULL;		// stat_nopit_frames++
+				} else if ( pe->Last_chunk_num < pm.chunk_num ) {
+					pe->Last_chunk_num = pm.chunk_num;
 				}
 			}
 		}
+	}
 
-		if (pe == NULL) {
-			stat_nopit_frames++;
+	/* COB without chunk number matches only Reg-PIT */
+	if ( pm.chunk_num_f == 0 
+			&& pe != NULL && pe->PitType != CefC_PIT_TYPE_Rgl ){
+		cef_dbg_write (CefC_Dbg_Fine, "PitType Unmatch\n");
+		pe = NULL;		// stat_nopit_frames++
+	}
 
-		} else {
+	if ( pe ) {
 #if defined (CefC_Debug) && defined (CefC_Conpub)
 #ifdef __T_VERSION__
-			if (cef_dbg_loglv_finest) {
-				fprintf(stderr, "*** Received Object ");
-				if (pm.org.version_f == 1 && pm.org.version_len == 0) {
-					fprintf(stderr,"> VerReq(resp)\n");
-				} else {
-					fprintf (stderr, "> %d, ver=%s(%d)\n", pm.org.version_f, pm.org.version_val, pm.org.version_len);
-				}
-				cef_pit_entry_print (hdl->pit);
+		if (cef_dbg_loglv_finest) {
+			fprintf(stderr, "*** Received Object ");
+			if (pm.org.version_f == 1 && pm.org.version_len == 0) {
+				fprintf(stderr,"> VerReq(resp)\n");
+			} else {
+				fprintf (stderr, "> %d, ver=%s(%d)\n", pm.org.version_f, pm.org.version_val, pm.org.version_len);
 			}
+			cef_pit_entry_print (hdl->pit);
+		}
 #endif //__T_VERSION__
 #endif
 			//0.8.3
@@ -5128,9 +5134,10 @@ cefnetd_incoming_object_process (
 				SHA256_Update (&ctx, &msg[CobHash_index], CobHash_len);
 				SHA256_Final (hash, &ctx);
 #ifdef	__RESTRICT__
+#define	CefC_BufSiz_1KB	1024
 {
-	int hidx;
-	char	hash_dbg[1024];
+	int		hidx;
+	char	hash_dbg[CefC_BufSiz_1KB];
 
 	printf ( "%s\n", __func__ );
 	sprintf (hash_dbg, "PIT CobHash [");
@@ -5149,54 +5156,92 @@ cefnetd_incoming_object_process (
 }
 #endif
 
-				if ( memcmp(pe->COBHR_selector, hash, 32) == 0 ) {
-					/* OK */
-				} else {
-					/* NG */
-					return (-1);
-				}
-			}
-			if ( pe->KIDR_len > 0 ) {
-				/* KeyIdRest */
-				int keyid_len;
-				unsigned char keyid_buff[32];
-				keyid_len = cefnetd_keyid_get( msg, pkt_len, keyid_buff );
-				if ( (keyid_len == 32) && (memcmp(pe->KIDR_selector, keyid_buff, 32) == 0) ) {
-					/* OK */
-				} else {
-					/* NG */
-					return (-1);
-				}
-			}
-
-			face = &(pe->dnfaces);
-
-			while (face->next) {
-				face = face->next;
-				faceids[face_num] = face->faceid;
-				face_num++;
-			}
-		}
-
-		// cefore-0.10.0
-		{	CefT_Pit_Entry* tmpe = cef_pit_entry_search_without_chunk (hdl->pit, &pm, &poh);
-			if ( tmpe ){
-				contents_hashv = tmpe->hashv;	/* Hash value of this contents */
+			if ( memcmp(pe->COBHR_selector, hash, 32) == 0 ) {
+				/* OK */
 			} else {
-				contents_hashv = 0;				/* Hash value of this contents */
+				/* NG */
+				cef_dbg_write (CefC_Dbg_Fine, "COBHR_selector NG\n");
+				return (-1);
 			}
 		}
-		// cefore-0.10.0
+		if ( pe->KIDR_len > 0 ) {
+			/* KeyIdRest */
+			int keyid_len;
+			unsigned char keyid_buff[32];
+			keyid_len = cefnetd_keyid_get( msg, pkt_len, keyid_buff );
+			if ( (keyid_len == 32) && (memcmp(pe->KIDR_selector, keyid_buff, 32) == 0) ) {
+				/* OK */
+			} else {
+				/* NG */
+				cef_dbg_write (CefC_Dbg_Fine, "KIDR_selector NG\n");
+				return (-1);
+			}
+		}
+
+		face = &(pe->dnfaces);
+
+		for (face_num = 0; face->next; face_num++) {
+			face = face->next;
+			faceids[face_num] = face->faceid;
+		}
+	} else {
+		stat_nopit_frames++;
+#ifdef CefC_Debug
+{		char uri[CefC_Max_Length];
+		cef_frame_conversion_name_to_uri (pm.name, pm.name_len, uri);
+		cef_dbg_write (CefC_Dbg_Finer, "NOPIT:stat_nopit_frames=%u, %s\n", stat_nopit_frames, uri);
+}
+#endif // CefC_Debug
+	}
+
+	// cefore-0.10.0
+	{	CefT_Pit_Entry* tmpe = cef_pit_entry_search_without_chunk (hdl->pit, &pm, &poh);
+		if ( tmpe ){
+			contents_hashv = tmpe->hashv;	/* Hash value of this contents */
+		} else {
+			contents_hashv = 0;				/* Hash value of this contents */
+		}
+	}
+	// cefore-0.10.0
 
 #ifdef CefC_Mobility
-		/*--------------------------------------------------------------------
-			Mobility Plugin
-		----------------------------------------------------------------------*/
-		if ((hdl->plugin_hdl.mb)->cob) {
+	/*--------------------------------------------------------------------
+		Mobility Plugin
+	----------------------------------------------------------------------*/
+	if ((hdl->plugin_hdl.mb)->cob) {
+
+		/* Creates CefT_Rx_Elem 		*/
+		pm.seqnum = poh.seqnum;
+		memset (&elem, 0, sizeof (CefT_Rx_Elem));
+		elem.type 				= CefC_Elem_Type_Object;
+		elem.hashv 				= contents_hashv;
+		elem.in_faceid 			= (uint16_t) peer_faceid;
+		elem.parsed_msg 		= &pm;
+		elem.parsed_oph 		= &poh;
+		memcpy (&(elem.msg[0]), msg, payload_len + header_len);
+		elem.msg_len 			= payload_len + header_len;
+		elem.out_faceid_num 	= face_num;
+
+		for (i = 0 ; i < face_num ; i++) {
+			elem.out_faceids[i] = faceids[i];
+		}
+
+		/* Callback 		*/
+		tp_plugin_res = (*((hdl->plugin_hdl.mb))->cob)(
+			hdl->plugin_hdl.mb, &elem
+		);
+	}
+#endif // CefC_Mobility
+
+	/*--------------------------------------------------------------------
+		Transport Plugin
+	----------------------------------------------------------------------*/
+	if (poh.org.tp_variant > CefC_T_OPT_TP_NONE) {
+		if (hdl->plugin_hdl.tp[poh.org.tp_variant].cob) {
 
 			/* Creates CefT_Rx_Elem 		*/
-			pm.seqnum = poh.seqnum;
 			memset (&elem, 0, sizeof (CefT_Rx_Elem));
+			elem.plugin_variant 	= poh.org.tp_variant;
 			elem.type 				= CefC_Elem_Type_Object;
 			elem.hashv 				= contents_hashv;
 			elem.in_faceid 			= (uint16_t) peer_faceid;
@@ -5209,115 +5254,42 @@ cefnetd_incoming_object_process (
 				elem.out_faceids[i] = faceids[i];
 			}
 
+			elem.parsed_oph 		= &poh;
+			memcpy (elem.ophdr, poh.org.tp_val, poh.org.tp_len);
+			elem.ophdr_len = poh.org.tp_len;
+
 			/* Callback 		*/
-			tp_plugin_res = (*((hdl->plugin_hdl.mb))->cob)(
-				hdl->plugin_hdl.mb, &elem
+			tp_plugin_res = (*(hdl->plugin_hdl.tp)[poh.org.tp_variant].cob)(
+				&(hdl->plugin_hdl.tp[poh.org.tp_variant]), &elem
 			);
 		}
-#endif // CefC_Mobility
+	}
 
-		/*--------------------------------------------------------------------
-			Transport Plugin
-		----------------------------------------------------------------------*/
-		if (poh.org.tp_variant > CefC_T_OPT_TP_NONE) {
-			if (hdl->plugin_hdl.tp[poh.org.tp_variant].cob) {
-
-				/* Creates CefT_Rx_Elem 		*/
-				memset (&elem, 0, sizeof (CefT_Rx_Elem));
-				elem.plugin_variant 	= poh.org.tp_variant;
-				elem.type 				= CefC_Elem_Type_Object;
-				elem.hashv 				= contents_hashv;
-				elem.in_faceid 			= (uint16_t) peer_faceid;
-				elem.parsed_msg 		= &pm;
-				memcpy (&(elem.msg[0]), msg, payload_len + header_len);
-				elem.msg_len 			= payload_len + header_len;
-				elem.out_faceid_num 	= face_num;
-
-				for (i = 0 ; i < face_num ; i++) {
-					elem.out_faceids[i] = faceids[i];
-				}
-
-				memcpy (elem.ophdr, poh.org.tp_val, poh.org.tp_len);
-				elem.ophdr_len = poh.org.tp_len;
-
-				/* Callback 		*/
-				tp_plugin_res = (*(hdl->plugin_hdl.tp)[poh.org.tp_variant].cob)(
-					&(hdl->plugin_hdl.tp[poh.org.tp_variant]), &elem
-				);
-			}
-		}
-
-		/*--------------------------------------------------------------------
-			Forwards the Content Object
-		----------------------------------------------------------------------*/
-		if (tp_plugin_res & CefC_Pi_Object_Send) {
-			if (face_num > 0) {
+	/*--------------------------------------------------------------------
+		Forwards the Content Object
+	----------------------------------------------------------------------*/
+	if (tp_plugin_res & CefC_Pi_Object_Send) {
+		if (face_num > 0) {
 #ifdef CefC_Debug
-				cef_dbg_write (CefC_Dbg_Finer, "Forward the Content Object to cefnetd(s)\n");
+			cef_dbg_write (CefC_Dbg_Finer, "Forward the Content Object to cefnetd(s)\n");
 #endif // CefC_Debug
-				cefnetd_object_forward (hdl, faceids, face_num, msg,
-					payload_len, header_len, &pm, &poh, pe);
+			cefnetd_object_forward (hdl, faceids, face_num, msg,
+				payload_len, header_len, &pm, &poh, pe);
 
-				if (pe->stole_f) {
+			if (pe->stole_f) {
 #ifdef CefC_Debug
 #ifdef __T_VERSION__
-					if (cef_dbg_loglv_finest) {
-						fprintf(stderr, "*** stole_f is ON\n");
-					}
+				if (cef_dbg_loglv_finest) {
+					fprintf(stderr, "*** stole_f is ON\n");
+				}
 #endif //__T_VERSION__
 #endif // CefC_Debug
+				if (cef_pit_entry_lock(pe))					// 2023/04/19 by iD
 					cef_pit_entry_free (hdl->pit, pe);
-				}
-
-				if(pit_idx == 0) {
-					return (1);
-				}
-			}
-
-#ifdef	__SYMBOLIC__
-	fprintf( stderr, "\t CKP-010 \n" );
-#endif
-			if(pit_idx == 1) {
-				CefT_Pit_Entry* tmpe = NULL;
-				for (i = 0; i < face_num; i++)
-					faceids[i] = 0;
-				face_num = 0;
-				/*JK*///20210824 Cob without chunk number
-				if ( pm.chunk_num_f == 0 ) {	//Cob without chunk number
-					return (1);
-				}
-				tmpe = cef_pit_entry_search_without_chunk (hdl->pit, &pm, &poh);
-				if ( tmpe == NULL ) {
-					/* NOP */
-				} else {
-					//Symbolic/Osyimbolic
-					face = &(tmpe->dnfaces);
-
-					while (face->next) {
-						face = face->next;
-						faceids[face_num] = face->faceid;
-						face_num++;
-					}
-					if (face_num > 0) {
-						if ( tmpe->PitType == CefC_PIT_TYPE_Sym
-							&& ((tmpe->Last_chunk_num - hdl->SymbolicBack) <= pm.chunk_num) ) {
-							cefnetd_object_forward (hdl, faceids, face_num, msg,
-								payload_len, header_len, &pm, &poh, tmpe);
-							if ( tmpe->Last_chunk_num < pm.chunk_num ) {
-								tmpe->Last_chunk_num = pm.chunk_num;
-							}
-						}
-					}
-				}
 			}
 		}
-
-		for (i = 0; i < face_num; i++){
-			faceids[i] = 0;
-		}
-		face_num = 0;
-		pe = NULL;
 	}
+
 #ifdef CefC_Debug
 #ifdef __T_VERSION__
 	if (cef_dbg_loglv_finest) {

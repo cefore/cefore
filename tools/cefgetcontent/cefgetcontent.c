@@ -866,14 +866,19 @@ post_process (
 	int	invalid_end = 0;
 
 	if (stat_recv_frames) {
-		if ( timercmp( &start_t, &end_t, < ) == 0 ) {
-			// Invalid end time
-			fprintf (stdout, "[cefgetcontent] Invalid end time. No time statistics reported.\n");
-			diff_t = 0;
-			invalid_end = 1;
+		if ( !timercmp( &start_t, &end_t, != ) == 0 ) {
+			if ( timercmp( &start_t, &end_t, < ) == 0 ) {
+				// Invalid end time
+				fprintf (stdout, "[cefgetcontent] Invalid end time. No time statistics reported.\n");
+				diff_t = 0;
+				invalid_end = 1;
+			} else {
+				timersub( &end_t, &start_t, &diff_tval );
+				diff_t = diff_tval.tv_sec * 1000000llu + diff_tval.tv_usec;
+			}
 		} else {
-			timersub( &end_t, &start_t, &diff_tval );
-			diff_t = diff_tval.tv_sec * 1000000llu + diff_tval.tv_usec;
+			//Same Time
+			diff_t = 0;
 		}
 	} else {
 		diff_t = 0;
@@ -898,7 +903,7 @@ post_process (
 		fprintf (stderr, "[cefgetcontent] Throughput                = "FMTU64" bps\n", (uint64_t)thrpt);	//20230522
 		fprintf (stderr, "[cefgetcontent] Goodput                   = "FMTU64" bps\n", (uint64_t)goodpt);	//20230522
 	} else {
-//		fprintf (stdout, "[cefgetcontent] Duration                  = 0.000 sec\n");
+		fprintf (stdout, "[cefgetcontent] Duration                  = 0.000 sec\n");
 	}
 	if ((stat_recv_frames > 0) && (invalid_end == 0)) {
 		jitter_ave = stat_jitter_sum / stat_recv_frames;

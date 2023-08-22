@@ -133,7 +133,7 @@ cef_plugin_samptp_cob (
 		res = cef_face_object_send_iflocal (
 			rx_elem->out_faceids[i], rx_elem->msg, rx_elem->msg_len);
 		
-		if (res > 0) {
+		if (!res) {
 			faceids[idx] = rx_elem->out_faceids[i];
 			idx++;
 		}

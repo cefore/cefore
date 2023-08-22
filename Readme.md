@@ -27,6 +27,8 @@ Cefore is a software platform that enables ICN-based communications using CCNx-1
 | cefgetstream | tool    | Standard | Display the stream received by Cefore on stdout |
 | cefputfile_sec | tool  | develop  | Obtain security content from Cefore and output it as a file |
 | cefgetfile_sec | tool  | develop	| Convert a file to Named Cob with security features and input it into Cefore |
+| cefping      | tool    | cefping  | cefping                                     |
+| cefinfo      | tool    | cefinfo  | cefinfo (aka ccninfo)                       |
 | csmgrd       | daemon  | csmgr    | Content Store manager daemon                |
 | csmgrdstart  | utility | csmgr    | Utility of starting csmgr daemon            |
 | csmgrdstop   | utility | csmgr    | Utility of stopping csmgr daemon            |
@@ -61,6 +63,7 @@ Run configure first. The following options are available for configure command:
 | Option           | Description                                      |
 |:---------------- |:------------------------------------------------ |
 | --enable-csmgr   | Enable Content Store managed by csmgr daemon.    |
+| --enable-cefinfo | Enable cefinfo tool (aka CCNinfo).               |
 | --enable-cache   | Enable cefnetd's local cache.                    |
 | --enable-debug   | Enable debug mode (Attn: show lots of messages). |
 
@@ -84,7 +87,11 @@ If you installed OpenSSL using homebrew on macOS, you need to run configure as f
 
 `export PATH="/usr/local/opt/openssl/bin:$PATH"`
 
-`./configure --with-openssl-dir=/usr/local/opt/openssl LDFLAGS='-L/usr/local/opt/openssl/lib'`
+`./configure opssl_header_path=/usr/local/opt/openssl/include/ LDFLAGS='-L/usr/local/opt/openssl/lib' CPPFLAGS='-I/usr/local/opt/openssl/include'`
+
+To build cefinfo (aka ccninfo) and csmgr daemon, you need to specify these options:  
+
+`./configure --enable-cefinfo --enable-csmgr`
 
 After the configure command completes successfully, run "make" and "make install". "make install" must be run with sudo.
 
@@ -97,17 +104,6 @@ If csmgr daemon is installed, the shared libraries must be recognized. If /etc/l
 
 That's all for the installation!
 
-## 2.2. Configuration Manual
-
-[This document](doc/Configuration.md) is the configuration manual of Cefore software. Users do not need to configure/change any parameters in the configuration files if they run Cefore daemons with the default values.
-
-## 2.3. Daemon Manual
-
-[This document](doc/Daemon.md) describes how to run cefnetd daemon, which is a forwarding daemon, and csmgrd daemon, which is a daemon enabling in-network cache using its on-memory or own UNIX filesystem. Users can run csmgrd daemon if they build csmgrd as well as cefnetd.
-
-## 2.4. Tool Manual
-
-[This document](doc/Tools.md) describes the tools and utilities included in Cefore software package.
 
 ## 3. License
 

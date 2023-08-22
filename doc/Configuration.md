@@ -84,12 +84,3 @@ plugin.conf is required only when plug-in libraries are used. It must be placed 
 | --------- | --------- | ----------- | ------- |
 | COMMON    | log       | Logging of plugin. yes=enabled, no=disabled|no|
 | TRANSPORT | samptp    | Sample transport plugin. yes=enabled, no=disabled|no|
-| NDN       | support   | NDN plugin. yes=enabled, no=disabled|no|
-| ^         | stat      | Specifies whether to display the number of Interest and Content Objects handled by the NDN at the end of the cefnetd. <br> yes=enabled, no=disabled|no|
-| ^         | port      | Port number to connect an NFD router.|6363|
-
-## 6. ndn.fib (Experimental)
-ndn.fib is required only when the NDN plug-in is used. The ndn.fib should contain each line in the format "NDN_URI Protocol IP_address_of_NFD_router". Note that this implementation is very experimental and has not been verified to work correctly.
-
-> *ndn:/example/sports &nbsp;udp &nbsp;10.0.1.1*  
-> *ndn:/example/news &nbsp;udp &nbsp;10.0.1.2*

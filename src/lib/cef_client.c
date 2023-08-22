@@ -251,7 +251,21 @@ cef_client_connect (
 #ifdef __APPLE__
 	saddr.sun_len = sizeof (saddr);
 
-	if (connect (sock, (struct sockaddr *)&saddr, SUN_LEN (&saddr)) < 0) {
+	for ( int i = 0; i < 10; ){
+		errno = 0;
+		if (connect (sock, (struct sockaddr *)&saddr, SUN_LEN (&saddr)) < 0) {
+			switch ( errno ){
+			case ETIMEDOUT :	// #60
+			case ECONNREFUSED :	// #61
+				usleep(++i*1000);
+				continue;
+			default:
+				break;
+			}
+		}
+		break;
+	}
+	if ( errno ){
 		cef_log_write (CefC_Log_Error, "%s (connect:%s)\n", __func__, strerror(errno));
 		close (sock);
 		return ((CefT_Client_Handle) NULL);

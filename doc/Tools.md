@@ -88,25 +88,36 @@ cefgetstream is a tool that shows the stream content of the specified URI retrie
 | lifetime   | Specify lifetime interval inserted in Symbolic Interest (default: 4).<br>If this value is bigger than the value configured in cefnetd, it will be ignored, and the value configured in cefnetd will be used. |
 | valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either sha256 or crc32 when used. |
 
-## 6. cefping
+## 6. cefinfo
 
-cefing is a tool that identifies the cefnetd that caches the content for a specified prefix. It is possible to identify the responder (i.e., caching node) and to measure the RTT between the cefping performer and the respondents.
+cefinfo is a tool that identifies the cefnetd that caches the content for a specified prefix. cefinfo is known as CCNinfo whose specification is described in IRTF RFC 9344. It is possible to identify the responder (i.e., caching node) and to measure the RTT between the cefinfo performer and the respondents. Note that althourh the RTT is accurate, the latency between each cefnetd on the path is not accurate if the time on each cefnetd is not synchronized. If you start cefnetd with the "-d config_file_dir" and "-p port_num" options, you must specify the same startup options.
 
-`cefping prefix [-r responder] [-h hop_limit] [-w wait_time] [-d config_file_dir] [-p port_num]`
+`cefinfo name_prefix [-c] [-o] [-f] [-r hop_count] [-s skip_hop] [-d config_file_dir] [-p port_num] [-V]`
 
 | Parameter  | Description                                                   |
 | ---------- | ------------------------------------------------------------- |
-| prefix     | Prefix of the content to be checked. This prefix is set to the name of the cefping request. Matching between the name and the cache of the content is a partial match, and matching between the name and the FIB is a longest match |
-| responder  | Responder is an identifier such as an IP address that identifies the host expecting a response. |
-| hop_limit  | Max. hop count of request (default: 32).<br>Range: 1 <= hop_limit <= 255 |
-| wait_time  | Max. wait time for reply (second) (default: 3).<br>Range: 1 <= wait_time |
+| name_prefix | Prefix of the content to be checked. This prefix is set to the name of the cefinfo request. Matching between the name and the cache of the content is a partial match, and matching between the name and the FIB is a longest match |
+| -c | Specify this option if the cefinfo user requires the cache information and RTT between the cefinfo user and the content forwarder. |
+| -f | This option enables "full discovery request", in which the router ignores the forwarding strategies and sends the cefinfo request to multiple upstream routers simultaneously. The cefinfo user can then retrieve all potential forwarding paths. Note that this requires all upstream routers allowing the full discovery requests by setting up the CCNINFO_FULL_DISCOVERY configuration. |
+| hop_count |  The max number of traced routers (default: 32). For example, when the cefinfo user invokes the command with this option, such as "-r 3", only three routers along the path examine their path and cache information.<br>Range: 1 <= hop_limit <= 255 |
+| skip_count | The number of skipped routers (default: 0). For example, when the cefinfo user invokes the command with this option, such as "-s 3", three upstream routers along the path only forward the Request message but do not append their Report blocks in the hop-by-hop header and do not send Reply messages despite having the corresponding cache.<br>Range: 0 <= hop_limit <= 15 |
 
-cefping terminates the process after wait_time has elapsed or if it is terminated by the user. When a response is received, the content of the response is output to the standard in the following format: items in Responder, Result, and Rtt depend on the execution.
+cefinfo terminates when a single reply message is given back (the default behavior) or the process after the timeout value defined as CCNINFO_REPLY_TIMEOUT has elapsed (the full discovery behavior). When a response is received, the reply content is shown to the standard output as follows.
 
-> *response from Responder: Result  time=RTT ms*
-
-| Item      | Description                             |
-| --------- | --------------------------------------- |
-| Responder | Responder's IP address                  |
-| Result    | cache: Content specified with "prefix" parameter is cached at Responder<br>no cache: Content specified with "prefix" parameter is not cached at Responder<br>no route: cefping request was forwarded to Responder, but no FIB entry<br>prohibit: Responder denied cefping request |
-| Rtt       | RTT between cefping request and reply   |
+> *cefinfo to name_prefix with HopLimit=hop_limit, SkipHopCount=skip_hop, Flag=flag and Request ID=RequestID*
+>
+> *response from Responder: Result, time=Rtt ms*
+> 
+> *route information:<br>
+  &emsp;1 Forwarder-1&emsp;&emsp;&emsp;&emsp;Delay ms<br>
+  &emsp;2 Forwarder-2&emsp;&emsp;&emsp;&emsp;Delay ms<br>
+    &emsp;&emsp;&emsp;&emsp;.<br>
+    &emsp;&emsp;&emsp;&emsp;.<br>
+  &emsp;N Responder&emsp;&emsp;&emsp;&emsp;Delay ms*
+>
+> *cache information:&emsp;&emsp;prefix&emsp;&emsp;size&emsp;&emsp;cobs&emsp;&emsp;interests&emsp;&emsp;start-end&emsp;&emsp;lifetime&emsp;&emsp;expire<br>
+  &emsp;1 cache inforemation-1<br>
+  &emsp;2 cache inforemation-2<br>
+    &emsp;&emsp;&emsp;&emsp;.<br>
+    &emsp;&emsp;&emsp;&emsp;.<br>
+  &emsp;N cache information-N*

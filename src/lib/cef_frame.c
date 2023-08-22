@@ -2769,6 +2769,10 @@ cef_frame_seqence_update (
 	unsigned char* buff, 					/* packet									*/
 	uint32_t seqnum
 ) {
+#if	1	// 2023/08/16 Disabled for debugging
+	struct fixed_hdr* fix_hdr = (struct fixed_hdr*) buff;
+	return ntohs (fix_hdr->pkt_len);
+#else
 	unsigned char* new_buff;
 	uint16_t new_buff_len = 0;
 	struct fixed_hdr* fix_hdr;
@@ -2943,6 +2947,7 @@ cef_frame_seqence_update (
 		}
 		return (new_buff_len);
 	}
+#endif
 }
 /*--------------------------------------------------------------------------------------
 	Search the position of T_ORTG and T_SEQNUM in ContentObject

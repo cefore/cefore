@@ -152,6 +152,7 @@ typedef struct {
 	uint32_t 				hashv;					/* Hash value 						*/
 	uint16_t 				in_faceid;				/* FaceID that the message arrived 	*/
 	CefT_CcnMsg_MsgBdy* 	parsed_msg;				/* parsed message information 		*/
+	CefT_CcnMsg_OptHdr*		parsed_oph;				/* parsed option header				*/
 	unsigned char			ophdr[CefC_Max_Header_Size];
 													/* value field in hop-by-hop option */
 													/* header relating to this plugin	*/
