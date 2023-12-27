@@ -988,6 +988,8 @@ post_process (
 	uint64_t	vdiff_t;
 	double		vdiff_t_dbl = 0.0;
 	uint64_t	WaitCsmgrdSec, WaitCsmgrdUSec;
+	struct timeval diff_tval;
+	struct timeval vdiff_tval;
 	
 	if (verify_only_f) {
 		usleep (1000000);
@@ -1007,12 +1009,17 @@ post_process (
 	}
 	
 	if (stat_send_frames) {
-		diff_t = ((end_t.tv_sec - start_t.tv_sec) * 1000000llu
-							+ (end_t.tv_usec - start_t.tv_usec));
+//		diff_t = ((end_t.tv_sec - start_t.tv_sec) * 1000000llu
+//							+ (end_t.tv_usec - start_t.tv_usec));
+		timersub( &end_t, &start_t, &diff_tval );
+		diff_t = diff_tval.tv_sec * 1000000llu + diff_tval.tv_usec;
 		WaitCsmgrdSec = CefC_WaitCsmgrd_Sec;
 		WaitCsmgrdUSec = (CefC_WaitCsmgrd_Sec * 1000000) % 1000000;
-		vdiff_t = ((check_end_t.tv_sec - end_t.tv_sec - WaitCsmgrdSec) * 1000000llu
-							+ (check_end_t.tv_usec - end_t.tv_usec - WaitCsmgrdUSec));
+//		vdiff_t = ((check_end_t.tv_sec - end_t.tv_sec - WaitCsmgrdSec) * 1000000llu
+//							+ (check_end_t.tv_usec - end_t.tv_usec - WaitCsmgrdUSec));
+		timersub( &check_end_t, &end_t, &vdiff_tval );
+		vdiff_t = ((vdiff_tval.tv_sec - WaitCsmgrdSec) * 1000000llu) 
+							+ (vdiff_tval.tv_usec - WaitCsmgrdUSec);
 	} else {
 		diff_t = 0;
 		vdiff_t = 0;

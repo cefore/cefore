@@ -771,10 +771,11 @@ post_process (
 	double diff_t_dbl = 0.0;
 	double thrpt = 0.0;
 	uint64_t send_bits;
+	struct timeval diff_tval;
 	
 	if (stat_send_frames) {
-		diff_t = ((end_t.tv_sec - start_t.tv_sec) * 1000000llu
-							+ (end_t.tv_usec - start_t.tv_usec));
+		timersub( &end_t, &start_t, &diff_tval );
+		diff_t = diff_tval.tv_sec * 1000000llu + diff_tval.tv_usec;
 	} else {
 		diff_t = 0;
 	}

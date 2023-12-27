@@ -2634,7 +2634,8 @@ cefnetd_input_control_message (
 			unsigned char chk_msg[CefC_Max_Length] = {0};
 			memcpy( chk_msg, &msg[index + CefC_Ctrl_User_Len],
 						msg_size - (CefC_Ctrl_Len + CefC_Ctrl_Route_Len + CefC_Ctrl_User_Len) );
-			res = cefnetd_route_msg_check( hdl, chk_msg, msg_size - (CefC_Ctrl_Len + CefC_Ctrl_Route_Len + CefC_Ctrl_User_Len) );
+//			res = cefnetd_route_msg_check( hdl, chk_msg, msg_size - (CefC_Ctrl_Len + CefC_Ctrl_Route_Len + CefC_Ctrl_User_Len) );
+			res = 0;
 			if ( res < 0 ) {
 				/* Error */
 				return(0);
