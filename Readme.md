@@ -1,4 +1,4 @@
-- [Github repository](https://github.com/cefore/)
+- [Github repository](https://github.com/cefore/cefore/)
 
 # Cefore
 
