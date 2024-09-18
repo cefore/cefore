@@ -65,7 +65,6 @@ Run configure first. The following options are available for configure command:
 | Option           | Description                                      |
 |:---------------- |:------------------------------------------------ |
 | --enable-csmgr   | Enable Content Store managed by csmgr daemon.    |
-| --enable-cefinfo | Enable cefinfo tool (aka CCNinfo).               |
 | --enable-cache   | Enable cefnetd's local cache.                    |
 | --enable-debug   | Enable debug mode (Attn: show lots of messages). |
 
@@ -91,9 +90,9 @@ If you installed OpenSSL using homebrew on macOS, you need to run configure as f
 
 `./configure opssl_header_path=/usr/local/opt/openssl/include/ LDFLAGS='-L/usr/local/opt/openssl/lib' CPPFLAGS='-I/usr/local/opt/openssl/include'`
 
-To build cefinfo (aka ccninfo) and csmgr daemon, you need to specify these options:  
+To build csmgr daemon, you need to specify the option:  
 
-`./configure --enable-cefinfo --enable-csmgr`
+`./configure --enable-csmgr`
 
 After the configure command completes successfully, run "make" and "make install". "make install" must be run with sudo.
 
