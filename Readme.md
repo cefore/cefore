@@ -54,7 +54,7 @@ On macOS, OpenSSL is installed in a different location. If you are using homebre
 
 
 #### 2.1.1. Extract archive
-After downloading the Cefore archive, "cefore-x.x.x.zip", from [Cefore home page](https://cefore.net), extract it to any directory you want and go to the "cefore-x.x.x" directory. Replace "x.x.x" in the text with the version of the Cefore you want to install.
+After downloading the Cefore archive, "cefore-x.x.x.zip", from [Cefore page](https://github.com/cefore/), extract it to any directory you want and go to the "cefore-x.x.x" directory. Replace "x.x.x" in the text with the version of the Cefore you want to install.
 
 `unzip cefore-x.x.x.zip`  
 `cd cefore-x.x.x`
