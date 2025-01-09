@@ -6,7 +6,7 @@ Cefore is a software platform that enables ICN-based communications using CCNx-1
 
 ### 1.1. Environments
 
- Cefore (ver. 0.9.0) can run on top of Linux (Ubuntu) and macOS as the following table. At least 4 GB of memory (RAM) and 4 CPU cores are required to run csmgrd (Content Store manager daemon).
+ Cefore (ver. 0.11.0) can run on top of Linux (Ubuntu) and macOS as the following table. At least 4 GB of memory (RAM) and 4 CPU cores are required to run csmgrd (Content Store manager daemon).
 
 ### 1.2. Components
 
