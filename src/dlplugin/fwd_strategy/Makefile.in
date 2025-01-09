@@ -17,7 +17,7 @@
 #
 # Copyright (c) 2016-2023, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
 # met:
@@ -29,7 +29,7 @@
 # 3. Neither the name of the NICT nor the names of its contributors may be
 #    used to endorse or promote products derived from this software
 #    without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE NICT AND CONTRIBUTORS "AS IS" AND ANY
 # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -41,7 +41,7 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
-# 
+#
 
 VPATH = @srcdir@
 am__is_gnu_make = { \
@@ -164,8 +164,7 @@ am__installdirs = "$(DESTDIR)$(libdir)"
 LTLIBRARIES = $(lib_LTLIBRARIES) $(noinst_LTLIBRARIES)
 am__DEPENDENCIES_1 =
 libcefnetd_fwd_plugin_la_DEPENDENCIES = $(am__DEPENDENCIES_1) \
-	libdefault.la $(am__DEPENDENCIES_1) libflooding.la \
-	$(am__DEPENDENCIES_1) libshortest_path.la
+	libflooding.la $(am__DEPENDENCIES_1) libshortest_path.la
 am_libcefnetd_fwd_plugin_la_OBJECTS =
 libcefnetd_fwd_plugin_la_OBJECTS =  \
 	$(am_libcefnetd_fwd_plugin_la_OBJECTS)
@@ -177,14 +176,8 @@ libcefnetd_fwd_plugin_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CCLD) \
 	$(libcefnetd_fwd_plugin_la_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
-libdefault_la_LIBADD =
-am__dirstamp = $(am__leading_dot)dirstamp
-am_libdefault_la_OBJECTS = default/libdefault_la-default.lo
-libdefault_la_OBJECTS = $(am_libdefault_la_OBJECTS)
-libdefault_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
-	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(libdefault_la_CFLAGS) \
-	$(CFLAGS) $(libdefault_la_LDFLAGS) $(LDFLAGS) -o $@
 libflooding_la_LIBADD =
+am__dirstamp = $(am__leading_dot)dirstamp
 am_libflooding_la_OBJECTS = flooding/libflooding_la-flooding.lo
 libflooding_la_OBJECTS = $(am_libflooding_la_OBJECTS)
 libflooding_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
@@ -214,8 +207,7 @@ am__v_at_1 =
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/autotools/depcomp
 am__maybe_remake_depfiles = depfiles
-am__depfiles_remade = default/$(DEPDIR)/libdefault_la-default.Plo \
-	flooding/$(DEPDIR)/libflooding_la-flooding.Plo \
+am__depfiles_remade = flooding/$(DEPDIR)/libflooding_la-flooding.Plo \
 	shortest_path/$(DEPDIR)/libshortest_path_la-shortest_path.Plo
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
@@ -236,11 +228,10 @@ AM_V_CCLD = $(am__v_CCLD_@AM_V@)
 am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(libcefnetd_fwd_plugin_la_SOURCES) $(libdefault_la_SOURCES) \
+SOURCES = $(libcefnetd_fwd_plugin_la_SOURCES) \
 	$(libflooding_la_SOURCES) $(libshortest_path_la_SOURCES)
 DIST_SOURCES = $(libcefnetd_fwd_plugin_la_SOURCES) \
-	$(libdefault_la_SOURCES) $(libflooding_la_SOURCES) \
-	$(libshortest_path_la_SOURCES)
+	$(libflooding_la_SOURCES) $(libshortest_path_la_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -331,6 +322,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+XCRUN = @XCRUN@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -364,7 +356,7 @@ htmldir = @htmldir@
 includedir = @includedir@
 infodir = @infodir@
 install_sh = @install_sh@
-libdir = @libdir@
+libdir = $(CEFORE_DIR_PATH)lib
 libexecdir = @libexecdir@
 localedir = @localedir@
 localstatedir = @localstatedir@
@@ -399,12 +391,10 @@ CEFNETD_FWD_PLUGINS_DIR = $(top_srcdir)/src/dlplugin
 
 # set noinst_LTLIBRARIES
 
-# check default
-
 # check flooding
 
 # check shortest_path
-noinst_LTLIBRARIES = libdefault.la libflooding.la libshortest_path.la
+noinst_LTLIBRARIES = libflooding.la libshortest_path.la
 
 # set cefnetd fwd plugin cflags
 CEFNETD_FWD_PLUGIN_CFLAGS = $(AM_CFLAGS) $(am__append_1)
@@ -412,16 +402,16 @@ CEFNETD_FWD_PLUGIN_CFLAGS = $(AM_CFLAGS) $(am__append_1)
 # set cefnetd fwd plugin ldadd
 CEFNETD_FWD_PLUGIN_LIBADD = 
 
+# set EXTRA_DIST
+EXTRA_DIST = 
+
 # lib cefnetd fwd plugins library
 lib_LTLIBRARIES = libcefnetd_fwd_plugin.la
 libcefnetd_fwd_plugin_la_CFLAGS = $(CEFNETD_FWD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
 libcefnetd_fwd_plugin_la_SOURCES = 
 libcefnetd_fwd_plugin_la_LIBADD = $(CEFNETD_FWD_PLUGIN_LIBADD) \
-	libdefault.la $(CEFNETD_FWD_PLUGIN_LIBADD) libflooding.la \
-	$(CEFNETD_FWD_PLUGIN_LIBADD) libshortest_path.la
-libdefault_la_CFLAGS = $(CEFNETD_FWD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
-libdefault_la_SOURCES = default/default.c default/default.h
-libdefault_la_LDFLAGS = -lcefore $(AM_LDFLAGS)
+	libflooding.la $(CEFNETD_FWD_PLUGIN_LIBADD) \
+	libshortest_path.la
 libflooding_la_CFLAGS = $(CEFNETD_FWD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
 libflooding_la_SOURCES = flooding/flooding.c flooding/flooding.h
 libflooding_la_LDFLAGS = -lcefore $(AM_LDFLAGS)
@@ -510,17 +500,6 @@ clean-noinstLTLIBRARIES:
 
 libcefnetd_fwd_plugin.la: $(libcefnetd_fwd_plugin_la_OBJECTS) $(libcefnetd_fwd_plugin_la_DEPENDENCIES) $(EXTRA_libcefnetd_fwd_plugin_la_DEPENDENCIES) 
 	$(AM_V_CCLD)$(libcefnetd_fwd_plugin_la_LINK) -rpath $(libdir) $(libcefnetd_fwd_plugin_la_OBJECTS) $(libcefnetd_fwd_plugin_la_LIBADD) $(LIBS)
-default/$(am__dirstamp):
-	@$(MKDIR_P) default
-	@: > default/$(am__dirstamp)
-default/$(DEPDIR)/$(am__dirstamp):
-	@$(MKDIR_P) default/$(DEPDIR)
-	@: > default/$(DEPDIR)/$(am__dirstamp)
-default/libdefault_la-default.lo: default/$(am__dirstamp) \
-	default/$(DEPDIR)/$(am__dirstamp)
-
-libdefault.la: $(libdefault_la_OBJECTS) $(libdefault_la_DEPENDENCIES) $(EXTRA_libdefault_la_DEPENDENCIES) 
-	$(AM_V_CCLD)$(libdefault_la_LINK)  $(libdefault_la_OBJECTS) $(libdefault_la_LIBADD) $(LIBS)
 flooding/$(am__dirstamp):
 	@$(MKDIR_P) flooding
 	@: > flooding/$(am__dirstamp)
@@ -547,8 +526,6 @@ libshortest_path.la: $(libshortest_path_la_OBJECTS) $(libshortest_path_la_DEPEND
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
-	-rm -f default/*.$(OBJEXT)
-	-rm -f default/*.lo
 	-rm -f flooding/*.$(OBJEXT)
 	-rm -f flooding/*.lo
 	-rm -f shortest_path/*.$(OBJEXT)
@@ -557,7 +534,6 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@default/$(DEPDIR)/libdefault_la-default.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@flooding/$(DEPDIR)/libflooding_la-flooding.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@shortest_path/$(DEPDIR)/libshortest_path_la-shortest_path.Plo@am__quote@ # am--include-marker
 
@@ -591,13 +567,6 @@ am--depfiles: $(am__depfiles_remade)
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LTCOMPILE) -c -o $@ $<
 
-default/libdefault_la-default.lo: default/default.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libdefault_la_CFLAGS) $(CFLAGS) -MT default/libdefault_la-default.lo -MD -MP -MF default/$(DEPDIR)/libdefault_la-default.Tpo -c -o default/libdefault_la-default.lo `test -f 'default/default.c' || echo '$(srcdir)/'`default/default.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) default/$(DEPDIR)/libdefault_la-default.Tpo default/$(DEPDIR)/libdefault_la-default.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='default/default.c' object='default/libdefault_la-default.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libdefault_la_CFLAGS) $(CFLAGS) -c -o default/libdefault_la-default.lo `test -f 'default/default.c' || echo '$(srcdir)/'`default/default.c
-
 flooding/libflooding_la-flooding.lo: flooding/flooding.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libflooding_la_CFLAGS) $(CFLAGS) -MT flooding/libflooding_la-flooding.lo -MD -MP -MF flooding/$(DEPDIR)/libflooding_la-flooding.Tpo -c -o flooding/libflooding_la-flooding.lo `test -f 'flooding/flooding.c' || echo '$(srcdir)/'`flooding/flooding.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) flooding/$(DEPDIR)/libflooding_la-flooding.Tpo flooding/$(DEPDIR)/libflooding_la-flooding.Plo
@@ -617,7 +586,6 @@ mostlyclean-libtool:
 
 clean-libtool:
 	-rm -rf .libs _libs
-	-rm -rf default/.libs default/_libs
 	-rm -rf flooding/.libs flooding/_libs
 	-rm -rf shortest_path/.libs shortest_path/_libs
 
@@ -738,8 +706,6 @@ clean-generic:
 distclean-generic:
 	-test -z "$(CONFIG_CLEAN_FILES)" || rm -f $(CONFIG_CLEAN_FILES)
 	-test . = "$(srcdir)" || test -z "$(CONFIG_CLEAN_VPATH_FILES)" || rm -f $(CONFIG_CLEAN_VPATH_FILES)
-	-rm -f default/$(DEPDIR)/$(am__dirstamp)
-	-rm -f default/$(am__dirstamp)
 	-rm -f flooding/$(DEPDIR)/$(am__dirstamp)
 	-rm -f flooding/$(am__dirstamp)
 	-rm -f shortest_path/$(DEPDIR)/$(am__dirstamp)
@@ -754,8 +720,7 @@ clean-am: clean-generic clean-libLTLIBRARIES clean-libtool \
 	clean-noinstLTLIBRARIES mostlyclean-am
 
 distclean: distclean-am
-		-rm -f default/$(DEPDIR)/libdefault_la-default.Plo
-	-rm -f flooding/$(DEPDIR)/libflooding_la-flooding.Plo
+		-rm -f flooding/$(DEPDIR)/libflooding_la-flooding.Plo
 	-rm -f shortest_path/$(DEPDIR)/libshortest_path_la-shortest_path.Plo
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
@@ -802,8 +767,7 @@ install-ps-am:
 installcheck-am:
 
 maintainer-clean: maintainer-clean-am
-		-rm -f default/$(DEPDIR)/libdefault_la-default.Plo
-	-rm -f flooding/$(DEPDIR)/libflooding_la-flooding.Plo
+		-rm -f flooding/$(DEPDIR)/libflooding_la-flooding.Plo
 	-rm -f shortest_path/$(DEPDIR)/libshortest_path_la-shortest_path.Plo
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic

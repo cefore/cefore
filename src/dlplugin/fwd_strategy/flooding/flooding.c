@@ -92,9 +92,12 @@ void
 fwd_flooding_forward_interest (
 	CefT_FwdStrtgy_Param* fwdstr
 ) {
+	uint16_t 		faceids[CefC_Elem_Face_Num];	/* outgoing FaceIDs that were 		*/
 	CefT_Fib_Face*	face;
 	int				incoming_face_type, face_type;
 	int				send_num = 0;
+
+	memset(faceids, 0x00, sizeof(faceids));
 
 	/*----------------------------------------------------------------------------------*/
 	/* Forward using all Longest prefix match FIB entries.								*/
@@ -103,7 +106,7 @@ fwd_flooding_forward_interest (
 	face =  &(fwdstr->fe->faces);
 	incoming_face_type = cef_face_type_get (fwdstr->peer_faceid);
 
-	while (face->next) {
+	while (face->next && send_num < CefC_Elem_Face_Num) {
 		face = face->next;
 
 		if (fwdstr->peer_faceid == face->faceid)
@@ -116,27 +119,24 @@ fwd_flooding_forward_interest (
 
 				cef_pit_entry_up_face_update (fwdstr->pe, face->faceid, fwdstr->pm, fwdstr->poh);
 
-				cef_face_frame_send_forced (
-					face->faceid, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
-
 #ifdef CefC_Debug
 				cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the Interest to Face#%d\n", face->faceid);
 #endif // CefC_Debug
+
+				/* Count number of send face */
+				faceids[send_num++] = face->faceid;
 
 				/* Count send Interest */
 				(*(fwdstr->cnt_send_frames))++;
 				fwdstr->cnt_send_types[fwdstr->pm->InterestType]++;
 				face->tx_int_types[fwdstr->pm->InterestType]++;
 				face->tx_int++;
-
-				/* Count number of send face */
-				send_num++;
 			}
 		}
 	}
 	if (send_num == 0) {
 		face = &(fwdstr->fe->faces);
-		while (face->next) {
+		while (face->next && send_num < CefC_Elem_Face_Num) {
 			face = face->next;
 
 			if (fwdstr->peer_faceid == face->faceid)
@@ -146,12 +146,12 @@ fwd_flooding_forward_interest (
 
 				cef_pit_entry_up_face_update (fwdstr->pe, face->faceid, fwdstr->pm, fwdstr->poh);
 
-				cef_face_frame_send_forced (
-					face->faceid, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
-
 #ifdef CefC_Debug
 				cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the Interest to Face#%d\n", face->faceid);
 #endif // CefC_Debug
+
+				/* Count number of send face */
+				faceids[send_num++] = face->faceid;
 
 				/* Count send Interest */
 				(*(fwdstr->cnt_send_frames))++;
@@ -160,6 +160,15 @@ fwd_flooding_forward_interest (
 				face->tx_int++;
 			}
 		}
+	}
+
+	if ( send_num ){
+#ifdef CefC_Debug
+		for ( int i = 0; i < send_num; i++ )
+			cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the Interest to Face#%d\n", faceids[i]);
+#endif // CefC_Debug
+		cefnetd_frame_send_txque_faces (fwdstr->hdl_cefnetd,
+			send_num, faceids, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
 	}
 
 	return;
@@ -172,12 +181,14 @@ void
 fwd_flooding_forward_object (
 	CefT_FwdStrtgy_Param* fwdstr
 ) {
-	uint32_t			seqnum;
-	uint16_t			new_buff_len = 0;
+	uint16_t 			faceids[CefC_Elem_Face_Num];	/* outgoing FaceIDs that were 		*/
 	CefT_Down_Faces*	face;
 	int					fidx;
 	uint16_t			fid;
 	int					break_f = 0;
+	int					send_num = 0;
+
+	memset(faceids, 0x00, sizeof(faceids));
 
 	for (fidx = 0; fidx < fwdstr->faceid_num;fidx++) {
 		fid = fwdstr->faceids[fidx];
@@ -204,179 +215,38 @@ fwd_flooding_forward_object (
 		}
 		break_f = 0;
 
-		if (!cef_pit_entry_down_face_ver_search (face, 0, fwdstr->pm))
+		if (!cef_pit_entry_down_face_search (face, 0, fwdstr->pm))
 			continue;
 
 		if (cef_face_check_active (face->faceid) > 0) {
+			/* Count number of send face */
+			faceids[send_num++] = face->faceid;
 
-			seqnum = cef_face_get_seqnum_from_faceid (face->faceid);
-			new_buff_len = cef_frame_seqence_update (fwdstr->msg, seqnum);
-
-			cef_face_object_send (face->faceid, fwdstr->msg, new_buff_len, fwdstr->pm);
+			/* Count send ContentObject */
+			(*(fwdstr->cnt_send_frames))++;
 
 #ifdef CefC_Debug
 			cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the ContentObject to Face#%d\n", face->faceid);
 #endif // CefC_Debug
 
-			/* Count send ContentObject */
-			(*(fwdstr->cnt_send_frames))++;
+			cef_pit_entry_down_face_remove (fwdstr->pe, face, fwdstr->pm);
 		} else {
 
 			cef_pit_down_faceid_remove (fwdstr->pe, face->faceid);
 		}
 	}
 
-	return;
-}
-
-/*--------------------------------------------------------------------------------------
-	Forward CcninfoReq API
-----------------------------------------------------------------------------------------*/
-void
-fwd_flooding_forward_ccninforeq (
-	CefT_FwdStrtgy_Param* fwdstr,
-	int fdcv_authNZ,
-	uint32_t fdcv_f
-) {
-	CefT_Fib_Face*	face;
-	int				incoming_face_type, face_type;
-	int				send_num = 0;
-
-	/*----------------------------------------------------------------------------------*/
-	/* Forward using all Longest prefix match FIB entries.								*/
-	/*----------------------------------------------------------------------------------*/
-
-	face =  &(fwdstr->fe->faces);
-	incoming_face_type = cef_face_type_get (fwdstr->peer_faceid);
-
-	while (face->next) {
-		face = face->next;
-
-		if (fwdstr->peer_faceid == face->faceid)
-			continue;
-
-		if (cef_face_check_active (face->faceid) > 0) {
-
-			face_type = cef_face_type_get (face->faceid);
-			if (incoming_face_type == face_type) {
-
-				cef_pit_entry_up_face_update (fwdstr->pe, face->faceid, fwdstr->pm, fwdstr->poh);
-
-				cef_face_frame_send_forced (
-					face->faceid, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
-
+	if ( send_num ){
 #ifdef CefC_Debug
-				cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the CcninfoReq to Face#%d\n", face->faceid);
+		for ( int i = 0; i < send_num; i++ )
+			cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the ContentObject to Face#%d\n", faceids[i]);
 #endif // CefC_Debug
-
-				/* Count number of send face */
-				send_num++;
-
-				if (fdcv_authNZ != 0) {
-					/* fulldiscovery_authNZ = NG */
-					return;
-				}
-			}
-		}
-	}
-	if (send_num == 0) {
-		face = &(fwdstr->fe->faces);
-		while (face->next) {
-			face = face->next;
-
-			if (fwdstr->peer_faceid == face->faceid)
-				continue;
-
-			if (cef_face_check_active (face->faceid) > 0) {
-
-				cef_pit_entry_up_face_update (fwdstr->pe, face->faceid, fwdstr->pm, fwdstr->poh);
-
-				cef_face_frame_send_forced (
-					face->faceid, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
-
-#ifdef CefC_Debug
-				cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the CcninfoReq to Face#%d\n", face->faceid);
-#endif // CefC_Debug
-
-				if (fdcv_authNZ != 0) {
-					/* fulldiscovery_authNZ = NG */
-					return;
-				}
-			}
-		}
+		cefnetd_frame_send_txque_faces (fwdstr->hdl_cefnetd,
+			send_num, faceids, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
 	}
 
 	return;
 }
-
-/*--------------------------------------------------------------------------------------
-	Forward CefpingReq API
-----------------------------------------------------------------------------------------*/
-void
-fwd_flooding_forward_cefpingreq (
-	CefT_FwdStrtgy_Param* fwdstr
-) {
-	CefT_Fib_Face*	face;
-	int				incoming_face_type, face_type;
-	int				send_num = 0;
-
-	/*----------------------------------------------------------------------------------*/
-	/* Forward using all Longest prefix match FIB entries.								*/
-	/*----------------------------------------------------------------------------------*/
-
-	face =  &(fwdstr->fe->faces);
-	incoming_face_type = cef_face_type_get (fwdstr->peer_faceid);
-
-	while (face->next) {
-		face = face->next;
-
-		if (fwdstr->peer_faceid == face->faceid)
-			continue;
-
-		if (cef_face_check_active (face->faceid) > 0) {
-
-			face_type = cef_face_type_get (face->faceid);
-			if (incoming_face_type == face_type) {
-
-				cef_pit_entry_up_face_update (fwdstr->pe, face->faceid, fwdstr->pm, fwdstr->poh);
-
-				cef_face_frame_send_forced (
-					face->faceid, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
-
-#ifdef CefC_Debug
-				cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the CefpingReq to Face#%d\n", face->faceid);
-#endif // CefC_Debug
-
-				/* Count number of send face */
-				send_num++;
-			}
-		}
-	}
-	if (send_num == 0) {
-		face = &(fwdstr->fe->faces);
-		while (face->next) {
-			face = face->next;
-
-			if (fwdstr->peer_faceid == face->faceid)
-				continue;
-
-			if (cef_face_check_active (face->faceid) > 0) {
-
-				cef_pit_entry_up_face_update (fwdstr->pe, face->faceid, fwdstr->pm, fwdstr->poh);
-
-				cef_face_frame_send_forced (
-					face->faceid, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
-
-#ifdef CefC_Debug
-				cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the CefpingReq to Face#%d\n", face->faceid);
-#endif // CefC_Debug
-			}
-		}
-	}
-
-	return;
-}
-
 
 /*--------------------------------------------------------------------------------------
 	Road the plugin
@@ -389,8 +259,6 @@ cefnetd_fwd_flooding_plugin_load (
 	fwd_in->destroy        = fwd_flooding_destroy;
 	fwd_in->fwd_int        = fwd_flooding_forward_interest;
 	fwd_in->fwd_cob        = fwd_flooding_forward_object;
-	fwd_in->fwd_ccninforeq = fwd_flooding_forward_ccninforeq;
-	fwd_in->fwd_cefpingreq = fwd_flooding_forward_cefpingreq;
 
 	return (0);
 }

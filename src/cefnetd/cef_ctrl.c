@@ -51,6 +51,8 @@
  Macros
  ****************************************************************************************/
 
+#define	printerr(...)	fprintf(stderr,"[cef_ctrl] ERROR: " __VA_ARGS__)
+
 #define CefC_Arg_Kill				"kill"
 #define CefC_Arg_Status				"status"
 #define CefC_Arg_Route				"route"
@@ -90,14 +92,13 @@ int main (
 	char** argv
 ) {
 	CefT_Client_Handle fhdl;
-	unsigned char buff[1024];
+	unsigned char buff[CefC_Max_Length];
 	int len;
 	int res;
 	int i;
 	int dir_path_f 		= 0;
 	int port_num_f 		= 0;
 	int pit_f			= 0;
-	int numpit_f		= 0;
 	int16_t numofpit_i	= 0;
 	uint16_t numofpit	= 0;
 	uint16_t output_opt_f = 0;
@@ -113,11 +114,11 @@ int main (
 	cef_log_init ("cefctrl", 1);
 
 	if (argc < 2) {
-		cef_log_write (CefC_Log_Error, "Parameters are not specified.\n");
+		printerr("Parameters are not specified.\n");
 		exit (1);
 	}
 	if (argc > 10) {
-		cef_log_write (CefC_Log_Error, "Parameters are too many.\n");
+		printerr("Parameters are too many.\n");
 		exit (1);
 	}
 
@@ -131,12 +132,12 @@ int main (
 
 		if (strcmp (work_arg, "-d") == 0) {
 			if (i + 1 == argc) {
-				cef_log_write (CefC_Log_Error, "[-d] has no parameter.\n");
+				printerr("[-d] has no parameter.\n");
 				exit (1);
 			}
 			//202108
 			if ( strlen(argv[i + 1]) >= PATH_MAX) {
-				cef_log_write (CefC_Log_Error, "[-d] parameter is too long.\n");
+				printerr("[-d] parameter is too long.\n");
 				exit (1);
 			}
 
@@ -148,40 +149,39 @@ int main (
 				pit_f++;
 				i++;
 			} else {
-				cef_log_write (CefC_Log_Error, "[--pit] has no parameter.\n");
+				printerr("[--pit] has no parameter.\n");
 				exit (1);
 			}
 		} else if (strcmp (work_arg, "-s") == 0) {
 			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
 				output_opt_f |= CefC_Ctrl_StatusOpt_Stat;
 			} else {
-				cef_log_write (CefC_Log_Error, "[-s] has no parameter.\n");
+				printerr("[-s] has no parameter.\n");
 				exit (1);
 			}
 		} else if (strcmp (work_arg, "-m") == 0) {			//Secret option
 			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
 				output_opt_f |= CefC_Ctrl_StatusOpt_Metric;
 			} else {
-				cef_log_write (CefC_Log_Error, "[-m] has no parameter.\n");
+				printerr("[-m] has no parameter.\n");
 				exit (1);
 			}
 		} else if (strcmp (work_arg, "-n") == 0) {			//Number of PIT
 			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
 				if ( i + 1 == argc ) {
-					cef_log_write (CefC_Log_Error, "[-n] has no parameter.\n");
+					printerr("[-n] has no parameter.\n");
 					exit (1);
 				}
 				output_opt_f |= CefC_Ctrl_StatusOpt_Numofpit;
 				numofpit_i = atoi (argv[i + 1]);
 				if ( numofpit_i <= 0 ) {
-					cef_log_write (CefC_Log_Error, "[-n] parameter is invalid value(%d).\n", numofpit_i);
+					printerr("[-n] parameter is invalid value(%d).\n", numofpit_i);
 					exit (1);
 				}
 				numofpit = numofpit_i;
-				numpit_f++;
 				i++;
 			} else {
-				cef_log_write (CefC_Log_Error, "[-n] has no parameter.\n");
+				printerr("[-n] has no parameter.\n");
 				exit (1);
 			}
 #if ((defined CefC_CefnetdCache) && (defined CefC_Develop))
@@ -189,13 +189,38 @@ int main (
 			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
 				output_opt_f |= CefC_Ctrl_StatusOpt_LCache;
 			} else {
-				cef_log_write (CefC_Log_Error, "[-lc] has no parameter.\n");
+				printerr("[-lc] has no parameter.\n");
 				exit (1);
 			}
 #endif //((defined CefC_CefnetdCache) && (defined CefC_Develop))
+#if ((defined CefC_Develop))
+		} else if (strcmp (work_arg, "--fib-only") == 0) {			//Secret option
+			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
+				output_opt_f |= CefC_Ctrl_StatusOpt_FibOnly;
+			} else {
+				printerr("[--fib-only] has no parameter.\n");
+				exit (1);
+			}
+		} else if (strcmp (work_arg, "--fibinet-only") == 0) {			//Secret option
+			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
+				output_opt_f |= CefC_Ctrl_StatusOpt_FibOnly;
+				output_opt_f |= CefC_Ctrl_StatusOpt_FibInetOnly;
+			} else {
+				printerr("[--fibinet-only] has no parameter.\n");
+				exit (1);
+			}
+		} else if (strcmp (work_arg, "--fibv4udp-only") == 0) {			//Secret option
+			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
+				output_opt_f |= CefC_Ctrl_StatusOpt_FibOnly;
+				output_opt_f |= CefC_Ctrl_StatusOpt_FibV4UdpOnly;
+			} else {
+				printerr("[--fibv4udp-only] has no parameter.\n");
+				exit (1);
+			}
+#endif //((defined CefC_Develop))
 		} else if (strcmp (work_arg, "-p") == 0) {
 			if (i + 1 == argc) {
-				cef_log_write (CefC_Log_Error, "[-p] has no parameter.\n");
+				printerr("[-p] has no parameter.\n");
 				exit (1);
 			}
 			port_num = atoi (argv[i + 1]);
@@ -208,18 +233,18 @@ int main (
 			exit (1);
 		} else {
 			if (work_arg[0] == '-') {
-				cef_log_write (CefC_Log_Error, "unknown option is specified.\n");
+				printerr("unknown option is specified.\n");
 				exit (1);
 			}
 		}
 	}
 
 	if (dir_path_f > 1) {
-		cef_log_write (CefC_Log_Error, "[-d] is specified more than once\n");
+		printerr("[-d] is specified more than once\n");
 		exit (1);
 	}
 	if (port_num_f > 1) {
-		cef_log_write (CefC_Log_Error, "[-p] is specified more than once\n");
+		printerr("[-p] is specified more than once\n");
 		exit (1);
 	}
 	cef_log_init2 (file_path, 1 /* for CEFNETD */);
@@ -230,21 +255,20 @@ int main (
 
 	res = cef_client_init (port_num, file_path);
 	if (res < 0) {
-		cef_log_write (CefC_Log_Error, "Failed to init client package.\n");
+		printerr("Failed to init client package.\n");
 		exit (1);
 	}
 
 	fhdl = cef_client_connect ();
 	if (fhdl < 1) {
-		cef_log_write (CefC_Log_Error, "Failed to connect to cefnetd.\n");
+		printerr("Failed to connect to cefnetd.\n");
 		exit (1);
 	}
 
 	/* Records the user which launched cefnetd 		*/
 	wp = getenv ("USER");
 	if (wp == NULL) {
-		cef_log_write (CefC_Log_Error,
-			"Failed to obtain $USER launched cefctrl\n");
+		printerr("Failed to obtain $USER launched cefctrl\n");
 		exit (1);
 	}
 	memset (launched_user_name, 0, CefC_Ctrl_User_Len);
@@ -299,13 +323,13 @@ int main (
 //				for (int i=0; i < 30000000/CefC_StatusRspWait; i++) {
 				for (int i=0; i < 1200000000/CefC_StatusRspWait; i++) {	//600sec
 					res = cef_client_read (fhdl, rsp_msg, CefC_Max_Length);
-					if (res > 0){
+					if (res != 0){
 						break;
 					}
 					usleep (CefC_StatusRspWait);
 				}
 			} else {
-				res = cef_client_read (fhdl, rsp_msg, CefC_Max_Length);
+				res = cef_client_read_core (fhdl, rsp_msg, CefC_Max_Length, 10);	// timeout=10ms
 			}
 			if (res > 0) {
 				resped = 1;
@@ -313,8 +337,7 @@ int main (
 				fprintf (stdout, "%s", (char*) rsp_msg);
 			} else {
 				if (resped == 0){
-					cef_log_write (CefC_Log_Error
-						, "cefnetd does not send responce.\n");
+					printerr("cefnetd does not send responce.\n");
 				}
 				break;
 			}
@@ -329,8 +352,8 @@ int main (
 				fhdl, buff,
 				CefC_Ctrl_Len + CefC_Ctrl_Route_Len + len);
 		}
+        usleep (10000);
 	}
-	usleep (100000);
 	cef_client_close (fhdl);
 
 	exit (0);
@@ -352,12 +375,11 @@ cef_ctrl_create_route_msg (
 
 	/* check the number of parameters 		*/
 	if (argc > 37) {
-		cef_log_write (CefC_Log_Error, "Invalid parameter(s) is(are) specified.\n");
+		printerr("Invalid parameter(s) is(are) specified.\n");
 		return (-1);
 	}
 	if (argc < 6) {
-		cef_log_write (CefC_Log_Error,
-			"Required parameter(s) is(are) not specified.\n");
+		printerr("Required parameter(s) is(are) not specified.\n");
 		return (-1);
 	}
 
@@ -372,20 +394,20 @@ cef_ctrl_create_route_msg (
 		/* operation is delete route */
 		op = CefC_Fib_Route_Ope_Add;
 	} else {
-		cef_log_write (CefC_Log_Error,
-			"Option that is neither add nor del for cefroute is specified.\n");
+		printerr("Option that is neither add nor del for cefroute is specified.\n");
 		return (-1);
 	}
 
 	/* check protocol */
 	if (strcmp (argv[4], CefC_Arg_Route_Pro_TCP) == 0) {
-		prot = CefC_Fib_Route_Pro_TCP;
+		//prot = CefC_Fib_Route_Pro_TCP;
+		prot = CefC_Face_Type_Tcp;
 	} else if (strcmp (argv[4], CefC_Arg_Route_Pro_UDP) == 0) {
 		/* protocol is UDP */
-		prot = CefC_Fib_Route_Pro_UDP;
+		//prot = CefC_Fib_Route_Pro_UDP;
+		prot = CefC_Face_Type_Udp;
 	} else {
-		cef_log_write (CefC_Log_Error,
-			"Protocol that is neither udp nor tcp for cefroute is specified.\n");
+		printerr("Protocol that is neither udp nor tcp for cefroute is specified.\n");
 		return (-1);
 	}
 
@@ -403,6 +425,11 @@ cef_ctrl_create_route_msg (
 
 	/* set URI */
 	uri_len = (uint16_t) strlen (argv[3]);
+	if ( CefC_NAME_MAXLEN < uri_len ){
+		printerr("URL is too long (%d bytes), cefore does not support T_NAMEs longer than %u bytes.\n",
+					uri_len, CefC_NAME_MAXLEN);
+		return (-1);
+	}
 	memcpy (buff + index, &uri_len, sizeof (uint16_t));
 	index += sizeof (uint16_t);
 	memcpy (buff + index, argv[3], uri_len);
@@ -410,10 +437,93 @@ cef_ctrl_create_route_msg (
 
 	for (i = 5 ; i < argc ; i++) {
 		/* set host IPaddress */
-		host_len = strlen (argv[i]);
-		memcpy (buff + index, &host_len, sizeof (host_len));
-		index += sizeof (host_len);
-		memcpy (buff + index, argv[i], host_len);
+		struct addrinfo hints;
+		struct addrinfo* gai_res;
+		struct addrinfo* gai_cres;
+		char host[CefC_NAME_BUFSIZ] = {0};
+		char addr_str[INET6_ADDRSTRLEN];
+		char port_str[INET6_ADDRSTRLEN], *port_ptr = NULL;
+		char ifname[INET6_ADDRSTRLEN], *ifname_ptr = NULL;
+		char *IPv6_endmark = NULL;
+		int	 err;
+
+		memset (&hints, 0, sizeof (hints));
+		memset (addr_str, 0, sizeof (addr_str));
+		memset (port_str, 0, sizeof (port_str));
+		memset (ifname, 0, sizeof (ifname));
+
+		strcpy(host, argv[i]);
+		IPv6_endmark = strchr(host, ']');	/* Rules for enclosing IPv6 strings in [] */
+
+		if ( host[0] != '[' ){			/* not IPv6 */
+			if ( (port_ptr = strchr(host, ':')) != NULL ){
+				strcpy(port_str, port_ptr);
+				*port_ptr++ = '\0';
+			}
+		} else if ( IPv6_endmark ) {	/* IPv6 */
+			*IPv6_endmark++ = '\0';
+			if ( (port_ptr = strchr(IPv6_endmark, ':')) != NULL ){
+				strcpy(port_str, port_ptr);
+				*port_ptr++ = '\0';
+			}
+			strcpy(host, &host[1]);
+			/*-----------------------------------------------------------*
+				When specifying the next hop with a link-local address,
+				you must also specify the interface name with the IFNAME
+			 *-----------------------------------------------------------*/
+			ifname_ptr = strchr(host, '%');
+			if ( ifname_ptr ){
+				strcpy(ifname, ifname_ptr);
+			}
+		}
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Finer, "host=%s, port=%s, ifname=%s\n", host, port_str, ifname);
+#endif // CefC_Debug
+
+		hints.ai_family = AF_UNSPEC;
+		if (prot != CefC_Face_Type_Tcp) {
+			hints.ai_socktype = SOCK_DGRAM;
+		} else {
+			hints.ai_socktype = SOCK_STREAM;
+			hints.ai_flags = AI_NUMERICSERV;
+		}
+
+		if ((err = getaddrinfo (host, port_ptr, &hints, &gai_res)) != 0) {
+			printerr ("getaddrinfo(%s)=%s\n", host, gai_strerror(err));
+			return (-1);
+		}
+		for (gai_cres = gai_res ; gai_cres != NULL && !addr_str[0]; gai_cres = gai_cres->ai_next) {
+			struct sockaddr_in *ai = (struct sockaddr_in *)(gai_cres->ai_addr);
+			struct sockaddr_in6 *ai6 = (struct sockaddr_in6 *)(gai_cres->ai_addr);
+
+			switch ( ai->sin_family ){
+			case AF_INET:
+				inet_ntop(ai->sin_family, &(ai->sin_addr), addr_str, sizeof(addr_str));
+				snprintf(host, sizeof(host), "%s", addr_str);
+				break;
+			case AF_INET6:
+				inet_ntop(ai6->sin6_family, &(ai6->sin6_addr), addr_str, sizeof(addr_str));
+				if ( ifname[0] ){
+					snprintf(host, sizeof(host), "[%s%s]", addr_str, ifname);
+				} else {
+					snprintf(host, sizeof(host), "[%s]", addr_str);
+				}
+				break;
+			default:
+				continue;
+			}
+		}
+		freeaddrinfo (gai_res);
+		if ( port_str[0] ){
+			strcat(host, port_str);
+		}
+
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Finer, "host=%s, addr=%s\n", host, addr_str);
+#endif // CefC_Debug
+		host_len = strlen(host);
+		buff[index++] = host_len;
+		memcpy(&buff[index], host, host_len);
 		index += host_len;
 	}
 

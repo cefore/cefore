@@ -28,9 +28,10 @@
 #
 
 # set distcheck configure flag
-DISTCHECK_CONFIGURE_FLAGS=--enable-debug --enable-csmgr --enable-cache --enable-samptp --enable-cefping --enable-conpub --enable-interest-return
+DISTCHECK_CONFIGURE_FLAGS=--enable-debug --enable-csmgr --enable-cache --enable-samptp --enable-conpub--enable-interest-return
 
 EXTRA_DIST=apps doc LICENSE Readme.md
 
 # load sub directory
 SUBDIRS = src tools utils config
+

@@ -68,7 +68,7 @@
  ****************************************************************************************/
 typedef struct {
 	uint16_t 		port_num;
-	char 			local_sock_id[64+1];
+	char 			local_sock_id[CefC_LOCAL_SOCK_ID_SIZ+1];
 	char			cache_type[ConpubdC_Max_Plugin_Name_Len];
 	char			cache_path[PATH_MAX];
 	uint32_t		purge_interval;
@@ -77,10 +77,12 @@ typedef struct {
 	int				contents_num;
 	uint64_t		contents_capacity;
 	int				block_size;
-	char			cefnetd_node[128]; 
+	char			cefnetd_node[128];
 	int				cefnetd_port;
 	char			restore_path[PATH_MAX];
 	char			restore_fname[PATH_MAX];
+	int				t_pending;
+	char			publisher_id[SHA512_DIGEST_LENGTH];
 } ConpubT_Config_Param;
 
 #if 0	//JK
@@ -98,18 +100,18 @@ typedef struct {
 	char				peer_id_str[ConpubdC_Max_Sock_Num][NI_MAXHOST];
 	char				peer_sv_str[ConpubdC_Max_Sock_Num][NI_MAXSERV];
 	int 				peer_num;
-	
+
 	/********** Local listen socket 	***********/
 	int 				local_listen_fd;
 	char 				local_sock_name[1024];
 	int					local_peer_sock;
-	
+
 	/********** load functions			***********/
 	ConpubdT_Plugin_Interface* cs_mod_int;		/* plugin interface						*/
 	char			cache_type[ConpubdC_Max_Plugin_Name_Len];
 												/* plugin library name					*/
 	void*			mod_lib;					/* plugin library						*/
-	
+
 	/********** CS parameters info. ***********/
 	uint32_t		purge_interval;				/* Interval that to purge cache			*/
 	char			cache_path[PATH_MAX];
@@ -127,10 +129,10 @@ typedef struct {
 	int 		cefnetd_port_num;
 	int			cefnetd_sock;
 	uint64_t 	cefnetd_reconnect_time;
-	
+
 	/********** Published info.  ***********/
 	int				published_contents_num;
-	
+
 } CefT_Conpubd_Handle;
 #endif		//JK
 

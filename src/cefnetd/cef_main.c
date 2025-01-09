@@ -69,18 +69,18 @@ int main (
 	char*	work_arg;
 	char 	file_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
-	
+
 	/* Inits logging 		*/
 	cef_log_init ("cefnetd", 1);
-	
+
 	/* Parses the options 	*/
 	for (i = 1 ; i < argc ; i++) {
-		
+
 		work_arg = argv[i];
 		if (work_arg == NULL || work_arg[0] == 0) {
 			break;
 		}
-		
+
 		if (strcmp (work_arg, "-d") == 0) {
 			if (i + 1 == argc) {
 				cef_log_write (CefC_Log_Error, "[-d] has no parameter.\n");
@@ -106,7 +106,7 @@ int main (
 			exit (1);
 		}
 	}
-	
+
 	if (dir_path_f > 1) {
 		cef_log_write (CefC_Log_Error, "[-d] options is specified duplicately.\n");
 		exit (1);
@@ -115,23 +115,24 @@ int main (
 		cef_log_write (CefC_Log_Error, "[-p] options is specified duplicately.\n");
 		exit (1);
 	}
-	cef_log_init2 (file_path, 1/* for CEFNETD */);
+	cef_log_init2(file_path, 1 /* for CEFNETD */);
+	cef_log_fopen (port_num);
 #ifdef CefC_Debug
 	cef_dbg_init ("cefnetd", file_path, 1);
 #endif // CefC_Debug
-	
+
 	/* Creation the local socket name 	*/
 	res = cef_client_init (port_num, file_path);
 	if (res < 0) {
 		cef_log_write (CefC_Log_Error, "Failed to init the client package.\n");
 		exit (1);
 	}
-	
+
 	/* Set signal */
 	signal(SIGPIPE, SIG_IGN);
 
 	/* Launches cefnetd 			*/
 	cef_node_run ();
-	
+
 	exit (1);
 }

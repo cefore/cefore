@@ -63,6 +63,7 @@
 #include <cefore/cef_frame.h>
 #include <cefore/cef_hash.h>
 #include <conpubd/conpubd_plugin.h>
+#include <cefore/cef_valid.h>	/* for OpenSSL 3.x */
 
 
 /****************************************************************************************
@@ -90,7 +91,7 @@ typedef struct {
 } ConpubdT_Content_Mem_Entry;
 
 typedef struct CefT_Mem_Hash_Cell {
-	
+
 	uint32_t 					hash;
 	unsigned char* 				key;
 	uint32_t 					klen;
@@ -103,7 +104,7 @@ typedef struct CefT_Mem_Hash {
 	uint32_t 				tabl_max;
 	uint64_t 				elem_max;
 	uint64_t 				elem_num;
-	
+
 } CefT_Mem_Hash;
 
 /****************************************************************************************
@@ -158,8 +159,8 @@ mem_cache_item_get (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 mem_cache_item_puts (
-//JK	ConpubdT_Content_Entry* entry, 
-	void* in_entry, 
+//JK	ConpubdT_Content_Entry* entry,
+	void* in_entry,
 	int size,
 	void* conpubd_hdl
 );
@@ -168,7 +169,7 @@ mem_cache_item_puts (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 mem_cache_cob_write (
-	ConpubdT_Content_Entry* cobs, 
+	ConpubdT_Content_Entry* cobs,
 	int cob_num
 );
 /*--------------------------------------------------------------------------------------
@@ -214,19 +215,19 @@ cef_mem_hash_number_create (
 	const unsigned char* key,
 	uint32_t klen
 );
-static int 
+static int
 cef_mem_hash_tbl_item_set (
 	const unsigned char* key,
 	uint32_t klen,
-	ConpubdT_Content_Mem_Entry* elem, 
+	ConpubdT_Content_Mem_Entry* elem,
 	ConpubdT_Content_Mem_Entry** old_elem
 );
-static ConpubdT_Content_Mem_Entry* 
+static ConpubdT_Content_Mem_Entry*
 cef_mem_hash_tbl_item_get (
 	const unsigned char* key,
 	uint32_t klen
 );
-static ConpubdT_Content_Mem_Entry* 
+static ConpubdT_Content_Mem_Entry*
 cef_mem_hash_tbl_item_remove (
 	const unsigned char* key,
 	uint32_t klen
@@ -248,7 +249,7 @@ conpubd_key_create_by_Mem_Entry (
 ----------------------------------------------------------------------------------------*/
 int
 conpubd_memory_plugin_load (
-	ConpubdT_Plugin_Interface* cs_in, 
+	ConpubdT_Plugin_Interface* cs_in,
 	const char* config_dir
 ) {
 	CONPUBD_SET_CALLBACKS (
@@ -258,7 +259,14 @@ conpubd_memory_plugin_load (
 	if (config_dir) {
 		strcpy (conpub_conf_dir, config_dir);
 	}
-	
+
+	/* Init logging 	*/
+	conpubd_log_init ("conpubd_memcache", 1);
+	conpubd_log_init2 (conpub_conf_dir);
+#ifdef CefC_Debug
+	conpubd_dbg_init ("conpubd_memcache", conpub_conf_dir);
+#endif // CefC_Debug
+
 	return (0);
 }
 /*--------------------------------------------------------------------------------------
@@ -269,18 +277,12 @@ mem_cs_create (
 	CsmgrT_Stat_Handle stat_hdl
 ) {
 	MemT_Config_Param conf_param;
-	
+
 	/* create handle 		*/
 	if (cobpub_hdl != NULL) {
 		free (cobpub_hdl);
 		cobpub_hdl = NULL;
 	}
-	/* Init logging 	*/
-	conpubd_log_init ("conpubd_memcache", 1);
-	conpubd_log_init2 (conpub_conf_dir);
-#ifdef CefC_Debug
-	conpubd_dbg_init ("conpubd_memcache", conpub_conf_dir);
-#endif // CefC_Debug
 
 	cobpub_hdl = (MemT_Cache_Handle*) malloc (sizeof (MemT_Cache_Handle));
 	if (cobpub_hdl == NULL) {
@@ -288,7 +290,7 @@ mem_cs_create (
 		return (-1);
 	}
 	memset (cobpub_hdl, 0, sizeof (MemT_Cache_Handle));
-	
+
 	/* Reads config 		*/
 	if (mem_config_read (&conf_param) < 0) {
 		conpubd_log_write (CefC_Log_Error, "[%s] read config\n", __func__);
@@ -296,19 +298,19 @@ mem_cs_create (
 	}
 	cobpub_hdl->cache_capacity = conf_param.cache_capacity;
 	cobpub_hdl->cache_cobs = 0;
-	
+
 	/* Creates the memory cache 		*/
 	mem_hash_tbl = cef_mem_hash_tbl_create (cobpub_hdl->cache_capacity);
 	if (mem_hash_tbl ==  NULL) {
 		conpubd_log_write (CefC_Log_Error, "Unable to create mem hash table\n");
 		return (-1);
 	}
-	
+
 	conpubd_log_write (CefC_Log_Info, "Start\n");
 	conpubd_log_write (CefC_Log_Info, "Capacity : "FMTU64"\n", cobpub_hdl->cache_capacity);
 	conpub_stat_hdl = stat_hdl;
 	conpubd_stat_cache_capacity_update (conpub_stat_hdl, cobpub_hdl->cache_capacity);
-	
+
 	return (0);
 }
 /*--------------------------------------------------------------------------------------
@@ -321,7 +323,7 @@ mem_cs_destroy (
 	int i;
 
 	pthread_mutex_destroy (&conpub_mem_cs_mutex);
-	
+
 	if (cobpub_hdl == NULL) {
 		return;
 	}
@@ -340,12 +342,12 @@ mem_cs_destroy (
 		free (mem_hash_tbl->tbl);
 		free (mem_hash_tbl);
 	}
-	
+
 	if (cobpub_hdl) {
 		free (cobpub_hdl);
 		cobpub_hdl = NULL;
 	}
-	
+
 	return;
 }
 
@@ -363,13 +365,13 @@ mem_cs_expire_check (
 	int n;
 	unsigned char trg_key[65535];
 	int trg_key_len;
-	
+
 	pthread_mutex_lock (&conpub_mem_cs_mutex);
-	
+
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 
-	for (n = 0 ; n < mem_hash_tbl->tabl_max ; n++) { 
+	for (n = 0 ; n < mem_hash_tbl->tabl_max ; n++) {
 		if (mem_hash_tbl->tbl[n] == NULL) {
 			continue;
 		}
@@ -382,11 +384,13 @@ mem_cs_expire_check (
 				wcp = cp->next;
 				if (((entry->expiry != 0) && (entry->expiry < nowt))) {
 					/* Removes the expiry cache entry 		*/
-					trg_key_len = conpubd_key_create_by_Mem_Entry 
+					trg_key_len = conpubd_key_create_by_Mem_Entry
 									(entry->name, entry->name_len, entry->chunk_num, trg_key);
 					entry1 = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
+					if ( !entry1 )
+						continue;
 					conpubd_stat_cob_remove (
-						conpub_stat_hdl, entry->name, entry->name_len, 
+						conpub_stat_hdl, entry->name, entry->name_len,
 						entry->chunk_num, entry->pay_len);
 					cobpub_hdl->cache_cobs--;
 					free (entry1->msg);
@@ -397,7 +401,7 @@ mem_cs_expire_check (
 		}
 	}
 	pthread_mutex_unlock (&conpub_mem_cs_mutex);
-	
+
 	return;
 }
 
@@ -418,20 +422,20 @@ mem_cache_item_get (
 	int 			trg_key_len;
 	uint64_t 		nowt;
 	struct timeval 	tv;
-	
+
 	/* Creates the key 		*/
 	trg_key_len = conpubd_name_chunknum_concatenate (key, key_size, seqno, trg_key);
-	
+
 	/* Access the specified entry 	*/
 	entry = cef_mem_hash_tbl_item_get (trg_key, trg_key_len);
-	
+
 	if (entry) {
-		
+
 		gettimeofday (&tv, NULL);
 		nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
-		
+
 		if (((entry->expiry == 0) || (nowt < entry->expiry))) {
-			
+
 			if (entry->chunk_num == 0) {
 				conpubd_stat_access_count_update (
 					conpub_stat_hdl, entry->name, entry->name_len);
@@ -453,19 +457,21 @@ mem_cache_item_get (
 			pthread_mutex_lock (&conpub_mem_cs_mutex);
 			/* Removes the expiry cache entry 		*/
 			entry = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
-			conpubd_stat_cob_remove (
-				conpub_stat_hdl, entry->name, entry->name_len, 
-				entry->chunk_num, entry->pay_len);
-			cobpub_hdl->cache_cobs--;
-			
-			free (entry->msg);
-			free (entry->name);
-			free (entry);
+			if ( entry ){
+				conpubd_stat_cob_remove (
+					conpub_stat_hdl, entry->name, entry->name_len,
+					entry->chunk_num, entry->pay_len);
+				cobpub_hdl->cache_cobs--;
+
+				free (entry->msg);
+				free (entry->name);
+				free (entry);
+			}
 			pthread_mutex_unlock (&conpub_mem_cs_mutex);
 		}
 	}
-	
-	
+
+
 	return (-1);
 }
 /*--------------------------------------------------------------------------------------
@@ -473,14 +479,14 @@ mem_cache_item_get (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 mem_cache_item_puts (
-//JK	ConpubdT_Content_Entry* entry, 
-	void* in_entry, 
+//JK	ConpubdT_Content_Entry* entry,
+	void* in_entry,
 	int size,
 	void* conpubd_hdl
 ) {
 	int rtc = 0;
 	ConpubdT_Content_Entry* entry = (ConpubdT_Content_Entry*)in_entry;
-	
+
 	if (entry == NULL) {
 		return (rtc);
 	}
@@ -494,7 +500,7 @@ mem_cache_item_puts (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 mem_cache_cob_write (
-	ConpubdT_Content_Entry* cobs, 
+	ConpubdT_Content_Entry* cobs,
 	int cob_num
 ) {
 	int index = 0;
@@ -505,36 +511,36 @@ mem_cache_cob_write (
 	uint64_t nowt;
 	struct timeval tv;
 	int rtc;
-	
+
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 
 	while (index < cob_num) {
-		
+
 		if (cobs[index].expiry < nowt) {
 			index++;
 			continue;
 		}
 
 		/* Caches the content entry without the cache algorithm library 	*/
-		entry = 
+		entry =
 			(ConpubdT_Content_Mem_Entry*) calloc (1, sizeof (ConpubdT_Content_Mem_Entry));
 		if (entry == NULL) {
 			return (-1);
 		}
-		
+
 		/* Creates the key 				*/
 		trg_key_len = conpubd_name_chunknum_concatenate (
-						cobs[index].name, cobs[index].name_len, 
+						cobs[index].name, cobs[index].name_len,
 						cobs[index].chunk_num, trg_key);
-		
+
 		/* Inserts the cache entry 		*/
 		entry->msg			 = cobs[index].msg;
 		entry->msg_len		 = cobs[index].msg_len;
 		entry->name			 = cobs[index].name;
 		entry->name_len		 = cobs[index].name_len;
 		entry->pay_len		 = cobs[index].pay_len;
-		entry->chunk_num	 = cobs[index].chunk_num;
+		entry->chunk_num		 = cobs[index].chunk_num;
 		entry->rct	 		 = cobs[index].rct;
 		entry->expiry		 = cobs[index].expiry;
 		entry->node			 = cobs[index].node;
@@ -545,11 +551,11 @@ mem_cache_cob_write (
 			free (entry);
 			return (rtc);
 		}
-		
+
 		/* Updates the content information 			*/
-		conpubd_stat_cob_update (conpub_stat_hdl, entry->name, entry->name_len, 
+		conpubd_stat_cob_update (conpub_stat_hdl, entry->name, entry->name_len,
 			entry->chunk_num, entry->pay_len, entry->expiry, nowt, entry->node);
-		
+
 		if (old_entry) {
 			free (old_entry->msg);
 			free (old_entry->name);
@@ -559,7 +565,7 @@ mem_cache_cob_write (
 		}
 		index++;
 	}
-	
+
 	return (0);
 }
 /*--------------------------------------------------------------------------------------
@@ -572,17 +578,17 @@ mem_cs_ac_cnt_inc (
 	uint32_t seq_num							/* sequence number						*/
 ) {
 	ConpubdT_Content_Mem_Entry* entry;
-	
+
 	entry = cef_mem_hash_tbl_item_get (key, key_size);
 	if (!entry) {
 		return;
 	}
-	
+
 	if ((seq_num == 0) && (entry->chunk_num == 0)) {
 		conpubd_stat_access_count_update (
 			conpub_stat_hdl, entry->name, entry->name_len);
 	}
-	
+
 	return;
 }
 /*--------------------------------------------------------------------------------------
@@ -594,7 +600,7 @@ mem_content_del (
 	uint16_t name_len,							/* Content name length					*/
 	uint64_t cob_num							/* Total number of Cob					*/
 ) {
-	
+
 	CsmgrT_Stat* rcd = NULL;
 	uint64_t 	i;
 	ConpubdT_Content_Mem_Entry* entry = NULL;
@@ -616,7 +622,7 @@ mem_content_del (
 			return (-1);
 	}
 	conpubd_stat_cob_remove (
-		conpub_stat_hdl, entry->name, entry->name_len, 
+		conpub_stat_hdl, entry->name, entry->name_len,
 		entry->chunk_num, entry->pay_len);
 		cobpub_hdl->cache_cobs--;
 	free (entry->msg);
@@ -626,7 +632,7 @@ mem_content_del (
 	pthread_mutex_unlock (&conpub_mem_cs_mutex);
 
 	return (0);
-	
+
 }
 /*--------------------------------------------------------------------------------------
 	Retuern cached cob num
@@ -645,24 +651,24 @@ mem_config_read (
 ) {
 	FILE*	fp = NULL;								/* file pointer						*/
 	char	file_name[PATH_MAX];					/* file name						*/
-	
+
 	char	param[128] = {0};						/* parameter						*/
 	char	param_buff[128] = {0};					/* param buff						*/
 	int		len;									/* read length						*/
-	
+
 	char*	option;									/* deny option						*/
 	char*	value;									/* parameter						*/
-	
+
 	int			i, n;
-	
+
 	/* Inits parameters		*/
 	memset (params, 0, sizeof (MemT_Config_Param));
 	params->cache_capacity = CefC_CnpbDefault_Contents_Capacity;
-	
+
 	/* Obtains the directory path where the conpubd's config file is located. */
 #if 0 //+++++ GCC v9 +++++
 	sprintf (file_name, "%s/conpubd.conf", conpub_conf_dir);
-#else 
+#else
 	int sn = snprintf (file_name, sizeof(file_name), "%s/conpubd.conf", conpub_conf_dir);
 	if (sn < 0) {
 		conpubd_log_write (
@@ -670,16 +676,16 @@ mem_config_read (
 		return (-1);
 	}
 #endif //-----  GCC v9 -----
-	
+
 	/* Opens the config file. */
 	fp = fopen (file_name, "r");
 	if (fp == NULL) {
 		return (-1);
 	}
-	
+
 	/* get parameter	*/
 	while (fgets (param_buff, sizeof (param_buff), fp) != NULL) {
-		
+
 		/* Trims a read line 		*/
 		len = strlen (param_buff);
 		if ((param_buff[0] == '#') || (param_buff[0] == '\n') || (len == 0)) {
@@ -694,15 +700,15 @@ mem_config_read (
 				n++;
 			}
 		}
-		
+
 		/* Gets option */
 		value 	= param;
 		option 	= strsep (&value, "=");
-		
+
 		if (value == NULL) {
 			continue;
 		}
-		
+
 		/* Records a parameter 			*/
 		if (strcmp (option, "CONTENTS_CAPACITY") == 0) {
 			char *endptr = "";
@@ -713,12 +719,12 @@ mem_config_read (
 				fclose (fp);
 				return (-1);
 			}
-			if (!(1 <= params->cache_capacity 
-					&& 
+			if (!(1 <= params->cache_capacity
+					&&
 				  params->cache_capacity <= 0xFFFFFFFFF)) {
-				conpubd_log_write (CefC_Log_Error, 
+				conpubd_log_write (CefC_Log_Error,
 				"CONTENTS_CAPACITY value must be greater than  or equal to 1 "
-				"and less than or equal to 68,719,476,735(0xFFFFFFFFF).\n"); 
+				"and less than or equal to 68,719,476,735(0xFFFFFFFFF).\n");
 				fclose (fp);
 				return (-1);
 			}
@@ -727,12 +733,12 @@ mem_config_read (
 		}
 	}
 	fclose (fp);
-	
+
 	return (0);
 }
 
 /****************************************************************************************
-	Hash APIs for Memory Cahce Plugin	
+	Hash APIs for Memory Cahce Plugin
  ****************************************************************************************/
 /****************************************************************************************/
 static CefT_Mem_Hash*
@@ -743,7 +749,7 @@ cef_mem_hash_tbl_create (
 	uint64_t table_size;
 	int i, n;
 	int flag;
-	
+
 	if (capacity > INT32_MAX) {
 		table_size = INT32_MAX;
 	} else {
@@ -753,7 +759,7 @@ cef_mem_hash_tbl_create (
 			table_size = INT32_MAX;
 		}
 	}
-	
+
 	for (i = table_size ; i > 1 ; i++) {
 		flag = 0;
 		for (n = 2 ; n < table_size ; n++) {
@@ -771,35 +777,35 @@ cef_mem_hash_tbl_create (
 	if (table_size > INT32_MAX) {
 		table_size = INT32_MAX;
 	}
-	
+
 	ht = (CefT_Mem_Hash*) malloc (sizeof (CefT_Mem_Hash));
 	if (ht == NULL) {
 		return (NULL);
 	}
 	memset (ht, 0, sizeof (CefT_Mem_Hash));
-	
+
 	ht->tbl = (CefT_Mem_Hash_Cell**) calloc (sizeof (CefT_Mem_Hash_Cell*), table_size);
-	
+
 	if (ht->tbl  == NULL) {
 		free (ht->tbl);
 		free (ht);
 		return (NULL);
 	}
 	memset (ht->tbl, 0, sizeof (CefT_Mem_Hash_Cell*) * table_size);
-	
+
 	srand ((unsigned) time (NULL));
 	ht->elem_max = capacity;
 	ht->tabl_max = table_size;
 	ht->elem_num = 0;
-	
+
 	return (ht);
 }
 /****************************************************************************************/
-static int 
+static int
 cef_mem_hash_tbl_item_set (
 	const unsigned char* key,
 	uint32_t klen,
-	ConpubdT_Content_Mem_Entry* elem, 
+	ConpubdT_Content_Mem_Entry* elem,
 	ConpubdT_Content_Mem_Entry** old_elem
 ) {
 	CefT_Mem_Hash* ht = (CefT_Mem_Hash*) mem_hash_tbl;
@@ -849,13 +855,13 @@ cef_mem_hash_tbl_item_set (
 		cp->elem = elem;
 		cp->klen = klen;
 		memcpy (cp->key, key, klen);
-		
+
 		ht->elem_num++;
 		return (1);
 	}
 }
 /****************************************************************************************/
-static ConpubdT_Content_Mem_Entry* 
+static ConpubdT_Content_Mem_Entry*
 cef_mem_hash_tbl_item_get (
 	const unsigned char* key,
 	uint32_t klen
@@ -874,18 +880,18 @@ cef_mem_hash_tbl_item_get (
 	cp = ht->tbl[y];
 	if (cp == NULL) {
 		return (NULL);
-	} 
+	}
 	for (; cp != NULL; cp = cp->next) {
 		if ((cp->klen == klen) &&
 		   (memcmp (cp->key, key, klen) == 0)) {
 		   	return (cp->elem);
 		}
 	}
-	
+
 	return (NULL);
 }
 /****************************************************************************************/
-static ConpubdT_Content_Mem_Entry* 
+static ConpubdT_Content_Mem_Entry*
 cef_mem_hash_tbl_item_remove (
 	const unsigned char* key,
 	uint32_t klen
@@ -896,14 +902,14 @@ cef_mem_hash_tbl_item_remove (
 	ConpubdT_Content_Mem_Entry* ret_elem;
 	CefT_Mem_Hash_Cell* cp;
 	CefT_Mem_Hash_Cell* wcp;
-	
+
 	if ((klen > MemC_Max_KLen) || (ht == NULL)) {
 		return (NULL);
 	}
 
 	hash = cef_mem_hash_number_create (key, klen);
 	y = hash % ht->tabl_max;
-	
+
 	cp = ht->tbl[y];
 	if (cp == NULL) {
 		return (NULL);
@@ -930,7 +936,7 @@ cef_mem_hash_tbl_item_remove (
 			}
 		}
 	}
-	
+
 	return (NULL);
 }
 /****************************************************************************************/
@@ -941,10 +947,11 @@ cef_mem_hash_number_create (
 ) {
 	uint32_t hash;
 	unsigned char out[MD5_DIGEST_LENGTH];
-	
-	MD5 (key, klen, out);
+
+//	MD5 (key, klen, out);
+	cef_valid_md5( key, klen, out );	/* for Openssl 3.x */
 	memcpy (&hash, &out[12], sizeof (uint32_t));
-	
+
 	return (hash);
 }
 /****************************************************************************************/

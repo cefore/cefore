@@ -37,6 +37,7 @@
  ****************************************************************************************/
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <errno.h>
 #include <signal.h>
 #include <limits.h>
@@ -51,10 +52,12 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+#define CefC_RateMbps_Min				 	0.001	/* 1Kbps */
+
 #define	T_USEC				(1000000)		/* 1(sec) = 1000000(usec)	*/
 
-#define CefC_RateMbps_Max				 	1000.0
-#define CefC_RateMbps_Min				 	1.0
+#define USAGE                print_usage(CefFp_Usage)
+#define printerr(...)        fprintf(stderr,"[cefputstream] ERROR: " __VA_ARGS__)
 
 /****************************************************************************************
  Structures Declaration
@@ -83,7 +86,7 @@ static uint64_t stat_jitter_max = 0;
 
 static void
 post_process (
-	void
+    FILE* ofp
 );
 static void
 sigcatch (
@@ -91,7 +94,7 @@ sigcatch (
 );
 static void
 print_usage (
-	void
+    FILE* ofp
 );
 
 /****************************************************************************************
@@ -102,10 +105,11 @@ int main (
 ) {
 	int res;
 	unsigned char buff[CefC_Max_Length];
-	CefT_CcnMsg_OptHdr opt;	
+	CefT_CcnMsg_OptHdr opt;
 	CefT_CcnMsg_MsgBdy params;
 	uint64_t seqnum = 0;
 	char uri[1024];
+	size_t uri_len;
 
 	double interval;
 	long interval_us;
@@ -117,14 +121,12 @@ int main (
 	char*	work_arg;
 	int 	i;
 	int		input_res;
-	
+
 	char 	conf_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
-	
+
 	char valid_type[1024];
-	
-	long int int_rate;
-	
+
 	/***** flags 		*****/
 	int uri_f 		= 0;
 	int rate_f 		= 0;
@@ -134,73 +136,64 @@ int main (
 	int dir_path_f 	= 0;
 	int port_num_f 	= 0;
 	int valid_f 	= 0;
-	
+
 	/***** parameters 	*****/
 	uint64_t cache_time 	= 0;
 	uint64_t expiry 		= 0;
 	double rate 			= 5.0;
 	int block_size 			= 1024;
-	
+
 	/*------------------------------------------
 		Checks specified options
 	--------------------------------------------*/
 	uri[0] 			= 0;
 	valid_type[0] 	= 0;
-	
-	fprintf (stderr, "[cefputstream] Start\n");
-	fprintf (stderr, "[cefputstream] Parsing parameters ... ");
-	
+
+	printf ("[cefputstream] Start\n");
+
 	/* Inits logging 		*/
 	cef_log_init ("cefputstream", 1);
-	
+
 	/* Obtains options 		*/
 	for (i = 1 ; i < argc ; i++) {
-		
+
 		work_arg = argv[i];
 		if (work_arg == NULL || work_arg[0] == 0) {
 			break;
 		}
-		
+
 		if (strcmp (work_arg, "-r") == 0) {
 			if (rate_f) {
-				fprintf (stderr, "ERROR: [-r] is duplicated.\n");
-				print_usage ();
+				printerr("[-r] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-r] has no parameter.\n");
-				print_usage ();
+				printerr("[-r] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
 			rate = atof (work_arg);
-//			if ((rate < 1) || (rate > 32)) {
-//				rate = 1;
-//			}
-			if (rate < CefC_RateMbps_Min) {
+			if ((rate < CefC_RateMbps_Min)) {
 				rate = CefC_RateMbps_Min;
 			}
-			if (rate > CefC_RateMbps_Max) {
-				rate = CefC_RateMbps_Max;
-			}
-			int_rate = (long int)(rate * 1000.0);
-			rate = (double)int_rate / 1000.0;
 			rate_f++;
 			i++;
 		} else if (strcmp (work_arg, "-b") == 0) {
 			if (blocks_f) {
-				fprintf (stderr, "ERROR: [-b] is duplicated.\n");
-				print_usage ();
+				printerr("[-b] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-b] has no parameter.\n");
-				print_usage ();
+				printerr("[-b] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
 			block_size = atoi (work_arg);
-			
+
 			if (block_size < 60) {
 				block_size = 60;
 			}
@@ -211,18 +204,18 @@ int main (
 			i++;
 		} else if (strcmp (work_arg, "-e") == 0) {
 			if (expiry_f) {
-				fprintf (stderr, "ERROR: [-e] is duplicated.\n");
-				print_usage ();
+				printerr("[-e] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-e] has no parameter.\n");
-				print_usage ();
+				printerr("[-e] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
 			expiry = atoi (work_arg);
-			
+
 			if (expiry > 86400) {
 				expiry = 86400;
 			}
@@ -230,18 +223,18 @@ int main (
 			i++;
 		} else if (strcmp (work_arg, "-t") == 0) {
 			if (cachet_f) {
-				fprintf (stderr, "ERROR: [-t] is duplicated.\n");
-				print_usage ();
+				printerr("[-t] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-t] has no parameter.\n");
-				print_usage ();
+				printerr("[-t] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
 			cache_time = atoi (work_arg);
-			
+
 			if ((cache_time < 0) || (cache_time > 65535)) {
 				cache_time = 10;
 			}
@@ -249,13 +242,13 @@ int main (
 			i++;
 		} else if (strcmp (work_arg, "-v") == 0) {
 			if (valid_f) {
-				fprintf (stderr, "ERROR: [-v] is duplicated.\n");
-				print_usage ();
+				printerr("[-v] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-v] has no parameter.\n");
-				print_usage ();
+				printerr("[-v] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -263,23 +256,23 @@ int main (
 			valid_f++;
 			i++;
 		} else if (strcmp (work_arg, "-h") == 0) {
-			print_usage ();
+			USAGE;
 			exit (1);
 		} else if (strcmp (work_arg, "-d") == 0) {
 			if (dir_path_f) {
-				fprintf (stderr, "ERROR: [-d] is duplicated.\n");
-				print_usage ();
+				printerr("[-d] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-d] has no parameter.\n");
-				print_usage ();
+				printerr("[-d] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			//202108
 			if (strlen(argv[i + 1]) > PATH_MAX) {
-				fprintf (stderr, "ERROR: [-d] parameter is too long.\n");
-				print_usage ();
+				printerr("[-d] parameter is too long.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -288,13 +281,13 @@ int main (
 			i++;
 		} else if (strcmp (work_arg, "-p") == 0) {
 			if (port_num_f) {
-				fprintf (stderr, "ERROR: [-p] is duplicated.\n");
-				print_usage ();
+				printerr("[-p] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-p] has no parameter.\n");
-				print_usage ();
+				printerr("[-p] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -302,72 +295,76 @@ int main (
 			port_num_f++;
 			i++;
 		} else {
-			
+
 			work_arg = argv[i];
-			
+
 			if (work_arg[0] == '-') {
-				fprintf (stderr, "ERROR: unknown option is specified.\n");
-				print_usage ();
+				printerr("unknown option is specified.\n");
+				USAGE;
 				return (-1);
 			}
-			
+
 			if (uri_f) {
-				fprintf (stderr, "ERROR: uri is duplicated.\n");
-				print_usage ();
+				printerr("uri is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			res = strlen (work_arg);
-			
+
 			if (res >= 1024) {
-				fprintf (stderr, "ERROR: uri is too long.\n");
-				print_usage ();
+				printerr("uri is too long.\n");
+				USAGE;
 				return (-1);
 			}
 			strcpy (uri, work_arg);
 			uri_f++;
 		}
 	}
-	
+
 	if (uri_f == 0) {
-		fprintf (stderr, "ERROR: URI is not specified.\n");
-		print_usage ();
+		printerr("URI is not specified.\n");
+		USAGE;
 		exit (1);
 	}
-	fprintf (stderr, "OK\n");
+	printf ("[cefputstream] Parsing parameters ... OK\n");
 	cef_log_init2 (conf_path, 1 /* for CEFNETD */);
 #ifdef CefC_Debug
 	cef_dbg_init ("cefputstream", conf_path, 1);
 #endif // CefC_Debug
-	
+
 	/*------------------------------------------
 		Creates the name from URI
 	--------------------------------------------*/
-	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));	
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));
 	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	cef_frame_init ();
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
-		fprintf (stderr, "ERROR: Failed to init the client package.\n");
+		printerr("Failed to init the client package.\n");
 		exit (1);
 	}
-	fprintf (stderr, "[cefputstream] Init Cefore Client package ... OK\n");
-	fprintf (stderr, "[cefputstream] Conversion from URI into Name ... ");
+	printf ("[cefputstream] Init Cefore Client package ... OK\n");
 	res = cef_frame_conversion_uri_to_name (uri, params.name);
 	if (res < 0) {
-		fprintf (stderr, "ERROR: Invalid URI is specified.\n");
+		printerr("Invalid URI is specified.\n");
+		exit (1);
+	}
+	uri_len = strlen (uri);
+	if (uri_len && (uri[uri_len-1]=='/')) {
+		printerr("Invalid URI specified. It is illegal for a URI to end with /.\n");
 		exit (1);
 	}
 	params.name_len 	= res;
 	params.chunk_num_f 	= 1;
-	fprintf (stderr, "OK\n");
-	
+	printf ("[cefputstream] Conversion from URI into Name ... OK\n");
+
 	/*------------------------------------------
 		Sets Expiry Time and RCT
 	--------------------------------------------*/
 	gettimeofday (&now_t, NULL);
 //#382	now_ms = now_t.tv_sec * 1000 + now_t.tv_usec / 1000;
 	now_ms = now_t.tv_sec * 1000llu + now_t.tv_usec / 1000llu;	//#382
-	
+
 	if (cache_time > 0) {
 		opt.cachetime_f 	= 1;
 		opt.cachetime 	= now_ms + cache_time * 1000;
@@ -375,38 +372,37 @@ int main (
 		opt.cachetime_f 	= 1;
 		opt.cachetime 	= now_ms;
 	}
-	
+
 	if (expiry > 0) {
 		params.expiry = now_ms + expiry * 1000;
 	} else {
 		params.expiry = 0;
 	}
-	
+
 	/*------------------------------------------
 		Set Validation Alglithm
 	--------------------------------------------*/
 	if (valid_f == 1) {
 		cef_valid_init (conf_path);
 		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_type);
-		
+
 		if (params.alg.valid_type == CefC_T_ALG_INVALID) {
-			fprintf (stdout, "ERROR: -v has the invalid parameter %s\n", valid_type);
+			printerr("-v has the invalid parameter %s\n", valid_type);
 			exit (1);
 		}
 	}
-	
+
 	/*------------------------------------------
 		Connects to CEFORE
 	--------------------------------------------*/
-	fprintf (stderr, "[cefputstream] Connect to cefnetd ... ");
 	fhdl = cef_client_connect ();
 	if (fhdl < 1) {
-		fprintf (stderr, "ERROR: cefnetd is not running.\n");
+		printerr("cefnetd is not running.\n");
 		exit (1);
 	}
 	app_running_f = 1;
-	fprintf (stderr, "OK\n");
-	
+	printf ("[cefputstream] Connect to cefnetd ... OK\n");
+
 	/*------------------------------------------
 		Calculates the interval
 	--------------------------------------------*/
@@ -416,33 +412,34 @@ int main (
 	/*------------------------------------------
 		Main Loop
 	--------------------------------------------*/
-	fprintf (stderr, "[cefputstream] URI         = %s\n", uri);
-	fprintf (stderr, "[cefputstream] Rate        = %f Mbps\n", rate);
-	fprintf (stderr, "[cefputstream] Block Size  = %d Bytes\n", block_size);
-	fprintf (stderr, "[cefputstream] Cache Time  = "FMTU64" sec\n", cache_time);
-	fprintf (stderr, "[cefputstream] Expiration  = "FMTU64" sec\n", expiry);
-	
+	printf ("[cefputstream] URI         = %s\n", uri);
+	printf ("[cefputstream] Rate        = %f Mbps\n", rate);
+	printf ("[cefputstream] Block Size  = %d Bytes\n", block_size);
+	printf ("[cefputstream] Cache Time  = "FMTU64" sec\n", cache_time);
+	printf ("[cefputstream] Expiration  = "FMTU64" sec\n", expiry);
+	printf ("[cefputstream] Interval    = %lu us\n", interval_us);
+
 	memset (buff, 1, CefC_Max_Length);
 	gettimeofday (&start_t, NULL);
 	next_tus = start_t.tv_sec * T_USEC + start_t.tv_usec;
 
 	if (signal(SIGINT, sigcatch) == SIG_ERR){
-		fprintf (stderr, "[cefputstream] ERROR: signal(SIGINT)");
+		printerr("signal(SIGINT)");
 	}
 	if (signal(SIGTERM, sigcatch) == SIG_ERR){
-		fprintf (stderr, "[cefputstream] ERROR: signal(SIGTERM)");
+		printerr("signal(SIGTERM)");
 	}
 	if (signal(SIGPIPE, sigcatch) == SIG_ERR){
-		fprintf (stderr, "[cefputstream] ERROR: signal(SIGPIPE)");
+		printerr("signal(SIGPIPE)");
 	}
-	fprintf (stderr, "[cefputstream] Start creating Content Objects\n");
-	
+	printf ("[cefputstream] Start creating Content Objects\n");
+
 	while (app_running_f) {
 		gettimeofday (&now_t, NULL);
 		now_tus = now_t.tv_sec * T_USEC + now_t.tv_usec;
 
 		if (now_tus > next_tus) {
-			
+
 			if (stat_send_frames > 0) {
 				jitter = (now_t.tv_sec - end_t.tv_sec) * T_USEC
 								+ (now_t.tv_usec - end_t.tv_usec);
@@ -453,12 +450,12 @@ int main (
 					stat_jitter_max = jitter;
 				}
 			}
-			
+
 			res = read (0, buff, block_size);
 			if(seqnum > UINT32_MAX){
 				res = 0;
 			}
-			
+
 			if (res > 0) {
 				memcpy (params.payload, buff, res);
 				params.payload_len = (uint16_t) res;
@@ -466,14 +463,14 @@ int main (
 				//0.8.3
 				input_res = cef_client_object_input (fhdl, &opt, &params);
 				if ( input_res < 0 ) {
-					fprintf (stdout, "ERROR: Content Object frame size over(%d).\n", input_res*(-1));
-					fprintf (stdout, "       Try shortening the block size specification.\n");
+					printerr ("Content Object frame size over(%d).\n", input_res*(-1));
+					printerr ("       Try shortening the block size specification.\n");
 					exit (1);
 				}
 				stat_send_frames++;
 				stat_send_bytes += res;
 				seqnum++;
-				
+
 				gettimeofday (&end_t, NULL);
 			} else {
 				break;
@@ -481,31 +478,31 @@ int main (
 			next_tus = now_tus + interval_us;
 		}
 	}
-	post_process ();
+	post_process (stdout);
 	exit (0);
 }
 
 static void
 print_usage (
-	void
+	FILE* ofp
 ) {
-	
-	fprintf (stderr, "\nUsage: cefputstream\n");
-	fprintf (stderr, "  cefputstream uri [-r rate] [-b block_size] [-e expiry] "
-					 "[-t cache_time] [-v valid_algo] [-d config_file_dir] [-p port_num]\n\n");
-	fprintf (stderr, "  uri              Specify the URI.\n");
-	fprintf (stdout, "  rate             Transfer rate to cefnetd (Mbps)\n");
-	fprintf (stdout, "  block_size       Specifies the max payload length (bytes) of the Content Object.\n");
-	fprintf (stdout, "  expiry           Specifies the lifetime (seconds) of the Content Object.\n");
-	fprintf (stdout, "  cache_time       Specifies the period (seconds) after which Content Objects are cached before they are deleted.\n");
-	fprintf (stdout, "  valid_algo       Specify the validation algorithm (crc32 or sha256)\n");
-	fprintf (stderr, "  config_file_dir  Configure file directory\n");
-	fprintf (stderr, "  port_num         Port Number\n\n");
+
+	fprintf (ofp, "\nUsage: cefputstream\n");
+	fprintf (ofp, "  cefputstream uri [-r rate] [-b block_size] [-e expiry] "
+						  "[-t cache_time] [-v valid_algo] [-d config_file_dir] [-p port_num]\n\n");
+	fprintf (ofp, "  uri              Specify the URI.\n");
+	fprintf (ofp, "  rate             Transfer rate to cefnetd (Mbps)\n");
+	fprintf (ofp, "  block_size       Specifies the max payload length (bytes) of the Content Object.\n");
+	fprintf (ofp, "  expiry           Specifies the lifetime (seconds) of the Content Object.\n");
+	fprintf (ofp, "  cache_time       Specifies the period (seconds) after which Content Objects are cached before they are deleted.\n");
+	fprintf (ofp, "  valid_algo       Specify the validation algorithm (" CefC_ValidTypeStr_CRC32C " or " CefC_ValidTypeStr_RSA256 ")\n");
+	fprintf (ofp, "  config_file_dir  Configure file directory\n");
+	fprintf (ofp, "  port_num         Port Number\n\n");
 }
 
 static void
 post_process (
-	void
+	FILE* ofp
 ) {
 	uint64_t diff_t;
 	double diff_t_dbl = 0.0;
@@ -513,7 +510,7 @@ post_process (
 	uint64_t send_bits;
 	uint64_t jitter_ave;
 	struct timeval diff_tval;
-	
+
 	if (stat_send_frames) {
 		timersub( &end_t, &start_t, &diff_tval );
 		diff_t = diff_tval.tv_sec * 1000000llu + diff_tval.tv_usec;
@@ -521,28 +518,27 @@ post_process (
 		diff_t = 0;
 	}
 	usleep (T_USEC);
-	fprintf (stderr, "[cefputstream] Unconnect to cefnetd ... ");
 	cef_client_close (fhdl);
-	fprintf (stderr, "OK\n");
-	
-	fprintf (stderr, "[cefputstream] Stop\n");
-	fprintf (stderr, "[cefputstream] Tx Frames  = "FMTU64"\n", stat_send_frames);
-	fprintf (stderr, "[cefputstream] Tx Bytes   = "FMTU64"\n", stat_send_bytes);
+	fprintf (ofp, "[cefputstream] Unconnect to cefnetd ... OK\n");
+
+	fprintf (ofp, "[cefputstream] Stop\n");
+	fprintf (ofp, "[cefputstream] Tx Frames  = "FMTU64"\n", stat_send_frames);
+	fprintf (ofp, "[cefputstream] Tx Bytes   = "FMTU64"\n", stat_send_bytes);
 	if (diff_t > 0) {
 		diff_t_dbl = (double)diff_t / 1000000.0;
-		fprintf (stdout, "[cefputstream] Duration   = %.3f sec\n", diff_t_dbl + 0.0009);
+		fprintf (ofp, "[cefputstream] Duration   = %.3f sec\n", diff_t_dbl + 0.0009);
 		send_bits = stat_send_bytes * 8;
 		thrpt = (double)(send_bits) / diff_t_dbl;
-		fprintf (stdout, "[cefputstream] Throughput = %d bps\n", (int)thrpt);
+		fprintf (ofp, "[cefputstream] Throughput = %d bps\n", (int)thrpt);
 	} else {
-		fprintf (stdout, "[cefputstream] Duration   = 0.000 sec\n");
+		fprintf (ofp, "[cefputstream] Duration   = 0.000 sec\n");
 	}
 	if (stat_send_frames > 0) {
 		jitter_ave = stat_jitter_sum / stat_send_frames;
 
-		fprintf (stderr, "[cefputstream] Jitter (Ave) = "FMTU64" us\n", jitter_ave);
-		fprintf (stderr, "[cefputstream] Jitter (Max) = "FMTU64" us\n", stat_jitter_max);
-		fprintf (stderr, "[cefputstream] Jitter (Var) = "FMTU64" us\n"
+		fprintf (ofp, "[cefputstream] Jitter (Ave) = "FMTU64" us\n", jitter_ave);
+		fprintf (ofp, "[cefputstream] Jitter (Max) = "FMTU64" us\n", stat_jitter_max);
+		fprintf (ofp, "[cefputstream] Jitter (Var) = "FMTU64" us\n"
 			, (stat_jitter_sq_sum / stat_send_frames) - (jitter_ave * jitter_ave));
 	}
 	exit (0);
@@ -552,7 +548,7 @@ static void
 sigcatch (
 	int sig
 ) {
-	fprintf (stderr, "[cefputstream] Catch the signal\n");
+	printf ("[cefputstream] Catch the signal\n");
 	switch ( sig ){
 	case SIGINT:
 	case SIGTERM:

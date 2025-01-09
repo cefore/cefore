@@ -70,20 +70,18 @@
 #define CefC_Elem_Type_Object 			0x02
 #define CefC_Elem_Type_Del_PIT 			0x04
 
-/***** size of ring buffer 		*****/
-#define CefC_Tx_Que_Size 				512
-#define CefC_Rx_Que_Size 				256
-
-
 /*---------------------------------------------------------
 	Transport
 -----------------------------------------------------------*/
 
 /****** TLVs for use in the CefC_T_OPT_TRANSPORT TLV *****/
 #define CefC_T_OPT_TP_NONE				0x0000		/* Invalid 							*/
-#define CefC_T_OPT_TP_SAMPTP				0x0001		/* Default Transport 				*/
-#define CefC_T_OPT_TP_L4C2				0x0002 		/* L4C2 							*/
-#define CefC_T_OPT_TP_NUM				0x0003
+#define CefC_T_OPT_TP_SAMPTP			0x0001		/* Sample Transport 				*/
+#define CefC_T_OPT_TP_L4C2				0x0002		/* L4C2 							*/
+#define CefC_T_OPT_TP_FWDTP 			0x0003		/* forwarding strategy prototype	*/
+#define CefC_T_OPT_TP_L2MCTP			0x0004		/* Low-Latency MuliCast Transport	*/
+#define CefC_T_OPT_TP_ARTEMISTP			0x0005		/* Fast Recovery Transport			*/
+#define CefC_T_OPT_TP_NUM				0x0006
 
 /*---------------------------------------------------------
 	Common
@@ -165,6 +163,7 @@ typedef struct {
 													/* outgoing FaceIDs that were 		*/
 													/* searched from PIT/FIB 			*/
 	int						out_faceid_num;			/* number of outgoing FaceID		*/
+	double					bw_utilization;			/* in-NIC bandwidth utilization		*/
 
 } CefT_Rx_Elem;
 
@@ -206,6 +205,9 @@ typedef struct _CefT_Plugin_Tp {
 	/*** callback to process the received cob		***/
 	int (*cob)(struct _CefT_Plugin_Tp*, CefT_Rx_Elem*);
 
+	/*** callback to process the received cob from cs	***/
+	int (*cob_from_cs)(struct _CefT_Plugin_Tp*, CefT_Rx_Elem*);
+
 	/*** callback to process the received interest	***/
 	int (*interest)(struct _CefT_Plugin_Tp*, CefT_Rx_Elem*);
 
@@ -216,7 +218,8 @@ typedef struct _CefT_Plugin_Tp {
 	void (*destroy)(struct _CefT_Plugin_Tp*);
 
 	/*** tx queue 									***/
-	CefT_Rngque* 		tx_que;
+	CefT_Rngque			*tx_que;
+	CefT_Rngque			*tx_que_high, *tx_que_low;
 	CefT_Mp_Handle 		tx_que_mp;
 
 } CefT_Plugin_Tp;
@@ -280,8 +283,8 @@ typedef struct {
 	CefT_Plugin_Cp* 	cp;							/* Cache Policy Plugin 				*/
 	CefT_Plugin_Efi* 	efi;						/* EFI Plugin 						*/
 	CefT_Plugin_Mb* 	mb;							/* Mobility Plugin 					*/
-	CefT_Rngque* 		tx_que;						/* TX ring buffer 					*/
-	CefT_Mp_Handle 		tx_que_mp;					/* Memory Pool for CefT_Tx_Elem 	*/
+//	CefT_Rngque* 		tx_que;						/* TX ring buffer 					*/
+//	CefT_Mp_Handle 		tx_que_mp;					/* Memory Pool for CefT_Tx_Elem 	*/
 
 } CefT_Plugin_Handle;
 
@@ -291,12 +294,12 @@ typedef struct {
 -----------------------------------------------------------*/
 typedef struct _CefT_Plugin_Bw_Stat {
 	/* Initialize process */
-	int (*init)(int congesion_threshold);
+	int (*init)(int congestion_threshold);
 
 	/* Destroy process */
 	void (*destroy)(void);
 
-	/* Congesion status get */
+	/* Congestion status get */
 	double (*stat_get)(int if_idx);
 
 	/* Get Table Index */
@@ -315,6 +318,7 @@ typedef struct CefnetdT_Plugin_Interface {
 	Forwarding Strategy Plugin
 -----------------------------------------------------------*/
 typedef struct CefT_FwdStrtgy_Param {
+	void*					hdl_cefnetd;
 
 	uint16_t*				faceids;			/* I/C  */
 	uint16_t				faceid_num;			/* I/C  */
@@ -322,9 +326,10 @@ typedef struct CefT_FwdStrtgy_Param {
 	unsigned char*			msg;				/* I/C  */
 	uint16_t				payload_len;		/* I/C  */
 	uint16_t				header_len;			/* I/C  */
-	CefT_CcnMsg_MsgBdy*	pm;					/* I/C  */
-	CefT_CcnMsg_OptHdr*	poh;				/* I/C  */
+	CefT_CcnMsg_MsgBdy		*pm;				/* I/C  */
+	CefT_CcnMsg_OptHdr		*poh;				/* I/C  */
 	CefT_Pit_Entry*			pe;					/* I/C  */
+	CefT_Pit_Entry*			pe_refer;			/* I    */
 	CefT_Fib_Entry*			fe;					/* I/C  */
 
 	uint64_t*				cnt_send_frames;	/* I/C: Pointer of variable in Cefnetd handle              */
@@ -347,11 +352,8 @@ typedef struct _CefT_Plugin_Fwd_Strtgy {
 	/* Forward ContentObject */
 	void (*fwd_cob)(CefT_FwdStrtgy_Param* fwdstr);
 
-	/* Forward CcninfoReq */
-	void (*fwd_ccninforeq)(CefT_FwdStrtgy_Param* fwdstr, int authNZ, uint32_t fulldcv_f);
-
-	/* Forward CefpingReq */
-	void (*fwd_cefpingreq)(CefT_FwdStrtgy_Param* fwdstr);
+	/* Update In-band Network Telemetry */
+	void (*fwd_telemetry)(CefT_FwdStrtgy_Param* fwdstr);
 
 } CefT_Plugin_Fwd_Strtgy;
 
@@ -421,7 +423,9 @@ cef_plugin_tag_get (
 int 												/* size of the specified list 		*/
 cef_tp_plugin_init (
 	CefT_Plugin_Tp** 	tp, 						/* Transport Plugin Handle			*/
-	CefT_Rngque* 		tx_que,						/* TX ring buffer 					*/
+	CefT_Rngque			*tx_que,					/* TX ring buffer 					*/
+	CefT_Rngque 		*tx_que_high,				/* TX ring buffer 					*/
+	CefT_Rngque 		*tx_que_low,				/* TX ring buffer 					*/
 	CefT_Mp_Handle 		tx_que_mp,					/* Memory Pool for CefT_Tx_Elem 	*/
 	void* 				arg_ptr						/* Input argment block  			*/
 );
@@ -479,6 +483,65 @@ cef_plugin_log_write (
 	uint16_t log_level,
 	const char* plugin,
 	const char* log
+);
+
+/*=======================================================================================
+	cefnetd built-in APIs
+ =======================================================================================*/
+/*--------------------------------------------------------------------------------------
+	Forward Interest API
+----------------------------------------------------------------------------------------*/
+void
+cef_forward_interest (
+	CefT_FwdStrtgy_Param* fwdstr
+);
+
+/*--------------------------------------------------------------------------------------
+	Forward ContentObject API
+----------------------------------------------------------------------------------------*/
+void
+cef_forward_object (
+	CefT_FwdStrtgy_Param* fwdstr
+);
+/*--------------------------------------------------------------------------------------
+	Forward CcninfoReq API
+----------------------------------------------------------------------------------------*/
+void
+cef_forward_ccninforeq (
+	CefT_FwdStrtgy_Param* fwdstr,
+	int fdcv_authNZ,
+	uint32_t fdcv_f
+);
+
+/*--------------------------------------------------------------------------------------
+	Handles the elements of TX queue
+----------------------------------------------------------------------------------------*/
+void *
+cefnetd_cefstatus_thread (
+	void *p									/* cefnetd handle							*/
+);
+
+void
+cefnetd_frame_send_txque_faces (
+	void*			hdl,					/* cefnetd handle							*/
+	uint16_t 		faceid_num, 			/* number of Face-ID				 		*/
+	uint16_t 		faceid[], 				/* Face-ID indicating the destination 		*/
+	unsigned char* 	msg, 					/* a message to send						*/
+	size_t			msg_len					/* length of the message to send 			*/
+);
+
+void
+cefnetd_frame_send_txque (
+	void*			hdl,					/* cefnetd handle							*/
+	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
+	unsigned char* 	msg, 					/* a message to send						*/
+	size_t			msg_len					/* length of the message to send 			*/
+);
+
+long
+cefnetd_transmit_packet_interval (
+	  uint16_t				faceid,								 /* Face-ID indicating the destination				*/
+	  long					tv_usec
 );
 
 #endif // __CEF_PLUGIN_HEADER__

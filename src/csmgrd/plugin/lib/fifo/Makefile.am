@@ -53,3 +53,5 @@ libcef_fifo_la_SOURCES = fifo.c fifo.h cache_replace_lib.c cache_replace_lib.h
 libcef_fifo_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)
 
 libcsmgrd_fifo_la_LIBADD += libcef_fifo.la
+
+libdir=$(CEFORE_DIR_PATH)lib

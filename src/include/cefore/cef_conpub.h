@@ -37,9 +37,10 @@
  Include Files
  ****************************************************************************************/
 #include <stdint.h>
+#include <netdb.h>
 #include <sys/stat.h>
 
-#include <cefore/cef_plugin.h>
+#include <cefore/cef_mpool.h>
 #include <cefore/cef_rngque.h>
 #include <cefore/cef_hash.h>
 #include <cefore/cef_pit.h>
@@ -48,8 +49,6 @@
  Macros
  ****************************************************************************************/
 
-
-#define CefC_Cefnetd_Buff_Max			512000
 
 /*------------------------------------------------------------------*/
 /* Default cache status												*/
@@ -75,6 +74,9 @@
 #define CefC_CnpbDefault_Contents_num		1024	/* Total content					*/
 #define CefC_CnpbDefault_Contents_Capacity	4294967296
 													/* Total content capacity 			*/
+#define CefC_CnpbDefault_Pending_Timer		2		/* Specify the pending_timer		*/
+#define CefC_CnpbMin_Pending_Timer			1		/* Min value of the pending_timer	*/
+#define CefC_CnpbMax_Pending_Timer			65535	/* Max value of the pending_timer	*/
 #define CefC_CnpbDefault_Block_Size			1024	/* Specify the maximum payload 		*/
 													/* length (bytes) of Content Object	*/
 #define CefC_CnpbDefault_Node_Path			"127.0.0.1"
@@ -115,7 +117,6 @@
 #define CefC_Conpub_Msg_Type_Echo		0x05		/* Type Echo						*/
 #define CefC_Conpub_Msg_Type_Status		0x06		/* Type Get Status					*/
 #define CefC_Conpub_Msg_Type_Ccninfo	0x08		/* Type Ccninfo message			*/
-#define CefC_Conpub_Msg_Type_Cefping	0x09		/* Type Cefping						*/
 #define CefC_Conpub_Msg_Type_Bulk_Cob	0x0a		/* Type Content Object (Bulk)		*/
 #define CefC_Conpub_Msg_Type_Kill		0x0b		/* Type Kill command				*/
 #define CefC_Conpub_Msg_Type_RCap		0x0c		/* Type Retrieve cache capacity		*/
@@ -176,21 +177,21 @@ typedef struct {
 												/* 0 : None								*/
 												/* 1 : Excache							*/
 	uint32_t		def_rct;					/* default RCT 							*/
-	
+
 	/********** Memory Cache Information	***********/
 	uint32_t		cache_cap;					/* Cache Capacity						*/
-	
+
 	/********** TCP connection 		***********/
 	uint16_t 		tcp_port_num;
 	char 			peer_id_str[NI_MAXHOST];
 	int 			tcp_sock;
 	unsigned char	rcv_buff[CefC_Max_Length];
 	uint16_t 		rcv_len;
-	
+
 	/********** Local connection 	***********/
 	int 			local_sock;
 	char 			local_sock_name[1024];
-	
+
 } CefT_CPCs_Stat;
 
 typedef struct {
@@ -200,7 +201,7 @@ typedef struct {
 	uint16_t		msg_len;					/* Length of message 					*/
 	uint32_t		chunk_num;					/* Chunk Num							*/
 	uint64_t		expiry;
-	
+
 } CefT_CPCob_Entry;
 
 /***** Insert to data of CefT_CPCs_Tx_Elem_Cob	*****/
@@ -232,20 +233,20 @@ typedef struct {
 } CefT_CPCs_Tx_Elem;
 
 struct CefT_Conpub_Status_Hdr {
-	
+
 	uint16_t 		node_num;
 	uint32_t 		con_num;
-	
+
 } __attribute__((__packed__));
 
 struct CefT_Conpub_Status_Rep {
-	
+
 	uint64_t 		con_size;
 	uint64_t 		access;
 	uint64_t 		freshness;
 	uint64_t 		elapsed_time;
 	uint16_t 		name_len;
-	
+
 } __attribute__((__packed__));
 
 

@@ -48,7 +48,7 @@ bin_PROGRAMS=$(CONPUBD_BIN_PROGRAM)
 
 # set conpubd option
 conpubd_LDFLAGS = $(AM_LDFLAGS)
-conpubd_LDADD = -lcefore -ldl -lconpubd_plugin
+conpubd_LDADD = -lconpubd_plugin -lconpub -lcefore
 
 if OPENSSL_STATIC
 conpubd_LDADD+=-l:libssl.a -l:libcrypto.a
@@ -62,7 +62,7 @@ conpubd_SOURCES = conpubd.c conpubd.h
 
 # set conpubctrl option
 conpubctrl_LDFLAGS = $(AM_LDFLAGS)
-conpubctrl_LDADD = -lcefore -lconpubd_plugin
+conpubctrl_LDADD = -lconpubd_plugin -lconpub -lcefore
 if OPENSSL_STATIC
 conpubctrl_LDADD+=-l:libssl.a -l:libcrypto.a
 else  #OPENSSL_STATIC

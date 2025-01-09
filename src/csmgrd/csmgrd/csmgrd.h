@@ -54,6 +54,8 @@
 /* Macros for csmgrd status										*/
 /*------------------------------------------------------------------*/
 #define CsmgrdC_Max_Sock_Num		32					/* Max number of TCP peer		*/
+#define CsmgrdC_Task_Main_Process	1					/* main process task			*/
+#define CsmgrdC_Task_Thread			2					/* thread task					*/
 
 /* Library name				*/
 #ifdef __APPLE__
@@ -74,8 +76,8 @@ typedef struct {
 	char			cs_mod_name[CsmgrdC_Max_Plugin_Name_Len]; /* CS plugin name			*/
 	char			fsc_cache_path[CefC_Csmgr_File_Path_Length]; /* FSC cache path		*/
 	uint16_t 		port_num;					/* PORT_NUM in csmgrd.conf 				*/
-	char 			local_sock_id[1024];
-	
+	char 			local_sock_id[CefC_LOCAL_SOCK_ID_SIZ+1];
+
 } CsmgrT_Config_Param;
 
 typedef struct CsmgrT_White_List {
@@ -84,18 +86,18 @@ typedef struct CsmgrT_White_List {
 	unsigned char   host_addr[16];
 	int 			host_addr_len;
 	struct CsmgrT_White_List*	next;
-	
+
 } CsmgrT_White_List;
 
 
 typedef struct {
-	
+
 	char 				launched_user_name[CefC_Csmgr_User_Len];
-	
+
 	/********** Access Control 			***********/
 	CsmgrT_White_List*	white_list;				/* White List							*/
 	int 				allow_all_f;
-	
+
 	/********** TCP Listen Sockets		***********/
 	uint16_t 			port_num;
 	int 				tcp_listen_fd;
@@ -104,31 +106,35 @@ typedef struct {
 	int 				tcp_fds[CsmgrdC_Max_Sock_Num];
 	int 				tcp_index[CsmgrdC_Max_Sock_Num];
 	unsigned char* 		tcp_buff[CsmgrdC_Max_Sock_Num];
+	int 				th_fds[CsmgrdC_Max_Sock_Num];
+	int 				snd_fds[CsmgrdC_Max_Sock_Num];
 	char				peer_id_str[CsmgrdC_Max_Sock_Num][NI_MAXHOST];
 	char				peer_sv_str[CsmgrdC_Max_Sock_Num][NI_MAXSERV];
-	int 				peer_num;
-	
+	uint16_t 			peer_num;
+
 	/********** Local listen socket 	***********/
 	int 				local_listen_fd;
 	char 				local_sock_name[1024];
 	int					local_peer_sock;
-	
+
 	/********** load functions			***********/
 	CsmgrdT_Plugin_Interface* cs_mod_int;		/* plugin interface						*/
 	char			cs_mod_name[CsmgrdC_Max_Plugin_Name_Len];
 												/* plugin library name					*/
 	void*			mod_lib;					/* plugin library						*/
 	char			fsc_cache_path[CefC_Csmgr_File_Path_Length]; /* FSC cache path		*/
-	
+
 	/********** excache Status			***********/
 	uint32_t		interval;					/* Interval that to check cache			*/
-	
+
 	/********** NodeID (IP Address) 0.8.3c ***********/
 	unsigned char 		top_nodeid[16];
 	uint16_t 			top_nodeid_len;
 	char*				My_Node_Id;			/* Node ID								*/
 	int					First_Node_f;		/* */
-	
+
+	int					task;					/* Tasks using handle					*/
+
 } CefT_Csmgrd_Handle;
 
 /****************************************************************************************

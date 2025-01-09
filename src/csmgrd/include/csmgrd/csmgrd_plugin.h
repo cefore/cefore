@@ -59,6 +59,8 @@
 #define CsmgrC_Buff_Max 				100000000
 #define CsmgrC_Buff_Num 				65536
 
+#define CsmgrC_UCINC_Extend_Lifetime 	100000llu
+
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
@@ -93,24 +95,14 @@ typedef struct CsmgrdT_Plugin_Interface {
 	void (*expire_check)(void);
 
 	/* Get Cob Entry */
-	int (*cache_item_get)(unsigned char*, uint16_t, uint32_t, int, unsigned char*, uint16_t);
+	int (*cache_item_get)(unsigned char*, uint16_t, uint32_t, int, unsigned char*, uint16_t,
+						  unsigned char*, uint16_t, unsigned char*, uint16_t);
 
 	/* Put contents */
 	int (*cache_item_puts)(unsigned char*, int);
 
 	/* Increment access count */
 	void (*ac_cnt_inc)(unsigned char*, uint16_t, uint32_t);
-
-#ifdef CefC_Ccore
-	/* Set cache capacity */
-	int (*cache_cap_set) (uint64_t);
-
-	/* Set cache lifetime 	*/
-	int (*content_lifetime_set) (unsigned char*, uint16_t, uint64_t);
-
-	/* Delete cache entry */
-	int (*content_cache_del) (unsigned char*, uint16_t, uint32_t);
-#endif // CefC_Ccore
 
 	int (*content_lifetime_get) (unsigned char*, uint16_t, uint32_t*, uint32_t*, uint8_t);
 
@@ -282,4 +274,54 @@ csmgrd_dbg_buff_write (
 	int len
 );
 #endif // CefC_Debug
+
+/*--------------------------------------------------------------------------------------
+	Set pending timer
+----------------------------------------------------------------------------------------*/
+int							/* The return value is negative if an error occurs	*/
+csmgrd_cache_set_pending_timer (
+	CsmgrT_Stat_Handle hdl,
+	unsigned char* name,						/* Content name							*/
+	uint16_t name_len,							/* Content name length					*/
+	uint64_t pending_timer						/* Content Pending Timer				*/
+);
+
+/*--------------------------------------------------------------------------------------
+	Update content publisher expiry
+----------------------------------------------------------------------------------------*/
+int							/* The return value is negative if an error occurs	*/
+csmgrd_cache_update_publisher_expiry (
+	CsmgrT_Stat_Handle hdl,
+	unsigned char* name,						/* Content name							*/
+	uint16_t name_len,							/* Content name length					*/
+	int expiry_f,								/* Offset of expires					*/
+	uint64_t expiry								/* expires								*/
+);
+
+/*--------------------------------------------------------------------------------------
+	Update expiry
+----------------------------------------------------------------------------------------*/
+int							/* The return value is negative if an error occurs	*/
+csmgrd_cache_update_expiry (
+	CsmgrT_Stat_Handle hdl,
+	unsigned char* name,						/* Content name							*/
+	uint16_t name_len,							/* Content name length					*/
+	CsmgrT_Stat* rcd,
+	uint64_t extend_lifetime
+);
+
+/*--------------------------------------------------------------------------------------
+	Verification for UCINC
+----------------------------------------------------------------------------------------*/
+int 
+csmgrd_cob_verify_ucinc (
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	unsigned char* plain_val,
+	uint16_t plain_len,
+	unsigned char* signature_val,
+	uint16_t signature_len,
+	uint64_t *plaint
+);
 #endif // __CSMGRD_PLUGIN_HEADER__

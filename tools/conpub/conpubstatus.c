@@ -38,6 +38,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -48,8 +49,8 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
-
-
+#define	USAGE			print_usage(CefFp_Usage)
+#define	printerr(...)	fprintf(stderr,"[conpubstatus] ERROR: " __VA_ARGS__)
 
 /****************************************************************************************
  Structures Declaration
@@ -58,14 +59,14 @@ struct conpub_rsp_value64 {
 	uint16_t 	type;
 	uint16_t 	length;
 	uint64_t 	value;
-	
+
 } __attribute__((__packed__));
 
 struct conpub_rsp_value32 {
 	uint16_t 	type;
 	uint16_t 	length;
 	uint32_t 	value;
-	
+
 } __attribute__((__packed__));
 
 /****************************************************************************************
@@ -87,6 +88,7 @@ main (
 ----------------------------------------------------------------------------------------*/
 static void
 output_result (
+	FILE* ofp,
 	unsigned char* frame,
 	int frame_size
 );
@@ -95,7 +97,7 @@ output_result (
 ----------------------------------------------------------------------------------------*/
 static void
 print_usage (
-	void
+	FILE* ofp
 );
 
 
@@ -138,13 +140,13 @@ main (
 
 		if (strcmp (work_arg, "-h") == 0) {
 			if (host_f) {
-				fprintf (stderr, "conpubstatus: [ERROR] host is duplicated.");
-				print_usage ();
+				printerr("host is duplicated.");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "conpubstatus: [ERROR] host is not specified.");
-				print_usage ();
+				printerr("host is not specified.");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -153,13 +155,13 @@ main (
 			i++;
 		} else if (strcmp (work_arg, "-p") == 0) {
 			if (port_f) {
-				fprintf (stderr, "conpubstatus: [ERROR] port is duplicated.");
-				print_usage ();
+				printerr("port is duplicated.");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "conpubstatus: [ERROR] port is not specified.");
-				print_usage ();
+				printerr("port is not specified.");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -171,8 +173,8 @@ main (
 			work_arg = argv[i];
 
 			if (work_arg[0] == '-') {
-				fprintf (stderr, "conpubstatus: [ERROR] unknown option is specified.");
-				print_usage ();
+				printerr("unknown option is specified.");
+				USAGE;
 				return (-1);
 			}
 		}
@@ -187,15 +189,14 @@ main (
 	if (host_f == 0) {
 		strcpy (dst, "127.0.0.1");
 	}
-	fprintf (stderr, "\nconpubstatus: Connect to %s:%s\n", dst, port_str);
 	tcp_sock = cef_csmgr_connect_tcp_to_csmgr (dst, port_str);
 
 	if (tcp_sock < 1) {
-		fprintf (stderr, "conpubstatus: [ERROR] connect to conpubd\n");
+		printerr("Connection failed to %s:%s\n", dst, port_str);
 		return (0);
 	}
 	cef_frame_init ();
-	
+
 	/* Create Upload Request message	*/
 	/* set header	*/
 	buff[CefC_O_Fix_Ver]  = CefC_Version;
@@ -205,11 +206,11 @@ main (
 	/* set Length	*/
 	value16 = htons (index);
 	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
-	
+
 	/* send message	*/
 	res = cef_csmgr_send_msg (tcp_sock, buff, index);
 	if (res < 0) {
-		fprintf (stderr, "conpubstatus: [ERROR] Send message\n");
+		printerr("Send message\n");
 		close (tcp_sock);
 		return (-1);
 	}
@@ -220,7 +221,7 @@ main (
 	msg_len = 0;
 	frame = calloc (1, CefC_Csmgr_Stat_Mtu);
 	if (frame == NULL) {
-		fprintf (stderr, "conpubstatus: Frame buffer allocation (alloc) error\n");
+		printerr("Frame buffer allocation (alloc) error\n");
 		close (tcp_sock);
 		cef_csmgr_buffer_destroy ();
 		return (-1);
@@ -232,23 +233,23 @@ RERECV:;
 	res = poll(fds, 1, 60000);
 	if (res < 0) {
 		/* poll error	*/
-		fprintf (stderr, "conpubstatus: poll error (%s)\n", strerror (errno));
+		printerr("poll error (%s)\n", strerror (errno));
 		close (tcp_sock);
 		cef_csmgr_buffer_destroy ();
 		free (frame);
 		return (-1);
 	} else 	if (res == 0) {
 		/* timeout	*/
-		fprintf (stderr, "conpubstatus: timeout\n");
+		printerr("timeout\n");
 		close (tcp_sock);
 		cef_csmgr_buffer_destroy ();
 		free (frame);
 		return (-1);
 	}
-	if (fds[0].revents & POLLIN) {	
+	if (fds[0].revents & POLLIN) {
 		rc = recv (tcp_sock, frame+rcvd_size , CefC_Csmgr_Stat_Mtu, 0);
 		if (rc < 0) {
-			fprintf (stderr, "conpubstatus: Receive message error (%s)\n", strerror (errno));
+			printerr("Receive message error (%s)\n", strerror (errno));
 			close (tcp_sock);
 			cef_csmgr_buffer_destroy ();
 			free (frame);
@@ -256,11 +257,11 @@ RERECV:;
 		}
 	} else {
 		if (fds[0].revents & POLLERR) {
-			fprintf (stderr, "conpubstatus: Poll event is POLLERR\n");
+			printerr("Poll event is POLLERR\n");
 		} else if (fds[0].revents & POLLNVAL) {
-			fprintf (stderr, "conpubstatus: Poll event is POLLNVAL\n");
+			printerr("Poll event is POLLNVAL\n");
 		} else {
-			fprintf (stderr, "conpubstatus: Poll event is POLLHUP\n");
+			printerr("Poll event is POLLHUP\n");
 		}
 		close (tcp_sock);
 		cef_csmgr_buffer_destroy ();
@@ -269,16 +270,16 @@ RERECV:;
 	}
 	rcvd_size += rc;
 	if (rcvd_size == rc) {
-		if ((rc < 6/* Ver(1)+Type(1)+Length(4) */) 
+		if ((rc < 6/* Ver(1)+Type(1)+Length(4) */)
 			|| (frame[CefC_O_Fix_Ver] != CefC_Version)
 			|| (frame[CefC_O_Fix_Type] != CefC_Csmgr_Msg_Type_CnpbStatus) ){
-			fprintf (stderr, "conpubstatus: Response type is not status\n");
+			printerr("Response type is not status\n");
 			close (tcp_sock);
 			cef_csmgr_buffer_destroy ();
 			free (frame);
 			return (-1);
 		}
-			
+
 		memcpy (&msg_len, &frame[2], sizeof (uint32_t));
 		msg_len = ntohl (msg_len);
 		blocks = (msg_len) / CefC_Csmgr_Stat_Mtu;
@@ -288,7 +289,7 @@ RERECV:;
 		if (blocks > 1) {
 			void *new = realloc(frame, blocks * CefC_Csmgr_Stat_Mtu);
 			if (new == NULL) {
-				fprintf (stderr, "conpubstatus: Frame buffer allocation (realloc) error\n");
+				printerr("Frame buffer allocation (realloc) error\n");
 				close (tcp_sock);
 				cef_csmgr_buffer_destroy ();
 				free (frame);
@@ -301,7 +302,7 @@ RERECV:;
 		goto RERECV;
 	}
 	frame_size = msg_len;
-	output_result (&frame[6/* Ver(1)+Type(1)+Length(4) */], frame_size-6/* Ver(1)+Type(1)+Length(4) */);
+	output_result (stdout, &frame[6/* Ver(1)+Type(1)+Length(4) */], frame_size-6/* Ver(1)+Type(1)+Length(4) */);
 	cef_csmgr_buffer_destroy ();
 	close (tcp_sock);
 	free (frame);
@@ -312,6 +313,7 @@ RERECV:;
 ----------------------------------------------------------------------------------------*/
 static void
 output_result (
+	FILE* ofp,
 	unsigned char* frame,
 	int frame_size
 ) {
@@ -322,6 +324,7 @@ output_result (
 	uint32_t index = 0;
 	time_t 			date;
 	time_t 			expiry;
+	time_t 			pending;
 	uint64_t 		interests;
 	unsigned char ver[2048];
 	unsigned char name[2048];
@@ -330,16 +333,17 @@ output_result (
 	struct tm* timeptr;
 	char date_str[64] = {'\0'};
 	char expiry_str[64] = {'\0'};
+	char pending_str[64] = {'\0'};
 	int rec_idx = 1;
-	
-	fprintf (stderr, 
-		"\nindex   name   version   file   date   expiry   interests\n");
+
+	fprintf (ofp,
+		"\nindex   name   version   file   date   expiry   interests   pending\n");
 	if (memcmp (frame, "NONE", strlen("NONE")) == 0) {
 		frame_size = 0;
 	}
-	
+
 	while (index < frame_size) {
-		
+
 		/* Obtains Name 			*/
 		rsp_hdr = (struct CefT_Csmgr_CnpbStatus_TL*) &frame[index];
 		type   = ntohs (rsp_hdr->type);
@@ -351,7 +355,7 @@ output_result (
 		memcpy (name, &frame[index], length);
 		cef_frame_conversion_name_to_string (name, length, uri, "ccn");
 		index += length;
-		
+
 		/* Obtains Version */
 		rsp_hdr = (struct CefT_Csmgr_CnpbStatus_TL*) &frame[index];
 		type   = ntohs (rsp_hdr->type);
@@ -363,7 +367,7 @@ output_result (
 		memcpy (ver, &frame[index], length);
 		ver[length] = 0x00;
 		index += length;
-		
+
 		/* Obtains Path 			*/
 		rsp_hdr = (struct CefT_Csmgr_CnpbStatus_TL*) &frame[index];
 		type   = ntohs (rsp_hdr->type);
@@ -375,7 +379,7 @@ output_result (
 		memcpy (path, &frame[index], length);
 		path[length] = 0x00;
 		index += length;
-		
+
 		/* Obtains Date 			*/
 		cmd_64_tlv = (struct conpub_rsp_value64*) &frame[index];
 		type   = ntohs (cmd_64_tlv->type);
@@ -387,7 +391,7 @@ output_result (
 		date = cef_client_ntohb (cmd_64_tlv->value);
 		timeptr = localtime (&date);
 		strftime (date_str, 64, "%Y-%m-%d %H:%M", timeptr);
-		
+
 		/* Obtains Expiry 			*/
 		cmd_64_tlv = (struct conpub_rsp_value64*) &frame[index];
 		type   = ntohs (cmd_64_tlv->type);
@@ -399,8 +403,23 @@ output_result (
 		expiry = cef_client_ntohb (cmd_64_tlv->value);
 		timeptr = localtime (&expiry);
 		strftime (expiry_str, 64, "%Y-%m-%d %H:%M", timeptr);
-		
-		/* Obtains Intrests 			*/
+
+		/* Obtains Pending timer 			*/
+		cmd_64_tlv = (struct conpub_rsp_value64*) &frame[index];
+		type   = ntohs (cmd_64_tlv->type);
+		length = ntohs (cmd_64_tlv->length);
+		index += sizeof (struct conpub_rsp_value64);
+		if (type != CefC_CnpbStatus_Pending) {
+			return;
+		}
+		pending = cef_client_ntohb (cmd_64_tlv->value);
+		if (pending) {
+			sprintf(pending_str, "%lu Sec", pending);
+		} else {
+			sprintf(pending_str, "%s", "-");
+		}
+
+		/* Obtains Interests 			*/
 		cmd_64_tlv = (struct conpub_rsp_value64*) &frame[index];
 		type   = ntohs (cmd_64_tlv->type);
 		length = ntohs (cmd_64_tlv->length);
@@ -409,26 +428,27 @@ output_result (
 			return;
 		}
 		interests = cef_client_ntohb (cmd_64_tlv->value);
-		
+
 		/* Outputs a record 			*/
-		fprintf (stderr, "%d  %s\t%s\t%s\t%s\t%s\t"
+		fprintf (ofp, "%d  %s\t%s\t%s\t%s\t%s\t"
 			, rec_idx, uri, ver, path, date_str, expiry_str);
-		
-		fprintf (stderr, "   "FMTU64"\n", interests);
+
+		fprintf (ofp, "   "FMTU64"\t", interests);
+		fprintf (ofp, "\t%s\n", pending_str);
 		rec_idx++;
 	}
-	fprintf (stderr, "\n");
-	
+	fprintf (ofp, "\n");
+
 }
 /*--------------------------------------------------------------------------------------
 	Output Usage
 ----------------------------------------------------------------------------------------*/
 static void
 print_usage (
-	void
+	FILE* ofp
 ) {
-	fprintf (stderr,
-		"\nUsage: conpubstatus\n\n"
+	fprintf (ofp,
+		"\n\nUsage: conpubstatus\n\n"
 		"  conpubstatus [-h host] [-p port]\n\n"
 		"  host   Specify the host identifier (e.g., IP address) on which csmgrd \n"
 		"         is running. The default value is localhost (i.e., 127.0.0.1).\n"

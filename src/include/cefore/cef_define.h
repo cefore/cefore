@@ -71,7 +71,7 @@
 
 #endif // __APPLE__
 
-//#define CefC_DebugOld
+#define CefFp_Usage  stderr
 
 /*************** Version 		****************/
 #define CefC_Version					0x01
@@ -117,11 +117,10 @@
 #define	CefC_ParamName_InterestRetrans	"INTEREST_RETRANSMISSION"
 #define	CefC_ParamName_SelectiveForward	"SELECTIVE_FORWARDING"
 #define	CefC_ParamName_SymbolicBackBuff	"SYMBOLIC_BACKBUFFER"
-#define	CefC_ParamName_IR_Congesion		"INTEREST_RETURN_CONGESTION_THRESHOLD"
+#define	CefC_ParamName_IR_Congestion	"INTEREST_RETURN_CONGESTION_THRESHOLD"
 #define	CefC_ParamName_BANDWIDTH_INTVAL	"BANDWIDTH_STAT_INTERVAL"
 #define	CefC_ParamName_SYMBOLIC_LIFETIME "SYMBOLIC_INTEREST_MAX_LIFETIME"
 #define	CefC_ParamName_REGULAR_LIFETIME	"REGULAR_INTEREST_MAX_LIFETIME"
-#define CefC_ParamName_BW_STAT_PLUGIN	"BANDWIDTH_STAT_PLUGIN"
 #define CefC_ParamName_CSMGR_ACCESS		"CSMGR_ACCESS"
 #define CefC_ParamName_BUFFER_CACHE_TIME	"BUFFER_CACHE_TIME"
 #define CefC_ParamName_LOCAL_CACHE_DEFAULT_RCT	"LOCAL_CACHE_DEFAULT_RCT"
@@ -149,15 +148,15 @@
 #define CefC_Default_LifetimeUs			2000000
 #define CefC_Default_ForwardingStrategy	"default"
 //2020
-#define	CefC_Default_PitAppSize			64
+#define	CefC_Default_PitAppSize			512
 #define	CefC_Default_FibAppSize			64
-#define	CefC_PitAppSize_MAX				1025
+#define	CefC_PitAppSize_MAX				4096
 #define	CefC_FibAppSize_MAX				1024000
 //0.8.3
 #define CefC_Default_InterestRetrans	"RFC8569"
 #define CefC_Default_SelectiveForward	1
 #define CefC_Default_SymbolicBackBuff	100
-#define CefC_Default_IR_Congesion		90.0
+#define CefC_Default_IR_Congestion		90.0
 #define CefC_Default_BANDWIDTH_STAT_INTERVAL	1
 #define CefC_Default_SYMBOLIC_LIFETIME	4000
 #define CefC_Default_REGULAR_LIFETIME	2000
@@ -167,7 +166,7 @@
 
 #define CefC_Default_CcninfoAccessPolicy	0
 #define CefC_Default_CcninfoFullDiscovery	0
-#define CefC_Default_CcninfoValidAlg		"crc32"		/* ccninfo-05 */
+#define CefC_Default_CcninfoValidAlg		"crc32c"		/* ccninfo-05 */
 #define CefC_Default_CcninfoSha256KeyPrfx	"cefore"
 #define CefC_Default_CcninfoReplyTimeout	4
 
@@ -185,7 +184,7 @@
 
 //0.8.3
 #define	CefC_IntRetrans_Type_RFC	0
-#define	CefC_IntRetrans_Type_SUP	1
+#define	CefC_IntRetrans_Type_NOSUP	1	/* NO_SUPPRESSION */
 #define	CefC_Selet_FWD_OFF			0
 #define	CefC_Selet_FWD_ON			1
 typedef	enum	{
@@ -208,7 +207,7 @@ typedef	enum	{
 #define	CefC_IR_NO_RESOURCE			0x03
 #define	CefC_IR_PATH_ERROR			0x04
 #define	CefC_IR_PROHIBITED			0x05
-#define	CefC_IR_CONGESION			0x06
+#define	CefC_IR_CONGESTION			0x06
 #define	CefC_IR_MTU_TOO_LAREG		0x07
 #define	CefC_IR_UNSUPPORTED_COBHASH 0x08
 #define	CefC_IR_MALFORMED_INTEREST	0x09
@@ -232,27 +231,31 @@ typedef	enum	{
 
 #define CefC_InbandTelem_Size	64			/* In-band Telemetry Metric Size		*/
 
-#ifdef CefC_DebugOld
-/****************************************************************************************
- For Debug Trace
- ****************************************************************************************/
+/* Linux has a restriction that "Network Interface names can be up to 15 characters."	*/
+#define	CefC_IFNAME_SIZ		16
+
+/* Both the segment length and overall length of the name have the same upper limit. */
+#define	CefC_NAME_MAXLEN	1024
+
+/* Expand non-displayable characters into hexadecimal strings, so double CefC_NAME_MAXLEN */
+#define	CefC_NAME_BUFSIZ	(CefC_NAME_MAXLEN*2)
+
+/* Both the segment length and overall length of the name have the same upper limit. */
+#ifdef	SHA256_DIGEST_LENGTH
+#define	CefC_KeyId_SIZ	SHA256_DIGEST_LENGTH
+#else	// else
+#define	CefC_KeyId_SIZ	32
+#endif	// SHA256_DIGEST_LENGTH
+
+#define	CefC_PUBKEY_BUFSIZ	1024
+#define	CefC_Tiny_BUFSIZ	32
+#define	CefC_NumBufSiz		CefC_Tiny_BUFSIZ
+#define	CefC_LOCAL_SOCK_ID_SIZ	16
+
+#define	CefC_Connect_Retries	10
+
+#define	CefC_GET_MEMORY_INFO_SH	"get_memory_info.sh"
 
 extern char *CEF_PROGRAM_ID;
-extern unsigned int CEF_DEBUG;
-
-/***** Debug Level 		*****/
-#define CefC_Dbg_None					0x00
-#define CefC_Dbg_Basic					0x01
-#define CefC_Dbg_Tpp					0x02
-#define CefC_Dbg_Rsv2					0x04
-#define CefC_Dbg_Rsv3					0x08
-#define CefC_Dbg_Interest				0x10
-#define CefC_Dbg_Object					0x20
-#define CefC_Dbg_Rsv6					0x40
-#define CefC_Dbg_Dev					0x80
-#define CefC_Dbg_All					0xFF
-
-
-#endif // CefC_DebugOld
 
 #endif // __CEF_DEFINE_HEADER__

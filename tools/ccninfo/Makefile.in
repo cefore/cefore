@@ -118,9 +118,11 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 bin_PROGRAMS = ccninfo$(EXEEXT)
+@OPENSSL_STATIC_TRUE@am__append_1 = -l:libssl.a -l:libcrypto.a
+@OPENSSL_STATIC_FALSE@am__append_2 = -lssl -lcrypto
 
 # check debug build
-@CEFDBG_ENABLE_TRUE@am__append_1 = -DCefC_Debug
+@CEFDBG_ENABLE_TRUE@am__append_3 = -DCefC_Debug -g
 subdir = tools/ccninfo
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -138,7 +140,8 @@ am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am_ccninfo_OBJECTS = ccninfo-ccninfo.$(OBJEXT)
 ccninfo_OBJECTS = $(am_ccninfo_OBJECTS)
-ccninfo_DEPENDENCIES =
+am__DEPENDENCIES_1 =
+ccninfo_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
 am__v_lt_0 = --silent
@@ -273,6 +276,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+XCRUN = @XCRUN@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -328,8 +332,9 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AM_CFLAGS = -I$(top_srcdir)/src/include -Wall
 ccninfo_LDFLAGS = -L$(top_srcdir)/src/lib/
-ccninfo_LDADD = -lcefore -lssl -lcrypto
-ccninfo_CFLAGS = $(AM_CFLAGS) -DCefC_Ccninfo $(am__append_1)
+ccninfo_LDADD = -lcefore $(am__append_1) $(am__append_2) -lpthread \
+	-ldl
+ccninfo_CFLAGS = $(AM_CFLAGS) -DCefC_Ccninfo $(am__append_3)
 ccninfo_SOURCES = ccninfo.c
 DESTDIR = $(CEFORE_DIR_PATH)
 all: all-am

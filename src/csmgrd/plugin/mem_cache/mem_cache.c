@@ -65,6 +65,8 @@
 #include <cefore/cef_frame.h>
 #include <cefore/cef_hash.h>
 #include <csmgrd/csmgrd_plugin.h>
+#include <cefore/cef_valid.h>	/* for OpenSSL 3.x */
+#include <cefore/cef_pthread.h>
 
 
 /****************************************************************************************
@@ -144,9 +146,6 @@ static int						delete_pipe_fd[2];
 
 static pthread_mutex_t 			mem_cs_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-#ifdef CefC_Ccore
-static uint64_t 				ORG_cache_capacity = 0;
-#endif
 /****************************************************************************************
  Static Function Declaration
  ****************************************************************************************/
@@ -183,7 +182,11 @@ mem_cache_item_get (
 	uint32_t seqno,								/* chunk num							*/
 	int sock,									/* received socket						*/
 	unsigned char* version,						/* version								*/
-	uint16_t ver_len							/* length of version					*/
+	uint16_t ver_len,							/* length of version					*/
+	unsigned char* csact_val,					/* Plain Text							*/
+	uint16_t csact_len,							/* length of Plain Text					*/
+	unsigned char* signature_val,				/* signature							*/
+	uint16_t signature_len						/* length of signature					*/
 );
 /*--------------------------------------------------------------------------------------
 	Upload content byte steream
@@ -239,33 +242,6 @@ mem_cs_ac_cnt_inc (
 	uint16_t key_size,							/* content name Length					*/
 	uint32_t seq_num							/* sequence number						*/
 );
-#ifdef CefC_Ccore
-/*--------------------------------------------------------------------------------------
-	Change cache capacity
-----------------------------------------------------------------------------------------*/
-static int							/* The return value is negative if an error occurs	*/
-mem_change_cap (
-	uint64_t cap								/* New capacity to set					*/
-);
-/*--------------------------------------------------------------------------------------
-	Set content lifetime
-----------------------------------------------------------------------------------------*/
-static int							/* The return value is negative if an error occurs	*/
-mem_cache_set_lifetime (
-	unsigned char* name,						/* Content name							*/
-	uint16_t name_len,							/* Content name length					*/
-	uint64_t lifetime							/* Content Lifetime						*/
-);
-/*--------------------------------------------------------------------------------------
-	Delete content entry
-----------------------------------------------------------------------------------------*/
-static int							/* The return value is negative if an error occurs	*/
-mem_cache_del (
-	unsigned char* name,						/* Content name							*/
-	uint16_t name_len,							/* Content name length					*/
-	uint32_t chunk_num							/* ChunkNumber							*/
-);
-#endif // CefC_Ccore
 
 /*--------------------------------------------------------------------------------------
 	Hash APIs for Memory Cahce Plugin
@@ -343,15 +319,16 @@ csmgrd_memory_plugin_load (
 		mem_cs_create, mem_cs_destroy, mem_cs_expire_check, mem_cache_item_get,
 		mem_cache_item_puts, mem_cs_ac_cnt_inc, mem_cache_lifetime_get);
 
-#ifdef CefC_Ccore
-	cs_in->cache_cap_set 		= mem_change_cap;
-	cs_in->content_lifetime_set = mem_cache_set_lifetime;
-	cs_in->content_cache_del	= mem_cache_del;
-#endif // CefC_Ccore
-
 	if (config_dir) {
 		strcpy (csmgr_conf_dir, config_dir);
 	}
+
+	/* Init logging 	*/
+	csmgrd_log_init ("memcache", 1);
+	csmgrd_log_init2 (csmgr_conf_dir);
+#ifdef CefC_Debug
+	csmgrd_dbg_init ("memcache", csmgr_conf_dir);
+#endif // CefC_Debug
 
 	return (0);
 }
@@ -370,13 +347,6 @@ mem_cs_create (
 		free (hdl);
 		hdl = NULL;
 	}
-
-	/* Init logging 	*/
-	csmgrd_log_init ("memcache", 1);
-	csmgrd_log_init2 (csmgr_conf_dir);
-#ifdef CefC_Debug
-	csmgrd_dbg_init ("memcache", csmgr_conf_dir);
-#endif // CefC_Debug
 
 	hdl = (MemT_Cache_Handle*) malloc (sizeof (MemT_Cache_Handle));
 	if (hdl == NULL) {
@@ -457,7 +427,7 @@ mem_cs_create (
 		return (-1);
 	}
 
-	if (pthread_create (&mem_thread_th, NULL, mem_cob_process_thread, hdl) == -1) {
+	if (cef_pthread_create (&mem_thread_th, NULL, mem_cob_process_thread, hdl) == -1) {
 		csmgrd_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 		return (-1);
 	}
@@ -725,10 +695,12 @@ mem_cs_expire_check (
 					if (hdl->algo_apis.erase) {
 						(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
 					}
-					hdl->cache_cobs--;
+					if ( !entry1 )
+						continue;
 					csmgrd_stat_cob_remove (
 						csmgr_stat_hdl, entry->name, entry->name_len,
 						entry->chunk_num, entry->pay_len);
+					hdl->cache_cobs--;
 					free (entry1->msg);
 					free (entry1->name);
 					free (entry1);
@@ -751,7 +723,11 @@ mem_cache_item_get (
 	uint32_t seqno,								/* chunk num							*/
 	int sock,									/* received socket						*/
 	unsigned char* version,						/* version								*/
-	uint16_t ver_len							/* length of version					*/
+	uint16_t ver_len,							/* length of version					*/
+	unsigned char* csact_val,					/* Plain Text							*/
+	uint16_t csact_len,							/* length of Plain Text					*/
+	unsigned char* signature_val,				/* signature							*/
+	uint16_t signature_len						/* length of signature					*/
 ) {
 	CsmgrdT_Content_Mem_Entry* entry;
 	unsigned char 	trg_key[CsmgrdC_Key_Max];
@@ -826,18 +802,20 @@ mem_cache_item_get (
 			/* Removes the expiry cache entry 		*/
 			entry = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
 
-			if (hdl->algo_apis.erase) {
-				(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
+			if ( entry ){
+				if (hdl->algo_apis.erase) {
+					(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
+				}
+				hdl->cache_cobs--;
+
+				csmgrd_stat_cob_remove (
+					csmgr_stat_hdl, entry->name, entry->name_len,
+					entry->chunk_num, entry->pay_len);
+
+				free (entry->msg);
+				free (entry->name);
+				free (entry);
 			}
-			hdl->cache_cobs--;
-
-			csmgrd_stat_cob_remove (
-				csmgr_stat_hdl, entry->name, entry->name_len,
-				entry->chunk_num, entry->pay_len);
-
-			free (entry->msg);
-			free (entry->name);
-			free (entry);
 			pthread_mutex_unlock (&mem_cs_mutex);
 		}
 	}
@@ -1274,6 +1252,8 @@ mem_cache_cob_write (
 							return (-1);
 						}
 						if (old_entry) {
+							csmgrd_stat_content_lifetime_update (csmgr_stat_hdl,
+								entry->name, entry->name_len, entry->expiry);
 							free (old_entry->msg);
 							free (old_entry->name);
 							if (old_entry->ver_len)
@@ -1479,171 +1459,6 @@ mem_config_read (
 	return (0);
 }
 
-#ifdef CefC_Ccore
-/*--------------------------------------------------------------------------------------
-	Change cache capacity
-----------------------------------------------------------------------------------------*/
-static int							/* The return value is negative if an error occurs	*/
-mem_change_cap (
-	uint64_t cap								/* New capacity to set					*/
-) {
-	int n;
-
-	if (ORG_cache_capacity == 0) {
-		ORG_cache_capacity = hdl->cache_capacity;
-	}
-	if ((cap < 1) || (cap > 0xFFFFFFFFF)) {
-		csmgrd_log_write (CefC_Log_Error, "Invalid capacity\n");
-		return (-1);
-	}
-	if (cap > ORG_cache_capacity) {
-		csmgrd_log_write (CefC_Log_Error, "Do not allow configuration beyond initial cache capacity\n");
-		return (-1);
-	}
-
-	/* Check for excessive or insufficient memory resources for cache algorithm library */
-	if (strcmp (hdl->algo_name, "None") != 0) {
-		if (csmgrd_cache_algo_availability_check (
-				cap, hdl->algo_name, hdl->algo_name_size, hdl->algo_cob_size, "memory")
-			< 0) {
-			return (-1);
-		}
-	}
-
-	/* Recreate algorithm lib */
-	if (hdl->algo_lib) {
-		if (hdl->algo_apis.destroy) {
-			(*(hdl->algo_apis.destroy))();
-		}
-	}
-
-	/* Change cap */
-	csmgrd_stat_cache_capacity_update (csmgr_stat_hdl, cap);
-	hdl->cache_capacity = cap;
-	hdl->cache_cobs = 0;
-
-	/* Destroy table */
-	for (n = 0 ; n < mem_hash_tbl->tabl_max ; n++) {
-		CefT_Mem_Hash_Cell* cp;
-		CefT_Mem_Hash_Cell* wcp;
-		cp = mem_hash_tbl->tbl[n];
-		while (cp != NULL) {
-			wcp = cp->next;
-			free (cp->elem);
-			free (cp);
-			cp = wcp;
-		}
-	}
-	free (mem_hash_tbl->tbl);
-	free (mem_hash_tbl);
-
-	/* Creates the memory cache 		*/
-	mem_hash_tbl = cef_mem_hash_tbl_create (hdl->cache_capacity);
-	if (mem_hash_tbl ==  NULL) {
-		csmgrd_log_write (CefC_Log_Error, "Unable to create mem hash table\n");
-		return (-1);
-	}
-
-	hdl->cache_cobs = 0;
-	/* Recreate algorithm lib */
-	if (hdl->algo_lib) {
-		if (hdl->algo_apis.init) {
-			(*(hdl->algo_apis.init))(cap, mem_cs_store, mem_cs_remove);
-		}
-	}
-
-
-	return (0);
-}
-/*--------------------------------------------------------------------------------------
-	Set content lifetime
-----------------------------------------------------------------------------------------*/
-static int							/* The return value is negative if an error occurs	*/
-mem_cache_set_lifetime (
-	unsigned char* name,						/* Content name							*/
-	uint16_t name_len,							/* Content name length					*/
-	uint64_t lifetime							/* Content Lifetime						*/
-) {
-	CsmgrdT_Content_Mem_Entry* entry = NULL;
-	uint64_t nowt;
-	struct timeval tv;
-	uint64_t new_life;
-	int n;
-
-	gettimeofday (&tv, NULL);
-	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
-	new_life = nowt + lifetime * 1000000llu;
-
-	/* Updtes the content information */
-	csmgrd_stat_content_lifetime_update (csmgr_stat_hdl, name, name_len, new_life);
-
-	/* Check the cache entry information */
-	for (n = 0 ; n < mem_hash_tbl->tabl_max ; n++) {
-		if (mem_hash_tbl->tbl[n] == NULL) {
-			continue;
-		}
-		{
-			CefT_Mem_Hash_Cell* cp;
-			cp = mem_hash_tbl->tbl[n];
-			for (; cp != NULL; cp = cp->next) {
-				entry = cp->elem;
-				if (((entry->expiry == 0) || (nowt < entry->expiry)) &&
-					(nowt < entry->cache_time)) {
-
-					if (memcmp (name, entry->name, name_len)) {
-						continue;
-					}
-					entry->expiry = new_life;
-					entry->cache_time = new_life;
-				}
-			}
-		}
-	}
-
-	return (0);
-}
-/*--------------------------------------------------------------------------------------
-	Delete content entry
-----------------------------------------------------------------------------------------*/
-static int							/* The return value is negative if an error occurs	*/
-mem_cache_del (
-	unsigned char* name,						/* Content name							*/
-	uint16_t name_len,							/* Content name length					*/
-	uint32_t chunk_num							/* ChunkNumber							*/
-) {
-	CsmgrdT_Content_Mem_Entry* entry = NULL;
-	unsigned char 	trg_key[CsmgrdC_Key_Max];
-	int 			trg_key_len;
-
-	pthread_mutex_lock (&mem_cs_mutex);
-	/* Creates the key 				*/
-	trg_key_len = csmgrd_name_chunknum_concatenate (
-					name, name_len, chunk_num, trg_key);
-
-	/* Removes the cache entry 		*/
-	entry = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
-	if (entry == NULL) {
-		pthread_mutex_unlock (&mem_cs_mutex);
-		return (0);
-	}
-
-	if (hdl->algo_apis.erase) {
-		(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
-	}
-	hdl->cache_cobs--;
-
-	csmgrd_stat_cob_remove (
-		csmgr_stat_hdl, entry->name, entry->name_len,
-		entry->chunk_num, entry->pay_len);
-
-	free (entry->msg);
-	free (entry->name);
-	free (entry);
-	pthread_mutex_unlock (&mem_cs_mutex);
-
-	return (0);
-}
-#endif // CefC_Ccore
 /*--------------------------------------------------------------------------------------
 	get lifetime for ccninfo
 ----------------------------------------------------------------------------------------*/
@@ -1920,7 +1735,8 @@ cef_mem_hash_number_create (
 	uint32_t hash;
 	unsigned char out[MD5_DIGEST_LENGTH];
 
-	MD5 (key, klen, out);
+//	MD5 (key, klen, out);
+	cef_valid_md5( key, klen, out );	/* for Openssl 3.x */
 	memcpy (&hash, &out[12], sizeof (uint32_t));
 
 	return (hash);
@@ -1973,7 +1789,7 @@ mem_cache_delete_thread_create (
 		return (-1);
 	}
 
-	if (pthread_create(&mem_cache_delete_th, NULL
+	if (cef_pthread_create(&mem_cache_delete_th, NULL
 					, &mem_cache_delete_thread, &(delete_pipe_fd[1])) == -1) {
 		cef_log_write (CefC_Log_Error
 						, "%s Failed to create the new thread(mem_cache_delete_thread)\n"

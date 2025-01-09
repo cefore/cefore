@@ -57,13 +57,13 @@
  Macros
  ****************************************************************************************/
 
-#define CefC_App_Reg				0x01
-#define CefC_App_DeReg				0x02
-#define CefC_App_RegPrefix			0x03		/* for prefix match 					*/
-#define CefC_App_RegPit				0x04
-#define CefC_App_DeRegPit			0x05
+#define CefC_App_Reg				CefC_T_OPT_APP_REG
+#define CefC_App_DeReg				CefC_T_OPT_APP_DEREG
+#define CefC_App_RegPrefix			CefC_T_OPT_APP_REG_P		/* for prefix match		*/
+#define CefC_App_RegPit				CefC_T_OPT_APP_PIT_REG
+#define CefC_App_DeRegPit			CefC_T_OPT_APP_PIT_DEREG
 //$$$$$
-#define CefC_Dev_RegPit				0x06
+#define CefC_Dev_RegPit				CefC_T_OPT_DEV_REG_PIT
 //$$$$$
 
 #define CefC_Unset_Port 			0
@@ -71,7 +71,8 @@
 
 #define CefC_AppBuff_Size			10000000
 
-#define CefC_App_Magic_No		0xbe736ffa
+#define CefC_App_Magic_No			0xbe736ffa
+#define CefC_AppConn_Eof			(UINT16_MAX * -1)
 
 
 /****************************************************************************************
@@ -195,14 +196,18 @@ cef_client_interest_input (
 	Reads the message from the specified connection (socket)
 ----------------------------------------------------------------------------------------*/
 int 											/* length of read buffer 				*/
+cef_client_read_core (
+	CefT_Client_Handle fhdl, 					/* client handle 						*/
+	unsigned char* buff, 						/* buffer to write the message 			*/
+	int len, 									/* length of buffer 					*/
+	int timeout 								/* timeout (ms)							*/
+);
+int 											/* length of read buffer 				*/
 cef_client_read (
 	CefT_Client_Handle fhdl, 					/* client handle 						*/
 	unsigned char* buff, 						/* buffer to write the message 			*/
 	int len 									/* length of buffer 					*/
 );
-/*--------------------------------------------------------------------------------------
-	Reads the message from the specified connection (socket)
-----------------------------------------------------------------------------------------*/
 int 											/* length of read buffer 				*/
 cef_client_read2 (
 	CefT_Client_Handle fhdl, 					/* client handle 						*/
@@ -271,7 +276,7 @@ cef_client_ccninfo_input (
 void
 cef_client_name_reg (
 	CefT_Client_Handle fhdl, 					/* client handle						*/
-	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
+	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
 	const unsigned char* name,					/* Name (not URI)						*/
 	uint16_t name_len							/* length of the Name					*/
 );
@@ -281,7 +286,7 @@ cef_client_name_reg (
 void
 cef_client_prefix_reg (
 	CefT_Client_Handle fhdl, 					/* client handle						*/
-	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
+	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
 	const unsigned char* name,					/* Name (not URI)						*/
 	uint16_t name_len							/* length of the Name					*/
 );
@@ -291,7 +296,7 @@ cef_client_prefix_reg (
 void
 cef_client_prefix_reg_for_pit (
 	CefT_Client_Handle fhdl, 					/* client handle						*/
-	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
+	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
 	const unsigned char* name,					/* Name (not URI)						*/
 	uint16_t name_len							/* length of the Name					*/
 );

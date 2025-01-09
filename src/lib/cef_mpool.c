@@ -75,7 +75,7 @@ typedef struct CefT_Mp_Mng {
 	size_t 					tail;
 	size_t 					block_num;		/* number of allocated memory blocked 		*/
 	size_t 					mask;
-	
+
 	pthread_mutex_t 		mp_mutex_pt;	/* mutex for thread safe for Pthread 		*/
 
 } CefT_Mp_Mng;
@@ -149,9 +149,12 @@ cef_mpool_alloc (
 
 	while (1) {
 		res = pthread_mutex_trylock (&mpmng->mp_mutex_pt);
-		
+
 		if (res != 0) {
 			if (res == EBUSY) {
+				const struct timespec ts_req = { 0, 1000000 };	/* 1 mili sec. */
+
+				nanosleep(&ts_req, NULL);
 				continue;
 			}
 			return (NULL);
@@ -159,7 +162,7 @@ cef_mpool_alloc (
 		break;
 	}
 
-	
+
 	if (mpmng->tail != mpmng->head) {
 		index = mpmng->head;
 		mpmng->head = (mpmng->head + 1) & mpmng->mask;
@@ -192,16 +195,19 @@ cef_mpool_free (
 
 	while (1) {
 		res = pthread_mutex_trylock (&mpmng->mp_mutex_pt);
-		
+
 		if (res != 0) {
-			if (EBUSY == res) {
+			if (res == EBUSY) {
+				const struct timespec ts_req = { 0, 1000000 };	/* 1 mili sec. */
+
+				nanosleep(&ts_req, NULL);
 				continue;
 			}
 			return;
 		}
 		break;
 	}
-	
+
 	while (i < mpmng->pool_num) {
 		if (((unsigned char*) ptr > mpmng->pool[i].head) &&
 			((unsigned char*) ptr < mpmng->pool[i].tail)) {

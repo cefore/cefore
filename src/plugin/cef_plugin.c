@@ -123,10 +123,10 @@ cef_plugin_init (
 	/* Reads the plugin.conf and stores values as the string 	*/
 	cef_plugin_config_read ();
 
-	/* Creates the tx buffer 									*/
-	plgin_hdl->tx_que = cef_rngque_create (CefC_Tx_Que_Size);
-	plgin_hdl->tx_que_mp
-		= cef_mpool_init ("CefTxMSF", sizeof (CefT_Tx_Elem), CefC_Tx_Que_Size);
+	/* Creates the tx buffer									*/
+//	plgin_hdl->tx_que = cef_rngque_create (CefC_Tx_Que_Size);
+//	plgin_hdl->tx_que_mp
+//		= cef_mpool_init ("CefTxMSF", sizeof (CefT_Tx_Elem), CefC_Tx_Que_Size);
 
 	/* Init logging 		*/
 	cef_plugin_log_init ();
@@ -153,8 +153,8 @@ cef_plugin_destroy (
 	/* Stop logging 		*/
 	cef_plugin_log_stop ();
 
-	cef_rngque_destroy (plgin_hdl->tx_que);
-	cef_mpool_destroy (plgin_hdl->tx_que_mp);
+//	cef_rngque_destroy (plgin_hdl->tx_que);
+//	cef_mpool_destroy (plgin_hdl->tx_que_mp);
 
 	return (1);
 }

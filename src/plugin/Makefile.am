@@ -27,9 +27,15 @@
 # SUCH DAMAGE.
 #
 
-AM_CFLAGS=-I$(top_srcdir)/src/include -Wall -O2 -fPIC
+#AM_CFLAGS=-I$(top_srcdir)/src/include -Wall -O2 -fPIC
+AM_CFLAGS=-I$(top_srcdir)/src/include -Wall -O2
 AM_CSOURCES=cef_plugin.c cef_tp_plugin.c
 AUTOMAKE_OPTIONS=subdir-objects
+
+# check debug build
+if CEFDBG_ENABLE
+AM_CFLAGS+=-DCefC_Debug -g
+endif # CEFDBG_ENABLE
 
 if SAMPTP_ENABLE
 AM_CFLAGS+=-DCefC_Plugin_Samptp
@@ -41,3 +47,4 @@ lib_LIBRARIES=libcef_plugin.a
 libcef_plugin_a_CFLAGS=$(AM_CFLAGS)
 libcef_plugin_a_SOURCES=$(AM_CSOURCES)
 
+libdir=$(CEFORE_DIR_PATH)/lib

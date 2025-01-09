@@ -27,11 +27,13 @@
 # SUCH DAMAGE.
 #
 
-EXTRA_DIST=cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh
-SCRIPTSRC=cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh
+EXTRA_DIST=cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh get_memory_info.sh get_memory_info_macos.sh
+SCRIPTSRC=cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh get_memory_info.sh get_memory_info_macos.sh
 CEF_UTIL=cefnetdstart cefnetdstop cefstatus cefroute
+CEF_MEM_UTIL = get_memory_info.sh
+CEF_MEM_UTIL_MACOS = get_memory_info_macos.sh
 SH=/bin/sh
-INSTALLDIR=$(CEFORE_DIR_PATH)/bin
+INSTALLDIR=$(CEFORE_DIR_PATH)bin
 
 # check csmgrd
 if CSMGR_ENABLE
@@ -126,10 +128,16 @@ conpubdstop: conpubdstop.sh
 endif # CONPUB_ENABLE
 
 install:
-	for i in $(CEF_UTIL) ""; do test -z "$$i" || install $$i $(INSTALLDIR); done
+	for i in $(CEF_UTIL) $(CEF_BWSTAT_UTIL) ""; do test -z "$$i" || install $$i $(INSTALLDIR); done
+	if [ $(build_vendor) = apple ]; then \
+		test -z $(CEF_MEM_UTIL_MACOS) || install $(CEF_MEM_UTIL_MACOS) $(INSTALLDIR)/$(CEF_MEM_UTIL); \
+	else \
+		test -z $(CEF_MEM_UTIL) || install $(CEF_MEM_UTIL) $(INSTALLDIR); \
+	fi
 
 uninstall:
-	for i in $(CEF_UTIL) ""; do test -z "$$i" || rm -f $(INSTALLDIR)/$$i; done
+	for i in $(CEF_UTIL) $(CEF_BWSTAT_UTIL) ""; do test -z "$$i" || rm -f $(INSTALLDIR)/$$i; done
+	test -z $(CEF_MEM_UTIL) || rm -f $(INSTALLDIR)/$(CEF_MEM_UTIL)
 
 clean:
 	rm -f $(CEF_UTIL) *.bak

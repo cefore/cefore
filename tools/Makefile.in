@@ -118,7 +118,7 @@ build_triplet = @build@
 host_triplet = @host@
 
 # check csmgr
-@CSMGR_ENABLE_TRUE@am__append_1 = csmgr cefput_verify
+@CSMGR_ENABLE_TRUE@am__append_1 = csmgr
 
 # check conpub
 @CONPUB_ENABLE_TRUE@am__append_2 = conpub
@@ -188,8 +188,7 @@ am__define_uniq_tagged_files = \
     if test -f "$$i"; then echo $$i; else echo $(srcdir)/$$i; fi; \
   done | $(am__uniquify_input)`
 DIST_SUBDIRS = cefgetstream cefputstream cefgetfile cefputfile \
-	cefgetchunk cefgetfile_sec cefputfile_sec cefgetcontent \
-	ccninfo csmgr cefput_verify conpub
+	cefgetchunk ccninfo csmgr conpub
 am__DIST_COMMON = $(srcdir)/Makefile.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 am__relativize = \
@@ -282,6 +281,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+XCRUN = @XCRUN@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -338,8 +338,7 @@ top_srcdir = @top_srcdir@
 
 # load sub directry
 SUBDIRS = cefgetstream cefputstream cefgetfile cefputfile cefgetchunk \
-	cefgetfile_sec cefputfile_sec cefgetcontent ccninfo \
-	$(am__append_1) $(am__append_2)
+	ccninfo $(am__append_1) $(am__append_2)
 all: all-recursive
 
 .SUFFIXES:

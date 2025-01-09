@@ -67,6 +67,7 @@
 #include <cefore/cef_log.h>
 #include <cefore/cef_define.h>
 #include <cefore/cef_valid.h>
+#include <cefore/cef_pthread.h>
 
 /****************************************************************************************
  Macros
@@ -80,7 +81,6 @@
 #define CefC_Cpub_Reserved_Disk_Mega 			 1000
 
 #define CefC_Cpub_InconsistentVersion			-1000
-#define CefC_Pthread_StackSize					(8*1024*1024)	/* Ubuntu-default:8MB */
 
 
 /****************************************************************************************
@@ -97,26 +97,6 @@ typedef struct _CefT_Cpubctlg_Hdl {
 
 	struct _CefT_Cpubctlg_Hdl* next;
 } CefT_Cpubctlg_Hdl;
-
-#ifdef CefC_Db
-typedef struct _CefT_Cpubcnt_Rcd {
-
-	unsigned char 		name[CefC_Name_Max_Length];
-	int 				name_len;
-	unsigned char 		version[CefC_Name_Max_Length];
-	int 				version_len;
-	char 				file_path[PATH_MAX];
-	time_t 				date;					/* date of upload */
-	time_t 				expiry;
-	uint64_t			cob_num;
-	/* for Stat_Rcd */
-	uint64_t			stat_cached_time;
-	uint64_t			stat_expiry;
-	uint64_t 			con_size;
-	uint32_t			cob_size;
-	uint32_t			last_cob_size;
-} CefT_Cpubcnt_Rcd;
-#endif
 
 /****************************************************************************************
  State Variables
@@ -138,12 +118,6 @@ static pthread_mutex_t 		conpub_cnt_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t Intial_free_mem_mega = 0;
 
 static CefT_Cpubctlg_Hdl Cpbctlghdl;					/* Catalog Data entry */
-
-#ifdef CefC_Db
-/* Restore Info */
-static char 				conpub_restore_path[PATH_MAX] = {"/usr/local/cefore/restore"};
-static char 				conpub_restore_fname[PATH_MAX] = {"conpubcont.restore"};
-#endif
 
 /* Work areas */
 static CefT_CcnMsg_MsgBdy* Cob_prames_p = NULL;
@@ -396,7 +370,8 @@ conpub_trim_line_string (
 	char* ver,									/* Version string after trimming		*/
 	char* path,									/* Path string after trimming			*/
 	char* date,									/* Date string after trimming			*/
-	char* time
+	char* time,
+	char* t_pending								/* pending_timer string after trimming	*/
 );
 /*--------------------------------------------------------------------------------------
 	Checks the file path
@@ -454,16 +429,9 @@ conpubd_publish_content_create (
 	CefT_Cpubcnt_Hdl* entry,
 	time_t now_time
 );
-#ifdef CefC_Db
 /*--------------------------------------------------------------------------------------
 	Deletes the Cobs
 ----------------------------------------------------------------------------------------*/
-static int
-conpubd_publish_content_delete_db (
-	CefT_Conpubd_Handle* hdl,					/* conpub daemon handle					*/
-	CefT_Cpubcnt_Hdl* entry
-);
-#endif
 static int
 conpubd_publish_content_delete (
 	CefT_Conpubd_Handle* hdl,					/* conpub daemon handle					*/
@@ -540,19 +508,6 @@ conpubd_catalog_data_create (
 	void
 );
 
-#ifdef CefC_Db
-static int
-conpubd_cnthdl_save (
-	CefT_Cpubcnt_Hdl* cnthdl
-);
-
-static int
-conpubd_cnthdl_restore (
-	CefT_Conpubd_Handle* hdl,					/* conpub daemon handle					*/
-	CefT_Cpubcnt_Hdl* cnthdl
-);
-#endif
-
 #ifdef CefC_Debug
 static void
 conpubd_dbg_convert_name_to_str_put_workstr (
@@ -561,12 +516,14 @@ conpubd_dbg_convert_name_to_str_put_workstr (
 );
 #endif //CefC_Debug
 
-static int
-cef_pthread_create (
-	pthread_t* thread,
-	pthread_attr_t* attr,
-	void* (*start_routine) (void*),
-	void* arg
+/*--------------------------------------------------------------------------------------
+	Convert string to binary
+----------------------------------------------------------------------------------------*/
+static void
+conpubd_str2byte (
+	char *str,									/* string to convert					*/
+	char *data,									/* Area to store converted binary		*/
+	size_t len									/* Size of area to store binaries		*/
 );
 
 /****************************************************************************************
@@ -584,7 +541,7 @@ main (
 	int i;
 	int dir_path_f 		= 0;
 	int rtc;
-	uint64_t free_mem_mega = 0;
+	uint64_t free_mem_mega;
 
 	char*	work_arg;
 	char file_path[PATH_MAX] = {0};
@@ -637,9 +594,11 @@ main (
 		}
 	}
 	cef_log_init2 (file_path, 2 /* for CONPUBD */);
+	cef_log_fopen (CefC_CnpbDefault_Tcp_Prot);
 #ifdef CefC_Debug
 	cef_dbg_init ("conpubd", file_path, 2);
 #endif
+	cef_client_init (0, "");
 
 	/* 	Sets the path of conpubd.conf*/
 	res = conpubd_plugin_config_dir_set (file_path);
@@ -661,7 +620,6 @@ main (
 		return (-1);
 	}
 	/* Get free memory size */
-	free_mem_mega = 0;
 	conpubd_free_memsize_get (&free_mem_mega);
 	if (strcmp(hdl->cache_type, CefC_Cnpb_memory_Cache_Type) == 0
 		  &&
@@ -715,25 +673,11 @@ main (
 	}
 
 	if ( conpubd_cntent_load_stat == 0) {
-#ifdef CefC_Db
-		if (strcmp (hdl->cache_type, CefC_Cnpb_db_Cache_Type) == 0) {
-			/* DB */
-			int	res = conpubd_cnthdl_restore ( hdl, &Cpubcnthdl );
-			if ( res < 0 ) {
-				cef_log_write (CefC_Log_Error, "Failed to Cpubcnt_Hdl Restore.\n");
-				return(-1);
-			}
-		}
-#endif
 		pthread_t th;
-		pthread_attr_t tattr;
-		size_t  stacksize;
-		if (cef_pthread_create (&th, &tattr, conpubd_content_load_thread, hdl) != 0) {
+		if (cef_pthread_create (&th, NULL, conpubd_content_load_thread, hdl) == -1) {
 			cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 			return(-1);
 		}
-		pthread_attr_getstacksize(&tattr, &stacksize);
-		cef_log_write (CefC_Log_Info, "conpubd_content_load_thread: stacksize=%u bytes.\n", stacksize);
 	}
 
 	/* start main process */
@@ -777,7 +721,7 @@ conpubd_handle_create (
 
 	for (i = 0 ; i < ConpubdC_Max_Sock_Num ; i++) {
 		hdl->tcp_buff[i] =
-			(unsigned char*) malloc (sizeof (unsigned char) * CefC_Cefnetd_Buff_Max);
+			(unsigned char*) malloc (sizeof (unsigned char) * CefC_CsPipeBuffSize);
 	}
 
 
@@ -801,6 +745,8 @@ conpubd_handle_create (
 	hdl->cache_default_rct = conf_param.cache_default_rct;
 	hdl->valid_type = (uint16_t)cef_valid_type_get (conf_param.Valid_Alg);
 	hdl->block_size = conf_param.block_size;
+	hdl->t_pending = conf_param.t_pending;
+	memcpy (hdl->publisher_id, conf_param.publisher_id, SHA512_DIGEST_LENGTH);
 
 	/********** Published info.  ***********/
 	hdl->published_contents_num = 0;
@@ -918,14 +864,12 @@ conpubd_event_dispatch (
 
 	cef_log_write (CefC_Log_Info, "Running\n");
 
-	if (pthread_create (&conpubd_expire_check_th, NULL, conpubd_expire_check_thread, hdl) == -1) {
+	if (cef_pthread_create (&conpubd_expire_check_th, NULL, conpubd_expire_check_thread, hdl) == -1) {
 		cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 		conpubd_running_f = 0;
 	}
 
 	/* Main loop */
-	cef_client_init (0, "");
-
 	while (conpubd_running_f) {
 
 		/* connect to cefnetd */
@@ -991,7 +935,7 @@ conpubd_event_dispatch (
 				res--;
 				len = recv (fds[i].fd,
 					&hdl->tcp_buff[fds_index[i]][hdl->tcp_index[fds_index[i]]],
-					CefC_Cefnetd_Buff_Max - hdl->tcp_index[fds_index[i]], 0);
+					CefC_CsPipeBuffSize - hdl->tcp_index[fds_index[i]], 0);
 				if (len > 0) {
 					/* receive message */
 					len += hdl->tcp_index[fds_index[i]];
@@ -1141,6 +1085,7 @@ conpubd_expire_check_thread (
 
 	while (conpubd_running_f) {
 		sleep (1);
+		cef_log_flush();
 		nowt = cef_client_present_timeus_calc ();
 		nowtsec = nowt / 1000000llu;
 		/* Checks content expire 			*/
@@ -1176,15 +1121,6 @@ conpubd_expire_check_thread (
 			/* set interval */
 			expire_check_time = nowt + interval;
 		}
-#ifdef CefC_Db
-		if (strcmp (hdl->cache_type, CefC_Cnpb_db_Cache_Type) == 0) {
-			/* DB */
-			int	res = conpubd_cnthdl_save ( &Cpubcnthdl );
-			if ( res < 0 ) {
-				cef_log_write (CefC_Log_Error, "Failed to Cpubcnt_Hdl Save.\n");
-			}
-		}
-#endif
 	}
 
 	pthread_exit (NULL);
@@ -1387,22 +1323,9 @@ conpubd_handle_destroy (
 	bwk = &Cpubcnthdl;
 	wk = Cpubcnthdl.next;
 	while (wk) {
-#ifdef CefC_Db
-		if (strcmp (hdl->cache_type, CefC_Cnpb_db_Cache_Type) == 0) {
-			/* DB */
-			if (conpubd_publish_content_delete_db (hdl, wk) != 0) {
-				;
-			}
-		} else {
 			if (conpubd_publish_content_delete (hdl, wk) != 0) {
 				;
 			}
-		}
-#else
-		if (conpubd_publish_content_delete (hdl, wk) != 0) {
-			;
-		}
-#endif
 		bwk->next = wk->next;
 		free (wk);
 		wk = bwk;
@@ -1549,11 +1472,9 @@ conpubd_config_read (
 	conf_param->block_size			= CefC_CnpbDefault_Block_Size;
 	strcpy(conf_param->cefnetd_node,  CefC_CnpbDefault_Node_Path);
 	conf_param->cefnetd_port		= CefC_CnpbDefault_Cefnetd_Port;
+	conf_param->t_pending			= CefC_CnpbDefault_Pending_Timer;
+	memset (conf_param->publisher_id, 0x00, SHA512_DIGEST_LENGTH);
 
-#ifdef CefC_Db
-	strcpy(conf_param->restore_path, conpub_restore_path);
-	strcpy(conf_param->restore_fname, conpub_restore_fname);
-#endif
 	/* get parameter */
 	while (fgets (param_buff, sizeof (param_buff), fp) != NULL) {
 		len = strlen (param_buff);
@@ -1587,11 +1508,13 @@ conpubd_config_read (
 				return (-1);
 			}
 			conf_param->port_num = res;
+			cef_log_fopen (res);
 		} else
-		if (strcmp (option, "LOCAL_SOCK_ID") == 0) {
-			if (strlen (value) > sizeof (conf_param->local_sock_id)-1) {
+		if (strcmp (option, CefC_ParamName_LocalSockId) == 0) {
+			if (strlen (value) > CefC_LOCAL_SOCK_ID_SIZ) {
 				cef_log_write (CefC_Log_Error,
-					"LOCAL_SOCK_ID must be less than or equal to 64.\n");
+					"%s must be less than or equal to %d.\n",
+						CefC_ParamName_LocalSockId, CefC_LOCAL_SOCK_ID_SIZ);
 				fclose (fp);
 				return (-1);
 			}
@@ -1601,13 +1524,9 @@ conpubd_config_read (
 			if (strcmp (value, CefC_Cnpb_memory_Cache_Type) != 0
 					&&
 			    strcmp (value, CefC_Cnpb_filesystem_Cache_Type) != 0
-#ifdef	CefC_Db
-					&&
-			    strcmp (value, CefC_Cnpb_db_Cache_Type) != 0
-#endif
 			    ) {
 				cef_log_write (CefC_Log_Error,
-					"CACHE_TYPE is ivalid. (Invalid value %s=%s)\n", option, value);
+					"CACHE_TYPE is invalid. (Invalid value %s=%s)\n", option, value);
 				fclose (fp);
 				return (-1);
 			}
@@ -1647,13 +1566,13 @@ conpubd_config_read (
 		if (strcmp (option, "VALID_ALG") == 0) {
 			if (strcmp (value, CefC_CnpbDefault_Valid_Alg) != 0 /* NONE */
 					&&
-				strcmp (value, "sha256") != 0
+				strcmp (value, CefC_ValidTypeStr_RSA256) != 0
 					&&
-				strcmp (value, "crc32") != 0
+				strcmp (value, CefC_ValidTypeStr_CRC32C) != 0
 			) {
 				cef_log_write (CefC_Log_Error,
-					"VALID_ALG must be \"NONE\", \"sha256\" or \"crc32\" "
-					"(Invalid value %s=%s)\n", option, value);
+					"VALID_ALG must be \"NONE\", \"%s\" or \"%s\" "
+					"(Invalid value %s=%s)\n", CefC_ValidTypeStr_CRC32C, CefC_ValidTypeStr_RSA256, option, value);
 				fclose (fp);
 				return (-1);
 			}
@@ -1718,28 +1637,19 @@ conpubd_config_read (
 				return (-1);
 			}
 			conf_param->cefnetd_port = res;
-#ifdef	CefC_Db
-		} else 
-		if (strcmp (option, "CONT_INFO_RESORE_DIR") == 0) {
-			res = strlen (value);
-			if (res > CefC_Csmgr_File_Path_Length) {
+		} else
+		if (strcmp (option, "UCINC_PENDING_TIMER") == 0) {
+			res = conpubd_config_value_get (option, value);
+			if ((res < CefC_CnpbMin_Pending_Timer) || (res > CefC_CnpbMax_Pending_Timer)) {
 				cef_log_write (CefC_Log_Error,
-					"CONT_INFO_RESORE_DIR (Invalid value %s=%s)\n", option, value);
+					"UCINC_PENDING_TIMER must be higher than %d and lower than %d.\n", CefC_CnpbMin_Pending_Timer, CefC_CnpbMax_Pending_Timer);
 				fclose (fp);
 				return (-1);
 			}
-			strcpy (conf_param->restore_path, value);
-		} else 
-		if (strcmp (option, "CONT_INFO_RESORE_FILE") == 0) {
-			res = strlen (value);
-			if (res > CefC_Csmgr_File_Path_Length) {
-				cef_log_write (CefC_Log_Error,
-					"CONT_INFO_RESORE_FILE (Invalid value %s=%s)\n", option, value);
-				fclose (fp);
-				return (-1);
-			}
-			strcpy (conf_param->restore_fname, value);
-#endif
+			conf_param->t_pending = res;
+		} else
+		if (strcmp (option, "PUBLISHER_ID") == 0) {
+			conpubd_str2byte (value, conf_param->publisher_id, SHA512_DIGEST_LENGTH);
 		} else {
 			continue;
 		}
@@ -1760,19 +1670,6 @@ conpubd_config_read (
 	    }
 	}
 
-#ifdef	CefC_Db
-	if (strcmp (conf_param->cache_type, CefC_Cnpb_db_Cache_Type) == 0) {
-		if (!(    access (conf_param->restore_path, F_OK) == 0
-		   && access (conf_param->restore_path, R_OK) == 0
-   		   && access (conf_param->restore_path, W_OK) == 0
-   		   && access (conf_param->restore_path, X_OK) == 0)) {
-			cef_log_write (CefC_Log_Error,
-				"DB-CACHE_PLUGIN (Invalid value CONT_INFO_RESORE_DIR=%s) - %s\n", conf_param->restore_path, strerror (errno));
-			return (-1);
-	    }
-	}
-#endif
-
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Fine, "conf_param->port_num=%d\n", conf_param->port_num);
 	cef_dbg_write (CefC_Dbg_Fine, "conf_param->local_sock_id=%s\n", conf_param->local_sock_id);
@@ -1786,20 +1683,13 @@ conpubd_config_read (
 	cef_dbg_write (CefC_Dbg_Fine, "conf_param->block_size=%d\n", conf_param->block_size);
 	cef_dbg_write (CefC_Dbg_Fine, "conf_param->cefnetd_node=%s\n", conf_param->cefnetd_node);
 	cef_dbg_write (CefC_Dbg_Fine, "conf_param->cefnetd_port=%d\n", conf_param->cefnetd_port);
-#ifdef	CefC_Db
-	cef_dbg_write (CefC_Dbg_Fine, "conf_param->restore_path=%s\n", conf_param->restore_path);
-	cef_dbg_write (CefC_Dbg_Fine, "conf_param->restore_fname=%s\n", conf_param->restore_fname);
-#endif
+	cef_dbg_write (CefC_Dbg_Fine, "conf_param->t_pending=%d\n", conf_param->t_pending);
+	cef_dbg_write (CefC_Dbg_Fine, "conf_param->publisher_id=0x%02hhx, 0x%02hhx, 0x%02hhx, 0x%02hhx... 0x%02hhx\n",
+		conf_param->publisher_id[0], conf_param->publisher_id[1], conf_param->publisher_id[2], conf_param->publisher_id[3],
+		conf_param->publisher_id[SHA512_DIGEST_LENGTH-1]);
 #endif // CefC_Debug
 
 	/* Check FIB_SIZE_APP setting in the cefnetd.conf */
-#if 0 //+++++ GCC v9 ++++
-	char 	ws[1024];
-	app_fib_max_size = CefC_Default_FibAppSize;
-	cef_client_config_dir_get (ws);
-	sprintf (ws, "%s/cefnetd.conf", ws);
-	fp = fopen (ws, "r");
-#else
 	{
 		char 	wconfig_dir[PATH_MAX];
 		char 	wconfig_path[PATH_MAX];
@@ -1813,7 +1703,6 @@ conpubd_config_read (
 		}
 		fp = fopen (wconfig_path, "r");
 	}
-#endif //----- GCC v9 ---
 	if (fp == NULL) {
 		cef_log_write (CefC_Log_Error, "%s\n", strerror (errno));
 		return (-1);
@@ -1861,11 +1750,10 @@ conpubd_config_read (
 	}
 	fclose (fp);
 	if (app_fib_max_size < conf_param->contents_num) {
-		cef_log_write (CefC_Log_Error,
+		cef_log_write (CefC_Log_Warn,
 			"FIB_SIZE_APP setting in the cefnetd.conf must be greater than or equal to CONTENTS_NUM setting.\n"
 			"	(FIB_SIZE_APP=%d, CONTENTS_NUM=%d)\n",
 			app_fib_max_size, conf_param->contents_num);
-		return (-1);
 	}
 
 	return (0);
@@ -2730,6 +2618,7 @@ conpubd_incoming_cnpbstatus_msg (
 			sizeof (struct CefT_Csmgr_CnpbStatus_TL) + (uint16_t) strlen (work->file_path) +
 			sizeof (struct CefT_Csmgr_CnpbStatus_TL) + sizeof (time_t) +
 			sizeof (struct CefT_Csmgr_CnpbStatus_TL) + sizeof (time_t) +
+			sizeof (struct CefT_Csmgr_CnpbStatus_TL) + sizeof (time_t) +
 			sizeof (struct CefT_Csmgr_CnpbStatus_TL) + sizeof (uint32_t);
 
 		if ((index + length) > ret_buff_size) {
@@ -2791,6 +2680,16 @@ conpubd_incoming_cnpbstatus_msg (
 		length = sizeof (time_t);
 		value64  = cef_client_htonb (work->expiry);
 		rsp_hdr.type   = htons (CefC_CnpbStatus_Expiry);
+		rsp_hdr.length = htons (length);
+		memcpy (&ret_buff[index], &rsp_hdr, sizeof (struct CefT_Csmgr_CnpbStatus_TL));
+		index += sizeof (struct CefT_Csmgr_CnpbStatus_TL);
+		memcpy (&ret_buff[index], &value64, length);
+		index += length;
+
+		/* Sets Pending timer 			*/
+		length = sizeof (time_t);
+		value64  = cef_client_htonb (work->t_pending);
+		rsp_hdr.type   = htons (CefC_CnpbStatus_Pending);
 		rsp_hdr.length = htons (length);
 		memcpy (&ret_buff[index], &rsp_hdr, sizeof (struct CefT_Csmgr_CnpbStatus_TL));
 		index += sizeof (struct CefT_Csmgr_CnpbStatus_TL);
@@ -2925,19 +2824,15 @@ conpubd_incoming_cnpbrload_msg (
 #endif // CefC_Debug
 	/* Send response */
 	cef_csmgr_send_msg (sock, ret_buff, index);
-	free (ret_buff);
 
 	if ( conpubd_cntent_load_stat == 0) {
 		pthread_t th;
-		pthread_attr_t tattr;
-		size_t  stacksize;
-		if (cef_pthread_create (&th, &tattr, conpubd_content_load_thread, hdl) != 0) {
+		if (cef_pthread_create (&th, NULL, conpubd_content_load_thread, hdl) == -1) {
 			cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 			return;
 		}
-		pthread_attr_getstacksize(&tattr, &stacksize);
-		cef_log_write (CefC_Log_Info, "conpubd_content_load_thread: stacksize=%u bytes.\n", stacksize);
 	}
+	free (ret_buff);
 
 	return;
 }
@@ -3062,13 +2957,6 @@ conpubd_content_load_thread (
 		}
 	}
 
-#ifdef CefC_Db
-	if (strcmp (hdl->cache_type, CefC_Cnpb_db_Cache_Type) == 0) {
-		/* DB */
-		sleep(30);
-	}
-#endif
-
 	/* Delete contnts from delete list */
 	{
 		CefT_Cpubcnt_Hdl* bwk;
@@ -3127,16 +3015,6 @@ conpubd_content_load_thread (
 
 	/* Create Catalog Data */
 	conpubd_catalog_data_create ();
-#ifdef CefC_Db
-	if (strcmp (hdl->cache_type, CefC_Cnpb_db_Cache_Type) == 0) {
-		/* DB */
-		int	res = conpubd_cnthdl_save ( &Cpubcnthdl );
-		if ( res < 0 ) {
-			cef_log_write (CefC_Log_Error, "Failed to Cpubcnt_Hdl Save.\n");
-			return((void*) NULL);
-		}
-	}
-#endif
 
 #ifdef CefC_Debug
 {
@@ -3166,6 +3044,7 @@ conpubd_content_load_thread (
 		timeptr = localtime (&work->expiry);
 		strftime (date_str, 64, "%Y-%m-%d %H:%M", timeptr);
 		cef_dbg_write (CefC_Dbg_Fine, "    Expiry=%s\n", date_str);
+		cef_dbg_write (CefC_Dbg_Fine, "    PendingTimer=%d\n", work->t_pending);
 		work = work->next;
 	}
 	cef_dbg_write (CefC_Dbg_Fine, "----- Catalog -----\n");
@@ -3228,10 +3107,13 @@ conpub_contdef_read (
 	FILE*	fp = NULL;
 	char 	buff[4096];
 	char 	uri[CefC_Name_Max_Length];
+	size_t 	uri_len;
 	char	ver[CefC_Name_Max_Length];
 	char 	path[PATH_MAX];
 	char 	date_str[1024];
 	char 	time_str[1024];
+	char	t_pending_str[1024];
+	uint16_t t_pending;
 	int 	res;
 	unsigned char 		name[CefC_Name_Max_Length];
 	int 				name_len;
@@ -3291,7 +3173,7 @@ conpub_contdef_read (
 		if (isspace (buff[0])) {
 			continue;
 		}
-		res = conpub_trim_line_string (buff, uri, ver, path, date_str, time_str);
+		res = conpub_trim_line_string (buff, uri, ver, path, date_str, time_str, t_pending_str);
 		if (res < 0) {
 			buff[strlen (buff)-1] = 0;
 			cef_log_write (CefC_Log_Warn, "<%d> Invalid record (%s)\n", line_no, buff);
@@ -3321,6 +3203,15 @@ conpub_contdef_read (
 		name_len = cef_frame_conversion_uri_to_name (uri, name);
 		if (name_len < 0) {
 			cef_log_write (CefC_Log_Warn, "<%d> Invalid URI (%s) specified.\n", line_no, uri);
+			continue;
+		}
+
+		uri_len = strlen (uri);
+		if (uri_len && (uri[uri_len-1]=='/')) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "<%d> Invalid URI (%s) specified. It is illegal for a URI to end with /.\n", line_no, uri);
+#endif // CefC_Debug
+			cef_log_write (CefC_Log_Warn, "<%d> Invalid URI (%s) specified. It is illegal for a URI to end with /.\n", line_no, uri);
 			continue;
 		}
 
@@ -3411,6 +3302,12 @@ conpub_contdef_read (
 			work->version_len = ver_len;
 		}
 		work->line_no = line_no;
+		t_pending = atoi(t_pending_str);
+		if (t_pending) {
+			work->t_pending = t_pending;
+		} else {
+			work->t_pending = hdl->t_pending;
+		}
 	}
 
 	fclose (fp);
@@ -3427,17 +3324,27 @@ conpub_trim_line_string (
 	char* ver,									/* Version string after trimming		*/
 	char* path,									/* Path string after trimming			*/
 	char* date,									/* Date string after trimming			*/
-	char* time
+	char* time,
+	char* t_pending								/* pending_timer string after trimming	*/
 ) {
 	int num;
 	int yy, mm, dd;
 	int h, m;
+	int YY, MM, DD;
+	int H, M;
 	int datef = 0;
 	int timef = 0;
+	int i;
+	uint16_t t_pending_uint = 0;
+	int t_pendingf = 0;
+	char option_str[3][100] = {0};
 	strcpy (uri, "");
 	strcpy (path, "");
 	strcpy (date, "");
 	strcpy (time, "");
+    strcpy (t_pending, "");
+	yy = mm = dd = 0;
+	h = m = 0;
 	while (*p) {
 		if ((*p == 0x0D) || (*p == 0x0A)) {
 			return (-1);
@@ -3448,33 +3355,36 @@ conpub_trim_line_string (
 		}
 		break;
 	}
-	num = sscanf (p, "%s %s %s %s %s", uri, ver, path, date, time);
+	num = sscanf (p, "%s %s %s %s %s %s", uri, ver, path, option_str[0], option_str[1], option_str[2]);
 	if (num < 3) {
 		return (-1);
-	} else if (num == 3) {
-		strcpy (date, "");
-		strcpy (time, "");
-	} else if (num == 4) {
-		if (sscanf (date, "%d:%d", &h, &m) == 2) {
-			strcpy (time, date);
-			strcpy (date, "");
-			timef = 1;
-		} else {
-			if (sscanf (date, "%d-%d-%d", &yy, &mm, &dd) != 3) {
+	} else if(num > 3) {
+		for (i=3; i<num; i++) {
+			if (sscanf (option_str[i-3], "%d-%d-%d", &YY, &MM, &DD) == 3) {
+				yy = YY;
+				mm = MM;
+				dd = DD;
+				strcpy (date, option_str[i-3]);
+				datef = 1;
+			} else if (sscanf (option_str[i-3], "%d:%d", &H, &M) == 2) {
+				h = H;
+				m = M;
+				strcpy (time, option_str[i-3]);
+				timef = 1;
+			} else if(!t_pendingf) {
+				if (strtoul (option_str[i-3], NULL, 10) <= UINT16_MAX) {
+		 			sscanf (option_str[i-3], "%hd", &t_pending_uint);
+	 				strcpy (t_pending, option_str[i-3]);
+			 		t_pendingf = 1;
+				} else {
+					cef_log_write (CefC_Log_Error, "%s must be higher than %d and lower than %d.\n",
+						option_str[i-3], CefC_CnpbMin_Pending_Timer, CefC_CnpbMax_Pending_Timer);
+					return (-1);
+				}
+			} else {
 				return (-1);
 			}
-			datef = 1;
 		}
-	} else if (num == 5) {
-		if (sscanf (date, "%d-%d-%d", &yy, &mm, &dd) != 3) {
-			return (-1);
-		}
-		if (sscanf (time, "%d:%d", &h, &m) != 2) {
-			return (-1);
-		}
-		datef = 1;
-		timef = 1;
-
 	}
 	if (datef == 1) {
 		if (!(1900 <= yy && yy <= 2037)) {
@@ -3492,6 +3402,13 @@ conpub_trim_line_string (
 			return (-1);
 		}
 		if (!(0 <= m && m <= 59)) {
+			return (-1);
+		}
+	}
+	if (t_pendingf == 1) {
+		if (!(CefC_CnpbMin_Pending_Timer <= t_pending_uint && t_pending_uint <= CefC_CnpbMax_Pending_Timer)) {
+			cef_log_write (CefC_Log_Error, "%hd must be higher than %d and lower than %d.\n",
+				t_pending_uint, CefC_CnpbMin_Pending_Timer, CefC_CnpbMax_Pending_Timer);
 			return (-1);
 		}
 	}
@@ -3696,7 +3613,7 @@ conpubd_init (
 	cef_frame_init ();
 	int res = cef_valid_init (conf_path);
 	if (res < 0) {
-		cef_log_write (CefC_Log_Error, "Failed to read the cefnetd.key\n");
+		cef_log_write (CefC_Log_Error, "Failed to read the Encryption key file.\n");
 		return (-1);
 	}
 
@@ -3738,6 +3655,14 @@ conpubd_publish_content_create (
 	time_t now_time
 ) {
 	FILE* fp;
+	FILE* key_fp;
+	char key_file_path[PATH_MAX+7];
+	int16_t key_len;
+	char padding_file_path[PATH_MAX+8];
+	FILE* padding_fp;
+	size_t padding_len;
+	int padding = 0;
+	char padding_str[32] = {0};
 	uint32_t seqnum = 0;
 	int res;
 	unsigned char buff[CefC_Max_Length];
@@ -3753,7 +3678,7 @@ conpubd_publish_content_create (
 	uint64_t free_file_mega = 0;
 	uint64_t estimated_file_mega = 0;
 	CefT_CcnMsg_OptHdr	opt;
-	
+
 	/* Check Content num  */
 	if (hdl->published_contents_num >= hdl->contents_num) {
 		cef_frame_conversion_name_to_string (entry->name, entry->name_len, Uri_buff_p, "ccn");
@@ -3781,28 +3706,13 @@ conpubd_publish_content_create (
 	/* Creates and inputs the Cobs 	*/
 	wtime_s = time (NULL);
 
-#ifdef CefC_Db
-	cef_frame_conversion_name_to_string (entry->name, entry->name_len, Uri_buff_p, "ccn");
-	while (conpubd_running_f) {
-		if (strcmp (hdl->cache_type, CefC_Cnpb_db_Cache_Type) == 0) {
-			/* DB */
-			rtc = hdl->cs_mod_int->cache_item_puts (hdl, sizeof (entry), entry);
-			if ( rtc < 0 ) {
-				conpubd_running_f = 0;
-				cef_log_write (CefC_Log_Critical, "Failed to publish %s (cache_item_puts)\n", Uri_buff_p);
-				return (-1);
-			}
-			goto PUTS_DB_CACHE;
-		} else {
-			break;
-		}
-	}
-#endif
-
 	fp = fopen (entry->file_path, "rb");
 	if (fp == NULL) {
 		return (-1);
 	}
+	strcpy (key_file_path, entry->file_path);
+	strcat (key_file_path, ".pubkey");
+	key_fp = fopen (key_file_path, "rb");
 
 	/* Inits the parameters 		*/
 	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));
@@ -3817,11 +3727,30 @@ conpubd_publish_content_create (
 	opt.cachetime = Cob_prames_p->expiry;
 	/* Sets chunk flag */
 	Cob_prames_p->chunk_num_f = 1;
-	/* Sen end chunk */
+	/* Sets end chunk */
 	Cob_prames_p->end_chunk_num_f =1;
 	Cob_prames_p->end_chunk_num = entry->cob_num-1;
 	/* Sets validation info */
 	Cob_prames_p->alg.valid_type = hdl->valid_type;
+
+	if(key_fp != NULL) {
+		Cob_prames_p->org.pending_val = entry->t_pending;
+		opt.cachetime_f = 0;
+
+		strcpy (padding_file_path, entry->file_path);
+		strcat (padding_file_path, ".padding");
+		padding_fp = fopen (padding_file_path, "r");
+		if (NULL != padding_fp) {
+			fclose (padding_fp);
+			Cob_prames_p->org.encryptalg.encryptalg_f = 1;
+			Cob_prames_p->org.encryptalg.type = CefC_T_EA_CPABE;
+			Cob_prames_p->org.orgkeyid.hash_type = CefC_T_SHA_512;
+			memcpy (Cob_prames_p->org.orgkeyid.hash_val, hdl->publisher_id, SHA512_DIGEST_LENGTH);
+			Cob_prames_p->org.orgkeyid.hash_len = SHA512_DIGEST_LENGTH;
+		}
+	} else {
+		entry->t_pending = 0;
+	}
 
 	/* Sets Version */
 	if (entry->version_len) {
@@ -3834,6 +3763,32 @@ conpubd_publish_content_create (
 	while (conpubd_running_f) {
 		res = fread (buff, sizeof (unsigned char), hdl->block_size, fp);
 		if (res > 0) {
+			if (key_fp != NULL) {
+				if (feof(fp) != 0) {
+					key_len = fread (Cob_prames_p->org.csact.publickey_val, sizeof (unsigned char), CefC_S_PUBLICKEY, key_fp);
+					if (key_len > 0) {
+						Cob_prames_p->org.csact.publickey_len = key_len;
+						Cob_prames_p->org.csact.csact_alg_f = 1;
+						Cob_prames_p->org.csact.csact_type = CefC_T_EC_SECP_384R1;
+						Cob_prames_p->org_len = 0;
+					} else {
+						cef_log_write (CefC_Log_Warn,"T_ECDSA_KEY length equals 0.\n");
+					}
+
+					padding_fp = fopen (padding_file_path, "r");
+					if (NULL != padding_fp) {
+						padding_len = fread (padding_str, sizeof (unsigned char), sizeof (padding_str), padding_fp);
+						if (0 < padding_len) {
+							padding = atoi (padding_str);
+							Cob_prames_p->org.encryptalg.encryptalg_f = 1;
+							Cob_prames_p->org.encryptalg.type = CefC_T_EA_CPABE;
+							Cob_prames_p->org.encryptalg.padding = padding;
+							Cob_prames_p->org_len = 0;
+						}
+						fclose (padding_fp);
+					}
+				}
+			}
 			memcpy (Cob_prames_p->payload, buff, res);
 			Cob_prames_p->payload_len = (uint16_t) res;
 			Cob_prames_p->chunk_num = seqnum;
@@ -3856,6 +3811,9 @@ conpubd_publish_content_create (
 							"	free memory="FMTU64"(MB), estimated memory usage="FMTU64"(MB)\n",
 							Uri_buff_p, free_mem_mega, estimated_mem_mega);
 						fclose (fp);
+						if (key_fp != NULL) {
+							fclose(key_fp);
+						}
 						return (-99);
 					} else {
 							cef_log_write (CefC_Log_Info,
@@ -3875,6 +3833,9 @@ conpubd_publish_content_create (
 							Uri_buff_p, free_file_mega, estimated_file_mega,
 							CefC_Cpub_Reserved_Disk_Mega);
 						fclose (fp);
+						if (key_fp != NULL) {
+							fclose(key_fp);
+						}
 						return (-99);
 					} else {
 						cef_log_write (CefC_Log_Info, "Publishing %s \n"
@@ -3899,6 +3860,9 @@ conpubd_publish_content_create (
 					cef_log_write (CefC_Log_Critical, "Failed to alloc memory\n");
 					conpubd_running_f = 0;
 					fclose (fp);
+					if (key_fp != NULL) {
+						fclose(key_fp);
+					}
 					return (-1);
 				}
 				memcpy (cont_entry.msg, cobbuff, len);
@@ -3907,6 +3871,9 @@ conpubd_publish_content_create (
 					cef_log_write (CefC_Log_Critical, "Failed to alloc memory\n");
 					conpubd_running_f = 0;
 					fclose (fp);
+					if (key_fp != NULL) {
+						fclose(key_fp);
+					}
 					return (-1);
 				}
 				memcpy (cont_entry.name, Cob_prames_p->name, Cob_prames_p->name_len);
@@ -3921,6 +3888,9 @@ conpubd_publish_content_create (
 					cef_log_write (CefC_Log_Critical, "Failed to publish %s (cache_item_puts)\n", Uri_buff_p);
 					conpubd_running_f = 0;
 					fclose (fp);
+					if (key_fp != NULL) {
+						fclose(key_fp);
+					}
 					hdl->cs_mod_int->cache_item_puts (NULL, 0, NULL);
 					return (-1);
 				}
@@ -3931,6 +3901,9 @@ conpubd_publish_content_create (
 				cef_log_write (CefC_Log_Critical, "Failed to publish %s (Read Error)\n", Uri_buff_p);
 				conpubd_running_f = 0;
 				fclose (fp);
+				if (key_fp != NULL) {
+					fclose(key_fp);
+				}
 				hdl->cs_mod_int->cache_item_puts (NULL, 0, NULL);
 				return (-1);
 			}
@@ -3940,11 +3913,11 @@ conpubd_publish_content_create (
 
 	hdl->cs_mod_int->cache_item_puts (NULL, 0, NULL);
 	fclose (fp);
-#ifdef	CefC_Db
-PUTS_DB_CACHE:;
-#endif
+	if (key_fp != NULL) {
+		fclose(key_fp);
+	}
 	cef_log_write (CefC_Log_Info, "Published %s (time=%ld) \n", Uri_buff_p, time (NULL) - wtime_s);
-	/* CefC_App_Reg */
+	/* CefC_T_OPT_APP_REG */
 	{
 		CefT_Connect connect;
 		connect.ai = 0;
@@ -3952,7 +3925,7 @@ PUTS_DB_CACHE:;
 		CefT_Client_Handle fhdl;
 		fhdl = (CefT_Client_Handle) &connect;
 		if (connect.sock != -1) {
-			cef_client_prefix_reg (fhdl, CefC_App_Reg, entry->name, entry->name_len);
+			cef_client_prefix_reg (fhdl, CefC_T_OPT_APP_REG, entry->name, entry->name_len);
 		}
 	}
 
@@ -3989,7 +3962,7 @@ conpubd_publish_content_delete (
 		CefT_Client_Handle fhdl;
 		fhdl = (CefT_Client_Handle) &connect;
 		if (connect.sock != -1) {
-			cef_client_prefix_reg (fhdl, CefC_App_DeReg, entry->name, entry->name_len);
+			cef_client_prefix_reg (fhdl, CefC_T_OPT_APP_DEREG, entry->name, entry->name_len);
 		}
 	}
 
@@ -4003,32 +3976,6 @@ conpubd_publish_content_delete (
 	}
 	return (rtc);
 }
-#ifdef CefC_Db
-static int
-conpubd_publish_content_delete_db (
-	CefT_Conpubd_Handle* hdl,					/* conpub daemon handle					*/
-	CefT_Cpubcnt_Hdl* entry
-) {
-	int				rtc = 0;
-
-	conpubd_stat_content_info_delete( stat_hdl, entry->name, entry->name_len );
-
-	hdl->published_contents_num --;
-
-	{
-		CefT_Connect connect;
-		connect.ai = 0;
-		connect.sock = hdl->cefnetd_sock;
-		CefT_Client_Handle fhdl;
-		fhdl = (CefT_Client_Handle) &connect;
-		if (connect.sock != -1) {
-			cef_client_prefix_reg (fhdl, CefC_App_DeReg, entry->name, entry->name_len);
-		}
-	}
-
-	return (rtc);
-}
-#endif
 
 /*--------------------------------------------------------------------------------------
 	Content registration check
@@ -4175,7 +4122,7 @@ conpubd_connect_conpubd_and_regApp (
 						CefT_Cpubcnt_Hdl* work;
 						work = Cpubcnthdl.next;
 						while (work) {
-							cef_client_prefix_reg (fhdl, CefC_App_Reg, work->name, work->name_len);
+							cef_client_prefix_reg (fhdl, CefC_T_OPT_APP_REG, work->name, work->name_len);
 							work = work->next;
 						}
 					}
@@ -4282,98 +4229,51 @@ static int
 conpubd_free_memsize_get (
 	uint64_t* free_mem_mega
 ) {
-	FILE* fp;
+	char buf[64] = {0};
+
+	int ret = 0;
+	char* wp = NULL;
 
 	/* get free memory size */
-#ifndef CefC_MACOS
-	/************************************************************************************/
-	/* [/proc/meminfo format]															*/
-	/*		MemTotal:        8167616 kB													*/
-	/*		MemFree:         7130204 kB													*/
-	/*		MemAvailable:    7717896 kB													*/
-	/*		...																			*/
-	/************************************************************************************/
-	char buf[1024];
-	char* key_free = "MemFree:";
-	char* meminfo = "/proc/meminfo";
-	int val;
-	if ((fp = fopen (meminfo, "r")) == NULL) {
-		cef_log_write (CefC_Log_Critical, "%s(%d): Could not open %s to get memory information.\n", __FUNCTION__, __LINE__, meminfo);
-		return (-1);
-	}
-	while (fgets (buf, sizeof (buf), fp) != NULL) {
-		if (strncmp (buf, key_free, strlen (key_free)) == 0) {
-			sscanf (&buf[strlen (key_free)], "%d", &val);
-			*free_mem_mega = val / 1024;
-		}
-	}
-	if (free_mem_mega == 0) {
-		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n",
-						__FUNCTION__, __LINE__, key_free);
-		return (-1);
-	}
-	fclose (fp);
-#else // CefC_MACOS
-	/************************************************************************************/
-	/* ["top -l 1 | grep PhysMem:" format]												*/
-	/*		PhysMem: 7080M used (1078M wired), 1109M unused.	or						*/
-	/*		PhysMem: 8028M used (1167M wired, 142M compressor), 7632M unused.			*/
-	/************************************************************************************/
-	char buf[1024];
-	char* cmd = "top -l 1 | grep PhysMem:";
-	char* tag = "PhysMem:";
-	int	 used = -1, unused = -1;
-	if ((fp = popen (cmd, "r")) != NULL) {
-		while (fgets (buf, sizeof (buf), fp) != NULL) {
-			if (strstr (buf, tag) != NULL) {
+	FILE *fp = popen(CefC_GET_MEMORY_INFO_SH, "r");
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Finest, "fp:%p\n", fp);
+#endif // CefC_Debug
+	if (fp == NULL) {
+		cef_log_write (CefC_Log_Critical, "%s(%d): Could not get memory information.\n", __FUNCTION__, __LINE__);
+	} else {
+		wp = fgets (buf, sizeof (buf), fp);
+		while ( wp ) {
+			ret = atoi (buf);
+			if (ret != -1) {
 				char* token = NULL;
-				char* token1 = NULL;
 				char* saveptr = NULL;
-				char unit;
-				token = strtok_r (buf, " ", &saveptr);
-				while (token) {
-					token = strtok_r (NULL, " ", &saveptr);
-					if (token == NULL) {
-						break;
-					}
-					token1 = token;
-					token = strtok_r (NULL, " ", &saveptr);
-					if (token == NULL) {
-						break;
-					}
-
-					if (strcmp (token, "used") == 0) {
-						sscanf (token1, "%d%c", &used, &unit);
-						if (unit == 'G') {
-							used *= 1024;
-						} else if (unit != 'M') {
-							used = 0;
-						}
-					} else if (strncmp (token, "unused.", strlen("unused.")) == 0) {
-						sscanf (token1, "%d%c", &unused, &unit);
-						if (unit == 'G') {
-							unused *= 1024;
-						} else if (unit != 'M') {
-							unused = 0;
-						}
-					}
+				token = strtok_r (buf, ",", &saveptr);
+				if (token == NULL) {
+					break;
+				}
+				token = strtok_r (NULL, ",", &saveptr);
+				if (token == NULL) {
+					break;
+				}
+				ret = atoi (token);
+				if (ret != -1) {
+					*free_mem_mega = ret;
+#ifdef CefC_Debug
+					cef_dbg_write (CefC_Dbg_Finest, "free_mem_mega:%ld\n", *free_mem_mega);
+#endif // CefC_Debug
 				}
 			}
+			break;
 		}
-		pclose (fp);
-	} else {
-		cef_log_write (CefC_Log_Critical, "%s(%d): Could not get memory information.\n", __FUNCTION__, __LINE__);
-		return (-1);
+		pclose(fp);
 	}
-	if (unused == -1 || used == -1) {
-		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword(%s) to get memory information\n",
-					__FUNCTION__, __LINE__, tag);
-		return (-1);
-	}
-	*free_mem_mega = unused;
-#endif // CefC_MACOS
 
-//@@@@@fprintf(stderr, "[%s]: ---- free_mem_mega="FMTU64"\n", __FUNCTION__, *free_mem_mega);
+	if (free_mem_mega == 0) {
+		cef_log_write (CefC_Log_Critical, "%s(%d): Could not find keyword to get memory information\n",
+						__FUNCTION__, __LINE__);
+		return (-1);
+	}
 
 	return (0);
 }
@@ -4462,246 +4362,6 @@ conpubd_catalog_data_create (
 	return;
 }
 
-#ifdef CefC_Db
-static int
-conpubd_cnthdl_restore (
-	CefT_Conpubd_Handle* hdl,					/* conpub daemon handle					*/
-	CefT_Cpubcnt_Hdl* cnthdl
-) {
-	FILE*	fp = NULL;								/* file pointer						*/
-	char	file_name[PATH_MAX];					/* file name						*/
-	CefT_Cpubcnt_Rcd	cnt_rcd;
-	struct stat st;
-	CefT_Cpubcnt_Hdl* work = (CefT_Cpubcnt_Hdl*) cnthdl;
-	int		read_num = 0;
-	CsmgrT_Stat*		rcd = NULL;
-	CsmgrT_DB_COB_MAP**	dmy_cob_map = NULL;
-	uint32_t			seqnum;
-	struct in_addr		dmy_node;						/* Node address							*/
-	char	Uri_buff[CefC_Name_Max_Length];
-	int		rtc;
-	int rc;
-
-	rc = snprintf (file_name, sizeof(file_name), "%s/%s", conpub_restore_path, conpub_restore_fname);
-	if (rc < 0){
-		cef_log_write (CefC_Log_Error, "Rerstore file dir path too long(%s)\n", conpub_restore_path);
-		return (-1);
-	}
-	
-    if (stat(file_name, &st) == 0) {
-		/* Restore File exist */
-   } else {
-		/* Not exist */
-		return(0);
-	}
-	
-	/* Opens Restore File. */
-	fp = fopen (file_name, "rb");
-	if (fp == NULL) {
-		cef_log_write (CefC_Log_Error, "Open Error %s %s\n", file_name, strerror (errno));
-		return (-1);
-	}
-	
-	memset( &dmy_node, 0, sizeof(struct in_addr) );
-	while(1) {
-		memset( &cnt_rcd, 0, sizeof(CefT_Cpubcnt_Rcd) );
-		read_num = fread( &cnt_rcd, sizeof(CefT_Cpubcnt_Rcd), 1, fp );
-		if ( read_num != 0 ) {
-			work->next = (CefT_Cpubcnt_Hdl*) malloc (sizeof (CefT_Cpubcnt_Hdl));
-			if (work->next == NULL) {
-				cef_log_write (CefC_Log_Error, "malloc error(Cpubcnt)\n");
-				return (-1);
-			}
-			work = work->next;
-			memset (work, 0, sizeof (CefT_Cpubcnt_Hdl));
-			memcpy (work->name, cnt_rcd.name, cnt_rcd.name_len);
-			work->name_len 	= cnt_rcd.name_len;
-			strcpy (work->file_path, cnt_rcd.file_path);
-			memcpy( &work->expiry, &cnt_rcd.expiry, sizeof(time_t) );
-			memcpy( &work->date, &cnt_rcd.date, sizeof(time_t) );
-			work->cob_num = cnt_rcd.cob_num;
-			memcpy (work->version, cnt_rcd.version, cnt_rcd.version_len);
-			work->version_len = cnt_rcd.version_len;
-			
-			/* stat rcd create */
-			rcd = conpubd_stat_content_info_access ( stat_hdl, work->name, work->name_len );
-			if (!rcd) {
-				rcd = conpubd_stat_content_info_init ( stat_hdl, work->name, work->name_len, dmy_cob_map );
-			}
-			for ( seqnum = 0; seqnum < work->cob_num; seqnum++ ) {
-				/* Updates the content information */
-				if ( seqnum < (work->cob_num - 1) ) {
-					conpubd_stat_cob_update (stat_hdl, work->name, work->name_len, 
-							seqnum, cnt_rcd.cob_size, cnt_rcd.stat_expiry, cnt_rcd.stat_cached_time, dmy_node);
-				} else {
-					conpubd_stat_cob_update (stat_hdl, work->name, work->name_len, 
-							seqnum, cnt_rcd.last_cob_size, cnt_rcd.stat_expiry, cnt_rcd.stat_cached_time, dmy_node);
-				}
-			}
-			rtc = hdl->cs_mod_int->cache_item_puts (NULL, sizeof (work), work);
-			if ( rtc < 0 ) {
-				conpubd_running_f = 0;
-				memset( Uri_buff, 0, CefC_Name_Max_Length );
-				cef_frame_conversion_name_to_string (work->name, work->name_len, Uri_buff, "ccnx");
-				cef_log_write (CefC_Log_Critical, "Failed to restore %s (cache_item_puts)\n", Uri_buff);
-				return (-1);
-			}
-			
-			hdl->published_contents_num ++;
-#if 0
-{
-	int dbg_x;
-	int len = 0;
-	char dbg_msg[1024];
-
-	len = sprintf (dbg_msg, "[%s] [", __func__);
-	for (dbg_x = 0 ; dbg_x < work->name_len ; dbg_x++) {
-		len = len + sprintf (dbg_msg + len, " %02X", work->name[dbg_x]);
-	}
-	fprintf (stderr, "%s ]\n", dbg_msg);
-	rcd = conpubd_stat_content_info_access ( stat_hdl, work->name, work->name_len );
-	if ( rcd == NULL ) {
-		fprintf( stderr, "[%s] Stat_Rcd is NULL \n", __func__ );
-	} else {
-		fprintf( stderr, "rcd->con_size         %ld \n", rcd->con_size );
-		fprintf( stderr, "rcd->last_cob_size    %d \n", rcd->last_cob_size );
-		fprintf( stderr, "rcd->last_chunk_num   %d \n", rcd->last_chunk_num );
-		fprintf( stderr, "rcd->cob_num          %ld \n", rcd->cob_num );
-		fprintf( stderr, "rcd->min_seq          %d \n", rcd->min_seq );
-		fprintf( stderr, "rcd->max_seq          %d \n", rcd->max_seq );
-		fprintf( stderr, "rcd->expiry           %ld \n", rcd->expiry );
-		fprintf( stderr, "rcd->cached_time      %ld \n", rcd->cached_time );
-		fprintf( stderr, "rcd->map_max          %d \n", rcd->map_max );
-		uint32_t	s_val = 0;
-		uint32_t	e_val = rcd->cob_num - 1;
-		uint32_t	sidx = s_val / 64;
-		uint32_t	eidx = (e_val / 64) + 1;
-		for ( int ii = sidx; ii < eidx; ii++ ) {
-			fprintf( stderr, "\t" );
-			fprintf( stderr, "rcd->cob_map[%d] : %08lx \n", ii, rcd->cob_map[ii] );
-		}
-		fprintf( stderr, "\n" );
-	}
-
-}
-#endif
-		} else {
-			break;
-		}
-	}
-	
-	fclose(fp);
-	
-	return (0);
-}
-
-static int
-conpubd_cnthdl_save (
-	CefT_Cpubcnt_Hdl* cnthdl
-) {
-	FILE*	fp = NULL;								/* file pointer						*/
-	char	file_name[PATH_MAX];					/* file name						*/
-	CefT_Cpubcnt_Rcd	cnt_rcd;
-	CefT_Cpubcnt_Hdl* work = (CefT_Cpubcnt_Hdl*) cnthdl;
-	int		write_cnt = 0;
-	CsmgrT_Stat* rcd = NULL;
-	CsmgrT_DB_COB_MAP*	cob_map = NULL;
-	
-	int rc;
-	
-	
-	rc = snprintf (file_name, sizeof(file_name), "%s/%s", conpub_restore_path, conpub_restore_fname);
-	if (rc < 0){
-		cef_log_write (CefC_Log_Error, "Rerstore file dir path too long(%s)\n", conpub_restore_path);
-		return (-1);
-	}
-	
-	/* Opens Restore File. */
-	fp = fopen (file_name, "wb");
-	if (fp == NULL) {
-		cef_log_write (CefC_Log_Error, "Open Err %s %s\n", file_name, strerror (errno));
-		return (-1);
-	}
-	
-	while(1) {
-		if ( work->next != NULL ) {
-			work = work->next;
-			memset( &cnt_rcd, 0, sizeof(CefT_Cpubcnt_Rcd) );
-			memcpy( cnt_rcd.name, work->name, work->name_len);
-			cnt_rcd.name_len = work->name_len;
-			strcpy ( cnt_rcd.file_path, work->file_path);
-			memcpy( &cnt_rcd.expiry, &work->expiry, sizeof(time_t) );
-			memcpy( &cnt_rcd.date, &work->date, sizeof(time_t) );
-			cnt_rcd.cob_num = work->cob_num;
-			memcpy( cnt_rcd.version, work->version, work->version_len);
-			cnt_rcd.version_len = work->version_len;
-			/* for Stat_Rcd */
-			rcd = csmgrd_stat_content_info_is_exist ( stat_hdl, work->name, work->name_len, &cob_map );
-			if ( rcd == NULL ) {
-				cef_log_write (CefC_Log_Error, "Stat_Rcd NotFound \n");
-				return (-1);
-			}
-			cnt_rcd.stat_expiry = rcd->expiry;
-			cnt_rcd.stat_cached_time = rcd->cached_time;
-#if 0
-{
-	int dbg_x;
-	int len = 0;
-	char dbg_msg[1024];
-
-	len = sprintf (dbg_msg, "[%s] [", __func__);
-	for (dbg_x = 0 ; dbg_x < work->name_len ; dbg_x++) {
-		len = len + sprintf (dbg_msg + len, " %02X", work->name[dbg_x]);
-	}
-	fprintf (stderr, "%s ]\n", dbg_msg);
-	if ( rcd == NULL ) {
-		fprintf( stderr, "[%s] Stat_Rcd is NULL \n", __func__ );
-	} else {
-		fprintf( stderr, "rcd->con_size         %ld \n", rcd->con_size );
-		fprintf( stderr, "rcd->last_cob_size    %d \n", rcd->last_cob_size );
-		fprintf( stderr, "rcd->last_chunk_num   %d \n", rcd->last_chunk_num );
-		fprintf( stderr, "rcd->cob_num          %ld \n", rcd->cob_num );
-		fprintf( stderr, "rcd->min_seq          %d \n", rcd->min_seq );
-		fprintf( stderr, "rcd->max_seq          %d \n", rcd->max_seq );
-		fprintf( stderr, "rcd->expiry           %ld \n", rcd->expiry );
-		fprintf( stderr, "rcd->cached_time      %ld \n", rcd->cached_time );
-		fprintf( stderr, "rcd->map_max          %d \n", rcd->map_max );
-		uint32_t	s_val = 0;
-		uint32_t	e_val = rcd->cob_num - 1;
-		uint32_t	sidx = s_val / 64;
-		uint32_t	eidx = (e_val / 64) + 1;
-		for ( int ii = sidx; ii < eidx; ii++ ) {
-			fprintf( stderr, "\t" );
-			fprintf( stderr, "rcd->cob_map[%d] : %08lx \n", ii, rcd->cob_map[ii] );
-		}
-		fprintf( stderr, "\n" );
-	}
-
-}
-#endif
-
-			cnt_rcd.con_size = rcd->con_size;
-			cnt_rcd.cob_size = rcd->cob_size;
-			cnt_rcd.last_cob_size = rcd->last_cob_size;
-			write_cnt = fwrite( &cnt_rcd, 1, sizeof(CefT_Cpubcnt_Rcd), fp );
-			if ( write_cnt == sizeof(CefT_Cpubcnt_Rcd) ) {
-				/* Write OK */
-			} else {
-				/* Write Error */
-				cef_log_write (CefC_Log_Error, "Write Error %s %s\n", file_name, strerror (errno));
-				return (-1);
-			}
-		} else {
-			break;
-		}
-	}
-
-	fclose(fp);
-
-	return (0);
-}
-#endif
-
 #ifdef CefC_Debug
 static void
 conpubd_dbg_convert_name_to_str_put_workstr (
@@ -4725,39 +4385,30 @@ conpubd_dbg_convert_name_to_str_put_workstr (
 }
 #endif //CefC_Debug
 
-static int
-cef_pthread_create (
-	pthread_t* thread,
-	pthread_attr_t* attr,
-	void* (*start_routine) (void*),
-	void* arg
+/*--------------------------------------------------------------------------------------
+	Convert string to binary
+----------------------------------------------------------------------------------------*/
+static void
+conpubd_str2byte (
+	char *str,									/* string to convert					*/
+	char *data,									/* Area to store converted binary		*/
+	size_t len									/* Size of area to store binaries		*/
 ) {
-	int		rc = -1;
-	size_t	s1 = CefC_Pthread_StackSize;
+	size_t str_len = strlen (str);
+	size_t data_len = len * 2;
+	size_t i;
+	char *wp = data;
 
-	if (thread == NULL || attr == NULL || start_routine == NULL) {
-		cef_log_write (CefC_Log_Error, "parameter is NULL");
-		return rc;
+	for (i=0; i<data_len; i+=2) {
+		if (i >= str_len) {
+			memset (wp, 0x00, 1);
+		} else if (i + 1 == str_len) {
+			sscanf((char *)(str + i), "%01hhx", wp);
+			*wp = (*wp << 4) & 0xf0;
+		} else {
+			sscanf((char *)(str + i), "%02hhx", wp);
+		}
+		wp ++;
 	}
-
-	rc = pthread_attr_init(attr);
-	if (rc != 0) {
-		cef_log_write (CefC_Log_Error, "error in pthread_attr_init");
-		return rc;
-	}
-
-	rc = pthread_attr_setstacksize(attr, s1);
-	if (rc != 0) {
-		cef_log_write (CefC_Log_Error, "error in pthread_attr_setstacksize\n");
-		return rc;
-	}
-
-	rc = pthread_create (thread, attr, start_routine, arg);
-	if (rc != 0) {
-		cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
-		return rc;
-	}
-
-	return rc;
 }
 

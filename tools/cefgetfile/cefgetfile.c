@@ -41,6 +41,7 @@
 #include <signal.h>
 #include <limits.h>
 #include <sys/time.h>
+#include <stdarg.h>
 
 #include <cefore/cef_define.h>
 #include <cefore/cef_frame.h>
@@ -57,6 +58,9 @@
 
 #define CefC_Resend_Interval	10000		/* 10 ms 		*/
 #define CefC_Max_Retry 			5
+
+#define USAGE					print_usage(CefFp_Usage);
+#define printerr(...)			fprintf(stderr, "[cefgetfile] ERROR: " __VA_ARGS__)
 
 /****************************************************************************************
  Structures Declaration
@@ -100,15 +104,15 @@ static int dummy_f = 0;
 
 static void
 post_process (
-	void
+	FILE* ofp
 );
 static void
 sigcatch (
 	int sig
 );
 static void
-print_usage (
-	void
+print_usage(
+	FILE* ofp
 );
 
 /****************************************************************************************
@@ -179,8 +183,7 @@ int main (
 	uri[0] 			= 0;
 	valid_type[0] 	= 0;
 	
-	fprintf (stdout, "[cefgetfile] Start\n");
-	fprintf (stdout, "[cefgetfile] Parsing parameters ... ");
+	printf ("[cefgetfile] Start\n");
 	
 	/* Inits logging 		*/
 	cef_log_init ("cefgetfile", 1);
@@ -195,13 +198,13 @@ int main (
 		
 		if (strcmp (work_arg, "-f") == 0) {
 			if (file_f) {
-				fprintf (stdout, "ERROR: [-f] is duplicated.\n");
-				print_usage ();
+				printerr("[-f] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stdout, "ERROR: [-f] has no parameter.\n");
-				print_usage ();
+				printerr("[-f] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -213,13 +216,13 @@ int main (
 			i++;
 		} else if (strcmp (work_arg, "-s") == 0) {
 			if (pipeline_f) {
-				fprintf (stdout, "ERROR: [-s] is duplicated.\n");
-				print_usage ();
+				printerr("[-s] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stdout, "ERROR: [-s] has no parameter.\n");
-				print_usage ();
+				printerr("[-s] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -233,19 +236,19 @@ int main (
 			i++;
 		} else if (strcmp (work_arg, "-d") == 0) {
 			if (dir_path_f) {
-				fprintf (stderr, "ERROR: [-d] is duplicated.\n");
-				print_usage ();
+				printerr("[-d] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-d] has no parameter.\n");
-				print_usage ();
+				printerr("[-d] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			//202108
 			if (strlen(argv[i + 1]) > PATH_MAX) {
-				fprintf (stderr, "ERROR: [-d] parameter is too long.\n");
-				print_usage ();
+				printerr("[-d] parameter is too long.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -254,13 +257,13 @@ int main (
 			i++;
 		} else if (strcmp (work_arg, "-p") == 0) {
 			if (port_num_f) {
-				fprintf (stderr, "ERROR: [-p] is duplicated.\n");
-				print_usage ();
+				printerr("[-p] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-p] has no parameter.\n");
-				print_usage ();
+				printerr("[-p] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -269,13 +272,13 @@ int main (
 			i++;
 		} else if (strcmp (work_arg, "-m") == 0) {
 			if (max_seq_f) {
-				fprintf (stdout, "ERROR: [-m] is duplicated.\n");
-				print_usage ();
+				printerr("[-m] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stdout, "ERROR: [-m] has no parameter.\n");
-				print_usage ();
+				printerr("[-m] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -289,39 +292,39 @@ int main (
 			i++;
 		} else if (strcmp (work_arg, "-z") == 0) {
 			if (nsg_flag) {
-				fprintf (stdout, "ERROR: [-z] is duplicated.\n");
-				print_usage ();
+				printerr("[-z] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stdout, "ERROR: [-z] has no parameter.\n");
-				print_usage ();
+				printerr("[-z] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
 			if (strcmp (work_arg, "sg")) {
-				fprintf (stdout, "ERROR: [-z] has the invalid parameter.\n");
-				print_usage ();
+				printerr("[-z] has the invalid parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			nsg_flag++;
 			i++;
 		} else if (strcmp (work_arg, "-o") == 0) {
 			if (from_pub_f) {
-				fprintf (stdout, "ERROR: [-o] is duplicated.\n");
-				print_usage ();
+				printerr("[-o] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			from_pub_f++;
 		} else if (strcmp (work_arg, "-v") == 0) {
 			if (valid_f) {
-				fprintf (stderr, "ERROR: [-v] is duplicated.\n");
-				print_usage ();
+				printerr("[-v] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-v] has no parameter.\n");
-				print_usage ();
+				printerr("[-v] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -329,29 +332,27 @@ int main (
 			valid_f++;
 			i++;
 		} else if (strcmp (work_arg, "-h") == 0) {
-			print_usage ();
+			USAGE;
 			exit (1);
 		} else {
 			
 			work_arg = argv[i];
 			
 			if (work_arg[0] == '-') {
-				fprintf (stdout, 
-					"ERROR: unknown option (%s) is specified.\n", work_arg);
-				print_usage ();
+				USAGE;
 				return (-1);
 			}
 			
 			if (uri_f) {
-				fprintf (stdout, "ERROR: uri is duplicated.\n");
-				print_usage ();
+				printerr("uri is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			res = strlen (work_arg);
 			
 			if (res >= 1024) {
-				fprintf (stdout, "ERROR: uri is too long.\n");
-				print_usage ();
+				printerr("uri is too long.\n");
+				USAGE;
 				return (-1);
 			}
 			strcpy (uri, work_arg);
@@ -361,16 +362,16 @@ int main (
 	
 	/* Checks errors 			*/
 	if (uri_f == 0) {
-		fprintf (stdout, "ERROR: uri is not specified.\n");
-		print_usage ();
+		printerr("uri is not specified.\n");
+		USAGE;
 		exit (1);
 	}
 	if (file_f == 0) {
 		/* Use the last string in the URL */
 		res = strlen (uri);
 		if (res >= 1024) {
-			fprintf (stdout, "ERROR: uri is too long.\n");
-			print_usage ();
+			printerr("uri is too long.\n");
+			USAGE;
 			return (-1);
 		}
 		if (uri[res - 1] == '/') {
@@ -385,8 +386,8 @@ int main (
 			}
 		}
 		if (res <= 0) {
-			fprintf (stdout, "ERROR: File name is not specified.\n");
-			print_usage ();
+			printerr("File name is not specified.\n");
+			USAGE;
 			exit (1);
 		}
 		i = 0;
@@ -402,7 +403,7 @@ int main (
 	if (pipeline > sv_max_seq + 1) {
 		pipeline = sv_max_seq + 1;
 	}
-	fprintf (stdout, "OK\n");
+	printf ("[cefgetfile] Parsing parameters ...OK\n");
 	cef_log_init2 (conf_path, 1/* for CEFNETD */);
 #ifdef CefC_Debug
 	cef_dbg_init ("cefgetfile", conf_path, 1);
@@ -414,28 +415,26 @@ int main (
 	cef_frame_init ();
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
-		fprintf (stdout, "ERROR: Failed to init the client package.\n");
+		printerr("Failed to init the client package.\n");
 		exit (1);
 	}
-	fprintf (stdout, "[cefgetfile] Init Cefore Client package ... OK\n");
-	fprintf (stdout, "[cefgetfile] Conversion from URI into Name ... ");
+	printf ("[cefgetfile] Init Cefore Client package ... OK\n");
 	res = cef_frame_conversion_uri_to_name (uri, params.name);
 	if (res < 0) {
-		fprintf (stdout, "ERROR: Invalid URI is specified.\n");
-		print_usage ();
+		printerr("Invalid URI is specified.\n");
+		USAGE;
 		exit (1);
 	}
-	fprintf (stdout, "OK\n");
-	fprintf (stdout, "[cefgetfile] Checking the output file ... ");
+	printf ("[cefgetfile] Conversion from URI into Name ... OK\n");
 	if (dummy_f == 0) {
 		fp = fopen (fpath, "wb");
 		if (fp == NULL) {
-			fprintf (stdout, "ERROR: Specified output file can not be opend.\n");
+			printerr("Specified output file can not be opend.\n");
 			exit (1);
 		}
 	}
 	params.name_len = res;
-	fprintf (stdout, "OK\n");
+	printf ("[cefgetfile] Checking the output file ... OK\n");
 	
 	/*------------------------------------------
 		Set Validation Alglithm
@@ -445,7 +444,7 @@ int main (
 		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_type);
 		
 		if (params.alg.valid_type == CefC_T_ALG_INVALID) {
-			fprintf (stdout, "ERROR: -v has the invalid parameter %s\n", valid_type);
+			printerr("-v has the invalid parameter %s\n", valid_type);
 			exit (1);
 		}
 	}
@@ -453,13 +452,12 @@ int main (
 	/*------------------------------------------
 		Connects to CEFORE
 	--------------------------------------------*/
-	fprintf (stdout, "[cefgetfile] Connect to cefnetd ... ");
 	fhdl = cef_client_connect ();
 	if (fhdl < 1) {
-		fprintf (stdout, "ERROR: cefnetd is not running.\n");
+		printerr("cefnetd is not running.\n");
 		exit (1);
 	}
-	fprintf (stdout, "OK\n");
+	printf ("[cefgetfile] Connect to cefnetd ... OK\n");
 	
 	/*---------------------------------------------------------------------------
 		Sets Interest parameters
@@ -485,12 +483,12 @@ int main (
 		Sends first Interest(s)
 	-----------------------------------------------------------------------------*/
 	app_running_f = 1;
-	fprintf (stdout, "[cefgetfile] URI=%s\n", uri);
+	printf ("[cefgetfile] URI=%s\n", uri);
 	if (nsg_flag) {
 		cef_client_interest_input (fhdl, &opt, &params);
-		fprintf (stdout, "[cefgetfile] Start sending Long Life Interests\n");
+		printf ("[cefgetfile] Start sending Long Life Interests\n");
 	} else {
-		fprintf (stdout, "[cefgetfile] Start sending Interests\n");
+		printf ("[cefgetfile] Start sending Interests\n");
 		
 		/* Sends Initerest(s) 		*/
 		for (i = 0 ; i < pipeline ; i++) {
@@ -588,10 +586,9 @@ int main (
 
 					/* InterestReturn */
 					if ( (uint8_t)app_frame.type == CefC_PT_INTRETURN ) {
-						fprintf (stdout, "[cefgetfile] Incomplete\n");
-										fprintf (stdout, 
-											"[cefgetfile] "
-											"Received Interest Return(Type:%02x)\n", app_frame.returncode);
+						printf ("[cefgetfile] Incomplete\n");
+						printf ("[cefgetfile] "
+								"Received Interest Return(Type:%02x)\n", app_frame.returncode);
 						app_running_f = 0;
 						rcv_ng_f = 1;
 						goto IR_RCV;
@@ -612,7 +609,7 @@ int main (
 					if (nsg_flag) {
 						stat_recv_frames++;
 						stat_recv_bytes += app_frame.payload_len;
-						if (dummy_f == 0) {
+						if (dummy_f == 0 && ((stat_recv_frames / 2) <= app_frame.chunk_num)) {
 							fwrite (app_frame.payload, 
 								sizeof (unsigned char), app_frame.payload_len, fp);
 						} else {
@@ -669,15 +666,13 @@ int main (
 							}
 							
 							if ( stat_recv_frames == end_chunk_num ) {
-								fprintf (stdout, "[cefgetfile] Completed to get all the chunks.\n");
+								printf ("[cefgetfile] Completed to get all the chunks.\n");
 								app_running_f = 0;
 								goto IR_RCV;
 							}
 							
 							if (rxwnd->seq == UINT32_MAX /*sv_max_seq*/) {
-								fprintf (stdout, 
-									"[cefgetfile] "
-									"Received the specified number of chunk\n");
+								printf ("[cefgetfile] Received the specified number of chunk\n");
 								app_running_f = 0;
 							}
 							
@@ -717,7 +712,7 @@ int main (
 		if (nsg_flag) {
 			if (now_time > nxt_time) {
 				cef_client_interest_input (fhdl, &opt, &params);
-				fprintf (stdout, "[cefgetfile] Send Long Life Interest\n");
+				printf ("[cefgetfile] Send Long Life Interest\n");
 				nxt_time = now_time + dif_time;
 			}
 		} else {
@@ -730,7 +725,7 @@ int main (
 							break;
 						}
 					}
-					fprintf (stdout, "[cefgetfile] Suspended to retrieve the content because the number of Interest retransmission has reached its limit, 5.\n");
+					printf ("[cefgetfile] Suspended to retrieve the content because the number of Interest retransmission has reached its limit, 5.\n");
 							rcv_ng_f = 1;
 					break;
 				}
@@ -779,7 +774,7 @@ IR_RCV:;
 	if (rcv_ng_f) {
 		remove(fpath);
 	}
-	post_process ();
+	post_process (stdout);
 	
 	if (rxwnd_head != NULL) {
 		rxwnd = rxwnd_head;
@@ -795,27 +790,27 @@ IR_RCV:;
 }
 
 static void
-print_usage (
-	void
+print_usage(
+	FILE* ofp
 ) {
 	
-	fprintf (stdout, "\nUsage: cefgetfile\n\n");
-	fprintf (stdout, "  cefgetfile uri -f file [-o] [-m chunk] [-s pipeline] [-v valid_algo] [-d config_file_dir] [-p port_num] [-z sg]\n\n");
-	fprintf (stdout, "  uri              Specify the URI.\n");
-	fprintf (stdout, "  file             Specify the file name of output. \n");
-	fprintf (stdout, "  -o               Specify this option, if you require the content\n"
-	                 "                   that the owner is caching\n");
-	fprintf (stdout, "  chunk            Specify the number of chunk that you want to obtain\n");
-	fprintf (stdout, "  pipeline         Number of pipeline\n");
-	fprintf (stdout, "  valid_algo       Specify the validation algorithm (crc32 or sha256)\n");
-	fprintf (stderr, "  config_file_dir  Configure file directory\n");
-	fprintf (stderr, "  port_num         Port Number\n");
-	fprintf (stdout, "  -z sg            Send Long Life Interest\n\n");
+	fprintf (ofp, "\nUsage: cefgetfile\n\n");
+	fprintf (ofp, "  cefgetfile uri -f file [-o] [-m chunk] [-s pipeline] [-v valid_algo] [-d config_file_dir] [-p port_num] [-z sg]\n\n");
+	fprintf (ofp, "  uri              Specify the URI.\n");
+	fprintf (ofp, "  file             Specify the file name of output. \n");
+	fprintf (ofp, "  -o               Specify this option, if you require the content\n"
+	                      "                   that the owner is caching\n");
+	fprintf (ofp, "  chunk            Specify the number of chunk that you want to obtain\n");
+	fprintf (ofp, "  pipeline         Number of pipeline\n");
+	fprintf (ofp, "  valid_algo       Specify the validation algorithm (" CefC_ValidTypeStr_CRC32C " or " CefC_ValidTypeStr_RSA256 ")\n");
+	fprintf (ofp, "  config_file_dir  Configure file directory\n");
+	fprintf (ofp, "  port_num         Port Number\n");
+	fprintf (ofp, "  -z sg            Send Long Life Interest\n\n");
 }
 
 static void
 post_process (
-	void
+	FILE* ofp
 ) {
 	uint64_t diff_t;
 	double diff_t_dbl = 0.0;
@@ -831,7 +826,7 @@ post_process (
 		if ( !timercmp( &start_t, &end_t, != ) == 0 ) {
 			if ( timercmp( &start_t, &end_t, < ) == 0 ) {
 				// Invalid end time
-				fprintf (stdout, "[cefgetfile] Invalid end time. No time statistics reported.\n");
+				fprintf (ofp, "[cefgetfile] Invalid end time. No time statistics reported.\n");
 				diff_t = 0;
 				invalid_end = 1;
 			} else {
@@ -846,40 +841,39 @@ post_process (
 		diff_t = 0;
 	}
 	usleep (1000000);
-	fprintf (stdout, "[cefgetfile] Unconnect to cefnetd ... ");
 	cef_client_close (fhdl);
-	fprintf (stdout, "OK\n");
+	fprintf (ofp, "[cefgetfile] Unconnect to cefnetd ... OK\n");
 	
-	fprintf (stdout, "[cefgetfile] Terminate\n");
-	fprintf (stdout, "[cefgetfile] Rx Frames (All)           = "FMTU64"\n", stat_all_recv_frames);			//20230518
-	fprintf (stdout, "[cefgetfile] Rx Frames (ContentObject) = "FMTU64"\n", stat_recv_frames);				//20230518
+	fprintf (ofp, "[cefgetfile] Terminate\n");
+	fprintf (ofp, "[cefgetfile] Rx Frames (All)           = "FMTU64"\n", stat_all_recv_frames);			//20230518
+	fprintf (ofp, "[cefgetfile] Rx Frames (ContentObject) = "FMTU64"\n", stat_recv_frames);				//20230518
 	if (rcv_ng_f) {
-		fprintf (stdout, "[cefgetfile] Received frame ... NG\n");
-		fprintf (stdout, "[cefgetfile] Could not receive anything\n");
+		fprintf (ofp, "[cefgetfile] Received frame ... NG\n");
+		fprintf (ofp, "[cefgetfile] Could not receive anything\n");
 	} else {
-		fprintf (stdout, "[cefgetfile] Rx Bytes (All)            = "FMTU64"\n", stat_all_recv_bytes);
-		fprintf (stdout, "[cefgetfile] Rx Bytes (ContentObject)  = "FMTU64"\n", stat_recv_bytes);
+		fprintf (ofp, "[cefgetfile] Rx Bytes (All)            = "FMTU64"\n", stat_all_recv_bytes);
+		fprintf (ofp, "[cefgetfile] Rx Bytes (ContentObject)  = "FMTU64"\n", stat_recv_bytes);
 		if (diff_t > 0) {
 			diff_t_dbl = (double)diff_t / 1000000.0;
-			fprintf (stdout, "[cefgetfile] Duration                  = %.3f sec\n", diff_t_dbl + 0.0009);
+			fprintf (ofp, "[cefgetfile] Duration                  = %.3f sec\n", diff_t_dbl + 0.0009);
 			recv_bits = stat_recv_bytes * 8;
 			all_recv_bits = stat_all_recv_bytes * 8;														//20230518
 			thrpt = (double)(all_recv_bits) / diff_t_dbl;													//20230518
 			goodpt = (double)(recv_bits) / diff_t_dbl;														//20230518
-			fprintf (stdout, "[cefgetfile] Throughput                = "FMTU64" bps\n", (uint64_t)thrpt);	//20230522
-			fprintf (stdout, "[cefgetfile] Goodput                   = "FMTU64" bps\n", (uint64_t)goodpt);	//20230518
+			fprintf (ofp, "[cefgetfile] Throughput                = "FMTU64" bps\n", (uint64_t)thrpt);	//20230522
+			fprintf (ofp, "[cefgetfile] Goodput                   = "FMTU64" bps\n", (uint64_t)goodpt);	//20230518
 		} else {
-			fprintf (stdout, "[cefgetfile] Duration                  = 0.000 sec\n");
+			fprintf (ofp, "[cefgetfile] Duration                  = 0.000 sec\n");
 		}
 		if ((stat_recv_frames > 0) && (invalid_end == 0)) {
 			jitter_ave = stat_jitter_sum / stat_recv_frames;
 	
-			fprintf (stdout, "[cefgetfile] Jitter (Ave)              = "FMTU64" us\n", jitter_ave);
-			fprintf (stdout, "[cefgetfile] Jitter (Max)              = "FMTU64" us\n", stat_jitter_max);
-			fprintf (stdout, "[cefgetfile] Jitter (Var)              = "FMTU64" us\n"
+			fprintf (ofp, "[cefgetfile] Jitter (Ave)              = "FMTU64" us\n", jitter_ave);
+			fprintf (ofp, "[cefgetfile] Jitter (Max)              = "FMTU64" us\n", stat_jitter_max);
+			fprintf (ofp, "[cefgetfile] Jitter (Var)              = "FMTU64" us\n"
 				, (stat_jitter_sq_sum / stat_recv_frames) - (jitter_ave * jitter_ave));
 			if (dummy_f == 1) {
-				fprintf (stdout, "[cefgetfile] Dummy_Sum               = %u\n", dummy_sum);
+				fprintf (ofp, "[cefgetfile] Dummy_Sum               = %u\n", dummy_sum);
 			}
 		}
 	}
@@ -889,7 +883,7 @@ sigcatch (
 	int sig
 ) {
 	if (sig == SIGINT) {
-		fprintf (stdout, "[cefgetfile] Catch the signal\n");
+		printf ("[cefgetfile] Catch the signal\n");
 		app_running_f = 0;
 	}
 }

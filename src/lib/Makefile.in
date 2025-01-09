@@ -119,22 +119,17 @@ build_triplet = @build@
 host_triplet = @host@
 
 # check debug build
-@CEFDBG_ENABLE_TRUE@am__append_1 = -DCefC_Debug
-
-# check csmgr
-@CSMGR_ENABLE_TRUE@am__append_2 = -DCefC_ContentStore
-#AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c
-@CSMGR_ENABLE_TRUE@am__append_3 = cef_csmgr.c
+@CEFDBG_ENABLE_TRUE@am__append_1 = -DCefC_Debug -g
 
 # check cache
-@CACHE_ENABLE_TRUE@am__append_4 = -DCefC_CefnetdCache
-@CACHE_ENABLE_TRUE@am__append_5 = cef_mem_cache.c cef_csmgr.c cef_csmgr_stat.c
+@CACHE_ENABLE_TRUE@am__append_2 = -DCefC_CefnetdCache
+
+# check csmgr
+@CSMGR_ENABLE_TRUE@am__append_3 = -DCefC_Csmgr
 
 # check conpub
-@CONPUB_ENABLE_TRUE@am__append_6 = -DCefC_Conpub
-#AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c
-@CONPUB_ENABLE_TRUE@am__append_7 = cef_csmgr.c
-@SAMPTP_ENABLE_TRUE@am__append_8 = -DCefC_Plugin_Samptp
+@CONPUB_ENABLE_TRUE@am__append_4 = -DCefC_Conpub
+@SAMPTP_ENABLE_TRUE@am__append_5 = -DCefC_Plugin_Samptp
 subdir = src/lib
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -184,27 +179,19 @@ am__v_AR_0 = @echo "  AR      " $@;
 am__v_AR_1 = 
 libcefore_a_AR = $(AR) $(ARFLAGS)
 libcefore_a_LIBADD =
-am__libcefore_a_SOURCES_DIST = cef_hash.c cef_client.c cef_fib.c \
-	cef_pit.c cef_face.c cef_frame.c cef_log.c cef_print.c \
-	cef_mpool.c cef_rngque.c cef_valid.c cef_csmgr.c \
-	cef_mem_cache.c cef_csmgr_stat.c
-@CSMGR_ENABLE_TRUE@am__objects_1 = libcefore_a-cef_csmgr.$(OBJEXT)
-@CACHE_ENABLE_TRUE@am__objects_2 =  \
-@CACHE_ENABLE_TRUE@	libcefore_a-cef_mem_cache.$(OBJEXT) \
-@CACHE_ENABLE_TRUE@	libcefore_a-cef_csmgr.$(OBJEXT) \
-@CACHE_ENABLE_TRUE@	libcefore_a-cef_csmgr_stat.$(OBJEXT)
-@CONPUB_ENABLE_TRUE@am__objects_3 = libcefore_a-cef_csmgr.$(OBJEXT)
-am__objects_4 = libcefore_a-cef_hash.$(OBJEXT) \
+am__objects_1 = libcefore_a-cef_hash.$(OBJEXT) \
 	libcefore_a-cef_client.$(OBJEXT) libcefore_a-cef_fib.$(OBJEXT) \
 	libcefore_a-cef_pit.$(OBJEXT) libcefore_a-cef_face.$(OBJEXT) \
 	libcefore_a-cef_frame.$(OBJEXT) libcefore_a-cef_log.$(OBJEXT) \
 	libcefore_a-cef_print.$(OBJEXT) \
 	libcefore_a-cef_mpool.$(OBJEXT) \
 	libcefore_a-cef_rngque.$(OBJEXT) \
-	libcefore_a-cef_valid.$(OBJEXT) $(am__objects_1) \
-	$(am__objects_2) $(am__objects_3) \
+	libcefore_a-cef_valid.$(OBJEXT) \
+	libcefore_a-cef_pthread.$(OBJEXT) \
+	libcefore_a-cef_mem_cache.$(OBJEXT) \
+	libcefore_a-cef_csmgr.$(OBJEXT) \
 	libcefore_a-cef_csmgr_stat.$(OBJEXT)
-am_libcefore_a_OBJECTS = $(am__objects_4)
+am_libcefore_a_OBJECTS = $(am__objects_1)
 libcefore_a_OBJECTS = $(am_libcefore_a_OBJECTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -233,6 +220,7 @@ am__depfiles_remade = ./$(DEPDIR)/libcefore_a-cef_client.Po \
 	./$(DEPDIR)/libcefore_a-cef_mpool.Po \
 	./$(DEPDIR)/libcefore_a-cef_pit.Po \
 	./$(DEPDIR)/libcefore_a-cef_print.Po \
+	./$(DEPDIR)/libcefore_a-cef_pthread.Po \
 	./$(DEPDIR)/libcefore_a-cef_rngque.Po \
 	./$(DEPDIR)/libcefore_a-cef_valid.Po
 am__mv = mv -f
@@ -259,7 +247,7 @@ am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
 SOURCES = $(libcefore_a_SOURCES)
-DIST_SOURCES = $(am__libcefore_a_SOURCES_DIST)
+DIST_SOURCES = $(libcefore_a_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -350,6 +338,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+XCRUN = @XCRUN@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -383,7 +372,7 @@ htmldir = @htmldir@
 includedir = @includedir@
 infodir = @infodir@
 install_sh = @install_sh@
-libdir = $(CEFORE_DIR_PATH)/lib
+libdir = $(CEFORE_DIR_PATH)lib
 libexecdir = @libexecdir@
 localedir = @localedir@
 localstatedir = @localstatedir@
@@ -404,13 +393,13 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AM_CFLAGS = -I$(top_srcdir)/src/include -Wall -O2 -fPIC \
-	$(am__append_1) $(am__append_2) $(am__append_4) \
-	$(am__append_6) $(am__append_8)
+	$(am__append_1) $(am__append_2) $(am__append_3) \
+	$(am__append_4) $(am__append_5)
 @OPENSSL_STATIC_FALSE@AM_LDFLAGS = -lssl -lcrypto
 @OPENSSL_STATIC_TRUE@AM_LDFLAGS = -l:libssl.a -l:libcrypto.a
 AM_CSOURCES = cef_hash.c cef_client.c cef_fib.c cef_pit.c cef_face.c \
 	cef_frame.c cef_log.c cef_print.c cef_mpool.c cef_rngque.c \
-	cef_valid.c $(am__append_3) $(am__append_5) $(am__append_7) \
+	cef_valid.c cef_pthread.c cef_mem_cache.c cef_csmgr.c \
 	cef_csmgr_stat.c
 lib_LIBRARIES = libcefore.a
 libcefore_a_CFLAGS = $(AM_CFLAGS)
@@ -503,6 +492,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libcefore_a-cef_mpool.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libcefore_a-cef_pit.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libcefore_a-cef_print.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libcefore_a-cef_pthread.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libcefore_a-cef_rngque.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libcefore_a-cef_valid.Po@am__quote@ # am--include-marker
 
@@ -687,19 +677,19 @@ libcefore_a-cef_valid.obj: cef_valid.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -c -o libcefore_a-cef_valid.obj `if test -f 'cef_valid.c'; then $(CYGPATH_W) 'cef_valid.c'; else $(CYGPATH_W) '$(srcdir)/cef_valid.c'; fi`
 
-libcefore_a-cef_csmgr.o: cef_csmgr.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -MT libcefore_a-cef_csmgr.o -MD -MP -MF $(DEPDIR)/libcefore_a-cef_csmgr.Tpo -c -o libcefore_a-cef_csmgr.o `test -f 'cef_csmgr.c' || echo '$(srcdir)/'`cef_csmgr.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libcefore_a-cef_csmgr.Tpo $(DEPDIR)/libcefore_a-cef_csmgr.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cef_csmgr.c' object='libcefore_a-cef_csmgr.o' libtool=no @AMDEPBACKSLASH@
+libcefore_a-cef_pthread.o: cef_pthread.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -MT libcefore_a-cef_pthread.o -MD -MP -MF $(DEPDIR)/libcefore_a-cef_pthread.Tpo -c -o libcefore_a-cef_pthread.o `test -f 'cef_pthread.c' || echo '$(srcdir)/'`cef_pthread.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libcefore_a-cef_pthread.Tpo $(DEPDIR)/libcefore_a-cef_pthread.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cef_pthread.c' object='libcefore_a-cef_pthread.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -c -o libcefore_a-cef_csmgr.o `test -f 'cef_csmgr.c' || echo '$(srcdir)/'`cef_csmgr.c
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -c -o libcefore_a-cef_pthread.o `test -f 'cef_pthread.c' || echo '$(srcdir)/'`cef_pthread.c
 
-libcefore_a-cef_csmgr.obj: cef_csmgr.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -MT libcefore_a-cef_csmgr.obj -MD -MP -MF $(DEPDIR)/libcefore_a-cef_csmgr.Tpo -c -o libcefore_a-cef_csmgr.obj `if test -f 'cef_csmgr.c'; then $(CYGPATH_W) 'cef_csmgr.c'; else $(CYGPATH_W) '$(srcdir)/cef_csmgr.c'; fi`
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libcefore_a-cef_csmgr.Tpo $(DEPDIR)/libcefore_a-cef_csmgr.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cef_csmgr.c' object='libcefore_a-cef_csmgr.obj' libtool=no @AMDEPBACKSLASH@
+libcefore_a-cef_pthread.obj: cef_pthread.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -MT libcefore_a-cef_pthread.obj -MD -MP -MF $(DEPDIR)/libcefore_a-cef_pthread.Tpo -c -o libcefore_a-cef_pthread.obj `if test -f 'cef_pthread.c'; then $(CYGPATH_W) 'cef_pthread.c'; else $(CYGPATH_W) '$(srcdir)/cef_pthread.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libcefore_a-cef_pthread.Tpo $(DEPDIR)/libcefore_a-cef_pthread.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cef_pthread.c' object='libcefore_a-cef_pthread.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -c -o libcefore_a-cef_csmgr.obj `if test -f 'cef_csmgr.c'; then $(CYGPATH_W) 'cef_csmgr.c'; else $(CYGPATH_W) '$(srcdir)/cef_csmgr.c'; fi`
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -c -o libcefore_a-cef_pthread.obj `if test -f 'cef_pthread.c'; then $(CYGPATH_W) 'cef_pthread.c'; else $(CYGPATH_W) '$(srcdir)/cef_pthread.c'; fi`
 
 libcefore_a-cef_mem_cache.o: cef_mem_cache.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -MT libcefore_a-cef_mem_cache.o -MD -MP -MF $(DEPDIR)/libcefore_a-cef_mem_cache.Tpo -c -o libcefore_a-cef_mem_cache.o `test -f 'cef_mem_cache.c' || echo '$(srcdir)/'`cef_mem_cache.c
@@ -714,6 +704,20 @@ libcefore_a-cef_mem_cache.obj: cef_mem_cache.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cef_mem_cache.c' object='libcefore_a-cef_mem_cache.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -c -o libcefore_a-cef_mem_cache.obj `if test -f 'cef_mem_cache.c'; then $(CYGPATH_W) 'cef_mem_cache.c'; else $(CYGPATH_W) '$(srcdir)/cef_mem_cache.c'; fi`
+
+libcefore_a-cef_csmgr.o: cef_csmgr.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -MT libcefore_a-cef_csmgr.o -MD -MP -MF $(DEPDIR)/libcefore_a-cef_csmgr.Tpo -c -o libcefore_a-cef_csmgr.o `test -f 'cef_csmgr.c' || echo '$(srcdir)/'`cef_csmgr.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libcefore_a-cef_csmgr.Tpo $(DEPDIR)/libcefore_a-cef_csmgr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cef_csmgr.c' object='libcefore_a-cef_csmgr.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -c -o libcefore_a-cef_csmgr.o `test -f 'cef_csmgr.c' || echo '$(srcdir)/'`cef_csmgr.c
+
+libcefore_a-cef_csmgr.obj: cef_csmgr.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -MT libcefore_a-cef_csmgr.obj -MD -MP -MF $(DEPDIR)/libcefore_a-cef_csmgr.Tpo -c -o libcefore_a-cef_csmgr.obj `if test -f 'cef_csmgr.c'; then $(CYGPATH_W) 'cef_csmgr.c'; else $(CYGPATH_W) '$(srcdir)/cef_csmgr.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libcefore_a-cef_csmgr.Tpo $(DEPDIR)/libcefore_a-cef_csmgr.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cef_csmgr.c' object='libcefore_a-cef_csmgr.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -c -o libcefore_a-cef_csmgr.obj `if test -f 'cef_csmgr.c'; then $(CYGPATH_W) 'cef_csmgr.c'; else $(CYGPATH_W) '$(srcdir)/cef_csmgr.c'; fi`
 
 libcefore_a-cef_csmgr_stat.o: cef_csmgr_stat.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcefore_a_CFLAGS) $(CFLAGS) -MT libcefore_a-cef_csmgr_stat.o -MD -MP -MF $(DEPDIR)/libcefore_a-cef_csmgr_stat.Tpo -c -o libcefore_a-cef_csmgr_stat.o `test -f 'cef_csmgr_stat.c' || echo '$(srcdir)/'`cef_csmgr_stat.c
@@ -874,6 +878,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/libcefore_a-cef_mpool.Po
 	-rm -f ./$(DEPDIR)/libcefore_a-cef_pit.Po
 	-rm -f ./$(DEPDIR)/libcefore_a-cef_print.Po
+	-rm -f ./$(DEPDIR)/libcefore_a-cef_pthread.Po
 	-rm -f ./$(DEPDIR)/libcefore_a-cef_rngque.Po
 	-rm -f ./$(DEPDIR)/libcefore_a-cef_valid.Po
 	-rm -f Makefile
@@ -933,6 +938,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/libcefore_a-cef_mpool.Po
 	-rm -f ./$(DEPDIR)/libcefore_a-cef_pit.Po
 	-rm -f ./$(DEPDIR)/libcefore_a-cef_print.Po
+	-rm -f ./$(DEPDIR)/libcefore_a-cef_pthread.Po
 	-rm -f ./$(DEPDIR)/libcefore_a-cef_rngque.Po
 	-rm -f ./$(DEPDIR)/libcefore_a-cef_valid.Po
 	-rm -f Makefile

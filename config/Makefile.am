@@ -27,11 +27,12 @@
 # SUCH DAMAGE.
 #
 
-EXTRA_DIST=cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def cefnetd.key.def default-private-key.pem default-public-key.pem ccninfo_rt-private-key.pem ccninfo_rt-public-key.pem ccninfo_user-private-key.pem ccninfo_user-public-key.pem conpubd.conf.def
-CEF_CONF=cefnetd.conf cefnetd.fib csmgrd.conf plugin.conf cefnetd.key default-private-key default-public-key ccninfo_rt-private-key ccninfo_rt-public-key ccninfo_user-private-key ccninfo_user-public-key conpubd.conf
-INSTALLDIR=$(CEFORE_DIR_PATH)/cefore
-CCNINFORTDIR=$(CEFORE_DIR_PATH)/cefore/.ccninfo
+EXTRA_DIST=cefnetd.conf.def cefnetd.fib.def csmgrd.conf.def plugin.conf.def default-private-key.pem default-public-key.pem ccninfo_rt-private-key.pem ccninfo_rt-public-key.pem ccninfo_user-private-key.pem ccninfo_user-public-key.pem conpubd.conf.def 88-cefore.conf.def
+CEF_CONF=cefnetd.conf cefnetd.fib csmgrd.conf plugin.conf default-private-key default-public-key ccninfo_rt-private-key ccninfo_rt-public-key ccninfo_user-private-key ccninfo_user-public-key conpubd.conf 88-cefore.conf
+INSTALLDIR=$(CEFORE_DIR_PATH)cefore
+CCNINFORTDIR=$(CEFORE_DIR_PATH)cefore/.ccninfo
 CCNINFOUSERDIR=$(HOME)/.ccninfo
+SYSCTLINSTALLDIR=/etc/sysctl.d
 
 default all: $(CEF_CONF)
 
@@ -60,14 +61,6 @@ csmgrd.conf: csmgrd.conf.def
 	fi
 
 plugin.conf: plugin.conf.def
-	@if [ -f $(@:=.def) ]; then \
-		cat $(@:=.def) >> $@; \
-		chmod 644 $@; \
-	else \
-		echo "***" You may need to rerun ./configure in the src directory. >&2; \
-	fi
-
-cefnetd.key: cefnetd.key.def
 	@if [ -f $(@:=.def) ]; then \
 		cat $(@:=.def) >> $@; \
 		chmod 644 $@; \
@@ -132,6 +125,14 @@ ccninfo_user-public-key: ccninfo_user-public-key.pem
 		echo "***" You may need to rerun ./configure in the src directory. >&2; \
 	fi
 
+88-cefore.conf: 88-cefore.conf.def
+	@if [ -f $(@:=.def) ]; then \
+		cat $(@:=.def) >> $@; \
+		chmod 644 $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+
 install:
 	@if [ ! -d $(INSTALLDIR) ]; then \
 		mkdir $(INSTALLDIR); \
@@ -157,9 +158,6 @@ install:
 	@if [ ! -f $(INSTALLDIR)/plugin.conf ]; then \
 		cp -p plugin.conf $(INSTALLDIR)/plugin.conf; \
 	fi
-	@if [ ! -f $(INSTALLDIR)/cefnetd.key ]; then \
-		cp -p cefnetd.key $(INSTALLDIR)/cefnetd.key; \
-	fi
 	@if [ ! -f $(INSTALLDIR)/default-public-key ]; then \
 		cp -p default-public-key $(INSTALLDIR)/default-public-key; \
 	fi
@@ -181,12 +179,17 @@ install:
 	@if [ ! -f $(INSTALLDIR)/conpubd.conf ]; then \
 		cp -p conpubd.conf $(INSTALLDIR)/conpubd.conf; \
 	fi
+	-@if [ ! -f $(SYSCTLINSTALLDIR)/88-cefore.conf ] && [ ! $(build_vendor) = apple ]; then \
+		cp -p 88-cefore.conf $(SYSCTLINSTALLDIR)/88-cefore.conf; \
+		sysctl -p $(SYSCTLINSTALLDIR)/88-cefore.conf; \
+	fi
 
 
 uninstall:
 	for i in $(CEF_CONF) ""; do test -z "$$i" || rm -f $(CCNINFOUSERDIR)/$$i; done
 	for i in $(CEF_CONF) ""; do test -z "$$i" || rm -f $(CCNINFORTDIR)/$$i; done
 	for i in $(CEF_CONF) ""; do test -z "$$i" || rm -f $(INSTALLDIR)/$$i; done
+	for i in $(CEF_CONF) ""; do test -z "$$i" || rm -f $(SYSCTLINSTALLDIR)/$$i; done
 
 clean:
 	rm -f $(CEF_CONF) *.bak

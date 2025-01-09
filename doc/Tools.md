@@ -18,7 +18,7 @@ If the "-f" option is omitted, the last name of the specified URI becomes the in
 | rate       | Transfer rate from cefputfile to cefnetd (Mbps)<br>Range: 0.001 <= rate <= 10240.000 (default: 5)<br>You can specify up to three decimal places and ignore values less than three decimal places.  |
 | expiry     | Content Object lifetime (second). (Current time + expiry) is the effective time.<br>Range: 1 <= expiry <= 86400 (default: 3600) |
 | cache_time | The number of seconds after which Content Object is cached before it is deleted.<br>Range: 1 <= cache_time <= 65535 (default: 300) |
-| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either sha256 or crc32 when used. |
+| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either rsa-sha256 or crc32c when used. |
 
 
 ## 2. cefgetfile
@@ -37,7 +37,7 @@ If the "-f" option is omitted, the last name of the specified URI becomes the in
 | chunk      | Specify the number of chunks to get. The application terminates when it receives the specified number of chunks.  |
 | pipeline   | Specify the number of pipelines when sending interest. The default value is 4. |
 | cache_time | The number of seconds after which Content Object is cached before it is deleted.<br>Range: 1 <= cache_time <= 65535 (default: 300) |
-| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either sha256 or crc32 when used. |
+| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either rsa-sha256 or crc32c when used. |
 
 If content was successfully downloaded with cefgetfile, "Complete" is displayed as shown in bold characters below. When "Incomplete" is displayed, a packet loss has occurred and there are chunks that could not be retrieved. Even though the interest was retransmitted, the content download was interrupted.
 The "Duration" output is specified to three decimal places (rounded up to four decimal places).
@@ -70,7 +70,7 @@ cefputstream is a tool that converts stream content in STDIN into a content obje
 | rate       | Transfer rate from cefputstream to cefnetd (Mbps)<br>Range: 1 <= rate <= 32 (default: 5) |
 | expiry     | Content Object lifetime (second). (Current time + expiry) is the effective time.<br>Range: 0 <= expiry <= 86400 (default: 0) |
 | cache_time | The number of seconds after which Content Object is cached before it is deleted.<br>Range: 1 <= cache_time <= 65535 (default: 0) |
-| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either sha256 or crc32 when used. |
+| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either rsa-sha256 or crc32c when used. |
 
 
 ## 5. cefgetstream
@@ -86,7 +86,7 @@ cefgetstream is a tool that shows the stream content of the specified URI retrie
 | chunk      | Specify the number of chunks to get. The application terminates when it receives the specified number of chunks.|
 | pipeline   | Specify the number of pipelines when sending interest (default: 4). |
 | lifetime   | Specify lifetime interval inserted in Symbolic Interest (default: 4).<br>If this value is bigger than the value configured in cefnetd, it will be ignored, and the value configured in cefnetd will be used. |
-| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either sha256 or crc32 when used. |
+| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either rsa-sha256 or crc32c when used. |
 
 ## 6. cefinfo
 

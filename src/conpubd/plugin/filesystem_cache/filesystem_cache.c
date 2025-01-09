@@ -164,8 +164,8 @@ fsc_cache_item_get (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 fsc_cache_item_puts (
-//JK	ConpubdT_Content_Entry* entry, 
-	void* entry, 
+//JK	ConpubdT_Content_Entry* entry,
+	void* entry,
 	int size,
 	void* conpubd_hdl
 );
@@ -174,7 +174,7 @@ fsc_cache_item_puts (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 fsc_cache_cob_write (
-	ConpubdT_Content_Entry* cobs, 
+	ConpubdT_Content_Entry* cobs,
 	int cob_num
 );
 /*--------------------------------------------------------------------------------------
@@ -253,7 +253,7 @@ fsc_recursive_dir_clear (
 ----------------------------------------------------------------------------------------*/
 int
 conpubd_filesystem_plugin_load (
-	ConpubdT_Plugin_Interface* cs_in, 
+	ConpubdT_Plugin_Interface* cs_in,
 	const char* config_dir
 ) {
 	CONPUBD_SET_CALLBACKS (
@@ -263,7 +263,14 @@ conpubd_filesystem_plugin_load (
 	if (config_dir) {
 		strcpy (conpub_conf_dir, config_dir);
 	}
-	
+
+	/* Init logging 	*/
+	conpubd_log_init ("conpubd_fscache", 1);
+	conpubd_log_init2 (conpub_conf_dir);
+#ifdef CefC_Debug
+	conpubd_dbg_init ("conpubd_fscache", conpub_conf_dir);
+#endif // CefC_Debug
+
 	return (0);
 }
 /*--------------------------------------------------------------------------------------
@@ -273,21 +280,14 @@ static int							/* The return value is negative if an error occurs	*/
 fsc_cs_create (
 	CsmgrT_Stat_Handle stat_hdl
 ) {
-	
+
 	FscT_Config_Param conf_param;
-	
+
 	/* create handle 		*/
 	if (cobpub_hdl != NULL) {
 		free (cobpub_hdl);
 		cobpub_hdl = NULL;
 	}
-
-	/* Init logging 	*/
-	conpubd_log_init ("conpubd_fscache", 1);
-	conpubd_log_init2 (conpub_conf_dir);
-#ifdef CefC_Debug
-	conpubd_dbg_init ("conpubd_fscache", conpub_conf_dir);
-#endif // CefC_Debug
 
 	cobpub_hdl = (FscT_Cache_Handle*) malloc (sizeof (FscT_Cache_Handle));
 	if (cobpub_hdl == NULL) {
@@ -295,7 +295,7 @@ fsc_cs_create (
 		return (-1);
 	}
 	memset (cobpub_hdl, 0, sizeof (FscT_Cache_Handle));
-	
+
 	/* Reads config 		*/
 	if (fsc_config_read (&conf_param) < 0) {
 		conpubd_log_write (CefC_Log_Error, "[%s] read config\n", __func__);
@@ -305,7 +305,7 @@ fsc_cs_create (
 	cobpub_hdl->cache_cobs = 0;
 	strcpy (cobpub_hdl->fsc_root_path, conf_param.cache_path);
 	cobpub_hdl->cache_default_rct = conf_param.cache_default_rct;
-	
+
 	/* Check and create root directory	*/
 	if (fsc_root_dir_check (cobpub_hdl->fsc_root_path) < 0) {
 		conpubd_log_write (CefC_Log_Error,
@@ -313,32 +313,32 @@ fsc_cs_create (
 		cobpub_hdl->fsc_root_path[0] = 0;
 		return (-1);
 	}
-	
+
 	/* Creates the directory to store cache files		*/
 	cobpub_hdl->fsc_id = fsc_cache_id_create (cobpub_hdl);
 	if (cobpub_hdl->fsc_id == 0xFFFFFFFF) {
 		conpubd_log_write (CefC_Log_Error, "FileSystemCache init error\n");
 		return (-1);
 	}
-	conpubd_log_write (CefC_Log_Info, 
+	conpubd_log_write (CefC_Log_Info,
 		"Creation the cache directory (%s) ... OK\n", cobpub_hdl->fsc_cache_path);
-	
+
 	conpubd_log_write (CefC_Log_Info, "Start\n");
 	conpubd_log_write (CefC_Log_Info, "Capacity : "FMTU64"\n", cobpub_hdl->cache_capacity);
 	conpubd_log_write (CefC_Log_Info, "cache_default_rct : %u\n", cobpub_hdl->cache_default_rct);
 	conpub_stat_hdl = stat_hdl;
 	conpubd_stat_cache_capacity_update (conpub_stat_hdl, cobpub_hdl->cache_capacity);
-	
+
 	/* Create cob buffer */
-	fsc_proc_cob_buff 
+	fsc_proc_cob_buff
 		= (ConpubdT_Content_Entry*) malloc (sizeof (ConpubdT_Content_Entry) * ConpubC_Buff_Num);
 	if (fsc_proc_cob_buff == NULL) {
 		conpubd_log_write (CefC_Log_Info, "Failed to allocation process cob buffer\n");
 		return (-1);
 	}
-	
+
 	return (0);
-	
+
 }
 /*--------------------------------------------------------------------------------------
 	Destroy content store
@@ -349,21 +349,21 @@ fsc_cs_destroy (
 ) {
 
 	pthread_mutex_destroy (&conpub_fsc_cs_mutex);
-	
+
 	if (cobpub_hdl == NULL) {
 		return;
 	}
 	if (cobpub_hdl->fsc_cache_path[0] != 0x00) {
 		fsc_recursive_dir_clear (cobpub_hdl->fsc_cache_path);
 	}
-	
+
 	if (cobpub_hdl) {
 		free (cobpub_hdl);
 		cobpub_hdl = NULL;
 	}
-	
+
 	return;
-	
+
 }
 
 /*--------------------------------------------------------------------------------------
@@ -376,7 +376,7 @@ fsc_cs_expire_check (
 	int 			index = 0;
 	CsmgrT_Stat* 	rcd = NULL;
 	char			file_path[PATH_MAX];
-	
+
 	if (pthread_mutex_trylock (&conpub_fsc_cs_mutex) != 0) {
 		return;
 	}
@@ -393,7 +393,7 @@ fsc_cs_expire_check (
 		cobpub_hdl->cache_cobs -= rcd->cob_num;
 	}
 	pthread_mutex_unlock (&conpub_fsc_cs_mutex);
-	
+
 	return;
 }
 
@@ -409,7 +409,7 @@ fsc_cache_item_get (
 	unsigned char* version,						/* version								*/
 	uint16_t ver_len							/* length of version					*/
 ) {
-	
+
 	CsmgrT_Stat* rcd = NULL;
 	uint32_t	file_msglen;
 	uint64_t 	mask;
@@ -433,7 +433,7 @@ fsc_cache_item_get (
 	int			update_ver = 1;
 	static uint16_t red_ver_len = 0;
 	static unsigned char red_version[PATH_MAX] = {0};
-	
+
 #ifdef CefC_Debug
 	conpubd_dbg_write (CefC_Dbg_Finest, "Incoming Interest : seqno = %u\n", seqno);
 #endif // CefC_Debug
@@ -455,13 +455,13 @@ fsc_cache_item_get (
 		pthread_mutex_unlock (&conpub_fsc_cs_mutex);
 		return (-1);
 	}
-	
+
 	file_msglen = rcd->file_msglen;
 	rcdsize = sizeof (uint16_t) + file_msglen;
-	
+
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
-		
+
 	if (nowt > rcd->tx_time) {
 		rcd->tx_seq = 0;
 		rcd->tx_num = -1;
@@ -484,12 +484,12 @@ fsc_cache_item_get (
 		rcd->tx_num = FscC_Tx_Cob_Num;
 		rcd->tx_time = nowt + FscC_Sent_Reset_Time;
 	}
-	
+
 	/* Open the file that specified cob is cached 		*/
 	cob_block_index = (int)(seqno / FscC_Page_Cob_Num) % FscC_File_Page_Num;
 	page_index = (int)(seqno / FscC_Page_Cob_Num/FscC_File_Page_Num);
 	sprintf (file_path, "%s/%d/%d", cobpub_hdl->fsc_cache_path, (int) rcd->index, page_index);
-	
+
 	if (ver_len) {
 		if (red_ver_len == ver_len &&
 			memcmp (version, red_version, red_ver_len) == 0) {
@@ -498,7 +498,7 @@ fsc_cache_item_get (
 	} else {
 		update_ver = 0;
 	}
-	
+
 	if (strcmp (red_file_path, file_path) != 0 || cob_block_index != red_cob_block_index ||
 		(strcmp (red_file_path, file_path) == 0 && update_ver != 0)) {
 		if (page_cob_buf != NULL) {
@@ -531,7 +531,7 @@ fsc_cache_item_get (
 	} else {
 		fp = NULL;
 	}
-	
+
 	/* Send the cobs 		*/
 	pos_index = (int)(seqno % FscC_Page_Cob_Num);
 #ifdef CefC_Debug
@@ -543,7 +543,7 @@ fsc_cache_item_get (
 #endif // CefC_Debug
 	conpubd_stat_access_count_update (
 			conpub_stat_hdl, key, key_size);
-	
+
 	/* Set cache time */
 	{
 	uint64_t cachetime;
@@ -567,13 +567,13 @@ fsc_cache_item_get (
 	}
 	tx_cnt++;
 	seqno++;
-	
+
 	for (i = pos_index + 1 ; i < FscC_Page_Cob_Num ; i++) {
 		if (tx_cnt < FscC_Tx_Cob_Num) {
 			mask = 1;
 			x = seqno / 64;
 			mask <<= (seqno % 64);
-			
+
 			if ((rcd->map_max-1) < x || !(rcd->cob_map[x] & mask)) {
 				seqno++;
 				continue;
@@ -606,7 +606,7 @@ fsc_cache_item_get (
 			break;
 		}
 	}
-	
+
 ItemGetPost:
 	if (fp != NULL) {
 		fclose (fp);
@@ -619,15 +619,15 @@ ItemGetPost:
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 fsc_cache_item_puts (
-//	ConpubdT_Content_Entry* entry, 
-	void* in_entry, 
+//	ConpubdT_Content_Entry* entry,
+	void* in_entry,
 	int size,
 	void* conpubd_hdl
 ) {
 	static int cob_num = 0;
 	int rtc = 0;
 	ConpubdT_Content_Entry* entry = (ConpubdT_Content_Entry*)in_entry;
-	
+
 	if (entry == NULL) {
 		if (cob_num != 0) {
 			pthread_mutex_lock (&conpub_fsc_cs_mutex);
@@ -652,7 +652,7 @@ fsc_cache_item_puts (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 fsc_cache_cob_write (
-	ConpubdT_Content_Entry* cobs, 
+	ConpubdT_Content_Entry* cobs,
 	int cob_num
 ) {
 	int index = 0;
@@ -673,13 +673,13 @@ fsc_cache_cob_write (
 	int				swindx[FscC_Page_Cob_Num];
 	uint32_t		file_msglen;
 	CsmgrT_DB_COB_MAP**	cob_map = NULL;		//0.8.3c
-	
+
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 
 	index = 0;
 	while (index < cob_num) {
-		
+
 		uint32_t chunk_num = cobs[index].chunk_num;
 		if (cobs[index].expiry < nowt) {
 			goto NEXTCOB;
@@ -692,7 +692,7 @@ fsc_cache_cob_write (
 			(memcmp (cobs[index].name, name, cobs[index].name_len))) {
 			rcd = conpubd_stat_content_info_access (
 					conpub_stat_hdl, cobs[index].name, cobs[index].name_len);
-			
+
 			if (!rcd) {
 				rcd = conpubd_stat_content_info_init (
 						conpub_stat_hdl, cobs[index].name, cobs[index].name_len, cob_map);
@@ -705,26 +705,25 @@ fsc_cache_cob_write (
 			sprintf (cont_path, "%s/%d", cobpub_hdl->fsc_cache_path, work_con_index);
 			memcpy (name, cobs[index].name, cobs[index].name_len);
 			name_len = cobs[index].name_len;
-			
+
 			if (mkdir (cont_path, 0766) != 0) {
 				if (errno == ENOENT) {
-					conpubd_log_write (CefC_Log_Error, 
+					conpubd_log_write (CefC_Log_Error,
 						"Failed to create the cache directory for the each content\n");
 					goto NEXTCOB;
 				}
 				if (errno == EACCES) {
-					conpubd_log_write (CefC_Log_Error, 
-						"Please make sure that you have write permission for %s.\n", 
+					conpubd_log_write (CefC_Log_Error,
+						"Please make sure that you have write permission for %s.\n",
 						cobpub_hdl->fsc_cache_path);
 					goto NEXTCOB;
 				}
 			}
 		}
 
-		/* Cotrol record size */
+		/* Control record size */
 		if (rcd->file_msglen == 0) {
-			rcd->file_msglen = cobs[index].msg_len + 3;
-			rcd->detect_chnkno = chunk_num;
+			rcd->file_msglen = cobs[index].msg_len + 255;
 		} else {
 			;
 		}
@@ -740,7 +739,7 @@ fsc_cache_cob_write (
 		if (work_page_index != prev_page_index) {
 			if (fp != NULL) {
 #ifdef CefC_Debug
-				conpubd_dbg_write (CefC_Dbg_Finer, 
+				conpubd_dbg_write (CefC_Dbg_Finer,
 					"cob put thread writes the page: %s\n", cont_path);
 #endif // CefC_Debug
 				if (rbpflag == 1) {
@@ -751,13 +750,13 @@ fsc_cache_cob_write (
 				} else {
 					fflush (fp);
 					fclose (fp);
-					fp = NULL;	
+					fp = NULL;
 				}
 			}
-			
+
 			prev_page_index = work_page_index;
 			struct stat st;
-			sprintf (file_path, 
+			sprintf (file_path,
 				"%s/%d/%d", cobpub_hdl->fsc_cache_path, work_con_index, work_page_index);
             if (stat (file_path, &st) != 0) {
 				fp = fopen (file_path, "w");
@@ -767,7 +766,7 @@ fsc_cache_cob_write (
 			else {
 				fp = fopen (file_path, "rb+");
 				if (!fp) {
-					conpubd_log_write (CefC_Log_Error, 
+					conpubd_log_write (CefC_Log_Error,
 						"Failed to open the cache file (%s)\n", file_path);
 					goto NEXTCOB;
 				}
@@ -775,10 +774,10 @@ fsc_cache_cob_write (
 				rbpflag = 1;
 			}
 		}
-		
+
 		/* Updates the content information 			*/
-		conpubd_stat_cob_update (conpub_stat_hdl, cobs[index].name, cobs[index].name_len, 
-				chunk_num, cobs[index].pay_len, cobs[index].expiry, 
+		conpubd_stat_cob_update (conpub_stat_hdl, cobs[index].name, cobs[index].name_len,
+				chunk_num, cobs[index].pay_len, cobs[index].expiry,
 				nowt, cobs[index].node);
 
 		/* Set to write buffer 							*/
@@ -791,14 +790,14 @@ fsc_cache_cob_write (
 		fwrite (wbuff, sizeof (uint16_t) + file_msglen, 1, fp);
 		fflush (fp);
 
-			cobpub_hdl->cache_cobs++;
-		
+		cobpub_hdl->cache_cobs++;
+
 NEXTCOB:
 		free (cobs[index].msg);
 		free (cobs[index].name);
 		index++;
 	}
-	
+
 	if (fp) {
 		fflush (fp);
 		fclose (fp);
@@ -819,12 +818,12 @@ fsc_cs_ac_cnt_inc (
 	int find_chunk_f = 0;
 	uint16_t type;
 	uint16_t length;
-	
+
 	while (index < key_size) {
 		tlv_hdp = (struct tlv_hdr*) &key[index];
 		type 	= ntohs (tlv_hdp->type);
 		length 	= ntohs (tlv_hdp->length);
-		
+
 		if (length < 1) {
 			return;
 		}
@@ -834,12 +833,12 @@ fsc_cs_ac_cnt_inc (
 		}
 		index += sizeof (struct tlv_hdr) + length;
 	}
-	
+
 	if (find_chunk_f) {
 		conpubd_stat_access_count_update (
 				conpub_stat_hdl, &key[0], index);
 	}
-	
+
 	return;
 }
 /*--------------------------------------------------------------------------------------
@@ -853,15 +852,15 @@ fsc_content_del (
 ) {
 	CsmgrT_Stat*	rcd = NULL;
 	char			file_path[PATH_MAX];
-	
+
 	pthread_mutex_lock (&conpub_fsc_cs_mutex);
-	
+
 	rcd = conpubd_stat_content_info_access (conpub_stat_hdl, name, name_len);
 	if (!rcd) {
 		pthread_mutex_unlock (&conpub_fsc_cs_mutex);
 		return (-1);
 	}
-	
+
 	sprintf (file_path, "%s/%d", cobpub_hdl->fsc_cache_path, (int) rcd->index);
 	fsc_recursive_dir_clear (file_path);
 
@@ -897,7 +896,7 @@ fsc_config_read (
 	char*	value;									/* parameter						*/
 	int		res;
 	int			i, n;
-	
+
 	/* Inits parameters		*/
 	memset (params, 0, sizeof (FscT_Config_Param));
 	params->cache_capacity 			= CefC_CnpbDefault_Contents_Capacity;
@@ -907,7 +906,7 @@ fsc_config_read (
 	/* Obtains the directory path where the conpubd's config file is located. */
 #if 0 //+++++ GCC v9 +++++
 	sprintf (file_name, "%s/conpubd.conf", conpub_conf_dir);
-#else 
+#else
 	int		rc;
 	rc = snprintf (file_name, sizeof(file_name), "%s/conpubd.conf", conpub_conf_dir);
 	if (rc < 0) {
@@ -915,16 +914,16 @@ fsc_config_read (
 		return (-1);
 	}
 #endif //----- GCC v9 -----
-	
+
 	/* Opens the config file. */
 	fp = fopen (file_name, "r");
 	if (fp == NULL) {
 		return (-1);
 	}
-	
+
 	/* get parameter	*/
 	while (fgets (param_buff, sizeof (param_buff), fp) != NULL) {
-		
+
 		/* Trims a read line 		*/
 		len = strlen (param_buff);
 		if ((param_buff[0] == '#') || (param_buff[0] == '\n') || (len == 0)) {
@@ -939,15 +938,15 @@ fsc_config_read (
 				n++;
 			}
 		}
-		
+
 		/* Gets option */
 		value 	= param;
 		option 	= strsep (&value, "=");
-		
+
 		if (value == NULL) {
 			continue;
 		}
-		
+
 		/* Records a parameter 			*/
 		if (strcmp (option, "CONTENTS_CAPACITY") == 0) {
 			char *endptr = "";
@@ -958,12 +957,12 @@ fsc_config_read (
 				fclose (fp);
 				return (-1);
 			}
-			if (!(1 <= params->cache_capacity 
-					&& 
+			if (!(1 <= params->cache_capacity
+					&&
 				  params->cache_capacity <= 0xFFFFFFFFF)) {
-				conpubd_log_write (CefC_Log_Error, 
+				conpubd_log_write (CefC_Log_Error,
 				"CONTENTS_CAPACITY value must be greater than  or equal to 1 "
-				"and less than or equal to 68,719,476,735(0xFFFFFFFFF).\n"); 
+				"and less than or equal to 68,719,476,735(0xFFFFFFFFF).\n");
 				fclose (fp);
 				return (-1);
 			}
@@ -1001,7 +1000,7 @@ fsc_config_read (
 		}
 	}
 	fclose (fp);
-	
+
 	return (0);
 }
 
@@ -1015,7 +1014,7 @@ fsc_root_dir_check (
 	char* root_path								/* csmgr root path						*/
 ) {
 	DIR* main_dir;
-	
+
 	main_dir = opendir (root_path);
 	if (main_dir == NULL) {
 		/* Root dir is not exist	*/
@@ -1035,9 +1034,9 @@ fsc_cache_id_create (
 	int cache_id;
 	char cache_path[CefC_Conpubd_File_Path_Length] = {0};
 	uint32_t fsc_id = 0xFFFFFFFF;
-	
+
 	srand ((unsigned int) time (NULL));
-	
+
 	cache_id = rand () % FscC_Max_Node_Inf_Num;
 	int rc = snprintf (cache_path, sizeof (cache_path),"%s/conpub_fsc_%d", cobpub_hdl->fsc_root_path, cache_id);
 	if ( rc < 0 ) {
@@ -1045,35 +1044,35 @@ fsc_cache_id_create (
 		return (0xFFFFFFFF);
 	}
 	cache_dir = opendir (cache_path);
-	
+
 	if (cache_dir) {
 		closedir (cache_dir);
-		
+
 		if (fsc_recursive_dir_clear (cache_path) != 0) {
 			conpubd_log_write (CefC_Log_Error, "Failed to remove the cache directory\n");
 			return (fsc_id);
 		}
 	}
-	
+
 	if (mkdir (cache_path, 0766) != 0) {
-		conpubd_log_write (CefC_Log_Error, 
+		conpubd_log_write (CefC_Log_Error,
 			"Failed to create the cache directory in %s\n", cobpub_hdl->fsc_root_path);
-		
+
 		if (errno == EACCES) {
-			conpubd_log_write (CefC_Log_Error, 
-				"Please make sure that you have write permission for %s.\n", 
+			conpubd_log_write (CefC_Log_Error,
+				"Please make sure that you have write permission for %s.\n",
 				cobpub_hdl->fsc_root_path);
 		}
 		if (errno == ENOENT) {
-			conpubd_log_write (CefC_Log_Error, 
+			conpubd_log_write (CefC_Log_Error,
 				"Please make sure that %s exists.\n", cobpub_hdl->fsc_root_path);
 		}
-		
+
 		return (fsc_id);
 	}
 	strcpy (cobpub_hdl->fsc_cache_path, cache_path);
 	fsc_id = (uint32_t) cache_id;
-	
+
 	return (fsc_id);
 }
 /*--------------------------------------------------------------------------------------

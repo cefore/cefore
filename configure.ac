@@ -5,7 +5,7 @@ dnl
 dnl  project setting
 dnl
 AC_PREREQ([2.69])
-AC_INIT([cefore], [0.10.0g], [])
+AC_INIT([cefore], [0.11.0], [])
 AC_CONFIG_AUX_DIR(autotools)
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
@@ -43,16 +43,55 @@ AC_FUNC_MALLOC
 dnl
 dnl  check OS
 dnl
-AM_CONDITIONAL([LINUX], [test x"$(uname -s)" = xLinux])
+build_linux=no
+build_mac=no
+all_mac=no
+
+case "${host_os}" in
+    linux*)
+        build_linux=yes
+        ;;
+    cygwin*|mingw*)
+        AC_MSG_ERROR([OS $host_os on Windows is not supported])
+        ;;
+    darwin*)
+        case "${build_os}" in
+            darwin*)
+                case "${target_os}" in
+                    darwin*)
+                        all_mac=yes
+                        AC_PATH_PROG(XCRUN, xcrun)
+                        ;;
+                    *)
+                        ;;
+                esac
+                ;;
+            *)
+                ;;
+        esac
+        build_mac=yes
+        ;;
+    *)
+        AC_MSG_ERROR([OS $host_os is not suppurted])
+        ;;
+esac
+
+# AM_CONDITIONAL([LINUX], [test x"$(uname -s)" = xLinux])
+AM_CONDITIONAL([LINUX], [test "x$build_linux" = "xyes"])
+AM_CONDITIONAL([OSX], [test "x$build_mac" = "xyes"])
+AM_CONDITIONAL([ALLOSX], [test "x$all_mac" = "xyes"])
 
 # Checks CEFORE_DIR
 dnl
 dnl  check environment variable CEFORE_DIR
 dnl
-if test -z "$CEFORE_DIR"; then
+if test "$prefix" != "NONE"; then
+  CEFORE_DIR_PATH=$prefix/
+else if test -z "$CEFORE_DIR"; then
   CEFORE_DIR_PATH=/usr/local/
-else
-  CEFORE_DIR_PATH=${CEFORE_DIR}/
+	else
+	  CEFORE_DIR_PATH=${CEFORE_DIR}/
+	fi
 fi
 AC_SUBST(CEFORE_DIR_PATH)
 
@@ -68,12 +107,19 @@ AC_ARG_WITH([openssl-dir],
   [openssl_path=$withval],
   [openssl_path=/usr]
 )
-check_openssl_header=${openssl_path}/include/openssl/sha.h
+# check_openssl_header=${openssl_path}/include/openssl/sha.h
+# for OpenSSL3
+check_openssl_header=${openssl_path}/include/openssl/decoder.h
 
-AC_CHECK_FILES([${check_openssl_header}],[],[AC_MSG_ERROR("OpenSSL is not installed.")])
+AC_CHECK_FILES([${check_openssl_header}],[],[AC_MSG_ERROR("OpenSSL3 is not installed.")])
 # CFLAGS="${CFLAGS} -I${openssl_path}/include"
 CFLAGS="${CFLAGS} -DOPENSSL_API_COMPAT=0x10101000L -I${openssl_path}/include"
-LDFLAGS="${LDFLAGS} -L${openssl_path}/lib64"
+if test "x$build_linux" = "xyes"; then
+  LDFLAGS="${LDFLAGS} -L${openssl_path}/lib64"
+else
+  LDFLAGS="${LDFLAGS} -L${openssl_path}/lib"
+fi
+
 
 # checks for args
 
@@ -143,6 +189,27 @@ AC_ARG_ENABLE(
 )
 AM_CONDITIONAL(CONPUB_ENABLE, test x"${enable_conpub}" = xyes)
 
+dnl
+dnl  check interest return build
+dnl
+AC_ARG_ENABLE(
+  interest-return,
+  ,
+  [enable_interest_return=no],
+  [enable_interest_return=yes]
+)
+AM_CONDITIONAL(INTEREST_RETURN_ENABLE, test x"${enable_interest_return}" = xyes)
+
+dnl
+dnl  check L2MCTP
+dnl
+AC_ARG_ENABLE(
+  l2mctp,
+  AS_HELP_STRING([--enable-l2mctp], [Cefore-Low Latency MultiCast Transport Protocol support (default no)]),
+  [enable_l2mctp=yes],
+  [enable_l2mctp=no])
+AM_CONDITIONAL(L2MCTP_ENABLE, test x"${enable_l2mctp}" = xyes)
+
 
 AC_CONFIG_FILES([
   Makefile
@@ -161,10 +228,7 @@ AC_CONFIG_FILES([
   tools/cefputstream/Makefile
   tools/cefgetfile/Makefile
   tools/cefputfile/Makefile
-  tools/cefgetfile_sec/Makefile
-  tools/cefputfile_sec/Makefile
   tools/cefgetchunk/Makefile
-  tools/cefgetcontent/Makefile
   tools/ccninfo/Makefile
 ])
 
@@ -185,7 +249,6 @@ AM_COND_IF(
       src/csmgrd/lib/Makefile
       src/csmgrd/include/Makefile
       src/csmgrd/include/csmgrd/Makefile
-      tools/cefput_verify/Makefile
   ])
 ])
 

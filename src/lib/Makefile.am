@@ -36,33 +36,29 @@ endif #OPENSSL_STATIC
 
 
 AM_CSOURCES=cef_hash.c cef_client.c cef_fib.c cef_pit.c cef_face.c cef_frame.c \
-	cef_log.c cef_print.c cef_mpool.c cef_rngque.c cef_valid.c
-
+	cef_log.c cef_print.c cef_mpool.c cef_rngque.c cef_valid.c cef_pthread.c
+AM_CSOURCES+=cef_mem_cache.c cef_csmgr.c cef_csmgr_stat.c
 
 # check debug build
 if CEFDBG_ENABLE
-AM_CFLAGS+=-DCefC_Debug
+AM_CFLAGS+=-DCefC_Debug -g
 endif # CEFDBG_ENABLE
-
-# check csmgr
-if CSMGR_ENABLE
-AM_CFLAGS+=-DCefC_ContentStore
-#AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c
-AM_CSOURCES+=cef_csmgr.c
-endif
 
 # check cache
 if CACHE_ENABLE
 AM_CFLAGS+=-DCefC_CefnetdCache
-AM_CSOURCES+=cef_mem_cache.c cef_csmgr.c cef_csmgr_stat.c
 endif # CACHE_ENABLE
+
+# check csmgr
+if CSMGR_ENABLE
+AM_CFLAGS+=-DCefC_Csmgr
+endif # CSMGR_ENABLE
+
 
 
 # check conpub
 if CONPUB_ENABLE
 AM_CFLAGS+=-DCefC_Conpub
-#AM_CSOURCES+=cef_csmgr.c cef_csmgr_stat.c
-AM_CSOURCES+=cef_csmgr.c
 endif # CONPUB_ENABLE
 
 if SAMPTP_ENABLE
@@ -70,13 +66,10 @@ AM_CFLAGS+=-DCefC_Plugin_Samptp
 endif # SAMPTP_ENABLE
 
 
-AM_CSOURCES+=cef_csmgr_stat.c
-
 
 
 lib_LIBRARIES=libcefore.a
 libcefore_a_CFLAGS=$(AM_CFLAGS)
 libcefore_a_SOURCES=$(AM_CSOURCES)
 
-libdir=$(CEFORE_DIR_PATH)/lib
-
+libdir=$(CEFORE_DIR_PATH)lib

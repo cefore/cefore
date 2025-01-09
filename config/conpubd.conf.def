@@ -42,7 +42,7 @@
 #PURGE_INTERVAL=60
 
 #
-# RTC(seconds) to set for Cob to send. 
+# RTC(seconds) to set for Cob to send.
 # This value must be higher than 1 and lower than 3600.
 #
 #CACHE_DEFAULT_RCT=600
@@ -50,20 +50,20 @@
 #
 # Specify the Validation Algorithm to be added to Content Object.
 # Validation is not added when NONE is specified.
-# Either sha256 or crc32 can be specified.
+# Either rsa-sha256 or crc32c can be specified.
 #
 #VALID_ALG=NONE
 
 #
 # Total content that can be registered.
 # This value must be greater than or equal to 1 and less than or equal to 1,000,000.
-# 
+#
 #CONTENTS_NUM=1024
 
 
 #
 # Total content capacity. Specified by total Content Object number
-# This value must be greater than or equal to 1 and less than or equal to 
+# This value must be greater than or equal to 1 and less than or equal to
 # 68,719,476,735(0xFFFFFFFFF).
 # It can also be specified in 16 digits.
 # (e.g.: 0xFF)
@@ -90,6 +90,19 @@
 #CONT_INFO_RESORE_DIR=/usr/local/cefore/restore
 
 #CONT_INFO_RESORE_FILE=conpubcont.restore
+
+#
+# UCINC Pendind timer.
+# This value must be higher than 1 and lower than 65535.
+#
+#UCINC_PENDING_TIMER=2
+
+#
+# Publisher Identifier.
+# Specify as a 128 byte character string.
+# The characters that can be used are hex numbers.
+#
+#PUBLISHER_ID=
 
 # Debug log level
 #

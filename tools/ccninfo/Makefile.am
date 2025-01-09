@@ -32,13 +32,20 @@ AM_CFLAGS=-I$(top_srcdir)/src/include -Wall
 
 bin_PROGRAMS=ccninfo
 ccninfo_LDFLAGS=-L$(top_srcdir)/src/lib/
-ccninfo_LDADD=-lcefore -lssl -lcrypto
+ccninfo_LDADD=-lcefore
+if OPENSSL_STATIC
+ccninfo_LDADD+=-l:libssl.a -l:libcrypto.a
+else  #OPENSSL_STATIC
+ccninfo_LDADD+=-lssl -lcrypto
+endif #OPENSSL_STATIC
+ccninfo_LDADD += -lpthread -ldl
+
 ccninfo_CFLAGS=$(AM_CFLAGS) -DCefC_Ccninfo
 ccninfo_SOURCES=ccninfo.c
 
 # check debug build
 if CEFDBG_ENABLE
-ccninfo_CFLAGS+=-DCefC_Debug
+ccninfo_CFLAGS+=-DCefC_Debug -g
 endif # CEFDBG_ENABLE
 
 DESTDIR=$(CEFORE_DIR_PATH)

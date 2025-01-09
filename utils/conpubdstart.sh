@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2021, National Institute of Information and Communications
+# Copyright (c) 2016-2023, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,26 @@ then
 	echo 'usage : conpubdstart [-d config_file_dir]'
 	exit 1
 fi
+
+PATH_CONFIG=/usr/local/cefore
+CS_MODE=0
+if [ "$1" = "-d" ];
+then
+	PATH_CONFIG="$2";
+elif [ "$CEFORE_DIR" != "" ];
+then
+	PATH_CONFIG="$CEFORE_DIR/cefore";
+fi
+LINE_CS_MODE=$(grep "^CS_MODE=" ${PATH_CONFIG}/cefnetd.conf);
+if [ "${LINE_CS_MODE}" != "" ]
+then
+  CS_MODE=$(echo ${LINE_CS_MODE} | sed -e "s/^[^0-9]*\([0-9]*\).*$/\1/")
+fi
+if [ "${CS_MODE}" != "3" ]
+then
+  echo "Unable to start conpubd, Illegal CS_MODE=${CS_MODE}"
+  exit 1;
+fi;
 
 # start conpubd
 conpubd $@ &

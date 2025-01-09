@@ -40,10 +40,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <sys/time.h>
-//#define	CefC_PitEntryMutex
-#ifdef	CefC_PitEntryMutex
 #include <pthread.h>
-#endif	// CefC_PitEntryMutex
 
 #include <cefore/cef_hash.h>
 #include <cefore/cef_define.h>
@@ -66,15 +63,6 @@
 /*------------------------------------------------------------------*/
 /* Down Stream Face entry											*/
 /*------------------------------------------------------------------*/
-//0.8.3c S
-/***** T_VERSION Information for PIT entry 	*****/
-typedef struct CefT_Pit_Tversion {
-	int 			tver_len;			/* T_VERSION Length					*/
-	unsigned char*	tver_value;			/* T_VERSION Value    		 		*/
-	struct CefT_Pit_Tversion* tvnext;	/* Next T_VERSION	 				*/
-} CefT_Pit_Tversion;
-//0.8.3c E
-
 typedef struct CefT_Down_Faces {
 
 	/*--------------------------------------------
@@ -84,8 +72,6 @@ typedef struct CefT_Down_Faces {
 	uint64_t	 	lifetime_us;			/* Lifetime 								*/
 	uint64_t		nonce;					/* Nonce 									*/
 	struct CefT_Down_Faces* next;			/* pointer to next Down Stream Face entry 	*/
-	int				tver_none;				/* No T_VERSION flag 0.8.3c */
-	struct CefT_Pit_Tversion	tver;		/* T_VERSION List	 0.8.3c */
 
 	/*--------------------------------------------
 		Variables related to Content Store
@@ -143,9 +129,12 @@ typedef struct {
 	unsigned int 		COBHR_len;			/* COBHR_selector Len 						*/
 	unsigned char* 		COBHR_selector;		/* ContentObjectHashRestriction selector 	*/
 
-#ifdef	CefC_PitEntryMutex
 	pthread_mutex_t 	pe_mutex_pt;		/* mutex for thread safe for Pthread 		*/
-#endif	// CefC_PitEntryMutex
+
+	/********************** Key entity follows here **************************/
+	/*  entry = (CefT_Pit_Entry*) malloc(sizeof (CefT_Pit_Entry) + name_len) */
+	/*  entry->key = (unsigned char*)entry + sizeof (CefT_Pit_Entry)         */
+	/********************** Key entity follows here **************************/
 } CefT_Pit_Entry;
 
 /****************************************************************************************
@@ -187,29 +176,6 @@ cef_pit_entry_search (
 	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
 	, unsigned char* ccninfo_pit,			/* pit name for ccninfo ccninfo-03			*/
 	int	ccninfo_pit_len						/* ccninfo pit length						*/
-);
-/*--------------------------------------------------------------------------------------
-	Searches a PIT entry matching the specified Name
-----------------------------------------------------------------------------------------*/
-CefT_Pit_Entry* 							/* a PIT entry								*/
-cef_pit_entry_search_specified_name (
-	CefT_Hash_Handle pit,					/* PIT										*/
-	unsigned char* sp_name,					/* specified Name							*/
-	uint16_t sp_name_len,					/* length of Name							*/
-	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
-	int match_type							/* 0:Exact, 1:Prefix						*/
-);
-/*--------------------------------------------------------------------------------------
-	Searches a PIT(for App) entry matching the specified Name --- Prefix(Longest) Match
-----------------------------------------------------------------------------------------*/
-CefT_Pit_Entry* 							/* a PIT entry								*/
-cef_pit_entry_search_specified_name_for_app (
-	CefT_Hash_Handle pit,					/* PIT										*/
-	unsigned char* sp_name,					/* specified Name							*/
-	uint16_t sp_name_len,					/* length of Name							*/
-	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
 );
 
 #ifdef CefC_Debug
@@ -260,25 +226,6 @@ cef_pit_entry_free (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_Pit_Entry* entry 					/* PIT entry 								*/
 );
-#if 0
-/*--------------------------------------------------------------------------------------
-	Searches a PIT entry matching the specified Name for Cefore-Router
-----------------------------------------------------------------------------------------*/
-CefT_Pit_Entry* 							/* a PIT entry								*/
-cefrt_pit_entry_search (
-	CefT_Hash_Handle pit,					/* PIT										*/
-	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
-);
-#endif
-/*--------------------------------------------------------------------------------------
-	Cleanups PIT entry which expires the lifetime
-----------------------------------------------------------------------------------------*/
-void
-cef_pit_clean (
-	CefT_Hash_Handle pit,					/* PIT										*/
-	CefT_Pit_Entry* entry 					/* PIT entry 								*/
-);
 /*--------------------------------------------------------------------------------------
 	Removes the specified FaceID from the specified PIT entry
 ----------------------------------------------------------------------------------------*/
@@ -307,13 +254,29 @@ cef_pit_entry_search_with_chunk (
 	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
 );
 /*--------------------------------------------------------------------------------------
-	Searches a PIT entry matching the specified Name without chunk number
+	Searches a Symbolic-PIT entry matching the specified Name
 ----------------------------------------------------------------------------------------*/
 CefT_Pit_Entry* 							/* a PIT entry								*/
-cef_pit_entry_search_without_chunk (
+cef_pit_entry_search_symbolic (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
 	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
+);
+/*--------------------------------------------------------------------------------------
+	Searches a PIT entry matching the specified Name with any chunk number
+----------------------------------------------------------------------------------------*/
+CefT_Pit_Entry* 							/* a PIT entry								*/
+cef_pit_entry_search_with_anychunk (
+	CefT_Hash_Handle pit,					/* PIT										*/
+	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
+	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
+);
+/*--------------------------------------------------------------------------------------
+	Returns the faceid of the upstream face from an existing PIT entry
+----------------------------------------------------------------------------------------*/
+uint16_t
+cef_pit_entry_up_face_idget (
+	CefT_Pit_Entry* entry					/* PIT entry 								*/
 );
 /*--------------------------------------------------------------------------------------
 	Set InterestReturn Info to DownFace
@@ -328,12 +291,11 @@ cef_pit_interest_return_set (
 	unsigned int 		IR_len,				/* Length of IR_msg 						*/
 	unsigned char* 		IR_msg				/* InterestReturn msg 						*/
 ) ;
-
 /*--------------------------------------------------------------------------------------
 	Search the version entry in specified Down Face entry
 ----------------------------------------------------------------------------------------*/
 int											/* found entry = 1							*/
-cef_pit_entry_down_face_ver_search (
+cef_pit_entry_down_face_search (
 	CefT_Down_Faces* dnface,				/* Down Face entry							*/
 	int head_or_point_f,					/* 1: dnface is head of down face lest		*/
 											/* 0: dnface is pointer of 1 entry			*/
@@ -343,7 +305,7 @@ cef_pit_entry_down_face_ver_search (
 	Remove the version entry in specified Down Face entry
 ----------------------------------------------------------------------------------------*/
 void
-cef_pit_entry_down_face_ver_remove (
+cef_pit_entry_down_face_remove (
 	CefT_Pit_Entry* pe, 					/* PIT entry								*/
 	CefT_Down_Faces* dnface,				/* Down Face entry							*/
 	CefT_CcnMsg_MsgBdy* pm 					/* Parsed CEFORE message					*/

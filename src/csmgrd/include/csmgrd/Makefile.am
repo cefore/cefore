@@ -30,5 +30,5 @@
 # specify the include file
 CSMGRD_HEADER=csmgrd_plugin.h
 
-includedir=@includedir@/csmgrd
+includedir=$(CEFORE_DIR_PATH)include/csmgrd
 include_HEADERS=$(CSMGRD_HEADER)

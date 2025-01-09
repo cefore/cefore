@@ -24,7 +24,7 @@ cefnetd.conf describes the cefnetd parameter settings. The parameters must be in
 | LOCAL_SOCK_ID | UNIX domain socket ID. <br> Usually it is not necessary to change it. | 0 |
 | CCNINFO_ACCESS_POLICY | CCNinfo access policy <br> 0: Allow all <br> 1: Request/Reply message forward only <br> 2: Deny all | 0 |
 | CCNINFO_FULL_DISCOVERY | Permission of "Full discovery request" <br> 0: Deny <br> 1: Allow <br> 2: Allow if approved <br> | 0 |
-| CCNINFO_VALID_ALG | Validation algorithm to attach to CCNinfo Reply messages if requested. <br> Specify either crc32, sha256, or None. None means no validation attached to CCNinfo Reply messages. <br> If CCNINFO_VALID_ALG=sha256 is specified, both private and public keys are located in: <br> /usr/local/cefore/.ccninfo | crc32 |
+| CCNINFO_VALID_ALG | Validation algorithm to attach to CCNinfo Reply messages if requested. <br> Specify either crc32c, rsa-sha256, or None. None means no validation attached to CCNinfo Reply messages. <br> If CCNINFO_VALID_ALG=rsa-sha256 is specified, both private and public keys are located in: <br> /usr/local/cefore/.ccninfo | crc32c |
 | CCNINFO_SHA256_KEY_PRFX | Prefix name of secret/public keys. <br> Secret key name: specified prefix_name"-private-key" <br> Public key name: specified prefix_name"-public-key" | ccninfo_rt |
 | CCNINFO_REPLY_TIMEOUT | PIT lifetime on "Full discovery request" (sec). <br> Range: 2 to 5 (sec.) | 4 |
 | FORWARDING_INFO_STRATEGY | Forwarding strategy when sending Interest messages. <br> 0: Forward using one longest prefix match FIB entry <br> 1: Forward using all longest prefix match FIB entries | 0 |

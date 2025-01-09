@@ -34,12 +34,12 @@ CEF_NETD_CFLAGS=$(AM_CFLAGS)
 
 # check debug build
 if CEFDBG_ENABLE
-CEF_NETD_CFLAGS+=-DCefC_Debug
+CEF_NETD_CFLAGS+=-DCefC_Debug -g
 endif # CEFDBG_ENABLE
 
 # check csmgr
 if CSMGR_ENABLE
-CEF_NETD_CFLAGS+=-DCefC_ContentStore
+CEF_NETD_CFLAGS+=-DCefC_Csmgr
 endif # CSMGR_ENABLE
 
 # check cache
@@ -67,7 +67,7 @@ endif #OPENSSL_STATIC
 cefnetd_LDADD+=-ldl
 
 cefnetd_CFLAGS=$(CEF_NETD_CFLAGS)
-cefnetd_SOURCES=cef_main.c cef_node.c cef_sched.c cef_netd.c cef_status.c cef_netd.h cef_status.h
+cefnetd_SOURCES=cef_main.c cef_node.c cef_sched.c cef_netd.c cef_status.c cef_forward.c cef_netd.h cef_status.h
 
 
 # check conpub
@@ -96,6 +96,11 @@ endif # CEFDBG_ENABLE
 if CACHE_ENABLE
 cefctrl_CFLAGS+=-DCefC_CefnetdCache
 endif # CACHE_ENABLE
+
+# check interest return build
+if INTEREST_RETURN_ENABLE
+CEF_NETD_CFLAGS+=-DCefC_INTEREST_RETURN
+endif # INTEREST_RETURN_ENABLE
 
 
 DESTDIR=$(CEFORE_DIR_PATH)

@@ -286,6 +286,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+XCRUN = @XCRUN@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -353,14 +354,14 @@ CONPUBD_CFLAGS = $(AM_CFLAGS) $(am__append_1)
 
 # set conpubd option
 conpubd_LDFLAGS = $(AM_LDFLAGS)
-conpubd_LDADD = -lcefore -ldl -lconpubd_plugin $(am__append_2) \
+conpubd_LDADD = -lconpubd_plugin -lconpub -lcefore $(am__append_2) \
 	$(am__append_3) -lpthread -ldl
 conpubd_CFLAGS = $(CONPUBD_CFLAGS) -Wall -O2 -fPIC
 conpubd_SOURCES = conpubd.c conpubd.h
 
 # set conpubctrl option
 conpubctrl_LDFLAGS = $(AM_LDFLAGS)
-conpubctrl_LDADD = -lcefore -lconpubd_plugin $(am__append_4) \
+conpubctrl_LDADD = -lconpubd_plugin -lconpub -lcefore $(am__append_4) \
 	$(am__append_5) -lpthread -ldl
 conpubctrl_CFLAGS = $(CONPUBD_CFLAGS) -Wall -O2 -fPIC
 conpubctrl_SOURCES = conpubctrl.c

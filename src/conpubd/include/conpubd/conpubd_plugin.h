@@ -41,6 +41,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include <netinet/in.h>
+#include <openssl/sha.h>
 
 
 #include <cefore/cef_csmgr.h>
@@ -131,6 +132,8 @@ typedef struct {
 	int				block_size;
 	uint32_t		cache_default_rct;
 	uint16_t 		valid_type;
+	int				t_pending;
+	char			publisher_id[SHA512_DIGEST_LENGTH];
 
 	/********** APP FIB registration info. ***********/
 	char 		cefnetd_id[128];
@@ -172,6 +175,7 @@ typedef struct _CefT_Cpubcnt_Hdl {
 	uint64_t 			interests;
 	uint64_t			cob_num;
 	int					line_no;
+	uint16_t			t_pending;
 	struct _CefT_Cpubcnt_Hdl* next;
 
 } CefT_Cpubcnt_Hdl;

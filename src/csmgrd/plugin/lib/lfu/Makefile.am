@@ -53,3 +53,5 @@ libcef_lfu_la_SOURCES = lfu.c lfu.h cache_replace_lib.c cache_replace_lib.h
 libcef_lfu_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)
 
 libcsmgrd_lfu_la_LIBADD += libcef_lfu.la
+
+libdir=$(CEFORE_DIR_PATH)lib

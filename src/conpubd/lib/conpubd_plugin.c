@@ -123,7 +123,7 @@ conpubd_plugin_cob_msg_send (
 			if (FD_ISSET (fd, &fds)) {
 				res = send (fd, p, len,  MSG_DONTWAIT);
 		   		if ( res > 0 ) {
-					len -= res;  
+					len -= res;
 					p += res;
 				} else {
 #ifdef	__CONPUBD_PLUGIN_SEND_ERROR__
@@ -141,13 +141,13 @@ conpubd_plugin_cob_msg_send (
 		} else {
 			if ( send_count == 0 ) {
 #ifdef	__CONPUBD_PLUGIN_SEND_ERROR__
-				fprintf(stderr, "[%s](%d): ########### n:%d   send_count:%d   len:%d   %s\n", 
+				fprintf(stderr, "[%s](%d): ########### n:%d   send_count:%d   len:%d   %s\n",
 										__FUNCTION__, __LINE__, n, send_count, len, strerror (errno));
 #endif
 				break;
 			} else if ( send_count > 10 ) {
 #ifdef	__CONPUBD_PLUGIN_SEND_ERROR__
-				fprintf(stderr, "[%s](%d): ########### n:%d   send_count:%d   len:%d   %s\n", 
+				fprintf(stderr, "[%s](%d): ########### n:%d   send_count:%d   len:%d   %s\n",
 										__FUNCTION__, __LINE__, n, send_count, len, strerror (errno));
 #endif
 				break;
@@ -222,7 +222,7 @@ void
 conpubd_log_init2 (
 	const char* config_file_dir
 ) {
-	
+
 	char* 	wp;
 	char 	file_path[PATH_MAX];
 	FILE* 	fp;
@@ -242,7 +242,7 @@ conpubd_log_init2 (
 			sprintf (file_path, "%s/conpubd.conf", CefC_CEFORE_DIR_DEF);
 		}
 	}
-	
+
 	fp = fopen (file_path, "r");
 	if (fp == NULL) {
 		return;
@@ -252,7 +252,7 @@ conpubd_log_init2 (
 	/* Reads and records written values in the cefnetd's config file. */
 	while (fgets (buff, 1023, fp) != NULL) {
 		buff[1023] = 0;
-		
+
 		if (buff[0] == 0x23/* '#' */) {
 			continue;
 		}
@@ -260,7 +260,7 @@ conpubd_log_init2 (
 		if (res < 0) {
 			continue;
 		}
-		
+
 		if (strcmp (pname, "CEF_LOG_LEVEL") == 0) {
 			log_lv = atoi (ws);
 			if (!(0<=log_lv && log_lv <= 2)) {
@@ -269,7 +269,7 @@ conpubd_log_init2 (
 		}
 	}
 	fclose (fp);
-}	
+}
 
 void
 conpubd_log_write (
@@ -283,7 +283,7 @@ conpubd_log_write (
 	struct tm* 	timeptr;
 	time_t 		timer;
 	struct timeval t;
-	
+
 	assert (level <= CefC_Log_Critical);
 	assert (log_proc[0] != 0x00);
 
@@ -294,19 +294,23 @@ conpubd_log_write (
 	} else {
 		use_log_level = -1;
 	}
-	
+
 	if (level >= use_log_level) {
+		char	buff[1024];
+		int		buff_len = 0;
+
 		va_start (arg, fmt);
-		
+
 		timer 	= time (NULL);
 		timeptr = localtime (&timer);
 		strftime (time_str, 64, "%Y-%m-%d %H:%M:%S", timeptr);
 		gettimeofday (&t, NULL);
-		
-		fprintf (stdout, "%s."FMTLINT" [%s] %s: "
-			, time_str, t.tv_usec / 1000, log_proc, log_lv_str[level]);
-		vfprintf (stdout, fmt, arg);
-		
+
+		buff_len = sprintf(buff, "%s."FMTLINT" [%s] %s: "
+				, time_str, t.tv_usec / 1000, log_proc, log_lv_str[level]);
+		vsprintf(&buff[buff_len], fmt, arg);
+		cef_log_fprintf("%s", buff);
+
 		va_end (arg);
 	}
 }
@@ -328,7 +332,7 @@ conpubd_dbg_init (
 
 	assert (proc_name != NULL);
 	strcpy (dbg_proc, proc_name);
-	
+
 	/* Records the debug level 			*/
 	if (config_file_dir[0] != 0x00) {
 		sprintf (file_path, "%s/conpubd.conf", config_file_dir);
@@ -345,11 +349,11 @@ conpubd_dbg_init (
 	if (fp == NULL) {
 		return;
 	}
-	
+
 	/* Reads and records written values in the cefnetd's config file. */
 	while (fgets (buff, 1023, fp) != NULL) {
 		buff[1023] = 0;
-		
+
 		if (buff[0] == 0x23/* '#' */) {
 			continue;
 		}
@@ -357,13 +361,13 @@ conpubd_dbg_init (
 		if (res < 0) {
 			continue;
 		}
-		
+
 		if (strcmp (pname, "CEF_DEBUG_LEVEL") == 0) {
 			dbg_lv = atoi (ws);
 		}
 	}
 	fclose (fp);
-	
+
 	if (dbg_lv > CefC_Dbg_Finest) {
 		dbg_lv = CefC_Dbg_Finest;
 	}
@@ -384,22 +388,22 @@ conpubd_dbg_write (
 	struct tm* 	timeptr;
 	time_t 		timer;
 	struct timeval t;
-	
+
 	assert (level >= CefC_Dbg_Fine && level <= CefC_Dbg_Finest);
 	assert (dbg_proc[0] != 0x00);
-	
+
 	if (level < dbg_lv) {
 		va_start (arg, fmt);
-		
+
 		timer 	= time (NULL);
 		timeptr = localtime (&timer);
 		strftime (time_str, 64, "%Y-%m-%d %H:%M:%S", timeptr);
 		gettimeofday (&t, NULL);
-		
-		fprintf (stdout, 
+
+		fprintf (stdout,
 			"%s."FMTLINT" [%s] DEBUG: ", time_str, t.tv_usec / 1000, dbg_proc);
 		vfprintf (stdout, fmt, arg);
-		
+
 		va_end (arg);
 	}
 }

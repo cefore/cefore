@@ -40,6 +40,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <errno.h>
+#define __USE_GNU		// for pthread_sigqueue
 #include <signal.h>
 #include <poll.h>
 #include <limits.h>
@@ -66,13 +67,7 @@
 #include <cefore/cef_plugin.h>
 #include <cefore/cef_valid.h>
 #include <cefore/cef_log.h>
-
-#ifdef CefC_Ccore
-#include <ccore/ccore_common.h>
-#include <ccore/ccore_define.h>
-#include <ccore/ccore_frame.h>
-#include <ccore/ccore_valid.h>
-#endif // CefC_Ccore
+#include <cefore/cef_pthread.h>
 
 #include <cefore/cef_ccninfo.h>
 
@@ -80,19 +75,19 @@
  Macros
  ****************************************************************************************/
 
-/* Library name	libcefnetd_plugin			*/
-#ifdef __APPLE__
-#define CefnetdC_Plugin_Library_Name	"libcefnetd_plugin.dylib"
-#else // __APPLE__
-#define CefnetdC_Plugin_Library_Name	"libcefnetd_plugin.so"
-#endif // __APPLE__
-
 /* Library name libcefnetd_fwd_plugin		*/
 #ifdef __APPLE__
 #define CefnetdC_FwdPlugin_Library_Name		"libcefnetd_fwd_plugin.dylib"
 #else // __APPLE__
 #define CefnetdC_FwdPlugin_Library_Name		"libcefnetd_fwd_plugin.so"
 #endif // __APPLE__
+
+#define	FALSE	0
+#if	((defined CefC_Csmgr) || (defined CefC_Conpub) || (defined CefC_CefnetdCache))
+#define	CefC_IsEnable_ContentStore	(~FALSE)
+#else
+#define	CefC_IsEnable_ContentStore	FALSE
+#endif
 
 /*------------------------------------------------------------------*/
 /* Commands to control cefnetd										*/
@@ -116,11 +111,12 @@
 #define CefC_App_Conn_Num			64
 #define CefC_Cmd_Num_Max			256
 #define CefC_Cmd_Len_Max			1024
-#define CefC_Name_Len_Max			512
-#define CefC_Nbr_Len_Max			64
-#define CefC_Protocol_Name			8
+#define CefC_Cefstatus_MsgSize		128
 
 #define CefC_Listen_Face_Max		CefC_Face_Router_Max
+#define	CefC_TxWorkerMax			32
+#define	CefC_TxWorkerDefault		(CefC_TxWorkerMax/4)
+#define	CefC_TxQueueDefault			(CefC_Tx_Que_Size*CefC_TxWorkerMax)
 
 /* cefstatus output option */
 #define CefC_Ctrl_StatusOpt_Stat	0x0001
@@ -130,49 +126,19 @@
 #endif //((defined CefC_CefnetdCache) && (defined CefC_Develop))
 #define CefC_Ctrl_StatusOpt_Numofpit	0x0008
 
+/* cefstatus output option */
+#if ((defined CefC_Develop))
+#define CefC_Ctrl_StatusOpt_FibOnly	0x0100
+#define CefC_Ctrl_StatusOpt_FibInetOnly		0x0200
+#define CefC_Ctrl_StatusOpt_FibV4UdpOnly	0x0400
+#endif //((defined CefC_Develop))
 
-/*------------------------------------------------------------------*/
-/* Neighbor Management												*/
-/*------------------------------------------------------------------*/
-
-#define CefC_Max_Uri 				32			/* Maximum URI Count 					*/
-#define CefC_Max_Nbr 				32			/* Maximum Neighbor Count 				*/
-#define CefC_Fail_Thred				3			/* Threadshold to estimate link failure	*/
 
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
 
-/********** Neighbor Management 	***********/
-typedef struct {
-
-	char 				uri[CefC_Name_Len_Max];
-	unsigned char 		name[CefC_Max_Length];
-	int 				name_len;
-	int* 				nbr_idx;
-	int* 				nbr_shnum;
-	int 				nbr_num;
-
-	int 				con_max;
-	int* 				con_nbr;
-	int 				con_num;
-
-} CefT_Uris;
-
-typedef struct {
-
-	char 				nbr[CefC_Nbr_Len_Max];
-	char 				protocol[8];
-	uint16_t 			faceid;
-	int 				fd;
-	uint64_t 			rtt;
-	uint8_t 			active_f;
-	uint8_t 			fd_tcp_f;
-	int 				fail_num;
-
-} CefT_Nbrs;
-
-/********** cefned main handle  	***********/
+/********** cefnetd main handle  	***********/
 typedef struct {
 
 	char 				launched_user_name[CefC_Ctrl_User_Len];
@@ -204,6 +170,8 @@ typedef struct {
 	uint16_t 			intcpfaces[CefC_Listen_Face_Max];
 	uint16_t			intcpfdc;
 
+	char 				udp_listen_addr[CefC_NAME_BUFSIZ];
+
 	/********** Parameters 			***********/
 	uint16_t 			port_num;				/* Port Number							*/
 	uint16_t 			fib_max_size;			/* Maximum FIB entry 					*/
@@ -232,10 +200,10 @@ typedef struct {
 	unsigned char*		My_Node_Name_TLV;		/* Node Name TLV						*/
 	int					My_Node_Name_TLV_len;	/* Node Name TLV Length					*/
 	//0.8.3
-	int					InterestRetrans;		/* 0:RFC8599 1:SUPPRESSIVE */
+	int					InterestRetrans;		/* 0:RFC8599 1:NO_SUPPRESSION			*/
 	int					Selective_fwd;			/* 0:Not FWD 1:FWD */
 	int					SymbolicBack;			/* */
-	double				IR_Congesion;			/* */
+	double				IR_Congestion;			/* */
 	int					BW_Stat_interval;
 	int					Symbolic_max_lifetime;
 	int					Regular_max_lifetime;
@@ -267,7 +235,7 @@ typedef struct {
 												/* to be added to Cefnifo Reply.		*/
 												/* Validation is not added when NONE is */
 												/* specified.							*/
-												/* Either sha256 or crc32 can be 		*/
+												/* Either rsa-sha256 or crc32c can be 	*/
 												/* specified.							*/
 	uint16_t			ccninfo_valid_type;		/* Specify the Validation Algorithm 	*/
 												/* to be added to Cefnifo Reply.		*/
@@ -300,8 +268,9 @@ typedef struct {
 	/********** Timers				***********/
 	uint64_t			pit_clean_t;
 	uint32_t 			pit_clean_i;
-	uint64_t			fib_clean_t;
-	uint32_t 			fib_clean_i;
+	uint32_t 			app_pit_clean_i;
+	uint64_t			face_clean_t;
+	int16_t				face_lifetime;
 
 	/********** Statistics 			***********/
 	uint64_t 			stat_recv_frames;				/* Count of Received ContentObject */
@@ -315,23 +284,10 @@ typedef struct {
 
 	/********** Content Store		***********/
 	CefT_Cs_Stat*		cs_stat;				/* Status of Content Store				*/
-#if (defined CefC_ContentStore) \
-	|| (defined CefC_Conpub) || (defined CefC_CefnetdCache)
+#if CefC_IsEnable_ContentStore
 	double				send_rate;				/* send content rate					*/
 	uint64_t			send_next;				/* Send content next					*/
-#endif // CefC_ContentStore || CefC_Conpub
-
-	/********** Neighbor Management ***********/
-	CefT_Uris* 			uris;				/* URIs are specified in neighbor list 		*/
-	uint8_t 			uri_num;			/* URI count in neighbor list 				*/
-	CefT_Nbrs* 			nbrs;				/* Neighbors are specified in neighbor list */
-	CefT_Rtts* 			rtts;
-	uint8_t 			nbr_num;			/* Neighbor count in neighbor list 			*/
-	uint64_t 			nbr_next_t;			/* time which cefnetd will send the link 	*/
-											/* request message to measure RTT between 	*/
-											/* two cefnetds [unit:us]					*/
-	uint64_t 			nbr_base_t;
-	uint64_t 			nbr_wait_t;
+#endif // CefC_IsEnable_ContentStore
 
 	/********** App Resister 		***********/
 	CefT_Hash_Handle	app_reg;				/* App Resister table					*/
@@ -339,11 +295,6 @@ typedef struct {
 
 	/********** Plugin 				***********/
 	CefT_Plugin_Handle 	plugin_hdl;
-
-#ifdef CefC_Ccore
-	/********** Controller 			***********/
-	CcoreT_Rt_Handle* 	rt_hdl;
-#endif
 
 	/********** Babel 				***********/
 	int 				babel_use_f;
@@ -357,25 +308,42 @@ typedef struct {
 	int 				ccninfo_rcvdpub_key_bi_len;
 	unsigned char* 		ccninfo_rcvdpub_key_bi;
 
-	//0.8.3
-	/********** Plugin Interface for libcefnetd_plugin **********/
-	char					bw_stat_pin_name[128];
-	CefT_Plugin_Bw_Stat*	bw_stat_hdl;
-	void*					mod_lib;	/* plugin library	*/
-
 	/********** cefstatus pipe **********/
 	int		cefstatus_pipe_fd[2];
+	unsigned char *app_rsp_msg;
 
 	/********** Forwarding Strategy Plugin **********/
 	CefT_Plugin_Fwd_Strtgy*		fwd_strtgy_hdl;
 	void*						fwd_strtgy_lib;
 
+	/*** cefore tx queue 						***/
+//#define CefC_TxMultiThread
+#define	CefC_Num_TxQueClass	(3)
+	CefT_Rngque		*tx_que, *tx_que_high, *tx_que_low;
+
+#ifdef CefC_TxMultiThread
+	uint16_t 			tx_worker_num;
+	CefT_Rngque* 		tx_worker_que[CefC_TxWorkerMax];
+	pthread_cond_t		tx_worker_cond[CefC_TxWorkerMax];
+	pthread_mutex_t		tx_worker_mutex[CefC_TxWorkerMax];
+#endif // CefC_TxMultiThread
+
+	uint	 			tx_que_size;
+	CefT_Mp_Handle 		tx_que_mp;
+
 } CefT_Netd_Handle;
 
 typedef struct {
-	unsigned char	msg[128];
+	unsigned char	msg[CefC_Cefstatus_MsgSize];
 	int				resp_fd;
 }	CefT_Cefstatus_Msg;
+
+typedef struct {
+	uint16_t 		faceid;
+	unsigned char 	name[CefC_NAME_MAXLEN];
+	uint16_t 		name_len;
+	uint8_t 		match_type;				/* Exact or Prefix */
+} CefT_App_Reg;
 
 /****************************************************************************************
  Global Variables
@@ -434,24 +402,6 @@ cefnetd_interest_forward (
 ----------------------------------------------------------------------------------------*/
 int											/* Returns a negative value if it fails 	*/
 cefnetd_ccninforeq_forward (
-	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
-	uint16_t faceids[], 					/* Face-IDs to forward						*/
-	uint16_t faceid_num, 					/* Number of Face-IDs to forward			*/
-	int peer_faceid, 						/* Face-ID to reply to the origin of 		*/
-											/* transmission of the message(s)			*/
-	unsigned char* msg, 					/* received message to handle				*/
-	uint16_t payload_len, 					/* Payload Length of this message			*/
-	uint16_t header_len,					/* Header Length of this message			*/
-	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed message 							*/
-	CefT_CcnMsg_OptHdr* poh, 				/* Parsed Option Header						*/
-	CefT_Pit_Entry* pe, 					/* PIT entry matching this Interest 		*/
-	CefT_Fib_Entry* fe						/* FIB entry matching this Interest 		*/
-);
-/*--------------------------------------------------------------------------------------
-	Forwards the specified cefping request
-----------------------------------------------------------------------------------------*/
-int											/* Returns a negative value if it fails 	*/
-cefnetd_cefpingreq_forward (
 	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
 	uint16_t faceids[], 					/* Face-IDs to forward						*/
 	uint16_t faceid_num, 					/* Number of Face-IDs to forward			*/
@@ -539,8 +489,28 @@ cefnetd_ccninfo_check_relpy_size(
 );
 
 
+/*--------------------------------------------------------------------------------------
+	Handles the elements of TX queue
+----------------------------------------------------------------------------------------*/
 void *
 cefnetd_cefstatus_thread (
-	void *p
+	void *p									/* cefnetd handle							*/
+);
+
+void
+cefnetd_frame_send_txque_faces (
+	void*			hdl,					/* cefnetd handle							*/
+	uint16_t 		faceid_num, 			/* number of Face-ID				 		*/
+	uint16_t 		faceid[], 				/* Face-ID indicating the destination 		*/
+	unsigned char* 	msg, 					/* a message to send						*/
+	size_t			msg_len					/* length of the message to send 			*/
+);
+
+void
+cefnetd_frame_send_txque (
+	void*			hdl,					/* cefnetd handle							*/
+	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
+	unsigned char* 	msg, 					/* a message to send						*/
+	size_t			msg_len					/* length of the message to send 			*/
 );
 #endif // __CEF_NETD_HEADER__

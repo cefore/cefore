@@ -61,15 +61,18 @@ int
 cef_node_run (
 	void
 ){
-	
+
 	/* Creates a main handle for cefnetd 		*/
 	netd_hdl = cefnetd_handle_create (CefC_Node_Type_Router);
 	if (netd_hdl == NULL) {
 		cef_log_write (CefC_Log_Error, "Failed to create cefnetd handle\n");
 		cef_log_write (CefC_Log_Error, "Stop\n");
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "Failed to create cefnetd handle, Stop.\n");
+#endif // CefC_Debug
 		return (-1);
 	}
-	
+
 	/* Calls the main loop function 			*/
 	cefnetd_event_dispatch (netd_hdl);
 
@@ -77,4 +80,11 @@ cef_node_run (
 	cefnetd_handle_destroy (netd_hdl);
 
 	return (1);
+}
+
+CefT_Netd_Handle *
+cefnetd_get_myhdl (
+	void
+){
+	return netd_hdl;
 }

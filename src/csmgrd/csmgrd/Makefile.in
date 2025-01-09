@@ -286,6 +286,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+XCRUN = @XCRUN@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -353,15 +354,15 @@ CSMGRD_CFLAGS = $(AM_CFLAGS) $(am__append_1)
 
 # set csmgrd option
 csmgrd_LDFLAGS = $(AM_LDFLAGS)
-csmgrd_LDADD = -lcefore $(am__append_2) $(am__append_3) -ldl \
-	-lcsmgrd_plugin -lpthread
+csmgrd_LDADD = -lcsmgrd_plugin -lcsmgr -lcefore $(am__append_2) \
+	$(am__append_3) -ldl -lpthread
 csmgrd_CFLAGS = $(CSMGRD_CFLAGS) -Wall -O2 -fPIC
 csmgrd_SOURCES = csmgrd.c csmgrd.h
 
 # set csmgrctrl option
 csmgrctrl_LDFLAGS = $(AM_LDFLAGS)
-csmgrctrl_LDADD = -lcefore $(am__append_4) $(am__append_5) -ldl \
-	-lcsmgrd_plugin -lpthread
+csmgrctrl_LDADD = -lcsmgrd_plugin -lcsmgr -lcefore $(am__append_4) \
+	$(am__append_5) -ldl -lpthread
 csmgrctrl_CFLAGS = $(CSMGRD_CFLAGS) -Wall -O2 -fPIC
 csmgrctrl_SOURCES = csmgrctrl.c
 DESTDIR = $(CEFORE_DIR_PATH)

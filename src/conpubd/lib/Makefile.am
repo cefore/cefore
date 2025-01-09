@@ -46,3 +46,5 @@ lib_LTLIBRARIES = libconpub.la
 libconpub_la_CFLAGS = $(CONPUBD_LIB_CFLAGS)
 libconpub_la_LDFLAGS = -lcefore $(AM_LDFLAGS)
 libconpub_la_SOURCES = $(AM_CSOURCES)
+
+libdir=$(CEFORE_DIR_PATH)lib

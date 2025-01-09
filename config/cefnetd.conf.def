@@ -98,11 +98,11 @@
 #
 # Customize forwarding strategies of an incoming Interest/ContentObject packet
 # (e.g. outgoing face selection in an FIB entry for the Interest)
-#  default      : Forward the Interest to a face in the longest-prefix-matched(LPMed) FIB entry
+#  None         : Forward the Interest to a face in the longest-prefix-matched(LPMed) FIB entry
 #  flooding     : Forward the Interest to all the faces registered in the LPMed FIB entry
 #  shortest_path: Forward the Interest to the face that has the minimum routing cost in the LPMed FIB entry
 #
-#FORWARDING_STRATEGY=default
+#FORWARDING_STRATEGY=None
 
 #
 # CCNinfo access policy
@@ -122,9 +122,9 @@
 #
 # Specify the Validation Algorithm to be added to Content Object.
 # Validation is not added when None is specified.
-# Either sha256 or crc32 can be specified.
+# Either rsa-sha256 or crc32c can be specified.
 #
-#CCNINFO_VALID_ALG=crc32
+#CCNINFO_VALID_ALG=crc32c
 
 #
 # Private key, public key prefix
@@ -140,14 +140,6 @@
 #CCNINFO_REPLY_TIMEOUT=4
 
 #
-# cefnetd controller
-# The default is cefnetd dose not use the controller.
-#
-#CONTROLLER_ID=127.0.0.1
-#CONTROLLER_PORT_NUM=9458
-#CONTROLLER_KEY=/usr/local/cefore/ccore-public-key
-
-#
 # cefbabeld
 # The default is cefnetd dose not use cefbabeld.
 #  0 : Unuse
@@ -159,21 +151,9 @@
 
 #
 # Same Interest retransmission strategy
-#	RFC8569 or SUPPRESSIVE
+#	RFC8569 or NO_SUPPRESSION
 #
 #INTEREST_RETRANSMISSION=RFC8569
-
-#
-# Whether to transfer Selective Interest upstream
-#	0:No 1:Yes
-#
-#SELECTIVE_FORWARDING=1
-
-#
-# Maximum number of requested chunks per Selective Interest.
-#	n is an integer greater than 0 and not greater than 2048.
-#
-#SELECTIVE_INTEREST_MAX_RANGE=512
 
 #
 # A range of chunk numbers that allow retroactive responses to the Symbolic Interest
@@ -182,7 +162,7 @@
 #SYMBOLIC_BACKBUFFER=100
 
 #
-# Bandwidth utilization threshold (%) of the receive IF to respond to Congesion when receiving Interest
+# Bandwidth utilization threshold (%) of the receive IF to respond to Congestion when receiving Interest
 #	n is an integer greater than or equal to 0.
 #
 #INTEREST_RETURN_CONGESTION_THRESHOLD=90
@@ -210,13 +190,13 @@
 # The name of the plug-in that determines congestion.
 # If None, the congestion judgment is always in a non-congested state.
 #
-#BANDWIDTH_STAT_PLUGIN=bw_stat
+#BANDWIDTH_STAT_PLUGIN=None
 
 
 #CSMGR_ACCESS=RW
 
 #
-# RTC(seconds) to set for Cob to Local cache. 
+# RTC(seconds) to set for Cob to Local cache.
 # This value must be higher than 1 and lower than 3600.
 #
 #LOCAL_CACHE_DEFAULT_RCT=600
@@ -230,6 +210,42 @@
 # Enabled Return Code
 #
 #ENABLED_RETURN_CODE=1,2,6
+
+#
+# Number of Transmit worker thread
+# This value must be higher than 1 and lower than 33.
+#
+#TX_WORKER_NUM=8
+
+#
+# Size of Transmit queue
+# This value must be higher than 512.
+#
+#TX_QUEUE_SIZE=16384
+
+
+#
+# If you want to explicitly specify an IP address
+# to listen on for UDP other than "any", specify it here.
+#
+#   ex) UDP_LISTEN_ADDR=127.0.0.1,192.168.56.102,[::1],[fe80::a00:27ff:fe0b:ca49%enp0s8]
+#       UDP_LISTEN_ADDR=All
+#
+#UDP_LISTEN_ADDR=None
+
+#
+# The time (in minutes) until a face that is no longer in use is closed.
+# If it is less than 1, the face will not be closed.
+#
+#   ex) FACE_LIFETIME=10
+#
+#FACE_LIFETIME=-1
+
+#
+# cefore encryption key pair for validation
+#
+PATH_PRIVATE_KEY=/usr/local/cefore/default-private-key
+PATH_PUBLIC_KEY=/usr/local/cefore/default-public-key
 
 # Debug log level
 #

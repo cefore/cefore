@@ -50,9 +50,9 @@
 #define CefC_Fib_Route_Ope_Invalid		0x00
 #define CefC_Fib_Route_Ope_Add			0x01
 #define CefC_Fib_Route_Ope_Del			0x02
-#define CefC_Fib_Route_Pro_Invalid		0x00
-#define CefC_Fib_Route_Pro_TCP			0x01
-#define CefC_Fib_Route_Pro_UDP			0x02
+// #define CefC_Fib_Route_Pro_Invalid		0x00	/* Merge "CefC_Fib_Route_Pro_XXX"	*/
+// #define CefC_Fib_Route_Pro_TCP			0x01	/* into "CefC_Face_Type_XXX"		*/
+// #define CefC_Fib_Route_Pro_UDP			0x02	/* (defined in cef_face.h) 			*/
 
 #define CefC_Fib_Entry_Dynamic			0x01
 #define CefC_Fib_Entry_Static			0x02
@@ -108,18 +108,6 @@ typedef struct {
  Function Declarations
  ****************************************************************************************/
 
-/*--------------------------------------------------------------------------------------
-	Initialize FIB module
-----------------------------------------------------------------------------------------*/
-int											/* Returns a negative value if it fails 	*/
-cef_fib_init (
-	CefT_Hash_Handle fib,					/* FIB										*/
-	int				 nodeid4_num,
-	int				 nodeid16_num,
-	char*			 nodeid4_c[],
-	char*			 nodeid16_c[],
-	uint16_t		 port_num
-);
 /*--------------------------------------------------------------------------------------
 	Searches FIB entry matching the specified Key
 ----------------------------------------------------------------------------------------*/
@@ -208,6 +196,14 @@ cef_fib_entry_destroy (
 void
 cef_fib_faceid_cleanup (
 	CefT_Hash_Handle fib
+);
+/*--------------------------------------------------------------------------------------
+	Search FaceID from FIB
+----------------------------------------------------------------------------------------*/
+int
+cef_fib_faceid_search (
+	CefT_Hash_Handle fib,
+	int faceid
 );
 /*--------------------------------------------------------------------------------------
 	Obtains the FIB information

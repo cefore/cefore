@@ -43,6 +43,8 @@
 
 #include <cefore/cef_define.h>
 
+#include <openssl/sha.h>
+
 /****************************************************************************************
  Macros
  ****************************************************************************************/
@@ -83,6 +85,12 @@
 #define CefC_S_ReqArrivalTime		4			/* Request Arrival Time is 4 bytes 		*/
 #define CefC_S_PutVerify			1			/* MessageType is 1 bytes 				*/
 #define CefC_S_Pending				2			/* MessageType is 1 bytes 				*/
+#define	CefC_S_PUBLICKEY			512			/* Public key is 512 bytes				*/
+#ifdef	SHA512_DIGEST_LENGTH
+#define	CefC_S_KeyId	SHA512_DIGEST_LENGTH	/* KeyId is SHA512_DIGEST_LENGTH bytes	*/
+#else	// SHA512_DIGEST_LENGTH
+#define	CefC_S_KeyId				64			/* KeyId is 64 bytes					*/
+#endif	// SHA512_DIGEST_LENGTH
 
 /*------------------------------------------------------------------*/
 /* Field Offset														*/
@@ -94,7 +102,6 @@
 #define CefC_O_Fix_PacketLength		2
 #define CefC_O_Fix_HopLimit			4
 #define CefC_O_Fix_Ccninfo_RetCode	5
-#define CefC_O_Fix_Ping_RetCode		6
 #define CefC_O_Fix_HeaderLength		7
 
 /*----- TLV field 			-----*/
@@ -104,6 +111,8 @@
 
 /*==========================================================================*/
 /* TLV definitions 															*/
+/*		Content-Centric Networking (CCNx)									*/
+/*		https://www.iana.org/assignments/ccnx/ccnx.xhtml					*/
 /*==========================================================================*/
 
 /*------------------------------------------------------------------*/
@@ -113,8 +122,13 @@
 #define CefC_PT_OBJECT				0x01		/* Content Object			*/
 #define CefC_PT_INTRETURN			0x02		/* Interest Return			*/
 #define CefC_PT_REQUEST				0x03		/* Ccninfo Request			*/
-#define CefC_PT_REPLY				0x04		/* Ccninfo Replay			*/
+#define CefC_PT_REPLY				0x04		/* Ccninfo Reply			*/
 #define CefC_PT_MAX			CefC_PT_REPLY		/* MAX						*/
+
+#define CefC_PT_ECHO_REQUEST		0x05		/* Ping Request (RFC9508:Not support)	*/
+#define CefC_PT_ECHO_REPLY			0x06		/* Ping Reply   (RFC9508:Not support)	*/
+#define CefC_PT_TR_REQUEST			0x07		/* Ping Request (RFC9507:Not support)	*/
+#define CefC_PT_TR_REPLY			0x08		/* Ping Reply   (RFC9507:Not support)	*/
 
 #define CefC_PT_CTRL				0x10
 #define CefC_PT_BABEL				0x11
@@ -141,10 +155,11 @@
 #define CefC_T_OBJHASHRESTR			0x0003		/* ContentObjectHashRestriction			*/
 #define CefC_T_PAYLDTYPE			0x0005		/* PayloadType							*/
 #define CefC_T_EXPIRY				0x0006		/* ExpiryTime 							*/
-#define CefC_T_DISC_REQ				0x0007		/* CCNinfo Request Block ccninfo-05		*/
-#define CefC_T_DISC_REPLY			0x0008		/* CCNinfo Reply Block ccninfo-05		*/
-#define CefC_T_ENDCHUNK				0x000C		/* EndChunkNumber						*/
-#define CefC_T_MSG_TLV_NUM			0x000D
+#define CefC_T_ENDCHUNK				0x0007		/* EndChunkNumber						*/
+#define CefC_T_MSG_TLV_NUM			(CefC_T_ENDCHUNK+1)
+
+#define CefC_T_DISC_REQ				0x000D		/* CCNinfo Request Block	(RFC9344)	*/
+#define CefC_T_DISC_REPLY			0x000E		/* CCNinfo Reply Block		(RFC9344)	*/
 #define CefC_T_ORG					0x0FFF		/* Vendor Specific Information			*/
 
 /*----- Reply sub-block TLVs of T_DISC_REPLY	-----*/
@@ -155,26 +170,19 @@
 /*----- Organization-Specific TLVs -----*/
 #define CefC_T_SYMBOLIC				0x0001		/* Symbolic Interest					*/
 #define CefC_T_LONGLIFE				0x0002		/* Long Life Interest					*/
-#define CefC_T_SELECTIVE			0x8003		/* Selective Interest					*/
-#define	CefC_T_VERSION				0x800B		/* T_VERSION Type						*/
-#define CefC_T_PUTVERIFY			0x800C		/* PutVerify Type						*/
 #define CefC_T_FROM_PUB				0x000D		/* Require to get the content from the 	*/
 												/* publisher (a.k.a T_APP_FROM_PUB)		*/
-#define CefC_T_PENDING				0x800E		/* Pending Type (T_PENDING)				*/
-#define CefC_T_CSACT				0x800F		/* ACK Interest (T_CSACT)				*/
-#define CefC_T_CSACT_ALG			0x8010		/* ACK Algorithm (T_CSACT_ALG)			*/
-#define CefC_T_SIGNATURE			0x8011		/* ACK Signature (T_SIGNATURE)			*/
 
 /*------------------------------------------------------------------*/
-/* Name Segment Type												*/
+/* CCNx Name Segment Types											*/
 /*------------------------------------------------------------------*/
 
 #define CefC_T_NAMESEGMENT			0x0001		/* Name Segment							*/
 #define CefC_T_IPID					0x0002		/* Interest Payload ID 					*/
-#define CefC_T_CHUNK				0x0010		/* Chunk Number							*/
-#define CefC_T_META					0x0011		/* Chunk Metadata						*/
-#define CefC_T_NONCE				0x0012		/* Nonce 								*/
-#define CefC_T_NAME_TLV_NUM			(CefC_T_NONCE+1)
+#define CefC_T_NONCE				0x0003		/* Nonce 								*/
+#define CefC_T_CHUNK				0x0004		/* Chunk Number							*/
+/* 0x0010-0x0013    Reserved    [RFC8609] */
+/* 0x0014-0x0FFE    Unassigned            */
 
 /*----- Application Components 		-----*/
 #define CefC_T_APP_MIN 				0x1000		/* Min Index of Application Components 	*/
@@ -182,6 +190,10 @@
 
 /*----- Chunk Metadata Name Component 	-----*/
 #define CefC_T_META_TLV_NUM			0x0020
+
+/*----- PIT search key extension for KeyId/CoBHash restriction	-----*/
+#define CefC_T_PIT_KEYID		(CefC_T_APP_MAX+CefC_T_KEYIDRESTR)
+#define CefC_T_PIT_COBHASH		(CefC_T_APP_MAX+CefC_T_OBJHASHRESTR)
 
 /*------------------------------------------------------------------*/
 /* Hash Function Type Registry										*/
@@ -201,7 +213,6 @@
 #define CefC_T_RSA_SHA256			0x0005
 #define CefC_T_EC_SECP_256K1		0x0006
 #define CefC_T_EC_SECP_384R1		0x0007
-#define CefC_T_KEY_CHECK			0x1001
 
 /*------------------------------------------------------------------*/
 /* Validation Dependent Data Type Registry							*/
@@ -222,33 +233,44 @@
 /* Hop-by-Hop Type													*/
 /*------------------------------------------------------------------*/
 
+/* Parsed by cef_frame_opheader_tlv_parse */
 #define CefC_T_OPT_INVALID			0x0000		/* Invalid								*/
 #define CefC_T_OPT_INTLIFE			0x0001		/* Interest Lifetime 					*/
 #define CefC_T_OPT_CACHETIME		0x0002		/* Recommended Cache Time (RCT) 		*/
 #define CefC_T_OPT_MSGHASH			0x0003		/* Message Hash							*/
-//#define CefC_T_OPT_DISC_REQ			0x0008		/* Ccninfo Request Block ccninfo-05	*/
 #define CefC_T_OPT_DISC_REQHDR		0x0008		/* Ccninfo Request Header Block	ccninfo-05 */
 #define CefC_T_OPT_DISC_REPORT		0x0009		/* Ccninfo Report Block					*/
-#define CefC_T_OPT_PING_REQ			0x000A		/* Cefping Request Block				*/
-#define CefC_T_OPT_TLV_NUM			0x000B
+#define CefC_T_OPT_TLV_NUM			0x000A
 
+/* Parsed by cef_frame_opheader_user_tlv_parse */
 #define CefC_T_OPT_ORG				0x0FFF		/* Vendor Specific Information			*/
-#define CefC_T_OPT_SYMBOLIC			0x1001		/* Symbolic Interest					*/
+#define CefC_T_OPT_USER_TLV			0x1000		/* User Local Information (legacy)		*/
+
+/*----- TLVs for use in the CefC_T_OPT_ORG -----*/
 #define CefC_T_OPT_TRANSPORT		0x8004		/* Transport Plugin Variant				*/
-#define CefC_T_OPT_EFI				0x1003		/* External Function Invocation			*/
-#define CefC_T_OPT_IUR				0x1004		/* Interest User Request				*/
-#define CefC_T_OPT_USR_TLV_NUM		0x1005
-#define CefC_T_OPT_SEQNUM			0x8008		/* Sequence Number						*/
+#define CefC_T_OPT_SEQNUM			0x8005		/* Sequence Number						*/
 
-/*----- TLVs for use in the CefC_T_OPT_SYMBOLIC TLV -----*/
-#define CefC_T_OPT_REGULAR			0x0000		/* Regular Interest (just for form) 	*/
-
+/*----- TLVs for use in the CefC_T_OPT_USER_TLV -----*/
 #define CefC_T_OPT_APP_REG			0x1001
 #define CefC_T_OPT_APP_DEREG		0x1002
 #define CefC_T_OPT_APP_REG_P		0x1003		/* Accept prefix match of Name			*/
 #define CefC_T_OPT_APP_PIT_REG		0x1004		/* Register Name in PIT					*/
 #define CefC_T_OPT_APP_PIT_DEREG	0x1005		/* DeRegister Name in PIT				*/
 #define CefC_T_OPT_DEV_REG_PIT		0x1006		/* Register Name in PIT (develop)		*/
+
+/*----- TLVs for use in the CefC_T_OPT_INT TLV -----*/
+#define CefC_T_OPT_INT				0x8701		/* In-band Network Telemetry			*/
+#define CefC_T_OPT_INT_NODE			0x0001
+#define CefC_T_OPT_INT_APP_ID		0x0002
+#define CefC_T_OPT_INT_IFINDEX		0x0003
+#define CefC_T_OPT_INT_BANDWIDTH	0x0004
+#define CefC_T_OPT_INT_RESOURCE		0x0005
+#define CefC_T_OPT_INT_RESOURCEGENMIN	0x0006
+#define CefC_T_OPT_INT_RESOURCEGENMAX	0x0007
+#define CefC_T_OPT_INT_CAPACITY		0x0008
+#define CefC_T_OPT_INT_AVAILABILITY	0x0009
+
+#define CefC_T_OPT_ROUTE_TRACE		0x8702		/* Route Trace (CeforeSim only)			*/
 
 /*----- TLVs for use in the CefC_T_OPT_MSGHASH TLV -----*/
 #define CefC_T_OPT_MH_INVALID		0x0000		/* Invalid			*/
@@ -262,6 +284,10 @@
 
 #define CefC_T_HW_TIMESTAMP				0x8601
 
+/*----- TLVs for use in the CefC_T_ENCRYPT_ALG TLV -----*/
+#define CefC_T_EA_CPABE				0x0001
+#define CefC_T_EA_CPABPRE			0x0002
+
 /*==========================================================================*/
 /* for process																*/
 /*==========================================================================*/
@@ -274,14 +300,6 @@
 #define CefC_Cmd_Invalid			0x00		/* Invalid			*/
 #define CefC_Cmd_Link_Req			0x01		/* Link Request		*/
 #define CefC_Cmd_Link_Res			0x02		/* Link Response	*/
-
-/*------------------------------------------------------------------*/
-/* Return Code for Cefping Replay 									*/
-/*------------------------------------------------------------------*/
-#define CefC_CpRc_Cache 			0x00
-#define CefC_CpRc_NoCache 			0x01
-#define CefC_CpRc_NoRoute 			0x02
-#define CefC_CpRc_AdProhibit 		0x03
 
 /*------------------------------------------------------------------*/
 /* Option for Ccninfo Request 										*/
@@ -327,7 +345,7 @@
 #define	CefC_IR_NO_RESOURCE			0x03
 #define	CefC_IR_PATH_ERROR			0x04
 #define	CefC_IR_PROHIBITED			0x05
-#define	CefC_IR_CONGESION			0x06
+#define	CefC_IR_CONGESTION			0x06
 #define	CefC_IR_MTU_TOO_LAREG		0x07
 #define	CefC_IR_UNSUPPORTED_COBHASH 0x08
 #define	CefC_IR_MALFORMED_INTEREST	0x09
@@ -480,6 +498,12 @@ typedef struct {
 	/***** Hop-by-Hop Validation 		*****/
 	uint16_t 			hop_by_hop_f;
 
+	/***** KeyId						*****/
+	uint16_t	 		keyid_len;						/* Length of KeyId				*/
+	unsigned char 		keyid[CefC_S_KeyId];			/* KeyId						*/
+	uint16_t	 		publickey_len;					/* Length of publickey			*/
+	unsigned char 		publickey[CefC_S_PUBLICKEY];	/* Public key					*/
+
 } CefT_Valid_Alg_TLVs;
 
 /*--------------------------------------------------------------*/
@@ -566,6 +590,45 @@ typedef struct _CefT_MsgOrg_Params_t {
 	/***** T_FROM_PUB(aka T_APP_FROM_PUB) TLV	*****/
 	uint8_t					from_pub_f;				/* If it is not 0, T_FROM_PUB is set	*/
 
+	/***** T_PENDING TLV					*****/
+	uint16_t 				pending_val;			/* If it is not 0, in T_PENDING Value	*/
+
+	/***** T_CSACT/T_CSACT_ALG TLV				*****/
+	struct _CefT_CsAct_Params_t {
+		/***** T_CSACT TLV					*****/
+		uint8_t					csact_f;				/* If it is not 0, T_CSACT			*/
+		uint16_t				csact_len;				/* If it is not 0, T_CSACT length	*/
+		unsigned char			csact_val[CefC_Max_Length];		/* Plain Text */
+
+		/***** T_CSACT_ALG TLV					*****/
+		uint8_t					csact_alg_f;			/* If it is not 0, T_CSACT_ALG		*/
+		uint16_t				csact_alg_len;			/* If it is not 0, T_CSACT_ALG length	*/
+		uint16_t				csact_type;				/* Algorithm Type */
+
+		/***** T_PUBLICKEY TLV					*****/
+		uint16_t				publickey_len;			/* If it is not 0, T_PUBLICKEY length	*/
+		unsigned char			publickey_val[CefC_S_PUBLICKEY];
+
+		/***** T_SIGNATURE TLV					*****/
+		uint16_t				signature_len;			/* If it is not 0, T_SIGNATURE length	*/
+		unsigned char			signature_val[CefC_S_PUBLICKEY];
+	}	csact;
+
+	/***** T_ENCRYPT_ALG TLV					*****/
+	struct _CefT_EncryptAlg_Params_t {
+		uint8_t					encryptalg_f;			/* If it is not 0, T_ENCRYPT_ALG	*/
+		uint16_t				type;
+		uint16_t				padding;
+	}	encryptalg;
+
+	/***** T_ORG_KEYID TLV						*****/
+	struct _CefT_OrgKeyid_Params_t {
+		/***** T_SHA_256/T_SHA_512 TLV			*****/
+		uint16_t				hash_type;
+		uint16_t				hash_len;				/* If it is not 0, T_SHA_256/T_SHA_512 length	*/
+		char					hash_val[SHA512_DIGEST_LENGTH];
+	}	orgkeyid;
+
 } CefT_MsgOrg_Params;
 
 /*--------------------------------------------------------------*/
@@ -619,7 +682,6 @@ typedef struct _CefT_CcnMsg_MsgBdy_t {
 
 	/***** Fixed Header 	*****/
 	uint8_t			hoplimit;					/* Hop Limit of Interest 				*/
-	uint8_t			ping_retcode;				/* Cefping ReturnCode 					*/
 
 	/***** Cefore Message 	*****/
 	uint16_t 		top_level_type;				/* Top-Level Type 						*/
@@ -644,15 +706,12 @@ typedef struct _CefT_CcnMsg_MsgBdy_t {
 	uint16_t		payload_len;				/* Length of Payload 					*/
 	uchar_t 		payload[CefC_Max_Length]; 	/* Payload 								*/
 
-	/***** DISC_REPLY TLV		*****/
-	uint16_t		discreply_f;				/* Offset of Disc Reply					*/
-	uint16_t		discreply_len;				/* Length of Disc Reply 				*/
-	uchar_t 		discreply_val[CefC_Max_Length]; /* Disc Reply 						*/
-
 	/***** Metadata TLV		*****/
 	int				expiry_f;					/* *0.8.3c */
 	uint64_t		expiry;						/* The time at which the Payload		*/
-												/* expires [unit: ms]					*/
+												/* expires [unit: usec]					*/
+												/* Since 0.10.2a it will be changed to	*/
+												/* microseconds. Please be careful.		*/
 
 	/***** Sequence Number 				*****/
 	uint32_t 		seqnum;						/* alias seqnum@CefT_CcnMsg_OptHdr	*/
@@ -665,7 +724,7 @@ typedef struct _CefT_CcnMsg_MsgBdy_t {
 	/***** Validation Algorithm TLV 	*****/
 	CefT_Valid_Alg_TLVs 	alg;
 
-	/***** for more infomation	*****/
+	/***** for more information	*****/
 	int				InterestType;				/* for PIT marking */
 	/***** KeyIdRester *****/
 	uint16_t		KeyIdRester_f;				/* Offset of KeyIdRester				*/
@@ -851,7 +910,8 @@ cef_frame_ccninfo_vald_create_for_reply (
 ----------------------------------------------------------------------------------------*/
 size_t										/* length of buff/new_buff					*/
 cef_frame_seqence_update (
-	unsigned char* buff, 					/* packet									*/
+	unsigned char* out_buff, 				/* out) updated packet buffer				*/
+	unsigned char* in_buff, 				/*  in) base message packet					*/
 	uint32_t seqnum
 );
 /*--------------------------------------------------------------------------------------

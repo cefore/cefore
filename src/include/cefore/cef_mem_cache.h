@@ -59,17 +59,9 @@
 #include <cefore/cef_client.h>
 #include <cefore/cef_print.h>
 #include <cefore/cef_csmgr.h>
-#include <cefore/cef_plugin.h>
 #include <cefore/cef_valid.h>
 #include <cefore/cef_log.h>
 #include <cefore/cef_csmgr_stat.h>
-
-#ifdef CefC_Ccore
-#include <ccore/ccore_common.h>
-#include <ccore/ccore_define.h>
-#include <ccore/ccore_frame.h>
-#include <ccore/ccore_valid.h>
-#endif // CefC_Ccore
 
 /****************************************************************************************
  Macros

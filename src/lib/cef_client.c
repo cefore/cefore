@@ -68,6 +68,7 @@ static uint64_t nowtus = 0;
 //static char cef_lsock_name[256] = {"/tmp/cef_9896.0"};
 //static char cbd_lsock_name[256] = {"/tmp/cbd_9896.0"};
 static char cef_lsock_name[2048] = {"/tmp/cef_9896.0"};
+static char csmgr_lsock_name[2048] = {"/tmp/csmgr_9799.0"};
 static char cbd_lsock_name[2048] = {"/tmp/cbd_9896.0"};
 static char cef_conf_dir[PATH_MAX*2] = {"/usr/local/cefore"};
 static int  cef_port_num = CefC_Default_PortNum;
@@ -88,9 +89,6 @@ cef_client_trim_line_string (
 );
 
 
-/****************************************************************************************
- ****************************************************************************************/
-
 /*--------------------------------------------------------------------------------------
 	Creats the local socket name
 ----------------------------------------------------------------------------------------*/
@@ -105,7 +103,7 @@ cef_client_init (
 	char	buff[1024];
 	char 	ws[1024];
 	char 	pname[1024];
-	char 	lsock_id[1024] = {"0"};
+	char 	lsock_id[CefC_LOCAL_SOCK_ID_SIZ+1] = {"0"};
 	int 	res;
 
 	if (config_file_dir[0] != 0x00) {
@@ -121,6 +119,7 @@ cef_client_init (
 			strcpy (cef_conf_dir, CefC_CEFORE_DIR_DEF);
 		}
 	}
+	cef_log_write (CefC_Log_Info, "[client] Config directory is %s\n", cef_conf_dir);
 	//202108
 	if ( strlen(file_path) > PATH_MAX ) {
 		cef_log_write (CefC_Log_Error, "[client] FilePath is too long %s\n", file_path);
@@ -163,6 +162,13 @@ cef_client_init (
 				port_num = res;
 			}
 		} else if (strcmp (pname, CefC_ParamName_LocalSockId) == 0) {
+			if (strlen (ws) > CefC_LOCAL_SOCK_ID_SIZ) {
+				cef_log_write (CefC_Log_Error,
+					"[client] %s must be shorter than %d.\n",
+						CefC_ParamName_LocalSockId, CefC_LOCAL_SOCK_ID_SIZ);
+				fclose (fp);
+				return (-1);
+			}
 			strcpy (lsock_id, ws);
 		}
 	}
@@ -177,7 +183,6 @@ cef_client_init (
 	sprintf (cef_lsock_name, "/tmp/cef_%d.%s", port_num, lsock_id);
 	sprintf (cbd_lsock_name, "/tmp/cbd_%d.%s", port_num, lsock_id);
 	cef_port_num = port_num;
-	cef_log_write (CefC_Log_Info, "[client] Config directory is %s\n", cef_conf_dir);
 	cef_log_write (CefC_Log_Info, "[client] Local Socket Name is %s\n", cef_lsock_name);
 	cef_log_write (CefC_Log_Info, "[client] Listen Port is %d\n", cef_port_num);
 
@@ -233,6 +238,7 @@ cef_client_connect (
 ) {
 	CefT_Connect* conn;
 	struct sockaddr_un saddr;
+	size_t saddr_len;
 	int sock;
 	int flag;
 
@@ -250,19 +256,26 @@ cef_client_connect (
 
 #ifdef __APPLE__
 	saddr.sun_len = sizeof (saddr);
+	saddr_len = SUN_LEN (&saddr);
+#else // __APPLE__
+	saddr_len = sizeof (saddr.sun_family) + strlen (cef_lsock_name);
+#endif // __APPLE__
 
-	for ( int i = 0; i < 10; ){
+	for ( int i = 0; i < CefC_Connect_Retries; ){
 		errno = 0;
-		if (connect (sock, (struct sockaddr *)&saddr, SUN_LEN (&saddr)) < 0) {
+		if (connect (sock, (struct sockaddr *)&saddr, saddr_len) < 0) {
 			switch ( errno ){
-			case ETIMEDOUT :	// #60
-			case ECONNREFUSED :	// #61
+			case ETIMEDOUT :		// #60
+			case ECONNREFUSED :		// #61
+			case EADDRINUSE :		// #98
+			case EADDRNOTAVAIL :	// #99
 				usleep(++i*1000);
 				continue;
 			default:
 				break;
 			}
 		}
+		// no retry.
 		break;
 	}
 	if ( errno ){
@@ -270,14 +283,6 @@ cef_client_connect (
 		close (sock);
 		return ((CefT_Client_Handle) NULL);
 	}
-#else // __APPLE__
-	if (connect (sock, (struct sockaddr*) &saddr,
-			sizeof (saddr.sun_family) + strlen (cef_lsock_name)) < 0) {
-		cef_log_write (CefC_Log_Error, "%s (connect:%s)\n", __func__, strerror(errno));
-		close (sock);
-		return ((CefT_Client_Handle) NULL);
-	}
-#endif // __APPLE__
 
 	flag = fcntl (sock, F_GETFL, 0);
 	if (flag < 0) {
@@ -303,6 +308,7 @@ cef_client_connect_to_csmgrd (
 ) {
 	CefT_Connect* conn;
 	struct sockaddr_un saddr;
+	size_t saddr_len;
 	int sock;
 	int flag;
 
@@ -314,30 +320,38 @@ cef_client_connect_to_csmgrd (
 	/* initialize sockaddr_un 		*/
 	memset (&saddr, 0, sizeof (saddr));
 	saddr.sun_family = AF_UNIX;
-#if 1 //@@@@@@@@@@@@
-//	fprintf(stderr, "===== cef_lsock_name=%s =====\n", cef_lsock_name);
-#define CSMGR_SPATH  "/tmp/csmgr_9799.0"
-	strcpy (cef_lsock_name, CSMGR_SPATH);
-#endif //@@@@@@@@@@@
-	strcpy (saddr.sun_path, cef_lsock_name);
+	strcpy (saddr.sun_path, csmgr_lsock_name);
 
 	/* prepares a source socket 	*/
 #ifdef __APPLE__
 	saddr.sun_len = sizeof (saddr);
-
-	if (connect (sock, (struct sockaddr *)&saddr, SUN_LEN (&saddr)) < 0) {
-		cef_log_write (CefC_Log_Error, "%s (connect:%s)\n", __func__, strerror(errno));
-		close (sock);
-		return ((CefT_Client_Handle) NULL);
-	}
+	saddr_len = SUN_LEN (&saddr);
 #else // __APPLE__
-	if (connect (sock, (struct sockaddr*) &saddr,
-			sizeof (saddr.sun_family) + strlen (cef_lsock_name)) < 0) {
+	saddr_len = sizeof (saddr.sun_family) + strlen (csmgr_lsock_name);
+#endif // __APPLE__
+
+	for ( int i = 0; i < CefC_Connect_Retries; ){
+		errno = 0;
+		if (connect (sock, (struct sockaddr *)&saddr, saddr_len) < 0) {
+			switch ( errno ){
+			case ETIMEDOUT :		// #60
+			case ECONNREFUSED :		// #61
+			case EADDRINUSE :		// #98
+			case EADDRNOTAVAIL :	// #99
+				usleep(++i*1000);
+				continue;
+			default:
+				break;
+			}
+		}
+		// no retry.
+		break;
+	}
+	if ( errno ){
 		cef_log_write (CefC_Log_Error, "%s (connect:%s)\n", __func__, strerror(errno));
 		close (sock);
 		return ((CefT_Client_Handle) NULL);
 	}
-#endif // __APPLE__
 
 	flag = fcntl (sock, F_GETFL, 0);
 	if (flag < 0) {
@@ -367,6 +381,7 @@ cef_client_connect_cli_core (
 ) {
 	CefT_Connect* conn;
 	struct sockaddr_un saddr;
+	size_t saddr_len;
 	const int sk_domain = AF_UNIX;
 	const int sk_protocol = 0;
 	int sock;
@@ -385,19 +400,33 @@ cef_client_connect_cli_core (
 	/* prepares a source socket 	*/
 #ifdef __APPLE__
 	saddr.sun_len = sizeof (saddr);
-
-	if (connect (sock, (struct sockaddr *)&saddr, SUN_LEN (&saddr)) < 0) {
-		close (sock);
-		return ((CefT_Client_Handle) NULL);
-	}
+	saddr_len = SUN_LEN (&saddr);
 #else // __APPLE__
-	if (connect (sock, (struct sockaddr*) &saddr,
-			sizeof (saddr.sun_family) + strlen (cef_lsock_name)) < 0){
+	saddr_len = sizeof (saddr.sun_family) + strlen (cef_lsock_name);
+#endif // __APPLE__
+
+	for ( int i = 0; i < CefC_Connect_Retries; ){
+		errno = 0;
+		if (connect (sock, (struct sockaddr *)&saddr, saddr_len) < 0) {
+			switch ( errno ){
+			case ETIMEDOUT :		// #60
+			case ECONNREFUSED :		// #61
+			case EADDRINUSE :		// #98
+			case EADDRNOTAVAIL :	// #99
+				usleep(++i*1000);
+				continue;
+			default:
+				break;
+			}
+		}
+		// no retry.
+		break;
+	}
+	if ( errno ){
 		cef_log_write (CefC_Log_Error, "%s (connect:%s)\n", __func__, strerror(errno));
 		close (sock);
 		return ((CefT_Client_Handle) NULL);
 	}
-#endif // __APPLE__
 
 	flag = fcntl (sock, F_GETFL, 0);
 	if (flag < 0) {
@@ -441,7 +470,7 @@ cef_client_connect_srv (
 	struct addrinfo* res;
 	struct addrinfo* cres;
 	int err;
-	char port_str[32];
+	char port_str[CefC_Tiny_BUFSIZ];
 	int sock;
 	int flag;
 
@@ -522,7 +551,7 @@ cef_client_close (
 void
 cef_client_name_reg (
 	CefT_Client_Handle fhdl, 					/* client handle						*/
-	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
+	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
 	const unsigned char* name,					/* Name (not URI)						*/
 	uint16_t name_len							/* length of the Name					*/
 ) {
@@ -541,7 +570,7 @@ cef_client_name_reg (
 	opt.lifetime_f = 1;
 	opt.lifetime 	= 1;
 
-	if (func == CefC_App_Reg) {
+	if (func == CefC_T_OPT_APP_REG) {
 		opt.app_reg_f = CefC_T_OPT_APP_REG;
 	} else {
 		opt.app_reg_f = CefC_T_OPT_APP_DEREG;
@@ -565,7 +594,7 @@ cef_client_name_reg (
 void
 cef_client_prefix_reg (
 	CefT_Client_Handle fhdl, 					/* client handle						*/
-	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
+	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
 	const unsigned char* name,					/* Name (not URI)						*/
 	uint16_t name_len							/* length of the Name					*/
 ) {
@@ -584,7 +613,7 @@ cef_client_prefix_reg (
 	opt.lifetime_f = 1;
 	opt.lifetime 	= 1;
 
-	if (func == CefC_App_Reg) {
+	if (func == CefC_T_OPT_APP_REG) {
 		opt.app_reg_f = CefC_T_OPT_APP_REG_P;		/* for partial match */
 	} else {
 		opt.app_reg_f = CefC_T_OPT_APP_DEREG;
@@ -608,7 +637,7 @@ cef_client_prefix_reg (
 void
 cef_client_prefix_reg_for_pit (
 	CefT_Client_Handle fhdl, 					/* client handle						*/
-	uint16_t func, 								/* CefC_App_Reg/CefC_App_DeReg 			*/
+	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
 	const unsigned char* name,					/* Name (not URI)						*/
 	uint16_t name_len							/* length of the Name					*/
 ){
@@ -627,7 +656,7 @@ cef_client_prefix_reg_for_pit (
 	opt.lifetime_f = 1;
 	opt.lifetime 	= 1;
 
-	if (func == CefC_App_Reg) {
+	if (func == CefC_T_OPT_APP_REG) {
 		opt.app_reg_f = CefC_T_OPT_APP_PIT_REG;
 	} else {
 		opt.app_reg_f = CefC_T_OPT_APP_PIT_DEREG;
@@ -645,6 +674,27 @@ cef_client_prefix_reg_for_pit (
 
 	return;
 }
+/****************************************************************************************
+ ****************************************************************************************/
+#define	CefC_Conn_Send_RetryMax		30
+#define	CefC_Conn_Send_RetryWait(n)	usleep((n+1)*1000)
+static int
+cef_client_conn_send(
+	CefT_Connect	*conn,
+	unsigned char	*buff,
+	size_t			length
+)
+{
+	int	ret = 0;
+
+	if (conn->ai) {
+		ret = sendto (conn->sock, buff, length, 0,
+						conn->ai->ai_addr, conn->ai->ai_addrlen);
+	} else {
+		ret = send (conn->sock, buff, length, 0);
+	}
+	return ( ret );
+}
 /*--------------------------------------------------------------------------------------
 	Inputs the unformatted message to the socket
 ----------------------------------------------------------------------------------------*/
@@ -655,72 +705,27 @@ cef_client_message_input (
 	size_t len									/* length of message 					*/
 ) {
 	CefT_Connect* conn = (CefT_Connect*) fhdl;
+	int	send_len = 0, frame_len = len;
 
-	if (len > 0) {
-		if (conn->ai) {
-			sendto (conn->sock, msg, len
-					, 0, conn->ai->ai_addr, conn->ai->ai_addrlen);
-		} else {
-#if 0
-			slen = send (conn->sock, msg, len, 0);
-#else
-	int res = 0;
-    unsigned char* p = msg;
-    size_t slen = len;
-RSEND:;
-    while( slen > 0 ){
-        while( 1 ){
-			res = send (conn->sock, p, slen, 0);
-        	if( errno != EINTR ) {
-        		break;
-        	}
-        }
-        if( res < 0 ){
-            if( errno == EAGAIN ||
-                errno == EWOULDBLOCK ){
-                while(1){
-					fd_set fds, writefds;
-					int n;
-					struct timeval timeout;
-					int rcount;
-					rcount = 0;
-					timeout.tv_sec  = 0;
-//					timeout.tv_usec = 100000; //@@@@@@@@@@
-					timeout.tv_usec = 1000; //@@@@@@@@@@
-					FD_ZERO(&writefds);
-					FD_SET(conn->sock, &writefds);
-					memcpy(&fds, &writefds, sizeof(fds));
-					n = select(conn->sock+1, NULL, &fds, NULL, &timeout);
-					if (n > 0 ) {
-						if (FD_ISSET(conn->sock, &fds)) {
-//fprintf(stderr, "[%s](0): goto RSEND \n", __FUNCTION__);
-							goto RSEND;
-						}
-					}
-					rcount ++;
-					if (rcount > 2){
-//						fprintf(stderr, "[%s](%d): ########### SOCKET is Busy((slen=%ld, res=%d, %s) \n", __FUNCTION__, __LINE__, slen, res, strerror (errno));
-						fprintf(stderr, "[%s](%d): ########### SOCKET is Busy((slen=%zu, res=%d, %s) \n", __FUNCTION__, __LINE__, slen, res, strerror (errno));
-							return(-1);
-					}
-				}
-            } else{
-				fprintf(stderr, "[%s](2): ########### ERROR=%s \n", __FUNCTION__, strerror (errno));
-  			    close (conn->sock);
-			    conn->sock = -1;
-		        return (res);
-            }
-        }
-		if(res > 0){
-    	    slen -= res;
-    	    p += res;
+	for ( int i = 0; i < CefC_Conn_Send_RetryMax; i++ ){
+		int		ret = 0;
+
+		ret = cef_client_conn_send (conn, &msg[send_len], frame_len-send_len);
+cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i, frame_len, send_len, ret);
+
+		if ( 0 < ret ){
+			send_len += ret;
+			if ( frame_len <= send_len ){
+				/* normal return */
+				return ( send_len );
+			}
 		}
-    }
-#endif
-		}
+		CefC_Conn_Send_RetryWait(i);
 	}
+cef_dbg_write (CefC_Dbg_Fine, "Failure:frame_len=%ld, send_len=%ld\n", frame_len, send_len);
 
-	return (1);
+	/* send failure */
+	return ( send_len );
 }
 
 /*--------------------------------------------------------------------------------------
@@ -734,19 +739,32 @@ cef_client_interest_input (
 ) {
 	CefT_Connect* conn = (CefT_Connect*) fhdl;
 	unsigned char buff[CefC_Max_Length];
-	int len;
+	int	send_len = 0, frame_len;
 
-	len = cef_frame_interest_create (buff, opt, tlvs);
-	if (len > 0) {
-		if (conn->ai) {
-			sendto (conn->sock, buff, len
-					, 0, conn->ai->ai_addr, conn->ai->ai_addrlen);
-		} else {
-			send (conn->sock, buff, len, 0);
-		}
+	frame_len = cef_frame_interest_create (buff, opt, tlvs);
+	if ( frame_len < 0 ) {
+		return( frame_len );
 	}
 
-	return (len);
+	for ( int i = 0; i < CefC_Conn_Send_RetryMax; i++ ){
+		int		ret = 0;
+
+		ret = cef_client_conn_send (conn, &buff[send_len], frame_len-send_len);
+cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i, frame_len, send_len, ret);
+
+		if ( 0 < ret ){
+			send_len += ret;
+			if ( frame_len <= send_len ){
+				/* normal return */
+				return ( send_len );
+			}
+		}
+		CefC_Conn_Send_RetryWait(i);
+	}
+cef_dbg_write (CefC_Dbg_Fine, "Failure:chunk_num=%d, send_len=%ld\n", tlvs->chunk_num, send_len);
+
+	/* send failure */
+	return ( send_len );
 }
 
 /*--------------------------------------------------------------------------------------
@@ -759,25 +777,33 @@ cef_client_object_input (
 	CefT_CcnMsg_MsgBdy* tlvs					/* parameters to create the object 		*/
 ) {
 	CefT_Connect* conn = (CefT_Connect*) fhdl;
-	unsigned char buff[CefC_Max_Length*2];
-	int len;
+	unsigned char buff[CefC_Max_Length];
+	int	send_len = 0, frame_len;
 
-	len = cef_frame_object_create (buff, opt, tlvs);
-	//0.8.3
-	if ( len < 0 ) {
-		return( len );
+	frame_len = cef_frame_object_create (buff, opt, tlvs);
+	if ( frame_len < 0 ) {
+		return( frame_len );
 	}
 
-	if (len > 0) {
-		if (conn->ai) {
-			sendto (conn->sock, buff, len
-				, 0, conn->ai->ai_addr, conn->ai->ai_addrlen);
-		} else {
-			send (conn->sock, buff, len, 0);
+	for ( int i = 0; i < CefC_Conn_Send_RetryMax; i++ ){
+		int		ret = 0;
+
+		ret = cef_client_conn_send (conn, &buff[send_len], frame_len-send_len);
+cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i, frame_len, send_len, ret);
+
+		if ( 0 < ret ){
+			send_len += ret;
+			if ( frame_len <= send_len ){
+				/* normal return */
+				return ( send_len );
+			}
 		}
+		CefC_Conn_Send_RetryWait(i);
 	}
+cef_dbg_write (CefC_Dbg_Fine, "Failure:chunk_num=%d, send_len=%ld\n", tlvs->chunk_num, send_len);
 
-	return (1);
+	/* send failure */
+	return ( send_len );
 }
 
 /*--------------------------------------------------------------------------------------
@@ -790,108 +816,101 @@ cef_client_ccninfo_input (
 ) {
 	CefT_Connect* conn = (CefT_Connect*) fhdl;
 	unsigned char buff[CefC_Max_Length];
-	int len;
+	int	send_len = 0, frame_len;
 
-	len = cef_frame_ccninfo_req_create (buff, tlvs);
-	if (len < 0) {
-		return (-1);
+	frame_len = cef_frame_ccninfo_req_create (buff, tlvs);
+	if ( frame_len < 0 ) {
+		return( frame_len );
 	}
-	if (len > 0) {
-		if (conn->ai) {
-			sendto (conn->sock, buff, len
-				, 0, conn->ai->ai_addr, conn->ai->ai_addrlen);
-		} else {
-			send (conn->sock, buff, len, 0);
+
+	for ( int i = 0; i < CefC_Conn_Send_RetryMax; i++ ){
+		int		ret = 0;
+
+		ret = cef_client_conn_send (conn, &buff[send_len], frame_len-send_len);
+cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i, frame_len, send_len, ret);
+
+		if ( 0 < ret ){
+			send_len += ret;
+			if ( frame_len <= send_len ){
+				/* normal return */
+				return ( send_len );
+			}
 		}
+		CefC_Conn_Send_RetryWait(i);
 	}
+cef_dbg_write (CefC_Dbg_Fine, "Failure:chunk_num=%d, send_len=%ld\n", tlvs->chunk_num, send_len);
 
-	return (1);
+	/* send failure */
+	return ( send_len );
 }
 
 /*--------------------------------------------------------------------------------------
 	Reads the message from the specified connection (socket)
 ----------------------------------------------------------------------------------------*/
+int 											/* length of read buffer 				*/
+cef_client_read_core (
+	CefT_Client_Handle fhdl, 					/* client handle 						*/
+	unsigned char* buff, 						/* buffer to write the message 			*/
+	int len, 									/* length of buffer 					*/
+	int timeout 								/* timeout (ms)							*/
+) {
+	CefT_Connect* conn = (CefT_Connect*) fhdl;
+	int recv_len = 0;
+	struct pollfd infds[1];
+	struct sockaddr_storage sas;
+	socklen_t sas_len = (socklen_t) sizeof (struct sockaddr_storage);
+
+	infds[0].fd = conn->sock;
+	infds[0].events = POLLIN | POLLERR;
+
+	/* ppoll can improve the accuracy of timeout,
+	   but ppoll is Linux-specific and not portable. */
+	poll (infds, 1, timeout);
+	errno = 0;
+
+	if (infds[0].revents != 0) {
+		if (infds[0].revents & (POLLERR | POLLNVAL | POLLHUP)) {
+			if (conn->ai) {
+				recv_len = recvfrom (
+						conn->sock, buff, len, 0, (struct sockaddr*) &sas, &sas_len);
+			} else {
+				recv_len = recv (conn->sock, buff, len, 0);
+			}
+			if ( recv_len < 0 )
+				return (errno * -1);
+
+			/* Generally when shutdown from cefnetd */
+			return (CefC_AppConn_Eof);
+		}
+		if (infds[0].revents & POLLIN) {
+			if (conn->ai) {
+				recv_len = recvfrom (
+						conn->sock, buff, len, 0, (struct sockaddr*) &sas, &sas_len);
+			} else {
+				recv_len = recv (conn->sock, buff, len, 0);
+			}
+		}
+	}
+
+	return (recv_len);
+}
+
 int 											/* length of read buffer 				*/
 cef_client_read (
 	CefT_Client_Handle fhdl, 					/* client handle 						*/
 	unsigned char* buff, 						/* buffer to write the message 			*/
 	int len 									/* length of buffer 					*/
 ) {
-	CefT_Connect* conn = (CefT_Connect*) fhdl;
-	int recv_len = 0;
-	struct pollfd infds[1];
-	struct sockaddr_storage sas;
-	socklen_t sas_len = (socklen_t) sizeof (struct sockaddr_storage);
-
-	infds[0].fd = conn->sock;
-	infds[0].events = POLLIN | POLLERR;
-
-	poll (infds, 1, 1000);
-
-	if (infds[0].revents != 0) {
-		if (infds[0].revents & (POLLERR | POLLNVAL | POLLHUP)) {
-			if (conn->ai) {
-				recv_len = recvfrom (
-						conn->sock, buff, len, 0, (struct sockaddr*) &sas, &sas_len);
-			} else {
-				recv_len = recv (conn->sock, buff, len, 0);
-			}
-			/* TBD: Error Process */
-		}
-		if (infds[0].revents & POLLIN) {
-			if (conn->ai) {
-				recv_len = recvfrom (
-						conn->sock, buff, len, 0, (struct sockaddr*) &sas, &sas_len);
-			} else {
-				recv_len = recv (conn->sock, buff, len, 0);
-			}
-		}
-	}
-
-	return (recv_len);
+	return cef_client_read_core(fhdl, buff, len, 1000);
 }
 
-/*--------------------------------------------------------------------------------------
-	Reads the message from the specified connection (socket)
-----------------------------------------------------------------------------------------*/
 int 											/* length of read buffer 				*/
 cef_client_read2 (
 	CefT_Client_Handle fhdl, 					/* client handle 						*/
 	unsigned char* buff, 						/* buffer to write the message 			*/
 	int len 									/* length of buffer 					*/
 ) {
-	CefT_Connect* conn = (CefT_Connect*) fhdl;
-	int recv_len = 0;
-	struct pollfd infds[1];
-	struct sockaddr_storage sas;
-	socklen_t sas_len = (socklen_t) sizeof (struct sockaddr_storage);
-
-	infds[0].fd = conn->sock;
-	infds[0].events = POLLIN | POLLERR;
-
-	poll (infds, 1, 1);
-
-	if (infds[0].revents != 0) {
-		if (infds[0].revents & (POLLERR | POLLNVAL | POLLHUP)) {
-			if (conn->ai) {
-				recv_len = recvfrom (
-						conn->sock, buff, len, 0, (struct sockaddr*) &sas, &sas_len);
-			} else {
-				recv_len = recv (conn->sock, buff, len, 0);
-			}
-			/* TBD: Error Process */
-		}
-		if (infds[0].revents & POLLIN) {
-			if (conn->ai) {
-				recv_len = recvfrom (
-						conn->sock, buff, len, 0, (struct sockaddr*) &sas, &sas_len);
-			} else {
-				recv_len = recv (conn->sock, buff, len, 0);
-			}
-		}
-	}
-
-	return (recv_len);
+	return cef_client_read_core(fhdl, buff, len, 1);
 }
 
 /*--------------------------------------------------------------------------------------
@@ -972,7 +991,7 @@ cef_client_payload_get_with_info (
 	}
 
 	res = cef_frame_message_parse (
-				&buff[i], pkt_len, hdr_len, &poh, &pm, CefC_PT_OBJECT);
+				&buff[i], (pkt_len-hdr_len), hdr_len, &poh, &pm, CefC_PT_OBJECT);
 	if (res < 0) {
 		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
 		memcpy (&buff[0], &work_buff[0], new_len);
@@ -1081,7 +1100,7 @@ cef_client_request_get_with_info (
 	new_len = buff_len - pkt_len;
 
 	res = cef_frame_message_parse (
-				&buff[i], pkt_len, hdr_len, &poh, &pm, CefC_PT_INTEREST);
+				&buff[i], (pkt_len-hdr_len), hdr_len, &poh, &pm, CefC_PT_INTEREST);
 	if (res < 0) {
 		memcpy (&work_buff[0], &buff[buff_len-new_len], new_len);
 		memcpy (&buff[0], &work_buff[0], new_len);

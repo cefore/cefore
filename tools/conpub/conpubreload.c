@@ -38,6 +38,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -50,7 +51,8 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
-
+#define	USAGE			print_usage(CefFp_Usage)
+#define	printerr(...)	fprintf(stderr,"[conpubreload] ERROR: " __VA_ARGS__)
 
 
 /****************************************************************************************
@@ -78,6 +80,7 @@ main (
 ----------------------------------------------------------------------------------------*/
 static void
 output_result (
+	FILE *ofp,
 	unsigned char* frame,
 	int frame_size
 );
@@ -86,7 +89,7 @@ output_result (
 ----------------------------------------------------------------------------------------*/
 static void
 print_usage (
-	void
+	FILE *ofp
 );
 
 
@@ -128,13 +131,13 @@ main (
 
 		if (strcmp (work_arg, "-h") == 0) {
 			if (host_f) {
-				fprintf (stderr, "conpubreload: [ERROR] host is duplicated.");
-				print_usage ();
+				printerr("host is duplicated.");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "conpubreload: [ERROR] host is not specified.");
-				print_usage ();
+				printerr("host is not specified.");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -143,13 +146,13 @@ main (
 			i++;
 		} else if (strcmp (work_arg, "-p") == 0) {
 			if (port_f) {
-				fprintf (stderr, "conpubreload: [ERROR] port is duplicated.");
-				print_usage ();
+				printerr("port is duplicated.");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "conpubreload: [ERROR] port is not specified.");
-				print_usage ();
+				printerr("port is not specified.");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -161,8 +164,8 @@ main (
 			work_arg = argv[i];
 
 			if (work_arg[0] == '-') {
-				fprintf (stderr, "conpubreload: [ERROR] unknown option is specified.");
-				print_usage ();
+				printerr("unknown option is specified.");
+				USAGE;
 				return (-1);
 			}
 		}
@@ -177,15 +180,15 @@ main (
 	if (host_f == 0) {
 		strcpy (dst, "127.0.0.1");
 	}
-	fprintf (stderr, "\nconpubreload: Connect to %s:%s\n", dst, port_str);
+	printf ("\nconpubreload: Connect to %s:%s\n", dst, port_str);
 	tcp_sock = cef_csmgr_connect_tcp_to_csmgr (dst, port_str);
 
 	if (tcp_sock < 1) {
-		fprintf (stderr, "conpubreload: [ERROR] connect to conpubd\n");
+		printerr("connect to conpubd\n");
 		return (0);
 	}
 	cef_frame_init ();
-	
+
 	/* Create Upload Request message	*/
 	/* set header	*/
 	buff[CefC_O_Fix_Ver]  = CefC_Version;
@@ -196,11 +199,11 @@ main (
 	/* set Length	*/
 	value16 = htons (index);
 	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
-	
+
 	/* send message	*/
 	res = cef_csmgr_send_msg (tcp_sock, buff, index);
 	if (res < 0) {
-		fprintf (stderr, "conpubreload: [ERROR] Send message\n");
+		printerr("Send message\n");
 		close (tcp_sock);
 		return (-1);
 	}
@@ -213,12 +216,12 @@ main (
 	res = poll (fds, 1, 1000);
 	if (res < 0) {
 		/* poll error	*/
-		fprintf (stderr, "conpubreload: [ERROR] poll error (%s)\n", strerror (errno));
+		printerr("poll error (%s)\n", strerror (errno));
 		close (tcp_sock);
 		return (-1);
 	} else 	if (res == 0) {
 		/* timeout	*/
-		fprintf (stderr, "conpubreload: [ERROR] timeout\n");
+		printerr("timeout\n");
 		close (tcp_sock);
 		return (-1);
 	}
@@ -226,11 +229,11 @@ main (
 	if (fds[0].revents & (POLLERR | POLLNVAL | POLLHUP)) {
 		/* events error.	*/
 		if (fds[0].revents & POLLERR) {
-			fprintf (stderr, "conpubreload: [ERROR] Poll event is POLLERR\n");
+			printerr("Poll event is POLLERR\n");
 		} else if (fds[0].revents & POLLNVAL) {
-			fprintf (stderr, "conpubreload: [ERROR] Poll event is POLLNVAL\n");
+			printerr("Poll event is POLLNVAL\n");
 		} else {
-			fprintf (stderr, "conpubreload: [ERROR] Poll event is POLLHUP\n");
+			printerr("Poll event is POLLHUP\n");
 		}
 		close (tcp_sock);
 		return (-1);
@@ -239,26 +242,26 @@ main (
 	len = recv (fds[0].fd, buff, CefC_Csmgr_Stat_Mtu, 0);
 	if (len > 0) {
 		cef_csmgr_buffer_init ();
-		
+
 		/* receive message	*/
 		len = csmgr_frame_get (buff, len, frame, &frame_size, &type);
 		if (frame_size > 0) {
 			if (type != CefC_Csmgr_Msg_Type_CnpbRload) {
-				fprintf (stderr, "conpubreload: [ERROR] Response type is not conpubreload\n");
+				printerr("Response type is not conpubreload\n");
 				close (tcp_sock);
 				cef_csmgr_buffer_destroy ();
 				return (-1);
 			}
-			output_result (frame, frame_size);
+			output_result (stdout, frame, frame_size);
 		} else {
-			fprintf (stderr, "conpubreload: [ERROR] Response message is Invalid\n");
+			printerr("Response message is Invalid\n");
 			cef_csmgr_buffer_destroy ();
 			close (tcp_sock);
 			return (-1);
 		}
 	} else {
 		/* closed socket	*/
-		fprintf (stderr, "conpubreload: [ERROR] Receive message error (%s)\n", strerror (errno));
+		printerr("Receive message error (%s)\n", strerror (errno));
 		cef_csmgr_buffer_destroy ();
 		close (tcp_sock);
 		return (-1);
@@ -273,12 +276,13 @@ main (
 ----------------------------------------------------------------------------------------*/
 static void
 output_result (
+	FILE *ofp,
 	unsigned char* frame,
 	int frame_size
 ) {
 
-	fprintf (stderr, "\nconpubreload: %s\n\n", frame);
-	
+	fprintf (ofp, "\nconpubreload: %s\n\n", frame);
+
 	return;
 }
 /*--------------------------------------------------------------------------------------
@@ -286,10 +290,10 @@ output_result (
 ----------------------------------------------------------------------------------------*/
 static void
 print_usage (
-	void
+	FILE *ofp
 ) {
-	fprintf (stderr,
-		"\nUsage: conpubreload\n\n"
+	fprintf (ofp,
+		"\n\nUsage: conpubreload\n\n"
 		"  conpubreload [-h host] [-p port]\n\n"
 		"  host   Specify the host identifier (e.g., IP address) on which csmgrd \n"
 		"         is running. The default value is localhost (i.e., 127.0.0.1).\n"

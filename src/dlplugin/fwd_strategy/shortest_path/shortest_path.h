@@ -43,8 +43,8 @@
 #include <cefore/cef_frame.h>
 #include <cefore/cef_log.h>
 #include <cefore/cef_pit.h>
+#include <cefore/cef_mpool.h>
 #include <cefore/cef_plugin.h>
-
 
 /****************************************************************************************
  Macros

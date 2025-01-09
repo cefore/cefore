@@ -28,13 +28,11 @@
 #
 
 # load sub directry
-SUBDIRS=cefgetstream cefputstream cefgetfile cefputfile cefgetchunk cefgetfile_sec cefputfile_sec cefgetcontent
-
-SUBDIRS+=ccninfo
+SUBDIRS=cefgetstream cefputstream cefgetfile cefputfile cefgetchunk ccninfo
 
 # check csmgr
 if CSMGR_ENABLE
-SUBDIRS+=csmgr cefput_verify
+SUBDIRS+=csmgr
 endif # CSMGR_ENABLE
 
 # check conpub

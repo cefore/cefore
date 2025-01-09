@@ -30,5 +30,5 @@
 # specify the include file
 CONPUBD_HEADER=conpubd_plugin.h
 
-includedir=@includedir@/conpubd
+includedir=$(CEFORE_DIR_PATH)include/conpubd
 include_HEADERS=$(CONPUBD_HEADER)

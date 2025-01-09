@@ -41,6 +41,7 @@
 #include <signal.h>
 #include <limits.h>
 #include <sys/time.h>
+#include <stdarg.h>
 
 #include <cefore/cef_define.h>
 #include <cefore/cef_frame.h>
@@ -52,6 +53,8 @@
  Macros
  ****************************************************************************************/
 
+#define USAGE					print_usage(CefFp_Usage)
+#define printerr(...)			fprintf(stderr,"[cefgetchunk] ERROR: " __VA_ARGS__)
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
@@ -74,7 +77,7 @@ sigcatch (
 );
 static void
 print_usage (
-	void
+	FILE* ofp
 );
 
 /****************************************************************************************
@@ -111,8 +114,7 @@ int main (
 	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));	
 	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	
-	fprintf (stderr, "[cefgetchunk] Start\n");
-	fprintf (stderr, "[cefgetchunk] Parsing parameters ... ");
+	printf ("[cefgetchunk] Start\n");
 	
 	/* Inits logging 		*/
 	cef_log_init ("cefgetchunk", 1);
@@ -127,13 +129,13 @@ int main (
 		
 		if (strcmp (work_arg, "-c") == 0) {
 			if (chunk_num_f) {
-				fprintf (stderr, "ERROR: [-c] is duplicated.\n");
-				print_usage ();
+				printerr("[-c] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-c] has no parameter.\n");
-				print_usage ();
+				printerr("[-c] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -141,23 +143,23 @@ int main (
 			chunk_num_f++;
 			i++;
 		} else if (strcmp (work_arg, "-h") == 0) {
-			print_usage ();
+			USAGE;
 			exit (1);
 		} else if (strcmp (work_arg, "-d") == 0) {
 			if (dir_path_f) {
-				fprintf (stderr, "ERROR: [-d] is duplicated.\n");
-				print_usage ();
+				printerr("[-d] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-d] has no parameter.\n");
-				print_usage ();
+				printerr("[-d] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			//202108
 			if (strlen(argv[i + 1]) > PATH_MAX) {
-				fprintf (stderr, "ERROR: [-d] parameter is too long.\n");
-				print_usage ();
+				printerr("[-d] parameter is too long.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -166,13 +168,13 @@ int main (
 			i++;
 		} else if (strcmp (work_arg, "-p") == 0) {
 			if (port_num_f) {
-				fprintf (stderr, "ERROR: [-p] is duplicated.\n");
-				print_usage ();
+				printerr("[-p] is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "ERROR: [-p] has no parameter.\n");
-				print_usage ();
+				printerr("[-p] has no parameter.\n");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -184,21 +186,21 @@ int main (
 			work_arg = argv[i];
 			
 			if (work_arg[0] == '-') {
-				fprintf (stderr, "ERROR: unknown option is specified.\n");
-				print_usage ();
+				printerr("unknown option is specified.\n");
+				USAGE;
 				return (-1);
 			}
 			
 			if (uri_f) {
-				fprintf (stderr, "ERROR: uri is duplicated.\n");
-				print_usage ();
+				printerr("uri is duplicated.\n");
+				USAGE;
 				return (-1);
 			}
 			res = strlen (work_arg);
 			
 			if (res >= 1204) {
-				fprintf (stderr, "ERROR: uri is too long.\n");
-				print_usage ();
+				printerr("uri is too long.\n");
+				USAGE;
 				return (-1);
 			}
 			strcpy (uri, work_arg);
@@ -208,17 +210,17 @@ int main (
 	
 	/* Checks errors 			*/
 	if (uri_f == 0) {
-		fprintf (stderr, "ERROR: uri is not specified.\n");
-		print_usage ();
+		printerr("uri is not specified.\n");
+		USAGE;
 		exit (1);
 	}
 	if (chunk_num_f == 0) {
-		fprintf (stderr, 
-			"ERROR: [-c] is not specified.\n");
-		print_usage ();
+		printerr( 
+			"[-c] is not specified.\n");
+		USAGE;
 		exit (1);
 	}
-	fprintf (stderr, "OK\n");
+	printf ("[cefgetchunk] Parsing parameters ... OK\n");
 	cef_log_init2 (conf_path, 1 /* for CEFNETD */);
 #ifdef CefC_Debug
 	cef_dbg_init ("cefgetchunk", conf_path, 1);
@@ -227,26 +229,24 @@ int main (
 	cef_frame_init ();
 	res = cef_client_init (port_num, conf_path);
 	if (res < 0) {
-		fprintf (stderr, "ERROR: Failed to init the client package.\n");
+		printerr("Failed to init the client package.\n");
 		exit (1);
 	}
-	fprintf (stderr, "[cefgetchunk] Init Cefore Client package ... OK\n");
-	fprintf (stderr, "[cefgetchunk] Conversion from URI into Name ... ");
+	printf ("[cefgetchunk] Init Cefore Client package ... OK\n");
 	res = cef_frame_conversion_uri_to_name (uri, params.name);
 	if (res < 0) {
-		fprintf (stderr, "ERROR: Invalid URI is specified.\n");
-		print_usage ();
+		printerr("Invalid URI is specified.\n");
+		USAGE;
 		exit (1);
 	}
 	params.name_len = res;
-	fprintf (stderr, "OK\n");
-	fprintf (stderr, "[cefgetchunk] Connect to cefnetd ... ");
+	printf ("[cefgetchunk] Conversion from URI into Name ... OK\n");
 	fhdl = cef_client_connect ();
 	if (fhdl < 1) {
-		fprintf (stderr, "ERROR: cefnetd is not running.\n");
+		printerr("cefnetd is not running.\n");
 		exit (1);
 	}
-	fprintf (stderr, "OK\n");
+	printf ("[cefgetchunk] Connect to cefnetd ... OK\n");
 	buff = (unsigned char*) malloc (sizeof (unsigned char) * CefC_AppBuff_Size);
 	memset (&app_frame, 0, sizeof (struct cef_app_frame));
 	
@@ -265,7 +265,7 @@ int main (
 	
 	app_running_f = 1;
 	cef_client_interest_input (fhdl, &opt, &params);
-	fprintf (stderr, "[cefgetchunk] Send an Interest\n");
+	printf ("[cefgetchunk] Send an Interest\n");
 	
 	while (app_running_f) {
 		if (SIG_ERR == signal (SIGINT, sigcatch)) {
@@ -291,22 +291,19 @@ int main (
 
 					/* InterestReturn */
 					if ( (uint8_t)app_frame.type == CefC_PT_INTRETURN ) {
-						fprintf (stdout, "[cefgetfile] Incomplete\n");
-										fprintf (stdout, 
-											"[cefgetfile] "
-											"Received Interest Return(Type:%02x)\n", app_frame.returncode);
+						printf ("[cefgetfile] Incomplete\n");
+						printf ("[cefgetfile] "
+								"Received Interest Return(Type:%02x)\n", app_frame.returncode);
 						app_running_f = 0;
 						goto IR_RCV;				
 					}
 
 					if (app_frame.chunk_num == params.chunk_num) {
-						fprintf (stderr, "[cefgetchunk] Get a requested Cob #%u\n", 
-							app_frame.chunk_num);
+						printf ("[cefgetchunk] Get a requested Cob #%u\n",app_frame.chunk_num); 
 						fwrite (app_frame.payload, 
 							sizeof (unsigned char), app_frame.payload_len, stdout);
 					} else {
-						fprintf (stderr, 
-							"[cefgetchunk] Get a Cob #u that you did not request.\n");
+						printf ("[cefgetchunk] Get a Cob #u that you did not request.\n");
 					}
 					time_out_f 		= 0;
 					app_running_f 	= 0;
@@ -325,7 +322,7 @@ IR_RCV:;
 	}
 	
 	if (time_out_f) {
-		fprintf (stderr, "[cefgetchunk] Timeout.\n");
+		printf ("[cefgetchunk] Timeout.\n");
 	}
 	cef_client_close (fhdl);
 	
@@ -334,14 +331,14 @@ IR_RCV:;
 
 static void
 print_usage (
-	void
+	FILE* ofp
 ) {
-	fprintf (stderr, "\nUsage: cefgetchunk\n\n");
-	fprintf (stderr, "  cefgetchunk uri -c chunk_num [-d config_file_dir] [-p port_num]\n\n");
-	fprintf (stderr, "  uri              Specify the URI.\n");
-	fprintf (stderr, "  chunk_num        Specify the chunk number.\n");
-	fprintf (stderr, "  config_file_dir  Configure file directory\n");
-	fprintf (stderr, "  port_num         Port Number\n\n");
+	fprintf (ofp, "\nUsage: cefgetchunk\n\n");
+	fprintf (ofp, "  cefgetchunk uri -c chunk_num [-d config_file_dir] [-p port_num]\n\n");
+	fprintf (ofp, "  uri              Specify the URI.\n");
+	fprintf (ofp, "  chunk_num        Specify the chunk number.\n");
+	fprintf (ofp, "  config_file_dir  Configure file directory\n");
+	fprintf (ofp, "  port_num         Port Number\n\n");
 }
 
 static void
@@ -349,7 +346,7 @@ sigcatch (
 	int sig
 ) {
 	if (sig == SIGINT) {
-		fprintf (stderr, "[cefgetchunk] Catch the signal\n");
+		printf ("[cefgetchunk] Catch the signal\n");
 		app_running_f = 0;
 	}
 }

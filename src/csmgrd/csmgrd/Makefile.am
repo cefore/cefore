@@ -48,28 +48,29 @@ bin_PROGRAMS=$(CSMGRD_BIN_PROGRAM)
 
 # set csmgrd option
 csmgrd_LDFLAGS = $(AM_LDFLAGS)
-csmgrd_LDADD = -lcefore
+csmgrd_LDADD = -lcsmgrd_plugin -lcsmgr -lcefore
 
 if OPENSSL_STATIC
 csmgrd_LDADD+=-l:libssl.a -l:libcrypto.a
 else  #OPENSSL_STATIC
 csmgrd_LDADD+=-lssl -lcrypto
 endif #OPENSSL_STATIC
-csmgrd_LDADD+=-ldl -lcsmgrd_plugin -lpthread
+csmgrd_LDADD+=-ldl -lpthread
 
 csmgrd_CFLAGS = $(CSMGRD_CFLAGS) -Wall -O2 -fPIC
 csmgrd_SOURCES = csmgrd.c csmgrd.h
 
 # set csmgrctrl option
 csmgrctrl_LDFLAGS = $(AM_LDFLAGS)
-csmgrctrl_LDADD = -lcefore
+csmgrctrl_LDADD = -lcsmgrd_plugin -lcsmgr -lcefore
 
 if OPENSSL_STATIC
 csmgrctrl_LDADD+=-l:libssl.a -l:libcrypto.a
 else  #OPENSSL_STATIC
 csmgrctrl_LDADD+=-lssl -lcrypto
 endif #OPENSSL_STATIC
-csmgrctrl_LDADD+=-ldl -lcsmgrd_plugin -lpthread
+csmgrctrl_LDADD+=-ldl -lpthread
+
 
 csmgrctrl_CFLAGS = $(CSMGRD_CFLAGS) -Wall -O2 -fPIC
 csmgrctrl_SOURCES = csmgrctrl.c

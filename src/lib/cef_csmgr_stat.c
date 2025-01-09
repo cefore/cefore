@@ -45,8 +45,14 @@ static time_t BTIME=0;
  ****************************************************************************************/
 
 #include <openssl/md5.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
+#include <openssl/sha.h>
+#include <openssl/decoder.h>
+#include <openssl/core_dispatch.h>
 
 #include <cefore/cef_csmgr_stat.h>
+#include <cefore/cef_valid.h>	/* for OpenSSL 3.x */
 
 /****************************************************************************************
  Macros
@@ -56,7 +62,7 @@ static time_t BTIME=0;
 #define ANA_DEAD_LOCK //@@@@@@@@@@
 #ifdef ANA_DEAD_LOCK //@@@@@+++++ ANA DEAD LOCK
 static int xpthread_mutex_lock (const char* pname, int pline, pthread_mutex_t *mutex)
-{	
+{
 	struct timespec to;
 	int err;
 	to.tv_sec = time(NULL) + 600;
@@ -77,7 +83,7 @@ static int xpthread_mutex_lock (const char* pname, int pline, pthread_mutex_t *m
  ****************************************************************************************/
 #if 0
 typedef struct {
-	
+
 	uint64_t 			capacity;
 	uint32_t			cached_con_num;
 	uint64_t			cached_cob_num;
@@ -95,31 +101,46 @@ static pthread_mutex_t 		csmgr_stat_mutex;
  Static Function Declaration
  ****************************************************************************************/
 
-static CsmgrT_Stat* 
+static CsmgrT_Stat*
 csmgr_stat_content_lookup (
-	CsmgrT_Stat_Table* tbl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
+	CsmgrT_Stat_Table* tbl,
+	const unsigned char* name,
+	uint16_t name_len,
 	int* create_f
 );
-static CsmgrT_Stat* 
+static CsmgrT_Stat*
 csmgr_stat_content_search (
-	CsmgrT_Stat_Table* tbl, 
-	const unsigned char* name, 
+	CsmgrT_Stat_Table* tbl,
+	const unsigned char* name,
 	uint16_t name_len
 );
-static CsmgrT_Stat* 
+static CsmgrT_Stat*
 csmgr_stat_content_salvage (
-	CsmgrT_Stat_Table* tbl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
+	CsmgrT_Stat_Table* tbl,
+	const unsigned char* name,
+	uint16_t name_len,
 	int first_f,
 	int* start_index
 );
 static uint32_t
 csmgr_stat_hash_number_create (
-	const unsigned char* key, 
+	const unsigned char* key,
 	uint16_t klen
+);
+static void
+csmgr_stat_decoder_from_data(
+	EVP_PKEY **pkey,
+	const unsigned char *pubkey,
+	size_t pubkey_len
+);
+static int
+csmgr_verify_sig_of_buff(
+	const unsigned char *pubkey,
+	size_t pubkey_len,
+	const unsigned char *buff,
+	size_t buff_len,
+	const unsigned char *sig,
+	size_t sig_len
 );
 
 /****************************************************************************************
@@ -129,9 +150,9 @@ static int				stat_index_mngr[CsmgrT_Stat_Max];
 /*--------------------------------------------------------------------------------------
 	Creates the Csmgr Stat Handle
 ----------------------------------------------------------------------------------------*/
-CsmgrT_Stat_Handle 
+CsmgrT_Stat_Handle
 csmgr_stat_handle_create (
-	void 
+	void
 ) {
 	CsmgrT_Stat_Table* tbl;
 
@@ -140,12 +161,12 @@ csmgr_stat_handle_create (
 		return (CsmgrC_Invalid);
 	}
 	memset (tbl, 0, sizeof (CsmgrT_Stat_Table));
-	
+
 	tbl->rcds = (CsmgrT_Stat**) malloc (sizeof (CsmgrT_Stat*) * CsmgrT_Stat_Max);
 	memset (tbl->rcds, 0, sizeof (CsmgrT_Stat*) * CsmgrT_Stat_Max);
-	
+
 	memset (stat_index_mngr, 0, sizeof (int)*CsmgrT_Stat_Max);
-	
+
 	/* Init csmgr_stat_mutex for recursive */
     pthread_mutexattr_t attr ;
 	if (pthread_mutexattr_init (&attr) < 0) {
@@ -165,7 +186,7 @@ csmgr_stat_handle_create (
 /*--------------------------------------------------------------------------------------
 	Destroy the Csmgr Stat Handle
 ----------------------------------------------------------------------------------------*/
-void 
+void
 csmgr_stat_handle_destroy (
 	CsmgrT_Stat_Handle hdl
 ) {
@@ -195,91 +216,94 @@ csmgr_stat_handle_destroy (
 /*--------------------------------------------------------------------------------------
 	Check if content information exists
 ----------------------------------------------------------------------------------------*/
-CsmgrT_Stat* 
+CsmgrT_Stat*
 csmgr_stat_content_info_is_exist (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
 	uint16_t name_len,
 	CsmgrT_DB_COB_MAP**	cob_map
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd = NULL;
-	
+
 	if (!tbl) {
 		return (NULL);
 	}
 	pthread_mutex_lock (&tbl->stat_mutex);
-	
+
 	rcd = csmgr_stat_content_search (tbl, name, name_len);
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	return (rcd);
 }
 /*--------------------------------------------------------------------------------------
 	Access the content information
 ----------------------------------------------------------------------------------------*/
-CsmgrT_Stat* 
+CsmgrT_Stat*
 csmgr_stat_content_info_access (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
-	uint16_t name_len
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	uint16_t module_name
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd = NULL;
 	uint64_t nowt;
 	struct timeval tv;
-	
+
 	if (!tbl) {
 		return (NULL);
 	}
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 
 	rcd = csmgr_stat_content_search (tbl, name, name_len);
-	
+
 	if (rcd) {
-		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)) {
+		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)
+			|| ((module_name == CsmgrT_IM_CSMGRD)
+				&& (is_check_pending_timer_status (rcd->ucinc_stat) && (nowt > rcd->pending_timer)))) {
 			rcd->expire_f = 1;
 		}
 	}
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	return (rcd);
 }
 /*--------------------------------------------------------------------------------------
 	Confirm existence of the content information
 ----------------------------------------------------------------------------------------*/
-CsmgrT_Stat* 
+CsmgrT_Stat*
 csmgr_stat_content_is_exist (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
 	uint16_t name_len
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd = NULL;
-	
+
 	if (!tbl) {
 		return (NULL);
 	}
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
-	
+
 	rcd = csmgr_stat_content_search (tbl, name, name_len);
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
-	
+
 	return (rcd);
 }
 
 /*--------------------------------------------------------------------------------------
 	Obtain the content information
 ----------------------------------------------------------------------------------------*/
-CsmgrT_Stat* 
+CsmgrT_Stat*
 csmgr_stat_content_info_get (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
 	uint16_t name_len
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
@@ -290,17 +314,18 @@ csmgr_stat_content_info_get (
 	uint64_t mask;
 	uint64_t nowt;
 	struct timeval tv;
-	
+
 	if (!tbl) {
 		return (NULL);
 	}
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	if (rcd) {
-		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)) {
+		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)
+			|| (is_check_pending_timer_status (rcd->ucinc_stat) && (nowt > rcd->pending_timer))) {
 			rcd->expire_f = 1;
 			pthread_mutex_unlock (&tbl->stat_mutex);
 			return (NULL);
@@ -335,24 +360,24 @@ csmgr_stat_content_info_get (
 		rcd->min_seq = min_seq;
 		rcd->max_seq = max_seq;
 	}
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	return (rcd);
 }
 /*--------------------------------------------------------------------------------------
 	Obtain the content information
 ----------------------------------------------------------------------------------------*/
-int 
+int
 csmgr_stat_content_info_gets (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
-	int partial_match_f, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	int partial_match_f,
 	CsmgrT_Stat* ret[]
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd = NULL;
-	
+
 	uint32_t min_seq = 0;
 	uint32_t max_seq = 0 /*@@@= CsmgrT_Stat_Seq_Max @@@*/;
 	uint32_t i, n;
@@ -361,28 +386,29 @@ csmgr_stat_content_info_gets (
 	int num = 0;
 	uint64_t nowt;
 	struct timeval tv;
-	
+
 	if (!tbl) {
 		return (0);
 	}
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	if (!partial_match_f) {
 		if (!name_len) {
 			pthread_mutex_unlock (&tbl->stat_mutex);
 			return (0);
 		}
-		
+
 		rcd = csmgr_stat_content_search (tbl, name, name_len);
-		
+
 		if (!rcd) {
 			pthread_mutex_unlock (&tbl->stat_mutex);
 			return (0);
 		}
-		
-		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)) {
+
+		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)
+			|| (is_check_pending_timer_status (rcd->ucinc_stat) && (nowt > rcd->pending_timer))) {
 			rcd->expire_f = 1;
 			pthread_mutex_unlock (&tbl->stat_mutex);
 			return (0);
@@ -415,9 +441,9 @@ csmgr_stat_content_info_gets (
 		}
 		rcd->min_seq = min_seq;
 		rcd->max_seq = max_seq;
-		
+
 		ret[0] = rcd;
-		
+
 		pthread_mutex_unlock (&tbl->stat_mutex);
 		return (1);
 	}
@@ -427,16 +453,17 @@ csmgr_stat_content_info_gets (
 		if (first_f == 1) {
 			first_f = 0;
 		}
-		
+
 		if (!rcd) {
 			break;
 		}
-		
-		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)) {
+
+		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)
+			|| (is_check_pending_timer_status (rcd->ucinc_stat) && (nowt > rcd->pending_timer))) {
 			rcd->expire_f = 1;
 			continue;
 		}
-		
+
 		for (i = 0 ; i < rcd->map_max ; i++) {
 			if (rcd->cob_map[i]) {
 				mask = 0x0000000000000001;
@@ -465,35 +492,38 @@ csmgr_stat_content_info_gets (
 		}
 		rcd->min_seq = min_seq;
 		rcd->max_seq = max_seq;
-		
+
 		ret[num] = rcd;
 		num++;
-		
+
 	} while (rcd);
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	return (num);
 }
 /*--------------------------------------------------------------------------------------
 	Obtain the content information
 ----------------------------------------------------------------------------------------*/
-int 
+int
 csmgr_stat_content_info_gets_for_RM (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
-	CsmgrT_Stat* ret[]
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	uint64_t* cob_info
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd = NULL;
-	
+
 	int index = 0;
 	int num = 0;
-	
-	if (!tbl) {
+
+
+	if (!cob_info || !tbl) {
 		return (0);
 	}
-	
+
+	(*cob_info) = 0;
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	int first_f = 1;
 	do {
@@ -501,48 +531,52 @@ csmgr_stat_content_info_gets_for_RM (
 		if (first_f == 1) {
 			first_f = 0;
 		}
-		
+
 		if (!rcd) {
 			break;
 		}
-		
+
 		if (rcd->cob_num == 0) {
 			continue;
 		}
-		
-		ret[num] = rcd;
+
+		(*cob_info) += (rcd->name_len * 2 + rcd->cob_size + 255) * rcd->cob_num;
+
 		num++;
-		
+
 	} while (rcd);
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	return (num);
 }
 /*--------------------------------------------------------------------------------------
 	Obtain the expred lifetime content information
 ----------------------------------------------------------------------------------------*/
-CsmgrT_Stat* 
+CsmgrT_Stat*
 csmgr_stat_expired_content_info_get (
-	CsmgrT_Stat_Handle hdl, 
-	int* index
+	CsmgrT_Stat_Handle hdl,
+	int* index,
+	uint16_t module_name
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	uint64_t nowt;
 	struct timeval tv;
 	int i;
-	
+
 	if (!tbl) {
 		return (0);
 	}
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	for (i = *index ; i < CsmgrT_Stat_Max ; i++) {
 		CsmgrT_Stat* cp;
 		cp = tbl->rcds[i];
 		while (cp != NULL) {
-			if (cp->expiry != 0 && nowt > cp->expiry) {
+			if ((cp->expiry != 0 && nowt > cp->expiry)
+				|| ((module_name == CsmgrT_IM_CSMGRD)
+					&& (is_check_pending_timer_status (cp->ucinc_stat) && (nowt > cp->pending_timer)))) {
 				if (cp->next == NULL) {
 					*index += 1;
 				}
@@ -552,23 +586,23 @@ csmgr_stat_expired_content_info_get (
 			}
 			cp = cp->next;
 		}
-	}	
+	}
 	pthread_mutex_unlock (&tbl->stat_mutex);
-	
+
 	return (NULL);
 }
 /*--------------------------------------------------------------------------------------
 	Update cached Cob status
 ----------------------------------------------------------------------------------------*/
-void 
+void
 csmgr_stat_cob_update (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
-	uint32_t seq, 
-	uint32_t cob_size, 
-	uint64_t expiry, 
-	uint64_t cached_time, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	uint32_t seq,
+	uint32_t cob_size,
+	uint64_t expiry,
+	uint64_t cached_time,
 	struct in_addr node
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
@@ -576,11 +610,11 @@ csmgr_stat_cob_update (
 	uint64_t mask = 1;
 	uint32_t x;
 	int create_f = 0;
-	
+
 	if (!tbl) {
 		return;
 	}
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	rcd = csmgr_stat_content_lookup (tbl, name, name_len, &create_f);
 	if (!rcd) {
@@ -629,7 +663,7 @@ csmgr_stat_cob_update (
 	if (rcd->last_chunk_num < seq) {
 		rcd->last_chunk_num = seq;
 	}
-	
+
 	if (rcd->cob_num < 1) {
 		rcd->node 			= node;
 		rcd->cached_time	= cached_time;
@@ -640,20 +674,20 @@ csmgr_stat_cob_update (
 	STIME=t;
 	}
 	BTIME=t;
-}	
+}
 #endif //CS_COB_NUM //@@@@@----- Show cached_cob_num status -----
 	}
 	if (rcd->expiry < expiry) {
 		rcd->expiry = expiry;
 	}
-	
+
 	if (!(rcd->cob_map[x] & mask)) {
 		rcd->cob_num++;
 		rcd->con_size += cob_size;
 		tbl->cached_cob_num++;
 	}
 	rcd->cob_map[x] |= mask;
-	
+
 #ifdef _CS_COB_NUM //@@@@@+++++ Show cached_cob_num status +++++
 {
 	if (tbl->cached_cob_num % 1000000 == 0) {
@@ -661,36 +695,36 @@ csmgr_stat_cob_update (
 		fprintf (stderr, "%ld	%ld	"FMTU64"\n", t-STIME, t-BTIME, tbl->cached_cob_num);
 		BTIME=t;
 	}
-}	
+}
 #endif //CS_COB_NUM //@@@@@----- Show cached_cob_num status -----
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	return;
 }
 /*--------------------------------------------------------------------------------------
 	Remove the specified cached Cob status
 ----------------------------------------------------------------------------------------*/
-int 
+int
 csmgr_stat_cob_remove (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
-	uint32_t seq, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	uint32_t seq,
 	uint32_t cob_size
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd;
 	uint64_t mask = 1;
 	uint32_t x;
-	
-	
+
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	if (!rcd) {
 		pthread_mutex_unlock (&tbl->stat_mutex);
 		return (-1);
 	}
-	
+
 	x = seq / 64;
 	mask <<= (seq % 64);
 
@@ -701,7 +735,7 @@ csmgr_stat_cob_remove (
 			cob_size = rcd->cob_size;
 		}
 	}
-		
+
 	if ((rcd->map_max-1) < x) {
 		pthread_mutex_unlock (&tbl->stat_mutex);
 		return (-1);
@@ -712,32 +746,32 @@ csmgr_stat_cob_remove (
 		tbl->cached_cob_num--;
 	}
 	rcd->cob_map[x] &= ~mask;
-	
+
 	if (rcd->cob_num == 0) {
-		csmgr_stat_content_info_delete (hdl, name, name_len);
+		csmgrd_stat_content_info_delete (hdl, name, name_len);
 		pthread_mutex_unlock (&tbl->stat_mutex);
 		return (0);
 	}
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	return (-1);
 }
 /*--------------------------------------------------------------------------------------
 	Update access count
 ----------------------------------------------------------------------------------------*/
-void 
+void
 csmgr_stat_access_count_update (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
 	uint16_t name_len
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd;
-	
+
 	if (!tbl) {
 		return;
 	}
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	if (!rcd) {
@@ -748,26 +782,26 @@ csmgr_stat_access_count_update (
 		rcd->access++;
 	}
 	pthread_mutex_unlock (&tbl->stat_mutex);
-	
+
 	return;
 }
 
 /*--------------------------------------------------------------------------------------
 	Update request count
 ----------------------------------------------------------------------------------------*/
-void 
+void
 csmgr_stat_request_count_update (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
 	uint16_t name_len
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd;
-	
+
 	if (!tbl) {
 		return;
 	}
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	if (!rcd) {
@@ -778,21 +812,21 @@ csmgr_stat_request_count_update (
 		rcd->req_count++;
 	}
 	pthread_mutex_unlock (&tbl->stat_mutex);
-	
+
 	return;
 }
 
 /*--------------------------------------------------------------------------------------
 	Update cache capacity
 ----------------------------------------------------------------------------------------*/
-void 
+void
 csmgr_stat_cache_capacity_update (
-	CsmgrT_Stat_Handle hdl, 
+	CsmgrT_Stat_Handle hdl,
 	uint64_t capacity
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	int i;
-	
+
 	if (!tbl) {
 		return;
 	}
@@ -818,23 +852,23 @@ csmgr_stat_cache_capacity_update (
 	tbl->capacity = capacity;
 	tbl->cached_cob_num = 0;
 	pthread_mutex_unlock (&tbl->stat_mutex);
-	
+
 	return;
 }
 
 /*--------------------------------------------------------------------------------------
 	Update content expire time
 ----------------------------------------------------------------------------------------*/
-void 
+void
 csmgr_stat_content_lifetime_update (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
 	uint64_t expiry
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd;
-	
+
 	if (!tbl) {
 		return;
 	}
@@ -846,39 +880,39 @@ csmgr_stat_content_lifetime_update (
 	}
 	rcd->expiry = expiry;
 	pthread_mutex_unlock (&tbl->stat_mutex);
-	
+
 	return;
 }
 /*--------------------------------------------------------------------------------------
 	Init the valiables of the specified content
 ----------------------------------------------------------------------------------------*/
-CsmgrT_Stat* 
+CsmgrT_Stat*
 csmgr_stat_content_info_init (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
 	uint16_t name_len,
 	CsmgrT_DB_COB_MAP**	cob_map
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd;
 	int create_f = 0;
-	
+
 	if (!tbl) {
 		return (NULL);
 	}
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	rcd = csmgr_stat_content_lookup (tbl, name, name_len, &create_f);
 	if (!rcd) {
 		pthread_mutex_unlock (&tbl->stat_mutex);
 		return (NULL);
 	}
-	
+
 	if (create_f) {
 		tbl->cached_con_num++;
 	}
 	pthread_mutex_unlock (&tbl->stat_mutex);
-	
+
 	return (rcd);
 }
 /*--------------------------------------------------------------------------------------
@@ -886,13 +920,13 @@ csmgr_stat_content_info_init (
 ----------------------------------------------------------------------------------------*/
 int
 csmgr_stat_content_info_version_init (
-	CsmgrT_Stat_Handle hdl, 
+	CsmgrT_Stat_Handle hdl,
 	CsmgrT_Stat* rcd,
-	unsigned char* version, 
+	unsigned char* version,
 	uint16_t ver_len
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	rcd->ver_len = ver_len;
 	if (ver_len) {
@@ -911,10 +945,10 @@ csmgr_stat_content_info_version_init (
 /*--------------------------------------------------------------------------------------
 	Deletes the content information
 ----------------------------------------------------------------------------------------*/
-void 
+void
 csmgr_stat_content_info_delete (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
 	uint16_t name_len
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
@@ -922,15 +956,15 @@ csmgr_stat_content_info_delete (
 	CsmgrT_Stat* wcp;
 	uint32_t hash;
 	uint32_t index;
-	
+
 	if (!tbl) {
 		return;
 	}
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	hash = csmgr_stat_hash_number_create (name, name_len);
 	index = hash % CsmgrT_Stat_Max;
-	
+
 	cp = tbl->rcds[index];
 	if (cp == NULL) {
 		pthread_mutex_unlock (&tbl->stat_mutex);
@@ -945,6 +979,9 @@ csmgr_stat_content_info_delete (
 			free (cp->cob_map);
 			if (cp->version != NULL && cp->ver_len > 0) {
 				free (cp->version);
+			}
+			if (cp->ssl_public_key_val != NULL && cp->ssl_public_key_len > 0) {
+				free (cp->ssl_public_key_val);
 			}
 			free (cp);
 			pthread_mutex_unlock (&tbl->stat_mutex);
@@ -962,6 +999,9 @@ csmgr_stat_content_info_delete (
 					if (wcp->version != NULL && wcp->ver_len > 0) {
 						free (wcp->version);
 					}
+					if (wcp->ssl_public_key_val != NULL && wcp->ssl_public_key_len > 0) {
+						free (wcp->ssl_public_key_val);
+					}
 					free (wcp);
 					pthread_mutex_unlock (&tbl->stat_mutex);
 					return;
@@ -976,12 +1016,12 @@ csmgr_stat_content_info_delete (
 /*--------------------------------------------------------------------------------------
 	Obtains the number of cached content
 ----------------------------------------------------------------------------------------*/
-uint32_t 
+uint32_t
 csmgr_stat_cached_con_num_get (
 	CsmgrT_Stat_Handle hdl
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
-	
+
 	if (!tbl) {
 		return (0);
 	}
@@ -990,12 +1030,12 @@ csmgr_stat_cached_con_num_get (
 /*--------------------------------------------------------------------------------------
 	Obtains the number of cached cob
 ----------------------------------------------------------------------------------------*/
-uint64_t 
+uint64_t
 csmgr_stat_cached_cob_num_get (
 	CsmgrT_Stat_Handle hdl
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
-	
+
 	if (!tbl) {
 		return (0);
 	}
@@ -1005,12 +1045,12 @@ csmgr_stat_cached_cob_num_get (
 /*--------------------------------------------------------------------------------------
 	Obtains the Cache capacity
 ----------------------------------------------------------------------------------------*/
-uint64_t 
+uint64_t
 csmgr_stat_cache_capacity_get (
 	CsmgrT_Stat_Handle hdl
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
-	
+
 	if (!tbl) {
 		return (0);
 	}
@@ -1019,26 +1059,26 @@ csmgr_stat_cache_capacity_get (
 /*--------------------------------------------------------------------------------------
 	Obtain the content information for publisher
 ----------------------------------------------------------------------------------------*/
-CsmgrT_Stat* 
+CsmgrT_Stat*
 csmgr_stat_content_info_get_for_pub (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
 	uint16_t name_len
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd = NULL;
 	uint64_t nowt;
 	struct timeval tv;
-	
+
 	if (!tbl) {
 		return (NULL);
 	}
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	rcd = csmgr_stat_content_search (tbl, name, name_len);
-	
+
 	if (rcd) {
 		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)) {
 			rcd->expire_f = 1;
@@ -1046,57 +1086,57 @@ csmgr_stat_content_info_get_for_pub (
 			return (NULL);
 		}
 	}
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	return (rcd);
 }
 /*--------------------------------------------------------------------------------------
 	Obtain the content information for publisher
 ----------------------------------------------------------------------------------------*/
-int 
+int
 csmgr_stat_content_info_gets_for_pub (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
-	int partial_match_f, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	int partial_match_f,
 	CsmgrT_Stat* ret[]
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd = NULL;
-	
+
 	int index = 0;
 	int num = 0;
 	uint64_t nowt;
 	struct timeval tv;
-	
+
 	if (!tbl) {
 		return (0);
 	}
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	if (!partial_match_f) {
 		if (!name_len) {
 			pthread_mutex_unlock (&tbl->stat_mutex);
 			return (0);
 		}
-		
+
 		rcd = csmgr_stat_content_search (tbl, name, name_len);
-		
+
 		if (!rcd) {
 			pthread_mutex_unlock (&tbl->stat_mutex);
 			return (0);
 		}
-		
+
 		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)) {
 			rcd->expire_f = 1;
 			pthread_mutex_unlock (&tbl->stat_mutex);
 			return (0);
 		}
-		
+
 		ret[0] = rcd;
-		
+
 		pthread_mutex_unlock (&tbl->stat_mutex);
 		return (1);
 	}
@@ -1106,36 +1146,36 @@ csmgr_stat_content_info_gets_for_pub (
 		if (first_f == 1) {
 			first_f = 0;
 		}
-		
+
 		if (!rcd) {
 			break;
 		}
-		
+
 		if ((rcd->cob_num == 0) || (nowt > rcd->expiry)) {
 			rcd->expire_f = 1;
 			continue;
 		}
-		
+
 		ret[num] = rcd;
 		num++;
-		
+
 	} while (rcd);
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	return (num);
 }
 /*--------------------------------------------------------------------------------------
 	Update cached Cob status for publisher
 ----------------------------------------------------------------------------------------*/
-void 
+void
 csmgr_stat_cob_update_for_pub (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
-	uint32_t seq, 
-	uint32_t cob_size, 
-	uint64_t expiry, 
-	uint64_t cached_time, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	uint32_t seq,
+	uint32_t cob_size,
+	uint64_t expiry,
+	uint64_t cached_time,
 	struct in_addr node
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
@@ -1151,7 +1191,7 @@ csmgr_stat_cob_update_for_pub (
 	if (create_f) {
 		tbl->cached_con_num++;
 	}
-	
+
 	if (rcd->cob_num < 1) {
 		rcd->cached_time 	= cached_time;
 		rcd->node 			= node;
@@ -1168,31 +1208,31 @@ csmgr_stat_cob_update_for_pub (
 	if (rcd->max_seq < seq) {
 	 	rcd->max_seq = seq;
 	}
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	return;
 }
 /*--------------------------------------------------------------------------------------
 	Remove the specified cached Cob status for publisher
 ----------------------------------------------------------------------------------------*/
-int 
+int
 csmgr_stat_cob_remove_for_pub (
-	CsmgrT_Stat_Handle hdl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
-	uint32_t seq, 
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	uint32_t seq,
 	uint32_t cob_size
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd;
-	
+
 	pthread_mutex_lock (&tbl->stat_mutex);
 	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	if (!rcd) {
 		pthread_mutex_unlock (&tbl->stat_mutex);
 		return (-1);
 	}
-	
+
 	rcd->cob_num--;
 	rcd->con_size -= cob_size;
 	tbl->cached_cob_num--;
@@ -1201,33 +1241,208 @@ csmgr_stat_cob_remove_for_pub (
 		pthread_mutex_unlock (&tbl->stat_mutex);
 		return (0);
 	}
-	
+
 	pthread_mutex_unlock (&tbl->stat_mutex);
 	return (-1);
+}
+
+/*--------------------------------------------------------------------------------------
+	Verification for UCINC
+----------------------------------------------------------------------------------------*/
+int
+csmgr_stat_cob_verify_ucinc (
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	unsigned char* signature_val,
+	uint16_t signature_len,
+	unsigned char* plain_val,
+	uint16_t plain_len
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	CsmgrT_Stat* rcd;
+	int create_f = 0;
+	int ret = -1;
+	unsigned char hash_buf[SHA384_DIGEST_LENGTH+1] ={0};
+
+	if (!tbl) {
+		cef_log_write (CefC_Log_Error, "tbl == NULL\n");
+		return ret;
+	}
+
+	pthread_mutex_lock (&tbl->stat_mutex);
+	rcd = csmgr_stat_content_lookup (tbl, name, name_len, &create_f);
+	if (!rcd) {
+		cef_log_write (CefC_Log_Error, "rcd == NULL\n");
+		goto END;
+	}
+
+	if ((signature_len) && (signature_val) && (plain_val) && (plain_len)
+		&& (rcd->ssl_public_key_len) && (rcd->ssl_public_key_val)) {
+		cef_valid_sha384(plain_val, plain_len, hash_buf);
+		ret = csmgr_verify_sig_of_buff( rcd->ssl_public_key_val, rcd->ssl_public_key_len,
+			hash_buf, SHA384_DIGEST_LENGTH, signature_val, signature_len);
+		if (ret == 1) {
+			/* Verification OK */
+			ret = 0;
+		} else {
+			/* Verification NG */
+			ret = -1;
+		}
+	}
+
+END:
+	pthread_mutex_unlock (&tbl->stat_mutex);
+	return (ret);
+}
+
+/*--------------------------------------------------------------------------------------
+	Update content UCINC Stat
+----------------------------------------------------------------------------------------*/
+void
+csmgr_stat_content_ucinc_stat_update (
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	uint16_t ucinc_stat
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	CsmgrT_Stat* rcd;
+
+	if (!tbl) {
+		return;
+	}
+	pthread_mutex_lock (&tbl->stat_mutex);
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
+	if (!rcd) {
+		pthread_mutex_unlock (&tbl->stat_mutex);
+		return;
+	}
+	rcd->ucinc_stat = ucinc_stat;
+	pthread_mutex_unlock (&tbl->stat_mutex);
+
+	return;
+}
+
+/*--------------------------------------------------------------------------------------
+	Update content Pending timer
+----------------------------------------------------------------------------------------*/
+void
+csmgr_stat_content_pending_timer_update (
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	uint64_t pending_timer
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	CsmgrT_Stat* rcd;
+
+	if (!tbl) {
+		return;
+	}
+	pthread_mutex_lock (&tbl->stat_mutex);
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
+	if (!rcd) {
+		pthread_mutex_unlock (&tbl->stat_mutex);
+		return;
+	}
+	rcd->pending_timer = pending_timer;
+	pthread_mutex_unlock (&tbl->stat_mutex);
+
+	return;
+}
+
+/*--------------------------------------------------------------------------------------
+	Update content SSL public key
+----------------------------------------------------------------------------------------*/
+void
+csmgr_stat_content_ssl_public_key_update (
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	unsigned char* ssl_public_key_val,
+	uint16_t ssl_public_key_len
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	CsmgrT_Stat* rcd;
+	unsigned char *ptr;
+
+	if (!tbl) {
+		return;
+	}
+
+	ptr = calloc (ssl_public_key_len+1, sizeof(unsigned char));
+	if (ptr == NULL) {
+		cef_log_write (CefC_Log_Error, "%s (calloc(%d))\n", __func__, ssl_public_key_len+1);
+		return;
+	}
+
+	pthread_mutex_lock (&tbl->stat_mutex);
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
+	if (!rcd) {
+		free (ptr);
+		pthread_mutex_unlock (&tbl->stat_mutex);
+		return;
+	}
+	memmove(ptr, ssl_public_key_val, ssl_public_key_len);
+	free(rcd->ssl_public_key_val);
+	rcd->ssl_public_key_val = ptr;
+	rcd->ssl_public_key_len = ssl_public_key_len;
+	pthread_mutex_unlock (&tbl->stat_mutex);
+
+	return;
+}
+
+/*--------------------------------------------------------------------------------------
+	Update content publisher expiry
+----------------------------------------------------------------------------------------*/
+void
+csmgr_stat_content_publisher_expiry_update (
+	CsmgrT_Stat_Handle hdl,
+	const unsigned char* name,
+	uint16_t name_len,
+	uint64_t publisher_expiry
+) {
+	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
+	CsmgrT_Stat* rcd;
+
+	if (!tbl) {
+		return;
+	}
+	pthread_mutex_lock (&tbl->stat_mutex);
+	rcd = csmgr_stat_content_search (tbl, name, name_len);
+	if (!rcd) {
+		pthread_mutex_unlock (&tbl->stat_mutex);
+		return;
+	}
+	rcd->publisher_expiry = publisher_expiry;
+	pthread_mutex_unlock (&tbl->stat_mutex);
+
+	return;
 }
 
 /****************************************************************************************
  ****************************************************************************************/
 
-static CsmgrT_Stat* 
+static CsmgrT_Stat*
 csmgr_stat_content_lookup (
-	CsmgrT_Stat_Table* tbl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
+	CsmgrT_Stat_Table* tbl,
+	const unsigned char* name,
+	uint16_t name_len,
 	int* create_f
 ) {
 	uint32_t hash;
 	uint32_t index;
 	CsmgrT_Stat* rcd;
-	
+
 	if (create_f) {
 		*create_f = 0;
 	}
-	
+
 	if ((!name_len) || (!tbl)) {
 		return (NULL);
 	}
-	
+
 	rcd = csmgr_stat_content_search (tbl, name, name_len);
 	if (rcd) {
 		return (rcd);
@@ -1299,21 +1514,21 @@ csmgr_stat_content_lookup (
 	return (NULL);
 }
 
-static CsmgrT_Stat* 
+static CsmgrT_Stat*
 csmgr_stat_content_search (
-	CsmgrT_Stat_Table* tbl, 
-	const unsigned char* name, 
+	CsmgrT_Stat_Table* tbl,
+	const unsigned char* name,
 	uint16_t name_len
 ) {
 	uint32_t hash;
 	uint32_t i;
 	CsmgrT_Stat* cp;
-	
+
 	if ((!name_len) || (!tbl)) {
 		return (NULL);
 	}
-	
-	
+
+
 	hash = csmgr_stat_hash_number_create (name, name_len);
 	i = hash % CsmgrT_Stat_Max;
 
@@ -1325,27 +1540,27 @@ csmgr_stat_content_search (
 		}
 		cp = cp->next;
 	}
-	
+
 	return (NULL);
 }
 
-static CsmgrT_Stat* 
+static CsmgrT_Stat*
 csmgr_stat_content_salvage (
-	CsmgrT_Stat_Table* tbl, 
-	const unsigned char* name, 
-	uint16_t name_len, 
+	CsmgrT_Stat_Table* tbl,
+	const unsigned char* name,
+	uint16_t name_len,
 	int first_f,
 	int* start_index
 ) {
 	int i;
 	static int procelnum;
 	int lnum;
-	
+
 	if ((!tbl) ||
 		((name_len > 0) && (!name))) {
 		return (NULL);
 	}
-	
+
 	if (first_f == 1) {
 		procelnum = -1;
 	}
@@ -1364,7 +1579,7 @@ csmgr_stat_content_salvage (
 					continue;
 				}
 			}
-			if ((name_len == 0) || 
+			if ((name_len == 0) ||
 				(memcmp (cp->name, name, name_len) == 0)) {
 				if (cp->next == NULL) {
 					procelnum = -1;
@@ -1385,15 +1600,94 @@ csmgr_stat_content_salvage (
 
 static uint32_t
 csmgr_stat_hash_number_create (
-	const unsigned char* key, 
+	const unsigned char* key,
 	uint16_t klen
 ) {
 	unsigned char out[MD5_DIGEST_LENGTH];
 	uint32_t hash;
-	
-	MD5 (key, klen, out);
+
+//	MD5 (key, klen, out);
+	cef_valid_md5( key, klen, out );	/* for Openssl 3.x */
 	memcpy (&hash, &out[12], sizeof (uint32_t));
-	
+
 	return (hash);
+}
+
+static void
+csmgr_stat_decoder_from_data(
+	EVP_PKEY **pkey,
+	const unsigned char *pubkey,
+	size_t pubkey_len
+) {
+	OSSL_DECODER_CTX *dctx;
+	const char *format = "DER";   /* NULL for any format */
+	const char *structure = NULL; /* any structure */
+	const char *keytype = "EC";   /* NULL for any key */
+
+	dctx = OSSL_DECODER_CTX_new_for_pkey(pkey, format, structure,
+	                                     keytype,
+	                                     OSSL_KEYMGMT_SELECT_PUBLIC_KEY,
+	                                     NULL, NULL);
+	if (dctx == NULL) {
+	    /* error: no suitable potential decoders found */
+		cef_log_write (CefC_Log_Error, "error: no suitable potential decoders found\n");
+		return;
+	}
+
+	if (!OSSL_DECODER_from_data(dctx, &pubkey, &pubkey_len)) {
+	    /* decoding failure */
+		cef_log_write (CefC_Log_Error, "OSSL_DECODER_from_data(), %s\n",
+			ERR_error_string(ERR_get_error(), NULL));
+	}
+	OSSL_DECODER_CTX_free(dctx);
+}
+
+static int
+csmgr_verify_sig_of_buff(
+	const unsigned char *pubkey,
+	size_t pubkey_len,
+	const unsigned char *buff,
+	size_t buff_len,
+	const unsigned char *sig,
+	size_t sig_len
+) {
+    EVP_PKEY *key = NULL;
+    EVP_PKEY_CTX *key_ctx = NULL;
+	int ret_verify = -2;
+	int ctx_ret;
+
+	csmgr_stat_decoder_from_data(&key, pubkey, pubkey_len);
+	if (key == NULL) {
+		cef_log_write (CefC_Log_Error, "key == NULL\n");
+		return -1;
+	}
+
+    key_ctx = EVP_PKEY_CTX_new(key,NULL);
+	if (key_ctx == NULL) {
+		cef_log_write (CefC_Log_Error, "key_ctx == NULL\n");
+		goto END;
+	}
+
+	if (EVP_PKEY_verify_init(key_ctx) != 1) {
+		cef_log_write (CefC_Log_Error, "EVP_PKEY_verify_init ERROR\n");
+		goto END;
+	}
+
+	ctx_ret = EVP_PKEY_CTX_set_signature_md(key_ctx, EVP_sha384());
+	if (ctx_ret != 1) {
+		cef_log_write (CefC_Log_Error, "EVP_PKEY_CTX_set_signature_md ERROR\n");
+		goto END;
+	}
+
+	ret_verify = EVP_PKEY_verify(key_ctx, &sig[0], sig_len, buff, buff_len);
+	cef_log_write (CefC_Log_Info, "EVP_PKEY_verify()=%d, ERR_error_string:%s\n",
+		ret_verify , ERR_error_string(ERR_get_error(), NULL));
+
+END:
+    EVP_PKEY_CTX_free(key_ctx);
+    EVP_PKEY_free(key);
+
+	cef_log_write (CefC_Log_Info, "verify ret = %d\n", ret_verify);
+    return ret_verify;
 }
 

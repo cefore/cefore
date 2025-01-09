@@ -37,9 +37,11 @@
 #CACHE_TYPE=filesystem
 
 #
-# Type of cache policy by cache plugin.
-# If None is specified, no caching policy is used.
-#
+# Type of cache replacement policy of cache plugin.
+#  None :           No cache replacement policy is applied.
+#  libcsmgrd_fifo : FIFO is used for cache replacement policy.
+#  libcsmgrd_lru :  LRU is used for cache replacement policy.
+#  libcsmgrd_lfu :  LFU is used for cache replacement policy.
 #CACHE_ALGORITHM=None
 
 #
@@ -70,25 +72,31 @@
 #CACHE_PATH=
 
 #
-# RCT (ms) if RCT is not specified in transmitted Cob. 
+# RCT (ms) if RCT is not specified in transmitted Cob.
 # This value must be higher than or equal to 1000 and lower than 3600,000.
 #
 #CACHE_DEFAULT_RCT=600000
 
 #
 # Node list csmgrd allows the connection.
-# Multiple host names or IP addresses can be listed with ",", such as; 
+# Multiple host names or IP addresses can be listed with ",", such as;
 # ALLOW_NODE=1.1.1.1,2.2.2.2,3.3.3.3
 # or
 # ALLOW_NODE=1.1.1.0/24
 # ALLOW_NODE=2.2.0.0/16
 # ALLOW_NODE=3.3.3.3
 #
-# It is also possible to allow any node to connect csmgrd, such as; 
-# ALLOW_NODE=ALL. 
+# It is also possible to allow any node to connect csmgrd, such as;
+# ALLOW_NODE=ALL.
 # However, because of security risks, this ALL configuration is NOT recommended.
 #
 #ALLOW_NODE=127.0.0.1
+
+#
+# Extended life time(ms) when receiving Interest(ACK)
+# This value must be greater than or equal to 100 and less than or equal to 2147483647.
+#
+#UCINC_EXTEND_LIFETIME=100
 
 # Debug log level
 #

@@ -39,6 +39,7 @@
 #include <openssl/md5.h>
 
 #include <cefore/cef_hash.h>
+#include <cefore/cef_valid.h>	/* for OpenSSL 3.x */
 
 /****************************************************************************************
  Macros
@@ -1497,7 +1498,8 @@ cef_hash_number_create (
 #endif
 	unsigned char out[MD5_DIGEST_LENGTH];
 	
-	MD5 (key, klen, out);
+//	MD5 (key, klen, out);
+	cef_valid_md5( key, klen, out );	/* for Openssl 3.x */
 	memcpy (&hash, &out[12], sizeof (uint32_t));
 
 	return (hash);
@@ -1511,7 +1513,8 @@ cef_lhash_number_create (
 	uint32_t hash;
 	unsigned char out[MD5_DIGEST_LENGTH];
 	
-	MD5 (key, klen, out);
+//	MD5 (key, klen, out);
+	cef_valid_md5( key, klen, out );	/* for Openssl 3.x */
 	memcpy (&hash, &out[12], sizeof (uint32_t));
 
 	return (hash);

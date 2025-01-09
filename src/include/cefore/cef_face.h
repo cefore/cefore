@@ -54,6 +54,7 @@
 #include <cefore/cef_hash.h>
 #include <cefore/cef_define.h>
 #include <cefore/cef_frame.h>
+#include <cefore/cef_rcvbuf.h>
 
 /****************************************************************************************
  Macros
@@ -61,7 +62,7 @@
 
 /********** Reserved Face-IDs 				**********/
 
-#define CefC_Face_Reserved			16
+#define CefC_Face_Reserved			32
 
 #define CefC_Faceid_Local			0
 #define CefC_Faceid_ListenUdpv4		4
@@ -74,6 +75,9 @@
 
 /********** FD for UNIX domain socket 		**********/
 #define CefC_Local_Sock_Name		".cefore.sock"
+
+/********** Invalid File Descriptor value	**********/
+#define CefC_Fd_Invalid				-1
 
 /********** Identifier to close Face 		**********/
 #define CefC_Face_Close				"/CLOSE:Face"
@@ -88,13 +92,15 @@
 typedef struct {
 	uint16_t		index;
 	int				fd;
-	unsigned char 	rcv_buff[CefC_Max_Length];
-	uint16_t 		len;
+	CefT_RcvBuf		rcvbuf;
 	uint8_t 		local_f;
 	uint8_t 		protocol;
 	uint32_t 		seqnum;
+#ifdef __APPLE__
 	int 			ifindex;
-	int				bw_stat_i;	//0.8.3
+#endif // __APPLE__
+	int				bw_stat_i;
+	long			tv_sec;
 } CefT_Face;
 
 /********** Neighbor Management				**********/
@@ -105,13 +111,16 @@ typedef struct {
 
 /****** Entry of Socket Table 			*****/
 typedef struct {
+	struct sockaddr_storage sa;
 	struct sockaddr* ai_addr;
 	socklen_t ai_addrlen;
 	int 	ai_family;
-	int 	sock;								/* File descriptor 						*/
+	int 	skfd;								/* File descriptor 						*/
 	int 	faceid;								/* Assigned Face-ID 					*/
 	int 	port_num;							/* Number of port 						*/
 	uint8_t protocol;
+	uint8_t listener;
+	uint8_t shared_fd;
 } CefT_Sock;
 
 /****************************************************************************************
@@ -237,11 +246,11 @@ cef_face_lookup_peer_faceid (
 	char* usr_id							//0.8.3
 );
 /*--------------------------------------------------------------------------------------
-	Looks up and creates the Face from the specified string of destination address
+	Looks up and creates the Face from the specified string of the destination address
 ----------------------------------------------------------------------------------------*/
 int											/* Face-ID									*/
 cef_face_lookup_faceid_from_addrstr (
-	const char* destination,				/* String of destination address 			*/
+	const char* destination, 				/* String of the destination address 		*/
 	const char* protocol					/* protoco (udp,tcp,local) 					*/
 );
 /*--------------------------------------------------------------------------------------
@@ -257,6 +266,12 @@ cef_face_search_faceid (
 ----------------------------------------------------------------------------------------*/
 void
 cef_face_frame_send_forced (
+	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
+	unsigned char* 	msg, 					/* a message to send						*/
+	size_t			msg_len					/* length of the message to send 			*/
+);
+int
+cef_face_frame_send (
 	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
 	unsigned char* 	msg, 					/* a message to send						*/
 	size_t			msg_len					/* length of the message to send 			*/
@@ -297,14 +312,13 @@ cef_face_down (
 	int faceid								/* Face-ID									*/
 );
 /*--------------------------------------------------------------------------------------
-	Sends a Content Object via the specified Face
+	Sends a frame if the specified is local Face
 ----------------------------------------------------------------------------------------*/
 int											/* Returns a negative value if it fails 	*/
-cef_face_object_send (
+cef_face_frame_send_iflocal (
 	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
 	unsigned char* 	msg, 					/* a message to send						*/
-	size_t			msg_len,				/* length of the message to send 			*/
-	CefT_CcnMsg_MsgBdy* pm 				/* Parsed message 							*/
+	size_t			msg_len					/* length of the message to send 			*/
 );
 /*--------------------------------------------------------------------------------------
 	Sends a Content Object if the specified is local Face
@@ -396,13 +410,27 @@ cef_face_bw_stat_i_set (
 	uint16_t faceid,
 	int		 index
 );
+
 /*--------------------------------------------------------------------------------------
-	Obtains the ip route get of the specified ip_addr
+	Creates the listening UDP socket for assinged IP address with the specified port
 ----------------------------------------------------------------------------------------*/
-int
-cef_face_ip_route_get (
-	char*	ip_addr_str,
-	char*	if_name
+extern int
+cef_face_create_listener_from_ipaddrs(
+    int faceid,     // assigend by cefnetd
+	int fd,
+	int af_type,
+	struct sockaddr_storage *saaddr,
+	char *ip_str,
+	int listen_port_num,
+	int face_proto
+);
+
+/*--------------------------------------------------------------------------------------
+	Get the time the face was last referenced.
+----------------------------------------------------------------------------------------*/
+long
+cef_face_get_reftime (
+	int	faceid
 );
 
 #endif // __CEF_FACE_HEADER__

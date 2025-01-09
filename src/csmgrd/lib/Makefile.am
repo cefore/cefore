@@ -46,3 +46,5 @@ lib_LTLIBRARIES = libcsmgr.la
 libcsmgr_la_CFLAGS = $(CSMGRD_LIB_CFLAGS)
 libcsmgr_la_LDFLAGS = -lcefore $(AM_LDFLAGS)
 libcsmgr_la_SOURCES = $(AM_CSOURCES)
+
+libdir=$(CEFORE_DIR_PATH)lib

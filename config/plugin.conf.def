@@ -13,18 +13,4 @@ log=no
 #
 [TRANSPORT]
 samptp=no
-#
-# Mobility Configurations
-#
-# set only one Mobility-plugin name to use
-# default is disable
-# scheme=disable/defmb/...
-[MOBILITY]
-scheme=disable
-#
-# NDN Plugin Configurations
-#
-[NDN]
-support=no
-stat=no
-port=6363
+

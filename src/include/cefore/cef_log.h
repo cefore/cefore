@@ -39,7 +39,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
-
+#include <stdarg.h>
 
 /****************************************************************************************
  Macros
@@ -56,11 +56,16 @@
 #define CefC_Dbg_Finest 	0x03			/* Debug Level : Finest 				*/
 
 #ifdef CefC_Debug
-#define CEF_DBG_OUT(...)     cef_dbg_out(CefC_Dbg_Fine,__func__,__LINE__,__VA_ARGS__)
-#define CEF_DBG_Fine(...)    cef_dbg_out(CefC_Dbg_Fine,__func__,__LINE__,__VA_ARGS__)
-#define CEF_DBG_Finer(...)   cef_dbg_out(CefC_Dbg_Finer,__func__,__LINE__,__VA_ARGS__)
-#define CEF_DBG_Finest(...)  cef_dbg_out(CefC_Dbg_Finest,__func__,__LINE__,__VA_ARGS__)
+#define cef_dbg_buff_write_name(...)  cef_dbg_buff_write_name_with_line(__func__,__LINE__,__VA_ARGS__)
+#define cef_dbg_write(...)  cef_dbg_write_with_line(__func__,__LINE__,__VA_ARGS__)
+#define CEF_DBG_OUT(...)    cef_dbg_write_with_line(__func__,__LINE__,CefC_Dbg_Fine,__VA_ARGS__)
+#define CEF_DBG_Fine(...)   cef_dbg_write_with_line(__func__,__LINE__,CefC_Dbg_Fine,__VA_ARGS__)
+#define CEF_DBG_Finer(...)  cef_dbg_write_with_line(__func__,__LINE__,CefC_Dbg_Finer,__VA_ARGS__)
+#define CEF_DBG_Finest(...) cef_dbg_write_with_line(__func__,__LINE__,CefC_Dbg_Finest,__VA_ARGS__)
+#define CEF_DBG_Finest(...) cef_dbg_write_with_line(__func__,__LINE__,CefC_Dbg_Finest,__VA_ARGS__)
 #else  // CefC_Debug
+#define cef_dbg_buff_write_name(...)
+#define cef_dbg_write(...)
 #define CEF_DBG_OUT(...)
 #define CEF_DBG_Fine(...)
 #define CEF_DBG_Finer(...)
@@ -89,7 +94,7 @@ cef_log_init (
 
 void
 cef_log_init2 (
-	const char* config_file_dir, 
+	const char* config_file_dir,
 	int cefnetd_f
 );
 
@@ -100,25 +105,33 @@ cef_log_write (
 	...												/* parameters						*/
 );
 
+extern void cef_log_fopen (int port_num);
+extern void cef_log_fprintf (const char *fmt, ...);
+extern void cef_log_flush (void);
+
 void
 cef_dbg_init (
 	const char* proc_name,
-	const char* config_file_dir, 
+	const char* config_file_dir,
 	int cefnetd_f
 );
 
 void
+#ifdef	cef_dbg_write
+cef_dbg_write_origin (
+#else	//	cef_dbg_write
 cef_dbg_write (
+#endif	//	cef_dbg_write
 	int level, 										/* debug level 						*/
 	const char* fmt, 								/* output format					*/
 	...												/* parameters						*/
 );
 
 void
-cef_dbg_out (
-	int level, 										/* debug level 						*/
+cef_dbg_write_with_line (
 	const char* func, 								/* function name					*/
 	const int   lineno, 							/* line number						*/
+	int level, 										/* debug level 						*/
 	const char* usrfmt,								/* output format					*/
 	...												/* parameters						*/
 );
@@ -131,7 +144,13 @@ cef_dbg_buff_write (
 );
 
 void
+#ifndef	cef_dbg_buff_write_name
 cef_dbg_buff_write_name (
+#else	//	cef_dbg_buff_write_name
+cef_dbg_buff_write_name_with_line (
+	const char* func, 								/* function name					*/
+	const int   lineno, 							/* line number						*/
+#endif	//	cef_dbg_buff_write_name
 	int level, 										/* debug level 						*/
 	const unsigned char* hdr_buff,
 	int hdr_len,

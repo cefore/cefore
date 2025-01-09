@@ -1,5 +1,3 @@
-- [Github repository](https://github.com/cefore/cefore/)
-
 # Cefore
 
 ## 1. Overview
@@ -8,7 +6,7 @@ Cefore is a software platform that enables ICN-based communications using CCNx-1
 
 ### 1.1. Environments
 
- Cefore (ver. 0.10.0) can run on top of Linux (Ubuntu) and macOS as the following table. At least 4 GB of memory (RAM) and 4 CPU cores are required to run csmgrd (Content Store manager daemon).
+ Cefore (ver. 0.9.0) can run on top of Linux (Ubuntu) and macOS as the following table. At least 4 GB of memory (RAM) and 4 CPU cores are required to run csmgrd (Content Store manager daemon).
 
 ### 1.2. Components
 
@@ -27,8 +25,6 @@ Cefore is a software platform that enables ICN-based communications using CCNx-1
 | cefgetfile   | tool    | Standard | Create file from content received by Cefore |
 | cefputstream | tool    | Standard | Convert the stream received from stdin to Named Cobs and transmit them to Cefore |
 | cefgetstream | tool    | Standard | Display the stream received by Cefore on stdout |
-| cefputfile_sec | tool  | develop  | Obtain security content from Cefore and output it as a file |
-| cefgetfile_sec | tool  | develop	| Convert a file to Named Cob with security features and input it into Cefore |
 | cefping      | tool    | cefping  | cefping                                     |
 | cefinfo      | tool    | cefinfo  | cefinfo (aka ccninfo)                       |
 | csmgrd       | daemon  | csmgr    | Content Store manager daemon                |
@@ -54,7 +50,7 @@ On macOS, OpenSSL is installed in a different location. If you are using homebre
 
 
 #### 2.1.1. Extract archive
-After downloading the Cefore archive, "cefore-x.x.x.zip", from [Cefore page](https://github.com/cefore/), extract it to any directory you want and go to the "cefore-x.x.x" directory. Replace "x.x.x" in the text with the version of the Cefore you want to install.
+After downloading the Cefore archive, "cefore-x.x.x.zip", from [Cefore home page](https://cefore.net), extract it to any directory you want and go to the "cefore-x.x.x" directory. Replace "x.x.x" in the text with the version of the Cefore you want to install.
 
 `unzip cefore-x.x.x.zip`  
 `cd cefore-x.x.x`
@@ -65,6 +61,7 @@ Run configure first. The following options are available for configure command:
 | Option           | Description                                      |
 |:---------------- |:------------------------------------------------ |
 | --enable-csmgr   | Enable Content Store managed by csmgr daemon.    |
+| --enable-cefinfo | Enable cefinfo tool (aka CCNinfo).               |
 | --enable-cache   | Enable cefnetd's local cache.                    |
 | --enable-debug   | Enable debug mode (Attn: show lots of messages). |
 
@@ -90,9 +87,9 @@ If you installed OpenSSL using homebrew on macOS, you need to run configure as f
 
 `./configure opssl_header_path=/usr/local/opt/openssl/include/ LDFLAGS='-L/usr/local/opt/openssl/lib' CPPFLAGS='-I/usr/local/opt/openssl/include'`
 
-To build csmgr daemon, you need to specify the option:  
+To build cefinfo (aka ccninfo) and csmgr daemon, you need to specify these options:  
 
-`./configure --enable-csmgr`
+`./configure --enable-cefinfo --enable-csmgr`
 
 After the configure command completes successfully, run "make" and "make install". "make install" must be run with sudo.
 
@@ -108,7 +105,7 @@ That's all for the installation!
 
 ## 3. License
 
-Copyright (c) 2016-2024, National Institute of Information and Communications Technology (NICT). All rights reserved.  
+Copyright (c) 2016-2022, National Institute of Information and Communications Technology (NICT). All rights reserved.  
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.

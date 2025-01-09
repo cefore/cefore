@@ -17,7 +17,7 @@
 #
 # Copyright (c) 2016-2023, National Institute of Information and Communications
 # Technology (NICT). All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
 # met:
@@ -29,7 +29,7 @@
 # 3. Neither the name of the NICT nor the names of its contributors may be
 #    used to endorse or promote products derived from this software
 #    without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE NICT AND CONTRIBUTORS "AS IS" AND ANY
 # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -41,7 +41,7 @@
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
-# 
+#
 
 VPATH = @srcdir@
 am__is_gnu_make = { \
@@ -118,9 +118,11 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 bin_PROGRAMS = cefgetchunk$(EXEEXT)
+@OPENSSL_STATIC_TRUE@am__append_1 = -l:libssl.a -l:libcrypto.a
+@OPENSSL_STATIC_FALSE@am__append_2 = -lssl -lcrypto
 
 # check debug build
-@CEFDBG_ENABLE_TRUE@am__append_1 = -DCefC_Debug
+@CEFDBG_ENABLE_TRUE@am__append_3 = -DCefC_Debug
 subdir = tools/cefgetchunk
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -138,7 +140,8 @@ am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am_cefgetchunk_OBJECTS = cefgetchunk-cefgetchunk.$(OBJEXT)
 cefgetchunk_OBJECTS = $(am_cefgetchunk_OBJECTS)
-cefgetchunk_DEPENDENCIES =
+am__DEPENDENCIES_1 =
+cefgetchunk_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
 am__v_lt_0 = --silent
@@ -273,6 +276,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+XCRUN = @XCRUN@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -328,8 +332,9 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AM_CPPFLAGS = -I$(top_srcdir)/src/include
 cefgetchunk_LDFLAGS = -L$(top_srcdir)/src/lib/
-cefgetchunk_LDADD = -lcefore -lssl -lcrypto
-cefgetchunk_CFLAGS = $(AM_CPPFLAGS) $(am__append_1)
+cefgetchunk_LDADD = -lcefore $(am__append_1) $(am__append_2) -lpthread \
+	-ldl
+cefgetchunk_CFLAGS = $(AM_CPPFLAGS) $(am__append_3)
 cefgetchunk_SOURCES = cefgetchunk.c
 DESTDIR = $(CEFORE_DIR_PATH)
 all: all-am

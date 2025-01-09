@@ -117,8 +117,11 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-@SAMPTP_ENABLE_TRUE@am__append_1 = -DCefC_Plugin_Samptp
-@SAMPTP_ENABLE_TRUE@am__append_2 = transport/samptp/cef_plugin_samptp.c
+
+# check debug build
+@CEFDBG_ENABLE_TRUE@am__append_1 = -DCefC_Debug -g
+@SAMPTP_ENABLE_TRUE@am__append_2 = -DCefC_Plugin_Samptp
+@SAMPTP_ENABLE_TRUE@am__append_3 = transport/samptp/cef_plugin_samptp.c
 subdir = src/plugin
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -309,6 +312,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+XCRUN = @XCRUN@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -342,7 +346,7 @@ htmldir = @htmldir@
 includedir = @includedir@
 infodir = @infodir@
 install_sh = @install_sh@
-libdir = @libdir@
+libdir = $(CEFORE_DIR_PATH)/lib
 libexecdir = @libexecdir@
 localedir = @localedir@
 localstatedir = @localstatedir@
@@ -362,9 +366,11 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-AM_CFLAGS = -I$(top_srcdir)/src/include -Wall -O2 -fPIC \
-	$(am__append_1)
-AM_CSOURCES = cef_plugin.c cef_tp_plugin.c $(am__append_2)
+
+#AM_CFLAGS=-I$(top_srcdir)/src/include -Wall -O2 -fPIC
+AM_CFLAGS = -I$(top_srcdir)/src/include -Wall -O2 $(am__append_1) \
+	$(am__append_2)
+AM_CSOURCES = cef_plugin.c cef_tp_plugin.c $(am__append_3)
 AUTOMAKE_OPTIONS = subdir-objects
 lib_LIBRARIES = libcef_plugin.a
 libcef_plugin_a_CFLAGS = $(AM_CFLAGS)

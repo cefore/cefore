@@ -74,6 +74,8 @@ typedef struct {
                                   				/* by algorithm							*/
 
 	uint64_t 		cache_capacity;				/* size of cache capacity 				*/
+
+	uint64_t 		extend_lifetime;			/* time to extend lifetime 				*/
 	
 } FscT_Config_Param;
 

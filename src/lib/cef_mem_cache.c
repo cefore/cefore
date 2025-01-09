@@ -58,6 +58,8 @@
 #include <cefore/cef_frame.h>
 #include <cefore/cef_hash.h>
 #include <cefore/cef_mem_cache.h>
+#include <cefore/cef_valid.h>
+#include <cefore/cef_pthread.h>
 
 /****************************************************************************************
  Macros
@@ -136,9 +138,9 @@ typedef struct CefT_Mem_Hash_Stat {
 } CefT_Mem_Hash_Stat;
 
 typedef struct CefT_Mem_Hash_Stat_Del {
-	unsigned char				cname[CefC_Max_Length];
+	unsigned char				cname[CefC_NAME_MAXLEN];
 	uint32_t 					cname_len;
-	unsigned char				cver[CefC_Max_Length];
+	unsigned char				cver[CefC_NAME_MAXLEN];
 	uint16_t					cver_len;
 	uint64_t					min_seq;
 	uint64_t					max_seq;
@@ -174,6 +176,11 @@ static int	cache_cs_expire_check_stat = 0;
 static CefT_Mem_Hash_Stat*		mstat_tbl[Cef_Mstat_HashTbl_Size];
 static int				delete_pipe_fd[2];
 static pthread_t		cef_mem_cache_delete_th;
+
+static unsigned char tl_t_chunk[] = {
+	(CefC_T_CHUNK >> 8), (CefC_T_CHUNK & 0xff),
+	0x00,	sizeof(uint32_t)
+};
 
 /****************************************************************************************
  Static Function Declaration
@@ -410,7 +417,7 @@ cef_mem_cache_init(
 		return (-1);
 	}
 
-	if (pthread_create(&cef_mem_cache_delete_th, NULL
+	if (cef_pthread_create(&cef_mem_cache_delete_th, NULL
 					, &cef_mem_cache_delete_thread, &(delete_pipe_fd[1])) == -1) {
 		cef_mem_cache_cs_destroy();
 		cef_mem_cache_mstat_destroy();
@@ -465,6 +472,8 @@ cef_mem_cache_put_thread (
 			hdr_len = chp->hdr_len;
 			payload_len = pkt_len - hdr_len;
 			header_len 	= hdr_len;
+			memset(&poh, 0x00, sizeof(poh));
+			memset(&pm, 0x00, sizeof(pm));
 			res = cef_frame_message_parse (
 							msg, payload_len, header_len, &poh, &pm, CefC_PT_OBJECT);
 
@@ -535,7 +544,7 @@ cef_mem_cache_clear_thread (
 		/* Checks content expire 			*/
 		if ((interval != 0) && (nowt > expire_check_time)) {
 #ifdef CefC_Debug
-			cef_dbg_write (CefC_Dbg_Fine, "Checks for expired contents.\n");
+			cef_dbg_write (CefC_Dbg_Finer, "Checks for expired contents.\n");
 #endif // CefC_Debug
 			if (cache_cs_expire_check_stat == 0){
 				cache_cs_expire_check_stat = 1;
@@ -702,7 +711,7 @@ cef_mem_cache_item_get (
 			pthread_mutex_unlock (&cef_mem_cs_mutex);
 			{
 				pthread_t th;
-				if (pthread_create (&th, NULL, cef_mem_cache_clear_demand_thread, NULL) == -1) {
+				if (cef_pthread_create (&th, NULL, cef_mem_cache_clear_demand_thread, NULL) == -1) {
 					cef_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 				}
 			}
@@ -1516,7 +1525,8 @@ cef_mem_hash_number_create (
 	uint32_t hash;
 	unsigned char out[MD5_DIGEST_LENGTH];
 
-	MD5 (key, klen, out);
+//	MD5 (key, klen, out);
+	cef_valid_md5( key, klen, out );	/* for Openssl 3.x */
 	memcpy (&hash, &out[12], sizeof (uint32_t));
 
 	return (hash);
@@ -1532,14 +1542,11 @@ cef_mem_cache_key_create_by_Mem_Entry (
 	uint32_t chunk_num;
 
 	memcpy (&key[0], entry->name, entry->name_len);
-	key[entry->name_len] 		= 0x00;
-	key[entry->name_len + 1] 	= 0x10;
-	key[entry->name_len + 2] 	= 0x00;
-	key[entry->name_len + 3] 	= 0x04;
+	memcpy (&key[entry->name_len], tl_t_chunk, sizeof(tl_t_chunk));
 	chunk_num = htonl (entry->chunk_num);
-	memcpy (&key[entry->name_len + 4], &chunk_num, sizeof (uint32_t));
+	memcpy (&key[entry->name_len + sizeof(tl_t_chunk)], &chunk_num, sizeof (chunk_num));
 
-	return (entry->name_len + 4 + sizeof (uint32_t));
+	return (entry->name_len + sizeof(tl_t_chunk) + sizeof (chunk_num));
 }
 
 /****************************************************************************************
@@ -1558,17 +1565,14 @@ cef_mem_cache_name_chunknum_concatenate (
 	uint32_t no_chunknum;
 
 	memcpy (&key[0], name, name_len);
-	key[name_len] 		= 0x00;
-	key[name_len + 1] 	= 0x10;
-	key[name_len + 2] 	= 0x00;
-	key[name_len + 3] 	= 0x04;
+	memcpy (&key[name_len], tl_t_chunk, sizeof(tl_t_chunk));
 	no_chunknum = htonl (chunknum);
-	memcpy (&key[name_len + 4], &no_chunknum, sizeof (uint32_t));
+	memcpy (&key[name_len + sizeof(tl_t_chunk)], &no_chunknum, sizeof (no_chunknum));
 
-	return (name_len + 4 + sizeof (uint32_t));
+	return (name_len + sizeof(tl_t_chunk) + sizeof (no_chunknum));
 }
 /*--------------------------------------------------------------------------------------
-	Creates tye key from name and chunk number
+	Creates type key from name and chunk number
 ----------------------------------------------------------------------------------------*/
 static int												/* length of the created key 			*/
 cef_mem_cache_key_create (
@@ -1578,14 +1582,11 @@ cef_mem_cache_key_create (
 	uint32_t chunk_num;
 
 	memcpy (&key[0], entry->name, entry->name_len);
-	key[entry->name_len] 		= 0x00;
-	key[entry->name_len + 1] 	= 0x10;
-	key[entry->name_len + 2] 	= 0x00;
-	key[entry->name_len + 3] 	= 0x04;
+	memcpy (&key[entry->name_len], tl_t_chunk, sizeof(tl_t_chunk));
 	chunk_num = htonl (entry->chunk_num);
-	memcpy (&key[entry->name_len + 4], &chunk_num, sizeof (uint32_t));
+	memcpy (&key[entry->name_len + sizeof(tl_t_chunk)], &chunk_num, sizeof (chunk_num));
 
-	return (entry->name_len + 4 + sizeof (uint32_t));
+	return (entry->name_len + sizeof(tl_t_chunk) + sizeof (chunk_num));
 }
 /*--------------------------------------------------------------------------------------
 	Initialize stat
@@ -1645,6 +1646,12 @@ cef_mem_cache_mstat_insert (
 	tmp_klen = cef_frame_get_name_without_chunkno (key, klen, &seqno);
 	if (tmp_klen == 0) {
 		/* This name does not include the chunk number */
+		return;
+	}
+	if ( CefC_NAME_MAXLEN < tmp_klen ){
+		cef_log_write (CefC_Log_Warn,
+			"NAME is too long (%d bytes), cefore does not support NAMEs longer than %u bytes.\n",
+				tmp_klen, CefC_NAME_MAXLEN);
 		return;
 	}
 
@@ -1714,6 +1721,12 @@ cef_mem_cache_mstat_remove (
 		/* This name does not include the chunk number */
 		return;
 	}
+	if ( CefC_NAME_MAXLEN < tmp_klen ){
+		cef_log_write (CefC_Log_Warn,
+			"NAME is too long (%d bytes), cefore does not support NAMEs longer than %u bytes.\n",
+				tmp_klen, CefC_NAME_MAXLEN);
+		return;
+	}
 
 	hash = cef_mem_hash_number_create (key, tmp_klen);
 	y = hash % Cef_Mstat_HashTbl_Size;
@@ -1765,6 +1778,12 @@ cef_mem_cache_mstat_get (
 	if (tmp_klen == 0) {
 		/* This name does not include the chunk number */
 		tmp_klen = klen;
+	}
+	if ( CefC_NAME_MAXLEN < tmp_klen ){
+		cef_log_write (CefC_Log_Warn,
+			"NAME is too long (%d bytes), cefore does not support NAMEs longer than %u bytes.\n",
+				tmp_klen, CefC_NAME_MAXLEN);
+		return (-1);
 	}
 
 	hash = cef_mem_hash_number_create (key, tmp_klen);
@@ -1830,6 +1849,12 @@ cef_mem_cache_mstat_get_out (
 		/* This name does not include the chunk number */
 		tmp_klen = klen;
 	}
+	if ( CefC_NAME_MAXLEN < tmp_klen ){
+		cef_log_write (CefC_Log_Warn,
+			"NAME is too long (%d bytes), cefore does not support NAMEs longer than %u bytes.\n",
+				tmp_klen, CefC_NAME_MAXLEN);
+		return (NULL);
+	}
 
 	hash = cef_mem_hash_number_create (key, tmp_klen);
 	y = hash % Cef_Mstat_HashTbl_Size;
@@ -1872,6 +1897,12 @@ cef_mem_cache_mstat_ac_cnt_inc (
 	uint32_t y;
 
 	tmp_klen = cef_frame_get_name_without_chunkno (key, klen, &seqno);
+	if ( CefC_NAME_MAXLEN < tmp_klen ){
+		cef_log_write (CefC_Log_Warn,
+			"NAME is too long (%d bytes), cefore does not support NAMEs longer than %u bytes.\n",
+				tmp_klen, CefC_NAME_MAXLEN);
+		return ;
+	}
 
 	hash = cef_mem_hash_number_create (key, tmp_klen);
 	y = hash % Cef_Mstat_HashTbl_Size;

@@ -82,3 +82,4 @@ libfilesystem_cache_la_LDFLAGS = -lcefore -lconpub $(AM_LDFLAGS)
 libconpubd_plugin_la_LIBADD += $(CONPUBD_PLUGIN_LIBADD) libfilesystem_cache.la
 
 
+libdir=$(CEFORE_DIR_PATH)lib

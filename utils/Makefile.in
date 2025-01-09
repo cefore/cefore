@@ -226,6 +226,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+XCRUN = @XCRUN@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -280,13 +281,17 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 EXTRA_DIST = cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh \
-	$(am__append_1) $(am__append_4)
+	get_memory_info.sh get_memory_info_macos.sh $(am__append_1) \
+	$(am__append_4)
 SCRIPTSRC = cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh \
-	$(am__append_2) $(am__append_5)
+	get_memory_info.sh get_memory_info_macos.sh $(am__append_2) \
+	$(am__append_5)
 CEF_UTIL = cefnetdstart cefnetdstop cefstatus cefroute $(am__append_3) \
 	$(am__append_6)
+CEF_MEM_UTIL = get_memory_info.sh
+CEF_MEM_UTIL_MACOS = get_memory_info_macos.sh
 SH = /bin/sh
-INSTALLDIR = $(CEFORE_DIR_PATH)/bin
+INSTALLDIR = $(CEFORE_DIR_PATH)bin
 all: all-am
 
 .SUFFIXES:
@@ -552,10 +557,16 @@ cefroute: cefroute.sh
 @CONPUB_ENABLE_TRUE@	fi
 
 install:
-	for i in $(CEF_UTIL) ""; do test -z "$$i" || install $$i $(INSTALLDIR); done
+	for i in $(CEF_UTIL) $(CEF_BWSTAT_UTIL) ""; do test -z "$$i" || install $$i $(INSTALLDIR); done
+	if [ $(build_vendor) = apple ]; then \
+		test -z $(CEF_MEM_UTIL_MACOS) || install $(CEF_MEM_UTIL_MACOS) $(INSTALLDIR)/$(CEF_MEM_UTIL); \
+	else \
+		test -z $(CEF_MEM_UTIL) || install $(CEF_MEM_UTIL) $(INSTALLDIR); \
+	fi
 
 uninstall:
-	for i in $(CEF_UTIL) ""; do test -z "$$i" || rm -f $(INSTALLDIR)/$$i; done
+	for i in $(CEF_UTIL) $(CEF_BWSTAT_UTIL) ""; do test -z "$$i" || rm -f $(INSTALLDIR)/$$i; done
+	test -z $(CEF_MEM_UTIL) || rm -f $(INSTALLDIR)/$(CEF_MEM_UTIL)
 
 clean:
 	rm -f $(CEF_UTIL) *.bak

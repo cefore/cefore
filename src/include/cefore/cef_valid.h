@@ -42,6 +42,9 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
+#define	CefC_ValidTypeStr_CRC32C "crc32c"
+#define	CefC_ValidTypeStr_RSA256 "rsa-sha256"
+// #define CRC32C_POLY 0x1EDC6F41    /* Forward polynomial of CRC. */
 
 /****************************************************************************************
  Structure Declarations
@@ -76,7 +79,7 @@ cef_valid_type_get (
 	const char* type
 );
 uint32_t
-cef_valid_crc32_calc (
+cef_valid_crc32c_calc (
 	const unsigned char* buf,
 	size_t len
 );
@@ -93,7 +96,7 @@ cef_valid_keyid_create (
 	unsigned char* keyid
 );
 int
-cef_valid_dosign (
+cef_valid_rsa_sha256_dosign (
 	const unsigned char* msg,
 	uint16_t msg_len,
 	const unsigned char* name,
@@ -119,7 +122,7 @@ cef_valid_get_pubkey_forccninfo (
 	unsigned char* key
 );
 int
-cef_valid_dosign_forccninfo (
+cef_valid_rsa_sha256_dosign_forccninfo (
 	const unsigned char* msg,
 	uint16_t msg_len,
 	unsigned char* sign,
@@ -140,6 +143,33 @@ cef_valid_remove_valdsegs_fr_msg_forccninfo (
 	int msg_len
 );
 
+/* for OpenSSL 3.x */
+unsigned char*
+cef_valid_sha256 (
+	const unsigned char *d,
+	size_t n,
+	unsigned char *md
+);
 
+unsigned char*
+cef_valid_sha384 (
+	const unsigned char *d,
+	size_t n,
+	unsigned char *md
+);
+
+unsigned char*
+cef_valid_md5 (
+	const unsigned char *d,
+	size_t n,
+	unsigned char *md
+);
+
+int
+cef_valid_get_keyid_from_specified_pubkey (
+	const char* key_path,	// path of publickey
+	unsigned char* buff,	// buffer to store the KeyID
+	int buff_len			// length of buffer
+);
 #endif // __CEF_VALID_HEADER__
 

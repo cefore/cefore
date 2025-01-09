@@ -37,19 +37,21 @@
  Include Files
  ****************************************************************************************/
 #include <stdint.h>
+#include <netdb.h>
 #include <sys/stat.h>
 
-#include <cefore/cef_plugin.h>
+#include <cefore/cef_mpool.h>
 #include <cefore/cef_rngque.h>
 #include <cefore/cef_hash.h>
 #include <cefore/cef_pit.h>
+#include <cefore/cef_rcvbuf.h>
 
 /****************************************************************************************
  Macros
  ****************************************************************************************/
 
 
-#define CefC_Cefnetd_Buff_Max			512000
+#define CefC_CsPipeBuffSize			0x10000
 
 /*------------------------------------------------------------------*/
 /* Cefore cache mode												*/
@@ -108,7 +110,6 @@
 #define CefC_Csmgr_Msg_Type_Echo		0x05		/* Type Echo						*/
 #define CefC_Csmgr_Msg_Type_Status		0x06		/* Type Get Status					*/
 #define CefC_Csmgr_Msg_Type_Ccninfo		0x08		/* Type Ccninfo message				*/
-// #define CefC_Csmgr_Msg_Type_Cefping		0x09		/* Type Cefping					*/
 #define CefC_Csmgr_Msg_Type_Bulk_Cob	0x0a		/* Type Content Object (Bulk)		*/
 #define CefC_Csmgr_Msg_Type_Kill		0x0b		/* Type Kill command				*/
 #define CefC_Csmgr_Msg_Type_RCap		0x0c		/* Type Retrieve cache capacity		*/
@@ -121,7 +122,8 @@
 #define CefC_Csmgr_Msg_Type_SCDL		0x13		/* Type Delete cache				*/
 #define CefC_Csmgr_Msg_Type_PreCcninfo	0x14		/* Type Prepare Ccninfo message		*/
 #define CefC_Csmgr_Msg_Type_ContInfo	0x15		/* Type Get Contents Information	*/
-#define CefC_Csmgr_Msg_Type_Num			0x16
+#define CefC_Csmgr_Msg_Type_SockID		0x16		/* Type Sending Socket Identifier	*/
+#define CefC_Csmgr_Msg_Type_Num			0x17
 //#define CefC_Csmgr_Msg_Type_Num			0x15
 
 #define CefC_Csmgr_Cob_Exist			0x00		/* Type Content is exist			*/
@@ -183,6 +185,7 @@ typedef enum {
 //#define CefC_CnpbStatus_Hash				0x0006
 #define CefC_CnpbStatus_Version				0x0006
 #define CefC_CnpbStatus_ValidAlg			0x0007
+#define CefC_CnpbStatus_Pending				0x0008
 
 /*------------------------------------------------------------------*/
 /* Macros for compare version										*/
@@ -230,8 +233,7 @@ typedef struct {
 	uint16_t 		tcp_port_num;
 	char 			peer_id_str[NI_MAXHOST];
 	int 			tcp_sock;
-	unsigned char	rcv_buff[CefC_Max_Length];
-	uint16_t 		rcv_len;
+	CefT_RcvBuf		rcvbuf;
 
 	/********** Local connection 	***********/
 	int 			local_sock;
@@ -239,10 +241,10 @@ typedef struct {
 	char 			local_sock_name[2048];
 
 	/********** local Cache Information ***********/
-	uint32_t		local_cache_capacity;			/* Cache Capacity						*/
-	uint32_t		local_cache_interval;			/* Expired check cycle (sec)			*/
-	int 			pipe_fd[2];						/* socket of cefnetd->Local cache		*/
-													/*  0: for cefnetd						*/
+	uint32_t		local_cache_capacity;			/* Cache Capacity					*/
+	uint32_t		local_cache_interval;			/* Expired check cycle (sec)		*/
+	int 			pipe_fd[2];						/* socket of cefnetd->Local cache	*/
+													/*  0: for cefnetd					*/
 													/*  1: for Local cache				*/
 	int				to_csmgrd_pipe_fd[2];
 
@@ -308,6 +310,9 @@ struct CefT_Csmgr_Status_Rep {
 	uint64_t 		req_count;
 	uint64_t 		freshness;
 	uint64_t 		elapsed_time;
+	uint64_t 		pending_time;
+	uint16_t 		ucinc_f;
+	uint16_t 		validation_result;
 	uint16_t 		name_len;
 	uint16_t 		ver_len;
 
@@ -393,7 +398,7 @@ int									/* The return value is negative if an error occurs	*/
 cef_csmgr_send_msg (
 	int fd,									/* socket fd								*/
 	unsigned char* msg,						/* send message								*/
-	uint16_t msg_len						/* message length							*/
+	int msg_len								/* message length							*/
 );
 /*--------------------------------------------------------------------------------------
 	Put Content Object to excache
@@ -532,69 +537,6 @@ cef_csmgr_buffer_destroy (
 	void
 );
 
-
-#ifdef CefC_Ccore
-/*--------------------------------------------------------------------------------------
-	Retrieve cache capacity
-----------------------------------------------------------------------------------------*/
-int									/* The return value is negative if an error occurs	*/
-cef_csmgr_capacity_retrieve (
-	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
-	uint64_t* cap							/* Capacity									*/
-);
-/*--------------------------------------------------------------------------------------
-	Update cache capacity
-----------------------------------------------------------------------------------------*/
-int									/* The return value is negative if an error occurs	*/
-cef_csmgr_capacity_update (
-	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
-	uint64_t cap							/* Capacity									*/
-);
-/*--------------------------------------------------------------------------------------
-	Retrieve content Lifetime
-----------------------------------------------------------------------------------------*/
-int									/* The return value is negative if an error occurs	*/
-cef_csmgr_con_lifetime_retrieve (
-	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
-	char* name,								/* Content name								*/
-	uint16_t name_len,						/* Name length								*/
-	uint64_t* lifetime						/* Lifetime									*/
-);
-/*--------------------------------------------------------------------------------------
-	Set content Lifetime
-----------------------------------------------------------------------------------------*/
-int									/* The return value is negative if an error occurs	*/
-cef_csmgr_con_lifetime_set (
-	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
-	char* name,								/* Content name								*/
-	uint16_t name_len,						/* Name length								*/
-	uint64_t lifetime						/* Lifetime									*/
-);
-/*--------------------------------------------------------------------------------------
-	Retrieve Cache Chunk
-----------------------------------------------------------------------------------------*/
-int
-cef_csmgr_con_chunk_retrieve (
-	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
-	char* name,								/* Content name								*/
-	uint16_t name_len,						/* Name length								*/
-	char* range,							/* Cache Range								*/
-	uint16_t range_len,						/* Range length								*/
-	char* info								/* cache information						*/
-);
-/*--------------------------------------------------------------------------------------
-	Delete Cache Chunk
-----------------------------------------------------------------------------------------*/
-int
-cef_csmgr_con_chunk_delete (
-	CefT_Cs_Stat* cs_stat,					/* Content Store status						*/
-	char* name,								/* Content name								*/
-	uint16_t name_len,						/* Name length								*/
-	char* range,							/* Cache Range								*/
-	uint16_t range_len						/* Range length								*/
-);
-#endif // CefC_Ccore
-
 void *
 cef_csmgr_send_to_csmgrd_thread (
 	void *p
@@ -622,6 +564,14 @@ cef_csmgr_cache_version_compare (
 	uint16_t vlen1,
 	unsigned char* ver2,
 	uint16_t vlen2
+);
+
+/*--------------------------------------------------------------------------------------
+	Connect csmgr local socket
+----------------------------------------------------------------------------------------*/
+int									/* The return value is negative if an error occurs	*/
+cef_csmgr_csmgr_connect_local (
+	CefT_Cs_Stat* cs_stat					/* Content Store Status						*/
 );
 
 #endif // __CEF_CSMGR_HEADER__

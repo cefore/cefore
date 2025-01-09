@@ -88,20 +88,20 @@ cef_plugin_samptp_init (
 ) {
 	CefT_List* lp 		= NULL;
 	char* value_str 	= NULL;
-	
+
 	/* Obtains the attributes 			*/
 	lp = cef_plugin_parameter_value_get ("SAMPTP", "stat");
-	
+
 	if (lp) {
 		value_str = (char*) cef_plugin_list_access (lp, 0);
-		
+
 		if (strcmp (value_str, "yes") == 0) {
 			m_stat_output_f = CefC_St_Enable;
 		}
 	}
-	
+
 	stat_table = (int*) arg_ptr;
-	
+
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -121,46 +121,46 @@ cef_plugin_samptp_cob (
 	uint16_t pay_len;
 	uint16_t pay_off;
 	int res;
-	
+
 	/* Updates statistics 		*/
 	m_stat_cob_rx++;
-	
+
 	/* Forwards the Object to app 			*/
 	for (i = 0 ; i < rx_elem->out_faceid_num ; i++) {
 		cef_frame_payload_parse (
 			rx_elem->msg, rx_elem->msg_len, &name_off, &name_len, &pay_off, &pay_len);
-		
-		res = cef_face_object_send_iflocal (
+
+		res = cef_face_frame_send_iflocal (
 			rx_elem->out_faceids[i], rx_elem->msg, rx_elem->msg_len);
-		
+
 		if (!res) {
 			faceids[idx] = rx_elem->out_faceids[i];
 			idx++;
 		}
 	}
-	
+
 	if (idx > 0) {
 		/* Creates the forward object 				*/
 		tx_elem = (CefT_Tx_Elem*) cef_mpool_alloc (tp->tx_que_mp);
 		tx_elem->type 		= CefC_Elem_Type_Object;
 		tx_elem->msg_len 	= rx_elem->msg_len;
 		tx_elem->faceid_num = idx;
-		
+
 		for (i = 0 ; i < idx ; i++) {
 			tx_elem->faceids[i] = faceids[i];
 		}
 		memcpy (tx_elem->msg, rx_elem->msg, rx_elem->msg_len);
-		
+
 		/* Pushes the forward object to tx buffer	*/
 		i = cef_rngque_push (tp->tx_que, tx_elem);
-		
+
 		if (i < 1) {
 			cef_mpool_free (tp->tx_que_mp, tx_elem);
 		}
 		/* Updates statistics 		*/
 		m_stat_cob_tx += idx;
 	}
-	
+
 	return (CefC_Pi_Object_NoSend);
 }
 
@@ -174,38 +174,38 @@ cef_plugin_samptp_interest (
 ) {
 	CefT_Tx_Elem* tx_elem;
 	int i;
-	
+
 	/* Updates statistics 		*/
 	m_stat_int_rx++;
-	
+
 	/* Creates the forward object 				*/
 	tx_elem = (CefT_Tx_Elem*) cef_mpool_alloc (tp->tx_que_mp);
 	tx_elem->type 		= CefC_Elem_Type_Interest;
 	tx_elem->msg_len 	= rx_elem->msg_len;
 	tx_elem->faceid_num = rx_elem->out_faceid_num;
-	
+
 	for (i = 0 ; i < rx_elem->out_faceid_num ; i++) {
 		tx_elem->faceids[i] = rx_elem->out_faceids[i];
 	}
 	memcpy (tx_elem->msg, rx_elem->msg, rx_elem->msg_len);
-	
+
 	/* Pushes the forward object to tx buffer	*/
 	i = cef_rngque_push (tp->tx_que, tx_elem);
-	
+
 	if (i < 1) {
 		cef_mpool_free (tp->tx_que_mp, tx_elem);
 	}
-	
+
 	/* Updates statistics 		*/
 	m_stat_int_tx += rx_elem->out_faceid_num;
-	
+
 	return (CefC_Pi_Interest_NoSend);
 }
 
 /*--------------------------------------------------------------------------------------
 	Callback for signal indicating that PIT changes
 ----------------------------------------------------------------------------------------*/
-void 
+void
 cef_plugin_samptp_delpit (
 	CefT_Plugin_Tp* 			tp, 				/* Transport Plugin Handle			*/
 	CefT_Rx_Elem_Sig_DelPit* 	info
@@ -217,7 +217,7 @@ cef_plugin_samptp_delpit (
 /*--------------------------------------------------------------------------------------
 	Callback for post process
 ----------------------------------------------------------------------------------------*/
-void 
+void
 cef_plugin_samptp_destroy (
 	CefT_Plugin_Tp* 	tp 							/* Transport Plugin Handle			*/
 ) {
@@ -229,7 +229,7 @@ cef_plugin_samptp_destroy (
 		fprintf (stderr, " Rx Cobs      : "FMTU64"\n", m_stat_cob_rx);
 		fprintf (stderr, " Tx Cobs      : "FMTU64"\n", m_stat_cob_tx);
 	}
-	
+
 	return;
 }
 

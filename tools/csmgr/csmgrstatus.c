@@ -38,6 +38,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -50,8 +51,8 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
-
-
+#define	USAGE			print_usage(CefFp_Usage)
+#define	printerr(...)	fprintf(stderr,"[csmgrstatus] ERROR: " __VA_ARGS__)
 
 /****************************************************************************************
  Structures Declaration
@@ -78,6 +79,7 @@ main (
 ----------------------------------------------------------------------------------------*/
 static void
 output_result (
+	FILE* ofp,
 	unsigned char* frame,
 	int frame_size,
 	int32_t stt_num
@@ -87,7 +89,7 @@ output_result (
 ----------------------------------------------------------------------------------------*/
 static void
 print_usage (
-	void
+	FILE* ofp
 );
 
 
@@ -106,7 +108,7 @@ main (
 	int name_len;
 	struct pollfd fds[1];
 	unsigned char *frame;
-	char uri[1024] = {0};
+	char uri[CefC_Max_Length] = {0};
 	char dst[64] = {0};
 	char port_str[32] = {0};
 	unsigned char tmp_name[512];
@@ -143,13 +145,13 @@ main (
 
 		if (strcmp (work_arg, "-h") == 0) {
 			if (host_f) {
-				fprintf (stderr, "csmgrstatus: [ERROR] host is duplicated.");
-				print_usage ();
+				printerr("host is duplicated.");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "csmgrstatus: [ERROR] host is not specified.");
-				print_usage ();
+				printerr("host is not specified.");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -158,13 +160,13 @@ main (
 			i++;
 		} else if (strcmp (work_arg, "-p") == 0) {
 			if (port_f) {
-				fprintf (stderr, "csmgrstatus: [ERROR] port is duplicated.");
-				print_usage ();
+				printerr("port is duplicated.");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "csmgrstatus: [ERROR] port is not specified.");
-				print_usage ();
+				printerr("port is not specified.");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
@@ -173,48 +175,48 @@ main (
 			i++;
 		} else if (strcmp (work_arg, "-c") == 0) {
 			if (clear_f) {
-				fprintf (stderr, "csmgrstatus: [ERROR] clear option is duplicated.");
-				print_usage ();
+				printerr("clear option is duplicated.");
+				USAGE;
 				return (-1);
 			}
 			clear_f++;
 			i++;
 		} else if (strcmp (work_arg, "-s") == 0) {
 			if (stt_f) {
-				fprintf (stderr, "csmgrstatus: [ERROR] Range option(s) is duplicated.");
-				print_usage ();
+				printerr("Range option(s) is duplicated.");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "csmgrstatus: [ERROR] Range option start is not specified.");
-				print_usage ();
+				printerr("Range option start is not specified.");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
 			stt_num = atoi(work_arg);
 			if (stt_num <= 0) {
-				fprintf (stderr, "csmgrstatus: [ERROR] Range option start less than or equal to 0.");
-				print_usage ();
+				printerr("Range option start less than or equal to 0.");
+				USAGE;
 				return (-1);
 			}
 			stt_f++;
 			i++;
 		} else if (strcmp (work_arg, "-n") == 0) {
 			if (num_f) {
-				fprintf (stderr, "csmgrstatus: [ERROR] Range option(n) is duplicated.");
-				print_usage ();
+				printerr("Range option(n) is duplicated.");
+				USAGE;
 				return (-1);
 			}
 			if (i + 1 == argc) {
-				fprintf (stderr, "csmgrstatus: [ERROR] Range option(n) is not specified.");
-				print_usage ();
+				printerr("Range option(n) is not specified.");
+				USAGE;
 				return (-1);
 			}
 			work_arg = argv[i + 1];
 			out_num = atoi(work_arg);
 			if (out_num <= 0) {
-				fprintf (stderr, "csmgrstatus: [ERROR] Range option num less than or equal to 0.");
-				print_usage ();
+				printerr("Range option num less than or equal to 0.");
+				USAGE;
 				return (-1);
 			}
 			num_f++;
@@ -224,21 +226,21 @@ main (
 			work_arg = argv[i];
 
 			if (work_arg[0] == '-') {
-				fprintf (stderr, "csmgrstatus: [ERROR] unknown option is specified.");
-				print_usage ();
+				printerr("unknown option is specified.");
+				USAGE;
 				return (-1);
 			}
 
 			if (uri_f) {
-				fprintf (stderr, "csmgrstatus: [ERROR] uri is duplicated.");
-				print_usage ();
+				printerr("uri is duplicated.");
+				USAGE;
 				return (-1);
 			}
 			res = strlen (work_arg);
 
 			if (res >= 1204) {
-				fprintf (stderr, "csmgrstatus: [ERROR] uri is too long.");
-				print_usage ();
+				printerr("uri is too long.");
+				USAGE;
 				return (-1);
 			}
 			strcpy (uri, work_arg);
@@ -256,20 +258,19 @@ main (
 	if (host_f == 0) {
 		strcpy (dst, "127.0.0.1");
 	}
-	fprintf (stderr, "\nConnect to %s:%s\n", dst, port_str);
 	tcp_sock = cef_csmgr_connect_tcp_to_csmgr (dst, port_str);
 
 	if (tcp_sock < 1) {
-		fprintf (stderr, "ERROR : connect to csmgrd\n");
+		printerr("Connection failed to %s:%s\n", dst, port_str);
 		return (0);
 	}
 	if (clear_f != 0 && uri_f == 0) {
-		fprintf (stderr, "csmgrstatus: [ERROR] uri to be cleared is not specified.");
-		print_usage ();
+		printerr("uri to be cleared is not specified.");
+		USAGE;
 		return (0);
 	}
 	cef_frame_init ();
-	
+
 /* =====================================================================
                           1                   2                   3
       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -306,14 +307,14 @@ main (
 		memcpy(buff + index, &out_num, sizeof(int32_t) );
 		index += sizeof(int32_t);
 	}
-	
+
 	/* set uri flag	*/
 	memcpy (buff + index, &uri_value, sizeof (uint8_t));
 	index += sizeof (uint8_t);
 	if (uri_value) {
 		name_len = cef_frame_conversion_uri_to_name (uri, tmp_name);
 		if (name_len < 0) {
-			fprintf (stderr, "ERROR : URI is Invalid (%s)\n", uri);
+			printerr("URI is Invalid (%s)\n", uri);
 			return (0);
 		}
 		if (name_len == 4) { /* uri is ccnx:/ */
@@ -322,20 +323,20 @@ main (
 	} else {
 		name_len = 0;
 	}
-	
+
 	if (name_len > 0) {
 		memcpy (buff + index, &tmp_name, name_len);
 		index += (uint16_t) name_len;
 	}
-	
+
 	/* set Length	*/
 	value16 = htons (index);
 	memcpy (buff + CefC_O_Length, &value16, CefC_S_Length);
-	
+
 	/* send message	*/
 	res = cef_csmgr_send_msg (tcp_sock, buff, index);
 	if (res < 0) {
-		fprintf (stderr, "ERROR : Send message\n");
+		printerr("Send message\n");
 		close (tcp_sock);
 		return (-1);
 	}
@@ -346,7 +347,7 @@ main (
 	msg_len = 0;
 	frame = calloc (1, CefC_Csmgr_Stat_Mtu);
 	if (frame == NULL) {
-		fprintf (stderr, "ERROR : Frame buffer allocation (alloc) error\n");
+		printerr("Frame buffer allocation (alloc) error\n");
 		close (tcp_sock);
 		cef_csmgr_buffer_destroy ();
 		return (-1);
@@ -358,23 +359,23 @@ RERECV:;
 	res = poll(fds, 1, 10000);
 	if (res < 0) {
 		/* poll error	*/
-		fprintf (stderr, "ERROR : poll error (%s)\n", strerror (errno));
+		printerr("poll error (%s)\n", strerror (errno));
 		close (tcp_sock);
 		cef_csmgr_buffer_destroy ();
 		free (frame);
 		return (-1);
 	} else 	if (res == 0) {
 		/* timeout	*/
-		fprintf (stderr, "ERROR : timeout\n");
+		printerr("timeout\n");
 		close (tcp_sock);
 		cef_csmgr_buffer_destroy ();
 		free (frame);
 		return (-1);
 	}
-	if (fds[0].revents & POLLIN) {	
+	if (fds[0].revents & POLLIN) {
 		rc = recv (tcp_sock, frame+rcvd_size , CefC_Csmgr_Stat_Mtu, 0);
 		if (rc < 0) {
-			fprintf (stderr, "ERROR : Receive message error (%s)\n", strerror (errno));
+			printerr("Receive message error (%s)\n", strerror (errno));
 			close (tcp_sock);
 			cef_csmgr_buffer_destroy ();
 			free (frame);
@@ -382,11 +383,11 @@ RERECV:;
 		}
 	} else {
 		if (fds[0].revents & POLLERR) {
-			fprintf (stderr, "ERROR : Poll event is POLLERR\n");
+			printerr("Poll event is POLLERR\n");
 		} else if (fds[0].revents & POLLNVAL) {
-			fprintf (stderr, "ERROR : Poll event is POLLNVAL\n");
+			printerr("Poll event is POLLNVAL\n");
 		} else {
-			fprintf (stderr, "ERROR : Poll event is POLLHUP\n");
+			printerr("Poll event is POLLHUP\n");
 		}
 		close (tcp_sock);
 		cef_csmgr_buffer_destroy ();
@@ -395,16 +396,16 @@ RERECV:;
 	}
 	rcvd_size += rc;
 	if (rcvd_size == rc) {
-		if ((rc < 6/* Ver(1)+Type(1)+Length(4) */) 
+		if ((rc < 6/* Ver(1)+Type(1)+Length(4) */)
 			|| (frame[CefC_O_Fix_Ver] != CefC_Version)
 			|| (frame[CefC_O_Fix_Type] != CefC_Csmgr_Msg_Type_Status) ){
-			fprintf (stderr, "ERROR : Response type is not status\n");
+			printerr("Response type is not status\n");
 			close (tcp_sock);
 			cef_csmgr_buffer_destroy ();
 			free (frame);
 			return (-1);
 		}
-			
+
 		memcpy (&msg_len, &frame[2], sizeof (uint32_t));
 		msg_len = ntohl (msg_len);
 		blocks = (msg_len) / CefC_Csmgr_Stat_Mtu;
@@ -414,7 +415,7 @@ RERECV:;
 		if (blocks > 1) {
 			void *new = realloc(frame, blocks * CefC_Csmgr_Stat_Mtu);
 			if (new == NULL) {
-				fprintf (stderr, "ERROR : Frame buffer allocation (realloc) error\n");
+				printerr("Frame buffer allocation (realloc) error\n");
 				close (tcp_sock);
 				cef_csmgr_buffer_destroy ();
 				free (frame);
@@ -433,7 +434,7 @@ RERECV:;
 		disp_stt = stt_num;
 	}
 
-	output_result (&frame[6/* Ver(1)+Type(1)+Length(4) */], frame_size-6/* Ver(1)+Type(1)+Length(4) */, disp_stt);
+	output_result (stdout, &frame[6/* Ver(1)+Type(1)+Length(4) */], frame_size-6/* Ver(1)+Type(1)+Length(4) */, disp_stt);
 	cef_csmgr_buffer_destroy ();
 	close (tcp_sock);
 	free (frame);
@@ -444,32 +445,33 @@ RERECV:;
 ----------------------------------------------------------------------------------------*/
 static void
 output_result (
+	FILE *ofp,
 	unsigned char* frame,
 	int frame_size,
 	int32_t	disp_stt
 ) {
 	struct CefT_Csmgr_Status_Hdr stat_hdr;
 	struct CefT_Csmgr_Status_Rep stat_rep;
-	unsigned char name[65535];
-	char get_uri[65535];
+	unsigned char name[CefC_Max_Length];
+	char get_uri[CefC_Max_Length];
 	uint32_t index = 0;
 	int con_no = disp_stt;
-	unsigned char version[65535];
-	
+	unsigned char version[CefC_Max_Length];
+
 	if (frame_size < sizeof (struct CefT_Csmgr_Status_Hdr)) {
-		fprintf (stderr, "Received the invalid response\n");
+		fprintf (ofp, "Received the invalid response\n");
 	}
 	memcpy (&stat_hdr, &frame[0], sizeof (struct CefT_Csmgr_Status_Hdr));
 	stat_hdr.node_num 	= ntohs (stat_hdr.node_num);
 	stat_hdr.con_num 	= ntohl (stat_hdr.con_num);
-	
-	fprintf (stderr, "*****   Connection Status Report   *****\n");
-	fprintf (stderr, "All Connection Num             : %d\n\n", stat_hdr.node_num);
-	
-	fprintf (stderr, "*****   Cache Status Report        *****\n");
-	fprintf (stderr, "Number of Cached Contents      : %d\n\n", stat_hdr.con_num);
+
+	fprintf (ofp, "*****   Connection Status Report   *****\n");
+	fprintf (ofp, "All Connection Num             : %d\n\n", stat_hdr.node_num);
+
+	fprintf (ofp, "*****   Cache Status Report        *****\n");
+	fprintf (ofp, "Number of Cached Contents      : %d\n\n", stat_hdr.con_num);
 	index += sizeof (struct CefT_Csmgr_Status_Hdr);
-	
+
 	while (index < frame_size) {
 		if (frame_size - index < sizeof (struct CefT_Csmgr_Status_Rep)) {
 			break;
@@ -480,10 +482,13 @@ output_result (
 		stat_rep.req_count 		= cef_client_ntohb (stat_rep.req_count);
 		stat_rep.freshness 		= cef_client_ntohb (stat_rep.freshness);
 		stat_rep.elapsed_time 	= cef_client_ntohb (stat_rep.elapsed_time);
+		stat_rep.pending_time 	= cef_client_ntohb (stat_rep.pending_time);
+		stat_rep.ucinc_f 		= ntohs (stat_rep.ucinc_f);
+		stat_rep.validation_result 	= ntohs (stat_rep.validation_result);
 		stat_rep.name_len 		= ntohs (stat_rep.name_len);
 		stat_rep.ver_len 		= ntohs (stat_rep.ver_len);
 		index += sizeof (struct CefT_Csmgr_Status_Rep);
-		
+
 		if (frame_size - index < stat_rep.name_len) {
 			break;
 		}
@@ -493,35 +498,42 @@ output_result (
 			memcpy (version, &frame[index], stat_rep.ver_len);
 			index += stat_rep.ver_len;
 		}
-		
+
 		if (stat_rep.name_len > 0) {
 			cef_frame_conversion_name_to_uri (name, stat_rep.name_len, get_uri);
-			fprintf (stderr, "[%d]\n", con_no);
-			fprintf (stderr, "  Content Name  : %s\n", get_uri);
+			fprintf (ofp, "[%d]\n", con_no);
+			fprintf (ofp, "  Content Name  : %s\n", get_uri);
 			if (stat_rep.ver_len) {
-				fprintf (stderr, "  Version       : ");
+				fprintf (ofp, "  Version       : ");
 				for (int i = 0; i < stat_rep.ver_len; i++) {
-					if (isprint (version[i])) fprintf (stderr, "%c", version[i]);
-					else fprintf (stderr, "%02x", version[i]);
+					if (isprint (version[i])) fprintf (ofp, "%c", version[i]);
+					else fprintf (ofp, "%02x", version[i]);
 				}
-				fprintf (stderr, "\n");
+				fprintf (ofp, "\n");
 			} else {
-				fprintf (stderr, "  Version       : None\n");
+				fprintf (ofp, "  Version       : None\n");
 			}
-			fprintf (stderr, "  Content Size  : %llu Bytes\n", (unsigned long long)stat_rep.con_size);
-			fprintf (stderr, "  Cache Hit     : %llu\n", (unsigned long long)stat_rep.access);
-			fprintf (stderr, "  Request Count : %llu\n", (unsigned long long)stat_rep.req_count);
+			fprintf (ofp, "  Content Size  : %llu Bytes\n", (unsigned long long)stat_rep.con_size);
+			fprintf (ofp, "  Cache Hit     : %llu\n", (unsigned long long)stat_rep.access);
+			fprintf (ofp, "  Request Count : %llu\n", (unsigned long long)stat_rep.req_count);
 			if (stat_rep.freshness) {
-				fprintf (stderr, "  Freshness     : %llu Sec\n", (unsigned long long)stat_rep.freshness);
+				fprintf (ofp, "  Freshness     : %llu Sec\n", (unsigned long long)stat_rep.freshness);
 			} else {
-				fprintf (stderr, "  Freshness     : Permanent\n");
+				fprintf (ofp, "  Freshness     : Permanent\n");
 			}
-			fprintf (stderr, "  Elapsed Time  : %llu Sec\n", (unsigned long long)stat_rep.elapsed_time);
-			fprintf (stderr, "\n");
+			fprintf (ofp, "  Elapsed Time  : %llu Sec\n", (unsigned long long)stat_rep.elapsed_time);
+			if (stat_rep.ucinc_f) {
+				if (stat_rep.validation_result) {
+					fprintf (ofp, "  CS Act.       : Active\n");
+				} else {
+					fprintf (ofp, "  CS Act.       : Pending (time left %llu ms)\n", (unsigned long long)stat_rep.pending_time);
+				}
+			}
+			fprintf (ofp, "\n");
 			con_no++;
 		}
 	}
-	
+
 	return;
 }
 /*--------------------------------------------------------------------------------------
@@ -529,10 +541,10 @@ output_result (
 ----------------------------------------------------------------------------------------*/
 static void
 print_usage (
-	void
+	FILE* ofp
 ) {
-	fprintf (stderr,
-		"\nUsage: csmgrstatus\n\n"
+	fprintf (ofp,
+		"\n\nUsage: csmgrstatus\n\n"
 		"  csmgrstatus [uri] [-h host] [-p port] [-c] [-s start] [-n num]\n\n"
 		"  uri    Name prefix of the content to output.\n"
 		"  host   Specify the host identifier (e.g., IP address) on which csmgrd \n"

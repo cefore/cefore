@@ -77,5 +77,6 @@ libfilesystem_cache_la_LDFLAGS = -lcefore -lcsmgr $(AM_LDFLAGS)
 libcsmgrd_plugin_la_LIBADD += $(CSMGRD_PLUGIN_LIBADD) libfilesystem_cache.la
 
 
-
 SUBDIRS = lib
+
+libdir=$(CEFORE_DIR_PATH)lib

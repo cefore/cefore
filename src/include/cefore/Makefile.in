@@ -154,8 +154,8 @@ am__can_run_installinfo = \
 am__include_HEADERS_DIST = cef_client.h cef_csmgr.h cef_csmgr_stat.h \
 	cef_ccninfo.h cef_define.h cef_face.h cef_fib.h cef_frame.h \
 	cef_hash.h cef_mpool.h cef_pit.h cef_log.h cef_print.h \
-	cef_rngque.h cef_plugin.h cef_plugin_com.h cef_valid.h \
-	cef_mem_cache.h cef_conpub.h
+	cef_rngque.h cef_valid.h cef_mem_cache.h cef_rcvbuf.h \
+	cef_pthread.h cef_plugin.h cef_plugin_com.h cef_conpub.h
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
     $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
@@ -269,6 +269,7 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+XCRUN = @XCRUN@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -299,7 +300,7 @@ host_cpu = @host_cpu@
 host_os = @host_os@
 host_vendor = @host_vendor@
 htmldir = @htmldir@
-includedir = $(CEFORE_DIR_PATH)/include/cefore
+includedir = $(CEFORE_DIR_PATH)include/cefore
 infodir = @infodir@
 install_sh = @install_sh@
 libdir = @libdir@
@@ -327,8 +328,8 @@ top_srcdir = @top_srcdir@
 CEF_HEADER = cef_client.h cef_csmgr.h cef_csmgr_stat.h cef_ccninfo.h \
 	cef_define.h cef_face.h cef_fib.h cef_frame.h cef_hash.h \
 	cef_mpool.h cef_pit.h cef_log.h cef_print.h cef_rngque.h \
-	cef_plugin.h cef_plugin_com.h cef_valid.h cef_mem_cache.h \
-	$(am__append_1)
+	cef_valid.h cef_mem_cache.h cef_rcvbuf.h cef_pthread.h \
+	cef_plugin.h cef_plugin_com.h $(am__append_1)
 include_HEADERS = $(CEF_HEADER)
 all: all-am
 
