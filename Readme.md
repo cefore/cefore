@@ -87,10 +87,6 @@ If you installed OpenSSL using homebrew on macOS, you need to run configure as f
 
 `./configure opssl_header_path=/usr/local/opt/openssl/include/ LDFLAGS='-L/usr/local/opt/openssl/lib' CPPFLAGS='-I/usr/local/opt/openssl/include'`
 
-To build cefinfo (aka ccninfo) and csmgr daemon, you need to specify these options:  
-
-`./configure --enable-cefinfo --enable-csmgr`
-
 After the configure command completes successfully, run "make" and "make install". "make install" must be run with sudo.
 
 `make`  
