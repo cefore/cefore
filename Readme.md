@@ -27,7 +27,6 @@ Cefore is a software platform that enables ICN-based communications using CCNx-1
 | cefgetfile   | tool    | Standard | Create file from content received by Cefore |
 | cefputstream | tool    | Standard | Convert the stream received from stdin to Named Cobs and transmit them to Cefore |
 | cefgetstream | tool    | Standard | Display the stream received by Cefore on stdout |
-| cefping      | tool    | cefping  | cefping                                     |
 | cefinfo      | tool    | cefinfo  | cefinfo (aka ccninfo)                       |
 | csmgrd       | daemon  | csmgr    | Content Store manager daemon                |
 | csmgrdstart  | utility | csmgr    | Utility of starting csmgr daemon            |
@@ -63,7 +62,6 @@ Run configure first. The following options are available for configure command:
 | Option           | Description                                      |
 |:---------------- |:------------------------------------------------ |
 | --enable-csmgr   | Enable Content Store managed by csmgr daemon.    |
-| --enable-cefinfo | Enable cefinfo tool (aka CCNinfo).               |
 | --enable-cache   | Enable cefnetd's local cache.                    |
 | --enable-debug   | Enable debug mode (Attn: show lots of messages). |
 
