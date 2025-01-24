@@ -1328,7 +1328,7 @@ end
 -- T_CHUNK
 --]]
 switch_Name_TLV[0x10] = function(block, nametree, msgroot, pInfo, CcnMsg)
-   local treeInfo = switch_Name_TLV[0x04](nametree, msgroot, pInfo, CcnMsg)
+   local treeInfo = switch_Name_TLV[0x04](block, nametree, msgroot, pInfo, CcnMsg)
 
    return treeInfo
 end
