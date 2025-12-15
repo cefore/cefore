@@ -170,7 +170,7 @@ For standard output of cefnetd and csmgrd logs, set CEF_LOG_LEVEL in the configu
 
 The following is sample output, where the time is the local time:
 
-> *2022-01-23 12:00:00.000 [cefnetd] INFO: [client] Local Socket Name is /tmp/cef_9896.0  
+> *2022-01-23 12:00:00.000 [cefnetd] INFO: [client] Local Socket Name is /tmp/cef_9695.0  
 2022-01-23 12:00:00.001 [cefnetd] INFO: [client] Listen Port is 9695*
 
 For standard output of cefnetd and csmgrd debug information, you must run the build with --enable-debug option for configure command, and set CEF_DEBUG_LEVEL in the configuration file cefnetd.conf or csmgrd.conf. The default value is 0.
