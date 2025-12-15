@@ -336,7 +336,7 @@ cef_status_face_output (
 	int res;
 	CefT_Face* face = NULL;
 
-	char face_info[BUFSIZ] = {0};
+	char face_info[BUFSIZ_8K] = {0};
 	int face_info_index = 0;
 	char work_str[CefC_Max_Length*2];
 	int fret = 0;
@@ -496,7 +496,7 @@ cef_status_forward_output (
 	char uri[CefC_NAME_BUFSIZ] = {0};
 	CefT_Fib_Face* faces = NULL;
 	int res = 0;
-	char face_info[BUFSIZ] = {0};
+	char face_info[BUFSIZ_8K] = {0};
 	int face_info_index = 0;
 	char work_str[CefC_Max_Length*2];
 	int fret = 0;
@@ -554,11 +554,18 @@ cef_status_forward_output (
 					, faces->metric.cost);
 			if (output_opt_f & CefC_Ctrl_StatusOpt_Metric) {
 				face_info_index +=
-					sprintf (face_info + face_info_index, "DummyMetric=%d\n", faces->metric.dummy_metric);
-			} else {
-				face_info_index +=
-					sprintf (face_info + face_info_index, "\n");
+					sprintf (face_info + face_info_index, "DummyMetric=%d ", faces->metric.dummy_metric);
 			}
+			if (faces->keyid_len > 0) {
+				face_info_index +=
+					sprintf (face_info + face_info_index, CefC_Fib_Keyid_Identifier);
+				for (int i = 0; i < 32; i++) {
+					face_info_index +=
+						sprintf (face_info + face_info_index, "%02x", faces->keyid[i]);
+				}
+			}
+			face_info_index +=
+				sprintf (face_info + face_info_index, "\n");
 
 			if (output_opt_f & CefC_Ctrl_StatusOpt_Stat) {
 				face_info_index +=
@@ -603,7 +610,7 @@ cef_status_forward_output_with_ip (
 	char uri[CefC_NAME_BUFSIZ] = {0};
 	CefT_Fib_Face* faces = NULL;
 	int res = 0;
-	char face_info[BUFSIZ] = {0};
+	char face_info[BUFSIZ_8K] = {0};
 	int face_info_index = 0;
 	char work_str[CefC_Max_Length*2];
 	int fret = 0;
@@ -763,7 +770,7 @@ cef_status_pit_output (
 
 	uint16_t dec_name_len;
 
-	char face_info[BUFSIZ] = {0};
+	char face_info[BUFSIZ_8K] = {0};
 	int face_info_index = 0;
 
 	uint16_t sub_type;
@@ -771,6 +778,9 @@ cef_status_pit_output (
 	uint16_t name_index;
 	struct tlv_hdr* thdr;
 	uint16_t chunknum_f;
+#ifdef REFLEXIVE_FORWARDING
+	uint16_t reflexive_tpit_f;
+#endif // REFLEXIVE_FORWARDING
 	char work_str[CefC_Max_Length*2];
 	int fret = 0;
 	uint32_t elem_num, elem_index;
@@ -825,6 +835,9 @@ cef_status_pit_output (
 			/* Gets Chunk Number 	*/
 			name_index 		= 0;
 			chunknum_f 		= 0;
+#ifdef REFLEXIVE_FORWARDING
+			reflexive_tpit_f = 0;
+#endif // REFLEXIVE_FORWARDING
 			dec_name_len 	= 0;
 
 			while (name_index < entry->klen) {
@@ -850,14 +863,39 @@ cef_status_pit_output (
 			    		}
 						break;
 					}
+#ifdef REFLEXIVE_FORWARDING
+					case CefC_T_REFLEXIVE_NAME: {
+						dec_name_len += CefC_S_TLF + sub_length;
+						break;
+					}
+					case CefC_T_TPIT: {
+						reflexive_tpit_f = 1;
+						break;
+					}
+#endif // REFLEXIVE_FORWARDING
 					default: {
 						dec_name_len += CefC_S_TLF + sub_length;
 						break;
 					}
 				}
+#ifdef REFLEXIVE_FORWARDING
+#ifndef CefC_Develop
+				if (dec_name_len <= 0) {
+					break;
+				}
+#endif // CefC_Develop
+#endif // REFLEXIVE_FORWARDING
 				name_index += sub_length;
 			}
 
+#ifdef REFLEXIVE_FORWARDING
+#ifndef CefC_Develop
+			if (dec_name_len <= 0) {
+				cef_pit_entry_unlock(entry);
+				continue;
+			}
+#endif // CefC_Develop
+#endif // REFLEXIVE_FORWARDING
 			memset (uri, 0, sizeof(uri));
 			res = cef_frame_conversion_name_to_uri (entry->key, dec_name_len, uri);
 			if (res < 0) {
@@ -875,6 +913,18 @@ cef_status_pit_output (
 				if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
 					goto cef_status_pit_output_err_ret;
 				}
+#ifdef REFLEXIVE_FORWARDING
+			} else if (reflexive_tpit_f) {
+#ifdef	CefC_Develop
+				sprintf (work_str, "  %s/(template)\n", uri);
+#else
+				cef_pit_entry_unlock(entry);
+				continue;
+#endif
+				if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
+					goto cef_status_pit_output_err_ret;
+				}
+#endif // REFLEXIVE_FORWARDING
 			} else {
 #ifdef	CefC_Develop
 				sprintf (work_str, "  %s, PitType=%d, longlife=%d\n", uri, entry->PitType, entry->longlife_f);
@@ -1007,7 +1057,7 @@ cef_status_stats_output_pit (
 	CefT_Down_Faces* dnfaces = NULL;
 	CefT_Up_Faces* upfaces = NULL;
 	uint16_t dec_name_len;
-	char face_info[BUFSIZ] = {0};
+	char face_info[BUFSIZ_8K] = {0};
 	int face_info_index = 0;
 	uint16_t sub_type;
 	uint16_t sub_length;

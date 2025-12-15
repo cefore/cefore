@@ -674,6 +674,41 @@ cef_client_prefix_reg_for_pit (
 
 	return;
 }
+/*--------------------------------------------------------------------------------------
+	Route Add/Del the specified Name of the network (accept prefix match of Name)
+----------------------------------------------------------------------------------------
+	Register in the normal FIB, not in the FIB for prioritized applications.
+	By registering in a low-priority route such as ccnx:/, it is assumed that
+	the application will only pick up INTERESTs that are not longest matches.
+----------------------------------------------------------------------------------------*/
+void
+cef_client_prefix_route (
+	CefT_Client_Handle fhdl,					/* client handle						*/
+	uint16_t func,								/* CefC_T_OPT_ROUTE_ADD/CefC_T_OPT_ROUTE_DEL	*/
+	const unsigned char* name,					/* Name (not URI)						*/
+	uint16_t name_len							/* length of the Name					*/
+) {
+	CefT_CcnMsg_OptHdr opt; 			/* parameters to Option Header(s)		*/
+	CefT_CcnMsg_MsgBdy tlvs;
+	unsigned char buff[BUFSIZ_8K];
+	int len;
+
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));
+	memset (&tlvs, 0, sizeof (CefT_CcnMsg_MsgBdy));
+
+	memcpy (tlvs.name, name, name_len);
+	tlvs.name_len = name_len;
+	tlvs.hoplimit	= 1;
+
+	opt.app_reg_f = func;
+
+	len = cef_frame_interest_create (buff, &opt, &tlvs);
+	if (len > 0) {
+		cef_client_message_input (fhdl, buff, len);
+	}
+
+	return;
+}
 /****************************************************************************************
  ****************************************************************************************/
 #define	CefC_Conn_Send_RetryMax		30
@@ -711,7 +746,7 @@ cef_client_message_input (
 		int		ret = 0;
 
 		ret = cef_client_conn_send (conn, &msg[send_len], frame_len-send_len);
-cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i, frame_len, send_len, ret);
+cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%d, send_len=%d, ret=%d\n", i, frame_len, send_len, ret);
 
 		if ( 0 < ret ){
 			send_len += ret;
@@ -722,7 +757,7 @@ cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i
 		}
 		CefC_Conn_Send_RetryWait(i);
 	}
-cef_dbg_write (CefC_Dbg_Fine, "Failure:frame_len=%ld, send_len=%ld\n", frame_len, send_len);
+cef_dbg_write (CefC_Dbg_Fine, "Failure:frame_len=%d, send_len=%d\n", frame_len, send_len);
 
 	/* send failure */
 	return ( send_len );
@@ -750,7 +785,7 @@ cef_client_interest_input (
 		int		ret = 0;
 
 		ret = cef_client_conn_send (conn, &buff[send_len], frame_len-send_len);
-cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i, frame_len, send_len, ret);
+cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%d, send_len=%d, ret=%d\n", i, frame_len, send_len, ret);
 
 		if ( 0 < ret ){
 			send_len += ret;
@@ -761,7 +796,7 @@ cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i
 		}
 		CefC_Conn_Send_RetryWait(i);
 	}
-cef_dbg_write (CefC_Dbg_Fine, "Failure:chunk_num=%d, send_len=%ld\n", tlvs->chunk_num, send_len);
+cef_dbg_write (CefC_Dbg_Fine, "Failure:chunk_num=%d, send_len=%d\n", tlvs->chunk_num, send_len);
 
 	/* send failure */
 	return ( send_len );
@@ -789,7 +824,7 @@ cef_client_object_input (
 		int		ret = 0;
 
 		ret = cef_client_conn_send (conn, &buff[send_len], frame_len-send_len);
-cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i, frame_len, send_len, ret);
+cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%d, send_len=%d, ret=%d\n", i, frame_len, send_len, ret);
 
 		if ( 0 < ret ){
 			send_len += ret;
@@ -800,7 +835,7 @@ cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i
 		}
 		CefC_Conn_Send_RetryWait(i);
 	}
-cef_dbg_write (CefC_Dbg_Fine, "Failure:chunk_num=%d, send_len=%ld\n", tlvs->chunk_num, send_len);
+cef_dbg_write (CefC_Dbg_Fine, "Failure:chunk_num=%d, send_len=%d\n", tlvs->chunk_num, send_len);
 
 	/* send failure */
 	return ( send_len );
@@ -827,7 +862,7 @@ cef_client_ccninfo_input (
 		int		ret = 0;
 
 		ret = cef_client_conn_send (conn, &buff[send_len], frame_len-send_len);
-cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i, frame_len, send_len, ret);
+cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%d, send_len=%d, ret=%d\n", i, frame_len, send_len, ret);
 
 		if ( 0 < ret ){
 			send_len += ret;
@@ -838,7 +873,7 @@ cef_dbg_write (CefC_Dbg_Finest, "i=%d, frame_len=%ld, send_len=%ld, ret=%d\n", i
 		}
 		CefC_Conn_Send_RetryWait(i);
 	}
-cef_dbg_write (CefC_Dbg_Fine, "Failure:chunk_num=%d, send_len=%ld\n", tlvs->chunk_num, send_len);
+cef_dbg_write (CefC_Dbg_Fine, "Failure:chunk_num=%d, send_len=%d\n", tlvs->chunk_num, send_len);
 
 	/* send failure */
 	return ( send_len );

@@ -174,12 +174,10 @@ typedef struct {
 
 	/********** Parameters 			***********/
 	uint16_t 			port_num;				/* Port Number							*/
-	uint16_t 			fib_max_size;			/* Maximum FIB entry 					*/
+	uint32_t 			fib_max_size;			/* Maximum FIB entry 					*/
 	uint32_t 			pit_max_size;			/* Maximum PIT entry 					*/
 	int		 			sk_type;				/* Type of socket 						*/
-	uint16_t 			nbr_max_size;
 	uint64_t 			nbr_mng_intv;
-	uint16_t 			nbr_mng_thread;
 	uint16_t 			fwd_rate;
 	uint8_t 			cs_mode;
 	char*				forwarding_strategy;	/* FIB entry selection strategy.		*/
@@ -318,7 +316,6 @@ typedef struct {
 
 	/*** cefore tx queue 						***/
 //#define CefC_TxMultiThread
-#define	CefC_Num_TxQueClass	(3)
 	CefT_Rngque		*tx_que, *tx_que_high, *tx_que_low;
 
 #ifdef CefC_TxMultiThread
@@ -427,8 +424,7 @@ cefnetd_object_forward (
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed message 							*/
-	CefT_CcnMsg_OptHdr* poh, 				/* Parsed Option Header						*/
-	CefT_Pit_Entry* pe	 					/* PIT entry matching this Interest 		*/
+	CefT_CcnMsg_OptHdr* poh 				/* Parsed Option Header						*/
 );
 
 /*--------------------------------------------------------------------------------------
@@ -498,19 +494,107 @@ cefnetd_cefstatus_thread (
 );
 
 void
-cefnetd_frame_send_txque_faces (
+cefnetd_frame_send_core (
 	void*			hdl,					/* cefnetd handle							*/
 	uint16_t 		faceid_num, 			/* number of Face-ID				 		*/
 	uint16_t 		faceid[], 				/* Face-ID indicating the destination 		*/
 	unsigned char* 	msg, 					/* a message to send						*/
-	size_t			msg_len					/* length of the message to send 			*/
+	size_t			msg_len,				/* length of the message to send 			*/
+	CefT_TxQueClass	tx_prio,				/* priority									*/
+	int				tx_copies				/* copies 									*/
 );
 
 void
-cefnetd_frame_send_txque (
+cefnetd_frame_send_normal (
 	void*			hdl,					/* cefnetd handle							*/
 	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
 	unsigned char* 	msg, 					/* a message to send						*/
 	size_t			msg_len					/* length of the message to send 			*/
+);
+
+/*--------------------------------------------------------------------------------------
+	Reads the FIB configuration file
+----------------------------------------------------------------------------------------*/
+int											/* Returns a negative value if it fails 	*/
+cefnetd_config_fib_read (
+	CefT_Netd_Handle* hdl					/* cefnetd handle							*/
+);
+/*--------------------------------------------------------------------------------------
+	Add route in FIB
+----------------------------------------------------------------------------------------*/
+int
+cefnetd_fib_route_add (
+	CefT_Hash_Handle fib,					/* FIB										*/
+	int faceid,								/* face id									*/
+	uint8_t fe_type,						/* CefC_Fib_Entry_XXX				0.8.3c	*/
+	CefT_Fib_Metric	*fib_metric,			//0.8.3c
+	int name_len,
+	unsigned char *name,
+	int keyid_len,							/* extantion for full-source forwarding		*/
+	unsigned char *keyid					/* extantion for full-source forwarding		*/
+);
+/*--------------------------------------------------------------------------------------
+	Delete route in FIB
+----------------------------------------------------------------------------------------*/
+int
+cefnetd_fib_route_del (
+	CefT_Hash_Handle fib,					/* FIB										*/
+	int faceid,								/* face id									*/
+	uint8_t fe_type,						/* CefC_Fib_Entry_XXX				0.8.3c	*/
+	int name_len,
+	unsigned char *name,
+	int keyid_len,
+	unsigned char *keyid
+);
+/*--------------------------------------------------------------------------------------
+	Check Input Cefroute msg
+----------------------------------------------------------------------------------------*/
+int
+cefnetd_route_msg_check (
+	CefT_Netd_Handle* hdl,					/* cefnetd handle							*/
+	unsigned char* msg,						/* received message to handle				*/
+	int msg_size							/* size of received message(s)				*/
+);
+
+/*--------------------------------------------------------------------------------------
+	Obtain the Name from the received route message
+----------------------------------------------------------------------------------------*/
+int
+cefnetd_fib_name_get_from_route_msg (
+	unsigned char* msg, 					/* the received message(s)					*/
+	int msg_size,
+	unsigned char* name
+);
+/*--------------------------------------------------------------------------------------
+	Process the FIB route message
+----------------------------------------------------------------------------------------*/
+int
+cefnetd_fib_route_msg_process (
+	CefT_Hash_Handle fib,					/* FIB										*/
+	unsigned char* msg, 					/* the received message(s)					*/
+	int msg_size,							/* size of received message(s)				*/
+	uint8_t type,							/* CefC_Fib_Entry_XXX						*/
+	int* rc, 								/* 0x01=New Entry, 0x02=Free Entry 0.8.3c	*/
+	CefT_Fib_Metric*	fib_metric
+);
+/*--------------------------------------------------------------------------------------
+	Handles the request forwarding infomation for CefBabel
+----------------------------------------------------------------------------------------*/
+int
+cefnetd_request_forwarding_info (
+	CefT_Netd_Handle* hdl,
+	unsigned char** rsp_msgpp
+);
+/*--------------------------------------------------------------------------------------
+	Handles the retrieve forwarding infomation for Ccore
+----------------------------------------------------------------------------------------*/
+int
+cefnetd_retrieve_forwarding_info (
+	CefT_Hash_Handle* fib,
+	char* info_buff,
+	int info_buff_size,
+	const unsigned char* name,
+	int name_len,
+	int partial_match_f
 );
 #endif // __CEF_NETD_HEADER__

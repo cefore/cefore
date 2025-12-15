@@ -27,12 +27,22 @@
 # SUCH DAMAGE.
 #
 
+# check the minimal installation
+CONFIGFILE=/usr/local/cefore/cefnetd.conf
+if [ ! -f ${CONFIGFILE} ]
+then
+	echo "ERROR: missing ${CONFIGFILE}"
+	exit 1
+fi
+
 # check the number of parameters 
 if [ $# -gt 4 ]
 then
 	echo 'usage : cefnetdstart [-d config_file_dir] [-p port_num]'
 	exit 1
 fi
+
+export DYLD_LIBRARY_PATH=/usr/local/lib:$DYLD_LIBRARY_PATH
 
 # start cefnetd
 cefnetd $@ &

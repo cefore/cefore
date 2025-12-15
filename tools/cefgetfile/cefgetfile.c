@@ -53,10 +53,13 @@
  Macros
  ****************************************************************************************/
 
-#define CefC_Max_PipeLine 		1024	/* MAX Pipeline */
+#define CefC_Max_PipeLine 		256		/* MAX Pipeline */
 #define CefC_Def_PipeLine 		8		/* Default Pipeline */
+#define CefC_Lifetime_Max		64000	/* 64sec */
+#define CefC_Lifetime_Min		1000	/* 1sec */
 
-#define CefC_Resend_Interval	10000		/* 10 ms 		*/
+// #define CefC_Resend_Interval	10000		/* 10 ms 		*/
+#define CefC_Resend_Interval	300000		/* 300 ms 		*/
 #define CefC_Max_Retry 			5
 
 #define USAGE					print_usage(CefFp_Usage);
@@ -65,16 +68,30 @@
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
-
+typedef enum	{
+	RxSts_Null,
+	RxSts_Request,
+	RxSts_Receive,
+}	Rx_Status;
 typedef struct _Ceft_RxWnd {
-	
+
 	uint64_t 				seq;
-	uint8_t 				flag;
+	int		 				status;
+	int		 				retry_count;
+	uint64_t				req_time;
+	uint64_t				retry_time;
 	unsigned char 			buff[CefC_Max_Length];
 	int 					frame_size;
 	struct _Ceft_RxWnd* 	next;
-	
+
 } Ceft_RxWnd;
+#define	RxWnd_NotRequest(r)	(RxSts_Request > (r)->status)
+#define	RxWnd_IsRequest(r)	(RxSts_Request <= (r)->status)
+#define	RxWnd_IsInflight(r)	(RxSts_Request == (r)->status)
+#define	RxWnd_IsReceived(r)	(RxSts_Request < (r)->status)
+
+#define	CefC_RxWndSize	CefC_Max_PipeLine
+#define	T_RETRY_INTERVAL(n)	(n * 1000 * 3 / 4)
 
 /****************************************************************************************
  State Variables
@@ -124,8 +141,8 @@ int main (
 	int res;
 	int pipeline = CefC_Def_PipeLine;
 	int index = 0;
-	char uri[1024];
-	char fpath[1024];
+	char uri[CefC_NAME_MAXLEN];
+	char fpath[PATH_MAX];
 	CefT_CcnMsg_OptHdr opt;
 	CefT_CcnMsg_MsgBdy params;
 	struct timeval t;
@@ -140,24 +157,24 @@ int main (
 	int i;
 	int j;
 	char*	work_arg;
-	
+	uint64_t lifetime = CefC_Default_LifetimeSec * 1000;
+
 	char 	conf_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
-	
-	char valid_type[1024];
-	
-	Ceft_RxWnd* 	rxwnd;
+
+	char valid_type[CefC_NAME_MAXLEN];
+
+	Ceft_RxWnd* 	rxwnd = NULL;
 	Ceft_RxWnd* 	rxwnd_prev;
 	Ceft_RxWnd* 	rxwnd_head = NULL;
 	Ceft_RxWnd* 	rxwnd_tail;
 	Ceft_RxWnd*		next;
-	
+
 	struct cef_app_frame app_frame;
 	unsigned char* buff = NULL;
-	
-	int retry_cnt = 0;
+
 	uint64_t retry_int = CefC_Resend_Interval;
-	
+
 	/***** flags 		*****/
 	int pipeline_f 		= 0;
 	int max_seq_f 		= 0;
@@ -168,34 +185,36 @@ int main (
 	int dir_path_f 		= 0;
 	int port_num_f 		= 0;
 	int valid_f 		= 0;
-	
+	int no_resend_f		= 0;
+	int lifetime_f		= 0;
+
 	/***** state variavles 	*****/
 	uint32_t 	sv_max_seq 		= UINT32_MAX - 1;
 	int64_t		end_chunk_num	= -1;
 
-	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));	
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));
 	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
-	
-	
+
+
 	/*---------------------------------------------------------------------------
 		Obtains parameters
 	-----------------------------------------------------------------------------*/
 	uri[0] 			= 0;
 	valid_type[0] 	= 0;
-	
+
 	printf ("[cefgetfile] Start\n");
-	
+
 	/* Inits logging 		*/
 	cef_log_init ("cefgetfile", 1);
-	
+
 	/* Obtains options 		*/
 	for (i = 1 ; i < argc ; i++) {
-		
+
 		work_arg = argv[i];
 		if (work_arg == NULL || work_arg[0] == 0) {
 			break;
 		}
-		
+
 		if (strcmp (work_arg, "-f") == 0) {
 			if (file_f) {
 				printerr("[-f] is duplicated.\n");
@@ -283,7 +302,7 @@ int main (
 			}
 			work_arg = argv[i + 1];
 			sv_max_seq = (uint32_t) atoi (work_arg);
-			
+
 			if (sv_max_seq < 1) {
 				sv_max_seq = 1;
 			}
@@ -334,23 +353,57 @@ int main (
 		} else if (strcmp (work_arg, "-h") == 0) {
 			USAGE;
 			exit (1);
+
+#ifdef CefC_Develop
+		} else if (strcmp (work_arg, "-r") == 0) {
+			if (no_resend_f) {
+				printerr("[-r] is duplicated.\n");
+				USAGE;
+				return (-1);
+			}
+			no_resend_f++;
+
+		} else if (strcmp (work_arg, "-l") == 0) {
+			if (lifetime_f) {
+				printerr("[-l] is duplicated.\n");
+				USAGE;
+				return (-1);
+			}
+
+			if (i + 1 == argc) {
+				printerr("[-l] has no parameter.\n");
+				USAGE;
+				return (-1);
+			}
+
+			work_arg = argv[i + 1];
+			lifetime = atoi (work_arg) * 1000;
+			if (lifetime > CefC_Lifetime_Max) {
+				lifetime = CefC_Lifetime_Max;
+			} else if (lifetime < CefC_Lifetime_Min) {
+				lifetime = CefC_Lifetime_Min;
+			}
+			lifetime_f++;
+			i++;
+
+#endif // CefC_Develop 
 		} else {
-			
+
 			work_arg = argv[i];
-			
+
 			if (work_arg[0] == '-') {
 				USAGE;
 				return (-1);
 			}
-			
+
 			if (uri_f) {
 				printerr("uri is duplicated.\n");
 				USAGE;
 				return (-1);
 			}
 			res = strlen (work_arg);
-			
-			if (res >= 1024) {
+
+			if (res >= CefC_NAME_MAXLEN) {
 				printerr("uri is too long.\n");
 				USAGE;
 				return (-1);
@@ -359,7 +412,7 @@ int main (
 			uri_f++;
 		}
 	}
-	
+
 	/* Checks errors 			*/
 	if (uri_f == 0) {
 		printerr("uri is not specified.\n");
@@ -369,7 +422,7 @@ int main (
 	if (file_f == 0) {
 		/* Use the last string in the URL */
 		res = strlen (uri);
-		if (res >= 1024) {
+		if (res >= CefC_NAME_MAXLEN) {
 			printerr("uri is too long.\n");
 			USAGE;
 			return (-1);
@@ -408,7 +461,7 @@ int main (
 #ifdef CefC_Debug
 	cef_dbg_init ("cefgetfile", conf_path, 1);
 #endif // CefC_Debug
-	
+
 	/*---------------------------------------------------------------------------
 		Inits the Cefore APIs
 	-----------------------------------------------------------------------------*/
@@ -435,20 +488,20 @@ int main (
 	}
 	params.name_len = res;
 	printf ("[cefgetfile] Checking the output file ... OK\n");
-	
+
 	/*------------------------------------------
 		Set Validation Alglithm
 	--------------------------------------------*/
 	if (valid_f == 1) {
 		cef_valid_init (conf_path);
 		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_type);
-		
+
 		if (params.alg.valid_type == CefC_T_ALG_INVALID) {
 			printerr("-v has the invalid parameter %s\n", valid_type);
 			exit (1);
 		}
 	}
-	
+
 	/*------------------------------------------
 		Connects to CEFORE
 	--------------------------------------------*/
@@ -458,68 +511,30 @@ int main (
 		exit (1);
 	}
 	printf ("[cefgetfile] Connect to cefnetd ... OK\n");
-	
+
 	/*---------------------------------------------------------------------------
 		Sets Interest parameters
 	-----------------------------------------------------------------------------*/
 	params.hoplimit 				= 32;
 	opt.lifetime_f 			= 1;
-	
+
+	if (nsg_flag && !(lifetime_f)) {
+		lifetime 		= 4000;
+	}
+
 	if (nsg_flag) {
-		Cef_Int_Symbolic(params);	
-		opt.lifetime 		= 4000;
+		Cef_Int_Symbolic(params);
 	} else {
 		Cef_Int_Regular(params);
-		opt.lifetime 				= CefC_Default_LifetimeSec * 1000;
 		params.chunk_num			= 0;
 		params.chunk_num_f			= 1;
 	}
-	
+	opt.lifetime = lifetime;
+
 	if (from_pub_f) {
 		params.org.from_pub_f			= CefC_T_FROM_PUB;
 	}
-	
-	/*---------------------------------------------------------------------------
-		Sends first Interest(s)
-	-----------------------------------------------------------------------------*/
-	app_running_f = 1;
-	printf ("[cefgetfile] URI=%s\n", uri);
-	if (nsg_flag) {
-		cef_client_interest_input (fhdl, &opt, &params);
-		printf ("[cefgetfile] Start sending Long Life Interests\n");
-	} else {
-		printf ("[cefgetfile] Start sending Interests\n");
-		
-		/* Sends Initerest(s) 		*/
-		for (i = 0 ; i < pipeline ; i++) {
-			cef_client_interest_input (fhdl, &opt, &params);
-			params.chunk_num++;
-			
-			usleep (100000);
-		}
-		
-		/* Creates the rx window 	*/
-		rxwnd = (Ceft_RxWnd*) malloc (sizeof (Ceft_RxWnd));
-		memset (rxwnd, 0, sizeof (Ceft_RxWnd));
-		rxwnd->next = rxwnd;
-		rxwnd->seq 	= 0;
-		rxwnd_prev = rxwnd;
-		rxwnd_head = rxwnd;
-		rxwnd_tail = rxwnd;
-		
-		for (i = 1 ; i < pipeline ; i++) {
-			rxwnd = (Ceft_RxWnd*) malloc (sizeof (Ceft_RxWnd));
-			memset (rxwnd, 0, sizeof (Ceft_RxWnd));
-			rxwnd->seq = (uint32_t) i;
-			rxwnd_prev->next = rxwnd;
-			rxwnd_tail = rxwnd;
-			rxwnd_prev = rxwnd;
-		}
-		end_t.tv_sec = t.tv_sec;
-	}
-	memset (&app_frame, 0, sizeof (struct cef_app_frame));
-	buff = (unsigned char*) malloc (sizeof (unsigned char) * CefC_AppBuff_Size);
-	
+
 	gettimeofday (&t, NULL);
 	now_time = cef_client_covert_timeval_to_us (t);
 	if (nsg_flag) {
@@ -531,7 +546,54 @@ int main (
 		nxt_time = now_time + dif_time;
 		end_time = now_time;
 	}
-	
+
+	/*---------------------------------------------------------------------------
+		Sends first Interest(s)
+	-----------------------------------------------------------------------------*/
+	app_running_f = 1;
+	printf ("[cefgetfile] URI=%s\n", uri);
+	if (nsg_flag) {
+		cef_client_interest_input (fhdl, &opt, &params);
+		printf ("[cefgetfile] Start sending Long Life Interests\n");
+	} else {
+		/* Creates the rx window 	*/
+		rxwnd = (Ceft_RxWnd*) malloc (sizeof (Ceft_RxWnd));
+		memset (rxwnd, 0, sizeof (Ceft_RxWnd));
+		rxwnd->next = rxwnd;
+		rxwnd->seq 	= 0;
+		rxwnd->status = RxSts_Request;
+		rxwnd_prev = rxwnd;
+		rxwnd_head = rxwnd;
+		rxwnd_tail = rxwnd;
+
+		for (i = 1 ; i < CefC_RxWndSize ; i++) {
+			rxwnd = (Ceft_RxWnd*) malloc (sizeof (Ceft_RxWnd));
+			memset (rxwnd, 0, sizeof (Ceft_RxWnd));
+			rxwnd->seq = (uint32_t) i;
+			rxwnd_prev->next = rxwnd;
+			rxwnd_tail = rxwnd;
+			rxwnd_prev = rxwnd;
+		}
+
+		/* Sends Interest(s) 		*/
+		printf ("[cefgetfile] Start sending Interests\n");
+
+		rxwnd = rxwnd_head;
+		for (i = 0 ; i < pipeline && rxwnd != NULL; i++) {
+			cef_client_interest_input (fhdl, &opt, &params);
+			params.chunk_num++;
+
+			rxwnd->status = RxSts_Request;
+			rxwnd->req_time = now_time;
+			rxwnd->retry_time = now_time + T_RETRY_INTERVAL(opt.lifetime);
+			rxwnd = rxwnd->next;
+		}
+
+		end_t.tv_sec = t.tv_sec;
+	}
+	memset (&app_frame, 0, sizeof (struct cef_app_frame));
+	buff = (unsigned char*) malloc (sizeof (unsigned char) * CefC_AppBuff_Size);
+
 	/*---------------------------------------------------------------------------
 		Main loop
 	-----------------------------------------------------------------------------*/
@@ -539,175 +601,180 @@ int main (
 		if (SIG_ERR == signal (SIGINT, sigcatch)) {
 			break;
 		}
-		
+
 		/* Obtains UNIX time 			*/
 		gettimeofday (&t, NULL);
 		now_time = cef_client_covert_timeval_to_us (t);
-		
+
 		if (nsg_flag) {
 			if (now_time > end_time) {
 				break;
 			}
 		}
-		
+
 		/* Reads the message from cefnetd			*/
-		res = cef_client_read (fhdl, &buff[index], CefC_AppBuff_Size - index);
-		
+//		res = cef_client_read (fhdl, &buff[index], CefC_AppBuff_Size - index);
+		res = cef_client_read_core (fhdl, &buff[index], CefC_AppBuff_Size - index, CefC_Resend_Interval/1000);
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Finest, "cef_client_read:res=%d, time="FMTU64"\n",
+	res, (cef_client_present_timeus_calc() - now_time));
+#endif // CefC_Debug
+
 		if (res > 0) {
-			
+
 			res += index;
-			
+
 			/* Updates the jitter 		*/
 			if (stat_recv_frames < 1) {
 				start_t.tv_sec  = t.tv_sec;
 				start_t.tv_usec = t.tv_usec;
 			} else {
 				val = (t.tv_sec - end_t.tv_sec) * 1000000llu + (t.tv_usec - end_t.tv_usec);
-				
+
 				stat_jitter_sum    += val;
 				stat_jitter_sq_sum += val * val;
-				
+
 				if (val > stat_jitter_max) {
 					stat_jitter_max = val;
 				}
 			}
 			end_t.tv_sec  = t.tv_sec;
 			end_t.tv_usec = t.tv_usec;
-			
+
 			if (nsg_flag) {
 				end_time = now_time + 1000000;
 			}
-			
+
 			/* Incomming message process 		*/
 			do {
 				res = cef_client_payload_get_with_info (buff, res, &app_frame);
-				
-				if (app_frame.version == CefC_App_Version) {
 
-					/* InterestReturn */
-					if ( (uint8_t)app_frame.type == CefC_PT_INTRETURN ) {
-						printf ("[cefgetfile] Incomplete\n");
-						printf ("[cefgetfile] "
-								"Received Interest Return(Type:%02x)\n", app_frame.returncode);
-						app_running_f = 0;
-						rcv_ng_f = 1;
-						goto IR_RCV;
-					}
+				if (app_frame.version != CefC_App_Version)
+					break;
 
-					if ( app_frame.end_chunk_num >= 0 ) {
-						end_chunk_num = app_frame.end_chunk_num;
-						end_chunk_num++;	/* 0 Origin */
-					}
-					
-					stat_all_recv_frames++;								//20230518
-					stat_all_recv_bytes += app_frame.name_len			//20230518
-										 + app_frame.ver_len			//20230518
-										 + app_frame.hdr_org_len		//20230518
-										 + app_frame.msg_org_len		//20230518
-										 + app_frame.payload_len;		//20230518
-					
-					if (nsg_flag) {
-						stat_recv_frames++;
-						stat_recv_bytes += app_frame.payload_len;
-						if (dummy_f == 0 && ((stat_recv_frames / 2) <= app_frame.chunk_num)) {
-							fwrite (app_frame.payload, 
-								sizeof (unsigned char), app_frame.payload_len, fp);
-						} else {
-							for (j=0; j<app_frame.payload_len; j++) {
-								unsigned char v;
-								v = app_frame.payload[j];
-								dummy_sum = dummy_sum + (uint32_t)v;
-							}
-						}
+				/* InterestReturn */
+				if ( (uint8_t)app_frame.type == CefC_PT_INTRETURN ) {
+					printf ("[cefgetfile] Incomplete\n");
+					printf ("[cefgetfile] "
+							"Received Interest Return(Type:%02x)\n", app_frame.returncode);
+					app_running_f = 0;
+					rcv_ng_f = 1;
+					goto IR_RCV;
+				}
+
+				if ( app_frame.end_chunk_num >= 0 ) {
+					end_chunk_num = app_frame.end_chunk_num;
+				}
+
+				stat_all_recv_frames++;								//20230518
+				stat_all_recv_bytes += app_frame.name_len			//20230518
+									 + app_frame.ver_len			//20230518
+									 + app_frame.hdr_org_len		//20230518
+									 + app_frame.msg_org_len		//20230518
+									 + app_frame.payload_len;		//20230518
+
+				if (nsg_flag) {
+					stat_recv_frames++;
+					stat_recv_bytes += app_frame.payload_len;
+					if (dummy_f == 0 && ((stat_recv_frames / 2) <= app_frame.chunk_num)) {
+						fwrite (app_frame.payload,
+							sizeof (unsigned char), app_frame.payload_len, fp);
 					} else {
-						/* Inserts the received frame to the buffer 	*/
-						if ((app_frame.chunk_num < rxwnd_head->seq) || 
-							(app_frame.chunk_num > rxwnd_tail->seq)) {
-							continue;
-						}
-						
-						diff_seq = app_frame.chunk_num - rxwnd_head->seq;
-						rxwnd = rxwnd_head;
-						
-						for (i = 0 ; i < diff_seq ; i++) {
-							rxwnd = rxwnd->next;
-						}
-						
-						if (rxwnd->flag != 1) {
-							memcpy (rxwnd->buff, 
-								app_frame.payload, app_frame.payload_len);
-							rxwnd->frame_size = app_frame.payload_len;
-							rxwnd->flag = 1;
-							
-							retry_cnt = 0;
-							end_time = now_time;
-							retry_int = CefC_Resend_Interval;
-						}
-						
-						rxwnd = rxwnd_head;
-						
-						for (i = 0 ; i < pipeline; i++) {
-							
-							if (rxwnd->flag == 0) {
-								break;
-							}
-							stat_recv_frames++;
-							stat_recv_bytes += app_frame.payload_len;
-							
-							if (dummy_f == 0) {
-								fwrite (rxwnd->buff, 
-									sizeof (unsigned char), rxwnd->frame_size, fp);
-							} else {
-								for (j=0; j<rxwnd->frame_size; j++) {
-									unsigned char v;
-									v = rxwnd->buff[j];
-									dummy_sum = dummy_sum + (uint32_t)v;
-								}
-							}
-							
-							if ( stat_recv_frames == end_chunk_num ) {
-								printf ("[cefgetfile] Completed to get all the chunks.\n");
-								app_running_f = 0;
-								goto IR_RCV;
-							}
-							
-							if (rxwnd->seq == UINT32_MAX /*sv_max_seq*/) {
-								printf ("[cefgetfile] Received the specified number of chunk\n");
-								app_running_f = 0;
-							}
-							
-							/* Updates head and tail pointers		*/
-							rxwnd_head->seq 		= rxwnd_tail->seq + 1;
-							rxwnd_head->flag 		= 0;
-							rxwnd_head->frame_size 	= 0;
-							
-							rxwnd_tail->next = rxwnd_head;
-							rxwnd_tail = rxwnd_head;
-							
-							rxwnd_head = rxwnd_tail->next;
-							rxwnd_tail->next 	= NULL;
-							
-							rxwnd = rxwnd_head;
-							
-							/* Sends an interest with the next chunk number 	*/
-							params.chunk_num = rxwnd_tail->seq;
-							if (params.chunk_num <=  UINT32_MAX /* sv_max_seq+1 */) {
-								cef_client_interest_input (fhdl, &opt, &params);
-							}
+						for (j=0; j<app_frame.payload_len; j++) {
+							unsigned char v;
+							v = app_frame.payload[j];
+							dummy_sum = dummy_sum + (uint32_t)v;
 						}
 					}
 				} else {
-					break;
+					/* Inserts the received frame to the buffer 	*/
+					if ((app_frame.chunk_num < rxwnd_head->seq) ||
+						(app_frame.chunk_num > rxwnd_tail->seq)) {
+						continue;
+					}
+
+					diff_seq = app_frame.chunk_num - rxwnd_head->seq;
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Fine, "received:chunk_num=%d, RxWndPos="FMTU64"\n", app_frame.chunk_num, diff_seq);
+#endif // CefC_Debug
+					rxwnd = rxwnd_head;
+
+					for (i = 0 ; i < diff_seq ; i++) {
+						rxwnd = rxwnd->next;
+					}
+
+					if (!RxWnd_IsReceived(rxwnd)) {
+						memcpy (rxwnd->buff,
+							app_frame.payload, app_frame.payload_len);
+						rxwnd->frame_size = app_frame.payload_len;
+						rxwnd->status = RxSts_Receive;
+
+						retry_int = CefC_Resend_Interval;
+					}
+
+					/* Advance the receive window (remove the received section)	*/
+					rxwnd = rxwnd_head;
+					for (i = 0 ; i < CefC_RxWndSize; i++) {
+
+						if (!RxWnd_IsReceived(rxwnd)) {
+							break;
+						}
+						stat_recv_frames++;
+						stat_recv_bytes += rxwnd->frame_size;
+
+						if (dummy_f == 0) {
+							fwrite (rxwnd->buff,
+								sizeof (unsigned char), rxwnd->frame_size, fp);
+						} else {
+							for (j=0; j<rxwnd->frame_size; j++) {
+								unsigned char v;
+								v = rxwnd->buff[j];
+								dummy_sum = dummy_sum + (uint32_t)v;
+							}
+						}
+
+						if ( stat_recv_frames > end_chunk_num ) {
+							printf ("[cefgetfile] Completed to get all the chunks.\n");
+							app_running_f = 0;
+							goto IR_RCV;
+						}
+
+						if (rxwnd->seq == UINT32_MAX /*sv_max_seq*/) {
+							printf ("[cefgetfile] Received the specified number of chunk\n");
+							app_running_f = 0;
+						}
+
+						/* Updates head and tail pointers		*/
+						rxwnd_head->seq 		= rxwnd_tail->seq + 1;
+						rxwnd_head->status		= RxSts_Null;
+						rxwnd_head->retry_count	= 0;
+						rxwnd_head->frame_size 	= 0;
+						rxwnd_head->req_time 	= 0;
+						rxwnd_head->retry_time 	= 0;
+
+						rxwnd_tail->next = rxwnd_head;
+						rxwnd_tail = rxwnd_head;
+
+						rxwnd_head = rxwnd_tail->next;
+						rxwnd_tail->next 	= NULL;
+
+						rxwnd = rxwnd_head;
+
+					}
 				}
 			} while (res > 0);
-			
+
 			if (res > 0) {
 				index = res;
 			} else {
 				index = 0;
 			}
+#ifdef CefC_Debug
+		} else {
+cef_dbg_write (CefC_Dbg_Finer, "cef_client_read:res=%d\n", res);
+#endif // CefC_Debug
 		}
-		
+
 		/* Sends Interest with Symbolic flag to CEFORE 		*/
 		if (nsg_flag) {
 			if (now_time > nxt_time) {
@@ -716,42 +783,57 @@ int main (
 				nxt_time = now_time + dif_time;
 			}
 		} else {
-			if (now_time - end_time > retry_int) {
-				
-				if (retry_cnt == CefC_Max_Retry) {
-					rxwnd = rxwnd_head;
-					for (i = 0 ; i < pipeline ; i++) {
-						if (rxwnd->flag != 0) {
-							break;
+			rxwnd = rxwnd_head;
+			for (i = j = 0; i < CefC_RxWndSize && j < pipeline; i++) {
+				if ( 0 <= end_chunk_num && end_chunk_num < rxwnd->seq )
+					break;
+#ifdef CefC_Debug
+if (RxWnd_IsInflight(rxwnd)) {
+	cef_dbg_write (CefC_Dbg_Finest, "RxWnd_IsInflight:Chunk="FMTU64", retry=%d, req_time="FMTU64", retry_time="FMTU64"\n",
+	rxwnd->seq, rxwnd->retry_count, rxwnd->req_time, rxwnd->retry_time);
+}
+#endif // CefC_Debug
+
+				if ( !RxWnd_IsRequest(rxwnd)		/* Sends an interest with the next chunk number 	*/
+					|| RxWnd_IsInflight(rxwnd)		/* ReSends an interest */
+				){
+					j++;
+
+					if (rxwnd->retry_time < now_time){
+						if (RxWnd_IsInflight(rxwnd)) {
+							if ( CefC_Max_Retry == rxwnd->retry_count ){
+								printerr ("Timeout (The number of Interest retransmission has reached its limit, %d.)\n" , CefC_Max_Retry);
+								app_running_f = 0;
+								rcv_ng_f = 1;
+								break;
+							}
+							rxwnd->retry_count++;
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Fine, "ReSendInterest:Chunk="FMTU64", retry=%d, req_time="FMTU64", retry_time="FMTU64"\n",
+	rxwnd->seq, rxwnd->retry_count, rxwnd->req_time, rxwnd->retry_time);
+}else{
+	cef_dbg_write (CefC_Dbg_Finer, "SendInterest:Chunk="FMT64", req_time="FMTU64", retry_time="FMTU64"\n",
+	(int64_t)params.chunk_num, rxwnd->req_time, rxwnd->retry_time);
+#endif // CefC_Debug
+						}
+
+						params.chunk_num = rxwnd->seq;
+						if (params.chunk_num <=  UINT32_MAX /* sv_max_seq+1 */) {
+							if (!RxWnd_IsRequest(rxwnd) || (no_resend_f == 0)) {
+								cef_client_interest_input (fhdl, &opt, &params);
+							}
+							rxwnd->status = RxSts_Request;
+							rxwnd->req_time = now_time;
+							rxwnd->retry_time = now_time + T_RETRY_INTERVAL(opt.lifetime);
 						}
 					}
-					printf ("[cefgetfile] Suspended to retrieve the content because the number of Interest retransmission has reached its limit, 5.\n");
-							rcv_ng_f = 1;
-					break;
 				}
-				
-				rxwnd = rxwnd_head;
-				send_cnt = 0;
-				
-				for (i = 0 ; i < pipeline ; i++) {
-					if ((rxwnd->seq <= sv_max_seq) && 
-						(rxwnd->flag == 0)) {
-						params.chunk_num = rxwnd->seq;
-						cef_client_interest_input (fhdl, &opt, &params);
-						send_cnt++;
-					}
-					rxwnd = rxwnd->next;
-				}
-				if (send_cnt > 0) {
-					retry_int += CefC_Resend_Interval;
-					retry_cnt++;
-				}
-				end_time = now_time;
+				rxwnd = rxwnd->next;
 			}
 		}
-IR_RCV:;	
+IR_RCV:;
 	}
-	
+
 	if (nsg_flag) {
 		if (index > 0) {
 			if (dummy_f == 0) {
@@ -767,7 +849,7 @@ IR_RCV:;
 		opt.lifetime = 0;
 		cef_client_interest_input (fhdl, &opt, &params);
 	}
-	
+
 	if (dummy_f == 0) {
 		fclose (fp);
 	}
@@ -775,10 +857,10 @@ IR_RCV:;
 		remove(fpath);
 	}
 	post_process (stdout);
-	
+
 	if (rxwnd_head != NULL) {
 		rxwnd = rxwnd_head;
-		for (i = 0 ; i < pipeline; i++) {
+		for (i = 0 ; rxwnd != NULL && i < CefC_RxWndSize; i++) {
 			next = rxwnd->next;
 			free (rxwnd);
 			rxwnd = next;
@@ -793,13 +875,12 @@ static void
 print_usage(
 	FILE* ofp
 ) {
-	
+
 	fprintf (ofp, "\nUsage: cefgetfile\n\n");
 	fprintf (ofp, "  cefgetfile uri -f file [-o] [-m chunk] [-s pipeline] [-v valid_algo] [-d config_file_dir] [-p port_num] [-z sg]\n\n");
 	fprintf (ofp, "  uri              Specify the URI.\n");
 	fprintf (ofp, "  file             Specify the file name of output. \n");
-	fprintf (ofp, "  -o               Specify this option, if you require the content\n"
-	                      "                   that the owner is caching\n");
+	fprintf (ofp, "  -o               Specify this option if content must be retrieved directly from content owner and not from intermediate cache\n");
 	fprintf (ofp, "  chunk            Specify the number of chunk that you want to obtain\n");
 	fprintf (ofp, "  pipeline         Number of pipeline\n");
 	fprintf (ofp, "  valid_algo       Specify the validation algorithm (" CefC_ValidTypeStr_CRC32C " or " CefC_ValidTypeStr_RSA256 ")\n");
@@ -821,7 +902,7 @@ post_process (
 	uint64_t jitter_ave;
 	struct timeval diff_tval;
 	int	invalid_end = 0;
-	
+
 	if (stat_recv_frames) {
 		if ( !timercmp( &start_t, &end_t, != ) == 0 ) {
 			if ( timercmp( &start_t, &end_t, < ) == 0 ) {
@@ -843,7 +924,7 @@ post_process (
 	usleep (1000000);
 	cef_client_close (fhdl);
 	fprintf (ofp, "[cefgetfile] Unconnect to cefnetd ... OK\n");
-	
+
 	fprintf (ofp, "[cefgetfile] Terminate\n");
 	fprintf (ofp, "[cefgetfile] Rx Frames (All)           = "FMTU64"\n", stat_all_recv_frames);			//20230518
 	fprintf (ofp, "[cefgetfile] Rx Frames (ContentObject) = "FMTU64"\n", stat_recv_frames);				//20230518
@@ -867,7 +948,7 @@ post_process (
 		}
 		if ((stat_recv_frames > 0) && (invalid_end == 0)) {
 			jitter_ave = stat_jitter_sum / stat_recv_frames;
-	
+
 			fprintf (ofp, "[cefgetfile] Jitter (Ave)              = "FMTU64" us\n", jitter_ave);
 			fprintf (ofp, "[cefgetfile] Jitter (Max)              = "FMTU64" us\n", stat_jitter_max);
 			fprintf (ofp, "[cefgetfile] Jitter (Var)              = "FMTU64" us\n"

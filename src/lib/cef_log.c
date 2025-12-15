@@ -52,8 +52,7 @@
 /****************************************************************************************
  Macros
  ****************************************************************************************/
-#define	BUFSIZ_TIMESTR	64
-#define	BUFSIZ_1KB		1024
+#define	BUFSIZ_TIMESTR	BUFSIZ_64
 
 /****************************************************************************************
  Structures Declaration
@@ -119,9 +118,9 @@ cef_log_init2 (
 	char* 	wp;
 	char 	file_path[PATH_MAX*2];
 	FILE* 	fp;
-	char	buff[BUFSIZ_1KB];
-	char 	ws[BUFSIZ_1KB];
-	char 	pname[BUFSIZ_1KB];
+	char	buff[BUFSIZ_1K];
+	char 	ws[BUFSIZ_1K];
+	char 	pname[BUFSIZ_1K];
 	int 	res;
 
 	/* Update the log level information 	*/
@@ -286,9 +285,9 @@ cef_dbg_init (
 	char* 	wp;
 	char 	file_path[PATH_MAX];
 	FILE* 	fp;
-	char	buff[BUFSIZ_1KB];
-	char 	ws[BUFSIZ_1KB];
-	char 	pname[BUFSIZ_1KB];
+	char	buff[BUFSIZ_1K];
+	char 	ws[BUFSIZ_1K];
+	char 	pname[BUFSIZ_1K];
 	int 	res;
 
 	/* Records the process name 		*/
@@ -399,7 +398,7 @@ cef_dbg_write_with_line (
 	...												/* parameters						*/
 ) {
 	va_list arg;
-	char 		time_str[BUFSIZ_TIMESTR], fmtbuf[BUFSIZ_1KB];
+	char 		time_str[BUFSIZ_TIMESTR], fmtbuf[BUFSIZ_1K];
 	struct tm* 	timeptr;
 	time_t 		timer;
 	struct timeval t;
@@ -421,36 +420,47 @@ cef_dbg_write_with_line (
 }
 
 void
-cef_dbg_buff_write (
+cef_dbg_buff_write_with_line(
+	const char* func, 								/* function name					*/
+	const int   lineno, 							/* line number						*/
 	int level, 										/* debug level 						*/
-	const unsigned char* buff,
-	int len
+	const unsigned char* buff,						/* buffer							*/
+	const size_t buff_size							/* buffer size						*/
 ) {
-	int i;
-	int n = 0;
-	int s = 0;
+	char 		time_str[BUFSIZ_TIMESTR], fmtbuf[BUFSIZ_1K];
+	struct tm* 	timeptr;
+	time_t 		timer;
+	struct timeval t;
+	assert (level >= CefC_Dbg_Fine && level <= CefC_Dbg_Finest);
+	assert (dbg_proc[0] != 0x00);
 
 	if (level < dbg_lv) {
+		timer 	= time (NULL);
+		timeptr = localtime (&timer);
+		strftime (time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", timeptr);
+		gettimeofday (&t, NULL);
 
-		fprintf (stderr, "------------------------------------------------------\n");
-		fprintf (stderr, "      0  1  2  3  4  5  6  7    8  9  0  1  2  3  4  5\n");
-		for (i = 0 ; i < len ; i++) {
-			if (n == 0) {
-				fprintf (stderr, "%3d: ", s);
-				s++;
-			}
-			fprintf (stderr, "%02X ", buff[i]);
+		fprintf (stdout, "%s." FMTLINT " [%s] DEBUG: %s(%u) -- 8< ---- 8< ---- 8< ---- 8< --\n",
+					time_str, t.tv_usec / 1000, dbg_proc, func, lineno);
+		fprintf (stdout, "%s." FMTLINT " [%s] DEBUG:        0  1  2  3  4  5  6  7    8  9  0  1  2  3  4  5\n",
+					time_str, t.tv_usec / 1000, dbg_proc);
 
-			if (n == 7) {
-				fprintf (stderr, "  ");
+		for (int i = 0 ; i < buff_size ; i++) {
+			char	wkbuf[8];
+			const int	j = (0 < i && !(i % 16));
+			if ( j ){
+				fprintf (stdout, "%s\n", fmtbuf);
 			}
-			n++;
-			if (n > 15) {
-				n = 0;
-				fprintf (stderr, "\n");
+			if ( !(i % 16) ){
+				snprintf(fmtbuf, sizeof(fmtbuf), "%s." FMTLINT " [%s] DEBUG: %04X:",
+					time_str, t.tv_usec / 1000, dbg_proc, i);
+			} else if ( (i % 16) == 8 ){
+				strcat(fmtbuf, "  ");
 			}
+			snprintf (wkbuf, sizeof(wkbuf), " %02X", buff[i]);
+			strcat(fmtbuf, wkbuf);
 		}
-		fprintf (stderr, "\n------------------------------------------------------\n");
+		fprintf (stdout, "%s\n", fmtbuf);
 	}
 }
 
@@ -518,6 +528,56 @@ cef_dbg_buff_write_name_with_line (
 #else	//	cef_dbg_write
 		cef_dbg_write (level, "%s", workstr);
 #endif	//	cef_dbg_write
+	}
+}
+
+
+void
+cef_dbg_dump_with_line(
+	const char* func, 								/* function name					*/
+	const int   lineno, 							/* line number						*/
+	int level, 										/* debug level 						*/
+	const unsigned char* buff,						/* buffer							*/
+	const size_t buff_size,							/* buffer size						*/
+	const char* usrfmt,								/* output format					*/
+	...												/* parameters						*/
+) {
+	va_list arg;
+	char 		time_str[BUFSIZ_TIMESTR], fmtbuf[BUFSIZ_1K];
+	struct tm* 	timeptr;
+	time_t 		timer;
+	struct timeval t;
+	assert (level >= CefC_Dbg_Fine && level <= CefC_Dbg_Finest);
+	assert (dbg_proc[0] != 0x00);
+
+	if (level < dbg_lv) {
+		va_start (arg, usrfmt);
+		timer 	= time (NULL);
+		timeptr = localtime (&timer);
+		strftime (time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", timeptr);
+		gettimeofday (&t, NULL);
+
+		snprintf(fmtbuf, sizeof(fmtbuf), "%s." FMTLINT " [%s] DEBUG: %s(%u) %s",
+			time_str, t.tv_usec / 1000, dbg_proc, func, lineno, usrfmt);
+		vfprintf (stdout, fmtbuf, arg);
+		va_end (arg);
+
+		for (int i = 0 ; i < buff_size ; i++) {
+			char	wkbuf[8];
+			const int	j = (0 < i && !(i % 16));
+			if ( j ){
+				fprintf (stdout, "%s\n", fmtbuf);
+			}
+			if ( !(i % 16) ){
+				snprintf(fmtbuf, sizeof(fmtbuf), "%s." FMTLINT " [%s] DEBUG: %s(%u) %04X:",
+					time_str, t.tv_usec / 1000, dbg_proc, func, lineno, i);
+			} else if ( (i % 16) == 8 ){
+				strcat(fmtbuf, " ");
+			}
+			snprintf (wkbuf, sizeof(wkbuf), " %02X", buff[i]);
+			strcat(fmtbuf, wkbuf);
+		}
+		fprintf (stdout, "%s\n", fmtbuf);
 	}
 }
 
@@ -618,5 +678,4 @@ cef_log_trim_line_string (
 
 	return (equal_f);
 }
-
 

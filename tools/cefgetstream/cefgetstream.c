@@ -346,7 +346,7 @@ int main (
 			}
 			res = strlen (work_arg);
 			
-			if (res >= 1204) {
+			if (res >= CefC_NAME_MAXLEN) {
 				printerr("uri is too long.\n");
 				USAGE;
 				return (-1);
@@ -685,8 +685,7 @@ print_usage (
 	fprintf (ofp, "\nUsage: cefgetstream\n\n");
 	fprintf (ofp, "  cefgetstream uri [-o] [-m chunks] [-s pipeline] [-v valid_algo] [-d config_file_dir] [-p port_num] [-z Lifetime] [-l block_mode]\n\n");
 	fprintf (ofp, "  uri              Specify the URI.\n");
-	fprintf (ofp, "  -o               Specify this option, if you require the content\n"
-	                      "                   that the owner is caching\n");
+	fprintf (ofp, "  -o               Specify this option if content must be retrieved directly from content owner and not from intermediate cache\n");
 	fprintf (ofp, "  chunks           Specify the number of chunk that you want to obtain\n");
 	fprintf (ofp, "  pipeline         Number of pipeline\n");
 	fprintf (ofp, "  valid_algo       Specify the validation algorithm (" CefC_ValidTypeStr_CRC32C " or " CefC_ValidTypeStr_RSA256 ")\n");

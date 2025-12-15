@@ -101,7 +101,7 @@ typedef struct {
 	/********** TCP Listen Sockets		***********/
 	uint16_t 			port_num;
 	int 				tcp_listen_fd;
-	struct sockaddr* 	ai_addr;
+	struct sockaddr 	ai_addr;
 	socklen_t 			ai_addrlen;
 	int 				tcp_fds[CsmgrdC_Max_Sock_Num];
 	int 				tcp_index[CsmgrdC_Max_Sock_Num];

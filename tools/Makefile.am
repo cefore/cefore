@@ -29,6 +29,7 @@
 
 # load sub directry
 SUBDIRS=cefgetstream cefputstream cefgetfile cefputfile cefgetchunk ccninfo
+SUBDIRS+=cefpubfile cefsubfile
 
 # check csmgr
 if CSMGR_ENABLE

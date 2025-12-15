@@ -466,6 +466,10 @@ fsc_cob_process_thread (
 		}
 	}
 
+#ifdef CefC_Debug
+	csmgrd_dbg_write (CefC_Dbg_Fine, "%s terminate.\n", __func__);
+#endif // CefC_Debug
+
 	pthread_exit (NULL);
 
 	return ((void*) NULL);

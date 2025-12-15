@@ -60,6 +60,10 @@
 
 #define	CefC_PluginArea_Size			CefC_InbandTelem_Size
 
+#define CefC_Fib_RtCost_Identifier		"rtcost="
+#define CefC_Fib_Keyid_Identifier		"keyid=0x"
+#define CefC_Fib_Keyid_Len				32
+
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
@@ -81,7 +85,8 @@ typedef struct CefT_Fib_Face {
 	CefT_Fib_Metric	metric;					/* 0.8.3c */
 	uint64_t		tx_int;					/* 0.8.3c */
 	uint64_t		tx_int_types[CefC_PIT_TYPE_MAX];		/* 0.8.3c */
-
+	unsigned char 	keyid[CefC_Fib_Keyid_Len];	/* KeyID for Full Souce Forwarding */
+	int  keyid_len;								/* KeyID length for Full Source Forwarding */
 } CefT_Fib_Face;
 
 /***** FIB entry 						*****/
@@ -109,6 +114,21 @@ typedef struct {
  ****************************************************************************************/
 
 /*--------------------------------------------------------------------------------------
+	Set default route
+----------------------------------------------------------------------------------------*/
+void
+cef_fib_set_default_route (
+	CefT_Fib_Entry *entry
+);
+/*--------------------------------------------------------------------------------------
+	Create FIB entry
+----------------------------------------------------------------------------------------*/
+CefT_Fib_Entry*
+cef_fib_entry_create (
+	const unsigned char* name,					/* name for hash key					*/
+	unsigned int name_len
+);
+/*--------------------------------------------------------------------------------------
 	Searches FIB entry matching the specified Key
 ----------------------------------------------------------------------------------------*/
 CefT_Fib_Entry* 							/* FIB entry 								*/
@@ -133,27 +153,6 @@ cef_fib_forward_faceid_select (
 	CefT_Fib_Entry* entry, 					/* FIB entry								*/
 	uint16_t incoming_faceid, 				/* FaceID at which the Interest arived 		*/
 	uint16_t faceids[]						/* set Face-ID to forward the Interest		*/
-);
-/*--------------------------------------------------------------------------------------
-	Receive the FIB route message
-----------------------------------------------------------------------------------------*/
-int
-cef_fib_route_msg_read (
-	CefT_Hash_Handle fib,					/* FIB										*/
-	unsigned char* msg, 					/* the received message(s)					*/
-	int msg_size,							/* size of received message(s)				*/
-	uint8_t type,							/* CefC_Fib_Entry_XXX						*/
-	int* rc, 								/* 0x01=New Entry, 0x02=Free Entry 	0.8.3c	*/
-	CefT_Fib_Metric*	fib_metric			//0.8.3c
-);
-/*--------------------------------------------------------------------------------------
-	Obtain the Name from the received route message
-----------------------------------------------------------------------------------------*/
-int
-cef_fib_name_get_from_route_msg (
-	unsigned char* msg, 					/* the received message(s)					*/
-	int msg_size,
-	unsigned char* name
 );
 /*--------------------------------------------------------------------------------------
 	Removes the specified Faceid from the specified FIB entry
@@ -204,17 +203,6 @@ int
 cef_fib_faceid_search (
 	CefT_Hash_Handle fib,
 	int faceid
-);
-/*--------------------------------------------------------------------------------------
-	Obtains the FIB information
-----------------------------------------------------------------------------------------*/
-int
-cef_fib_info_get (
-	CefT_Hash_Handle* fib,
-	char* info_buff,
-	const unsigned char* name,
-	int name_len,
-	int partial_match_f
 );
 /*--------------------------------------------------------------------------------------
 	Check FIB ip address

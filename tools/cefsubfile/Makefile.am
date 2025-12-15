@@ -27,58 +27,29 @@
 # SUCH DAMAGE.
 #
 
-# set include file directory
-AM_CFLAGS = -I$(top_srcdir)/src/include -I$(top_srcdir)/src/conpubd/include
+AM_CPPFLAGS = -I$(top_srcdir)/src/include
 
-# set library directory
-AM_LDFLAGS = -L$(top_srcdir)/src/lib/ -L$(top_srcdir)/src/conpubd/lib
+bin_PROGRAMS=cefsubfile
+cefsubfile_LDFLAGS=-L$(top_srcdir)/src/lib/
+cefsubfile_LDADD=-lcefore
+if OPENSSL_STATIC
+cefsubfile_LDADD+=-l:libssl.a -l:libcrypto.a
+else  #OPENSSL_STATIC
+cefsubfile_LDADD+=-lssl -lcrypto
+endif #OPENSSL_STATIC
+cefsubfile_LDADD += -lpthread -ldl
 
-# set automake option
-AUTOMAKE_OPTIONS = subdir-objects
-
-# set conpubd plugins directory
-CONPUBD_PLUGINS_DIR = $(top_srcdir)/src/conpubd
-
-# set noinst_LTLIBRARIES
-noinst_LTLIBRARIES =
-
-# set conpubd plugin cflags
-CONPUBD_PLUGIN_CFLAGS = $(AM_CFLAGS)
-
-# set conpubd plugin ldadd
-CONPUBD_PLUGIN_LIBADD =
+cefsubfile_CFLAGS=$(AM_CPPFLAGS)
+cefsubfile_SOURCES=cefsubfile.c
 
 # check debug build
 if CEFDBG_ENABLE
-CONPUBD_PLUGIN_CFLAGS+=-DCefC_Debug -g
+cefsubfile_CFLAGS+=-DCefC_Debug
 endif # CEFDBG_ENABLE
 
+DESTDIR=$(CEFORE_DIR_PATH)
+bindir=bin
 
+install-exec-hook:
+	chmod +s $(DESTDIR)$(bindir)/$(bin_PROGRAMS)
 
-if CONPUB_ENABLE
-CONPUBD_PLUGIN_CFLAGS+=-DCefC_Conpub
-CONPUBD_PLUGIN_LIBADD+=-lconpub
-endif # CONPUB_ENABLE
-
-
-# lib conpubd plugins library
-lib_LTLIBRARIES = libconpubd_plugin.la
-libconpubd_plugin_la_CFLAGS = $(CONPUBD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
-libconpubd_plugin_la_SOURCES =
-libconpubd_plugin_la_LIBADD =
-
-# check mem cache
-noinst_LTLIBRARIES += libmem_cache.la
-libmem_cache_la_CFLAGS  = $(CONPUBD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
-libmem_cache_la_SOURCES = mem_cache/mem_cache.c mem_cache/mem_cache.h
-libmem_cache_la_LDFLAGS = -lcefore -lconpub $(AM_LDFLAGS)
-libconpubd_plugin_la_LIBADD += $(CONPUBD_PLUGIN_LIBADD) libmem_cache.la
-
-# check filesystem
-noinst_LTLIBRARIES += libfilesystem_cache.la
-libfilesystem_cache_la_CFLAGS  = $(CONPUBD_PLUGIN_CFLAGS) -Wall -O2 -fPIC
-libfilesystem_cache_la_SOURCES = filesystem_cache/filesystem_cache.c filesystem_cache/filesystem_cache.h
-libfilesystem_cache_la_LDFLAGS = -lcefore -lconpub $(AM_LDFLAGS)
-libconpubd_plugin_la_LIBADD += $(CONPUBD_PLUGIN_LIBADD) libfilesystem_cache.la
-
-libdir=$(CEFORE_DIR_PATH)lib

@@ -284,7 +284,7 @@ cef_csmgr_stat_create (
 
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "CACHE_TYPE     != CefC_Default_Cache_Type\n");
-		cef_dbg_write (CefC_Dbg_Fine, "CACHE_CAPACITY =  "FMTU64"\n", cs_stat->cache_cap);
+		cef_dbg_write (CefC_Dbg_Fine, "CACHE_CAPACITY =  %u\n", cs_stat->cache_cap);
 #endif // CefC_Debug
 
 #ifdef	CefC_CefnetdCache
@@ -302,7 +302,7 @@ cef_csmgr_stat_create (
 					return (NULL);
 				}
 				cef_log_write (CefC_Log_Info,
-					"The maximum number of cached Cobs is "FMTU64"\n", cs_stat->cache_cap);
+					"The maximum number of cached Cobs is %u\n", cs_stat->cache_cap);
 				/* create hash table for work buffer */
 				cs_stat->cob_table = cef_hash_tbl_create_ext (
 					(uint16_t) cs_stat->cache_cap + CefC_Csmgr_Max_Table_Margin, CefC_Hash_Coef_Cache);
@@ -538,7 +538,7 @@ cef_csmgr_config_read (
 	}
 #ifdef CefC_CefnetdCache
 	if(cs_stat->cache_type == CefC_Cache_Type_Localcache) {
-		cef_log_write (CefC_Log_Info, "Local cache expire check interval: %lu\n", cs_stat->local_cache_interval);
+		cef_log_write (CefC_Log_Info, "Local cache expire check interval: %u\n", cs_stat->local_cache_interval);
 	}
 #endif //CefC_CefnetdCache
 	fclose (fp);
@@ -1168,7 +1168,7 @@ cef_csmgr_cache_insert (
 			int		ret = 0;
 
 			ret = write(cs_stat->pipe_fd[0], &msg[write_len], msg_len-write_len);
-cef_dbg_write (CefC_Dbg_Finest, "i=%d, msg_len=%ld, write_len=%ld, ret=%d\n", i, msg_len, write_len, ret);
+cef_dbg_write (CefC_Dbg_Finest, "i=%d, msg_len=%d, write_len=%d, ret=%d\n", i, msg_len, write_len, ret);
 
 			if ( 0 < ret ){
 				write_len += ret;
@@ -1182,34 +1182,11 @@ cef_dbg_write (CefC_Dbg_Finest, "i=%d, msg_len=%ld, write_len=%ld, ret=%d\n", i,
 			}
 			CefC_PipeWrite_RetryWait(i);
 		}
-cef_dbg_write (CefC_Dbg_Fine, "Failure:write_len=%ld\n", write_len);
+cef_dbg_write (CefC_Dbg_Fine, "Failure:write_len=%d\n", write_len);
 	}
 #endif	//CefC_CefnetdCache
 
 	return;
-}
-/*--------------------------------------------------------------------------------------
-	Check reply flag. Don't forward interest if reply flag is on.
-----------------------------------------------------------------------------------------*/
-int									/* The return value is 0 if an error occurs			*/
-cef_csmgr_rep_f_check (
-	CefT_Pit_Entry* pe, 					/* PIT entry								*/
-	int faceid								/* Face-ID to reply to the origin of 		*/
-											/* transmission of the message(s)			*/
-) {
-	CefT_Down_Faces* dnface = &(pe->dnfaces);
-	/* check PIT entry */
-	while (dnface->next) {
-		dnface = dnface->next;
-		if (dnface->faceid == faceid) {
-			if (dnface->reply_f) {
-				return (0);
-			} else {
-				break;
-			}
-		}
-	}
-	return (1);
 }
 /*--------------------------------------------------------------------------------------
 	Send message from csmgr to cefnetd
@@ -1246,7 +1223,7 @@ cef_csmgr_send_msg_to_csmgr (
 
 		ret = write(cs_stat->to_csmgrd_pipe_fd[0], &msg[write_len], msg_len-write_len);
 #ifdef CefC_Debug
-cef_dbg_write (CefC_Dbg_Finest, "i=%d, msg_len=%ld, write_len=%ld, ret=%d\n", i, msg_len, write_len, ret);
+cef_dbg_write (CefC_Dbg_Finest, "i=%d, msg_len=%d, write_len=%d, ret=%d\n", i, msg_len, write_len, ret);
 #endif // CefC_Debug
 
 		if ( 0 < ret ){
@@ -1262,7 +1239,7 @@ cef_dbg_write (CefC_Dbg_Finest, "i=%d, msg_len=%ld, write_len=%ld, ret=%d\n", i,
 		CefC_PipeWrite_RetryWait(i);
 	}
 #ifdef CefC_Debug
-cef_dbg_write (CefC_Dbg_Fine, "Failure:write_len=%ld\n", write_len);
+cef_dbg_write (CefC_Dbg_Fine, "Failure:write_len=%d\n", write_len);
 #endif // CefC_Debug
 
 	return (0);

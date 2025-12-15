@@ -250,7 +250,7 @@ int main (
 	cef_log_init2 (file_path, 1 /* for CEFNETD */);
 #ifdef CefC_Debug
 	cef_dbg_init ("cefctrl", file_path, 1);
-	cef_dbg_write (CefC_Dbg_Fine, "operation is %s\n", argv[1]);
+	cef_dbg_write (CefC_Dbg_Finer, "operation is %s\n", argv[1]);
 #endif // CefC_Debug
 
 	res = cef_client_init (port_num, file_path);
@@ -337,7 +337,7 @@ int main (
 				fprintf (stdout, "%s", (char*) rsp_msg);
 			} else {
 				if (resped == 0){
-					printerr("cefnetd does not send responce.\n");
+					printerr("cefnetd does not send response.\n");
 				}
 				break;
 			}
@@ -352,7 +352,13 @@ int main (
 				fhdl, buff,
 				CefC_Ctrl_Len + CefC_Ctrl_Route_Len + len);
 		}
-        usleep (10000);
+		res = cef_client_read (fhdl, rsp_msg, CefC_Max_Length);
+		if (res > 0) {
+			rsp_msg[res] = 0x00;
+			fprintf (stdout, "%s", (char*) rsp_msg);
+		} else {
+			printerr("cefnetd does not send response.\n");
+		}
 	}
 	cef_client_close (fhdl);
 
@@ -372,6 +378,9 @@ cef_ctrl_create_route_msg (
 	int index = 0;
 	uint16_t uri_len;
 	int i;
+	int cost = 0;
+	int rtcost_f = 0;
+	int keyid_f = 0;
 
 	/* check the number of parameters 		*/
 	if (argc > 37) {
@@ -398,11 +407,45 @@ cef_ctrl_create_route_msg (
 		return (-1);
 	}
 
+	/* check rtcost */
+	if (strncmp (argv[4], CefC_Fib_RtCost_Identifier, strlen(CefC_Fib_RtCost_Identifier)) == 0) {
+		char *endptr;
+		const char *value_str = argv[4] + strlen(CefC_Fib_RtCost_Identifier);
+		long cost_l = strtol(value_str, &endptr, 10);
+
+		if ((cost_l == LONG_MIN || cost_l == LONG_MAX) && errno != 0) {
+			printerr("RtCost is invalid value.\n");
+			return (-1);
+		} else if ((cost_l > INT_MAX) || (cost_l < INT_MIN)) {
+			printerr("RtCost (%ld) is invalid value.( %d < RtCost < %d )\n", cost_l, INT_MIN, INT_MAX);
+			return (-1);
+		} else if ((endptr == value_str) || ('\0' != *endptr)) {
+			printerr("RtCost is invalid value.\n");
+			return (-1);
+		}
+
+		cost = (int)cost_l;
+		rtcost_f = 4;
+		i = 5;
+	} else {
+		i = 4;
+	}
+
+	/* check keyid */
+	if (strncmp (argv[i], CefC_Fib_Keyid_Identifier, strlen(CefC_Fib_Keyid_Identifier)) == 0) {
+		if (strlen (argv[i]) != strlen(CefC_Fib_Keyid_Identifier) + CefC_Fib_Keyid_Len * 2) {
+			printerr("KeyID is invalid length, cefore support only %d bytes KeyID.\n", CefC_Fib_Keyid_Len);
+			return (-1);
+		}
+		keyid_f = i;
+		i++;
+	}
+
 	/* check protocol */
-	if (strcmp (argv[4], CefC_Arg_Route_Pro_TCP) == 0) {
+	if (strcmp (argv[i], CefC_Arg_Route_Pro_TCP) == 0) {
 		//prot = CefC_Fib_Route_Pro_TCP;
 		prot = CefC_Face_Type_Tcp;
-	} else if (strcmp (argv[4], CefC_Arg_Route_Pro_UDP) == 0) {
+	} else if (strcmp (argv[i], CefC_Arg_Route_Pro_UDP) == 0) {
 		/* protocol is UDP */
 		//prot = CefC_Fib_Route_Pro_UDP;
 		prot = CefC_Face_Type_Udp;
@@ -410,6 +453,7 @@ cef_ctrl_create_route_msg (
 		printerr("Protocol that is neither udp nor tcp for cefroute is specified.\n");
 		return (-1);
 	}
+	i++;
 
 	/* set user name 	*/
 	memcpy (buff + index, user_name, CefC_Ctrl_User_Len);
@@ -435,7 +479,27 @@ cef_ctrl_create_route_msg (
 	memcpy (buff + index, argv[3], uri_len);
 	index += uri_len;
 
-	for (i = 5 ; i < argc ; i++) {
+	/* set rtcost */
+	if (rtcost_f > 0) {
+		memcpy (buff + index, CefC_Fib_RtCost_Identifier, strlen(CefC_Fib_RtCost_Identifier));
+		index += strlen(CefC_Fib_RtCost_Identifier);
+		memcpy (buff + index, &cost, sizeof(int));
+		index += sizeof(int);
+	}
+
+	/* set keyid */
+	if (keyid_f > 0) {
+		memcpy (buff + index, CefC_Fib_Keyid_Identifier, strlen(CefC_Fib_Keyid_Identifier));
+		index += strlen(CefC_Fib_Keyid_Identifier);
+		for (int j = 0; j < CefC_Fib_Keyid_Len; j++) {
+			unsigned int x;
+			sscanf((char *)&argv[keyid_f][strlen(CefC_Fib_Keyid_Identifier) + j * 2], "%02x", &x);
+			buff[index] = x;
+			index++;
+		}
+	}
+
+	for (; i < argc ; i++) {
 		/* set host IPaddress */
 		struct addrinfo hints;
 		struct addrinfo* gai_res;

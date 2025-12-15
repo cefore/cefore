@@ -110,7 +110,8 @@ cef_plugin_samptp_init (
 int
 cef_plugin_samptp_cob (
 	CefT_Plugin_Tp* 	tp, 						/* Transport Plugin Handle			*/
-	CefT_Rx_Elem* 		rx_elem
+	CefT_Rx_Elem* 		rx_elem,
+	unsigned int		obj_sender_type				/* Type of object sender			*/
 ) {
 	CefT_Tx_Elem* tx_elem;
 	int idx = 0;

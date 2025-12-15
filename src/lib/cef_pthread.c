@@ -104,7 +104,7 @@ cef_pthread_create (
 #ifdef	CefC_Debug
 {	size_t	stacksize;
 	pthread_attr_getstacksize(t_attr, &stacksize);
-	cef_dbg_write (CefC_Dbg_Fine, "*pthread_t:%p stacksize=%u bytes.\n", *t_handle, stacksize);	}
+	cef_dbg_write (CefC_Dbg_Fine, "*pthread_t:%p stacksize=%zu bytes.\n", (void *)*t_handle, stacksize);	}
 #endif	// CefC_Debug
 
 	return rc;

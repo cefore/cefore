@@ -57,6 +57,8 @@
 
 #ifdef CefC_Debug
 #define cef_dbg_buff_write_name(...)  cef_dbg_buff_write_name_with_line(__func__,__LINE__,__VA_ARGS__)
+#define cef_dbg_buff_write(...)  cef_dbg_buff_write_with_line(__func__,__LINE__,__VA_ARGS__)
+#define cef_dbg_dump(...)   cef_dbg_dump_with_line(__func__,__LINE__,__VA_ARGS__)
 #define cef_dbg_write(...)  cef_dbg_write_with_line(__func__,__LINE__,__VA_ARGS__)
 #define CEF_DBG_OUT(...)    cef_dbg_write_with_line(__func__,__LINE__,CefC_Dbg_Fine,__VA_ARGS__)
 #define CEF_DBG_Fine(...)   cef_dbg_write_with_line(__func__,__LINE__,CefC_Dbg_Fine,__VA_ARGS__)
@@ -65,6 +67,8 @@
 #define CEF_DBG_Finest(...) cef_dbg_write_with_line(__func__,__LINE__,CefC_Dbg_Finest,__VA_ARGS__)
 #else  // CefC_Debug
 #define cef_dbg_buff_write_name(...)
+#define cef_dbg_buff_write(...)
+#define cef_dbg_dump(...)
 #define cef_dbg_write(...)
 #define CEF_DBG_OUT(...)
 #define CEF_DBG_Fine(...)
@@ -103,10 +107,10 @@ cef_log_write (
 	int level, 										/* logging level 					*/
 	const char* fmt, 								/* output format					*/
 	...												/* parameters						*/
-);
+) __attribute__((format(printf, 2, 3)));
 
 extern void cef_log_fopen (int port_num);
-extern void cef_log_fprintf (const char *fmt, ...);
+extern void cef_log_fprintf (const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 extern void cef_log_flush (void);
 
 void
@@ -116,17 +120,14 @@ cef_dbg_init (
 	int cefnetd_f
 );
 
+#ifndef	cef_dbg_write
 void
-#ifdef	cef_dbg_write
-cef_dbg_write_origin (
-#else	//	cef_dbg_write
 cef_dbg_write (
-#endif	//	cef_dbg_write
 	int level, 										/* debug level 						*/
-	const char* fmt, 								/* output format					*/
+	const char* usrfmt,								/* output format					*/
 	...												/* parameters						*/
-);
-
+) __attribute__((format(printf, 2, 3)));
+#else	//	cef_dbg_write
 void
 cef_dbg_write_with_line (
 	const char* func, 								/* function name					*/
@@ -134,14 +135,8 @@ cef_dbg_write_with_line (
 	int level, 										/* debug level 						*/
 	const char* usrfmt,								/* output format					*/
 	...												/* parameters						*/
-);
-
-void
-cef_dbg_buff_write (
-	int level, 										/* debug level 						*/
-	const unsigned char* buff,
-	int len
-);
+) __attribute__((format(printf, 4, 5)));
+#endif	//	cef_dbg_write
 
 void
 #ifndef	cef_dbg_buff_write_name
@@ -159,6 +154,26 @@ cef_dbg_buff_write_name_with_line (
 	const unsigned char* ftr_buff,
 	int ftr_len
 );
+
+void
+cef_dbg_buff_write_with_line (
+	const char* func, 								/* function name					*/
+	const int   lineno, 							/* line number						*/
+	int level, 										/* debug level 						*/
+	const unsigned char* buff,						/* buffer							*/
+	const size_t buff_size							/* buffer size						*/
+);
+
+void
+cef_dbg_dump_with_line(
+	const char* func, 								/* function name					*/
+	const int   lineno, 							/* line number						*/
+	int level, 										/* debug level 						*/
+	const unsigned char* buff,						/* buffer							*/
+	const size_t buff_size,							/* buffer size						*/
+	const char* usrfmt,								/* output format					*/
+	...												/* parameters						*/
+) __attribute__((format(printf, 6, 7)));
 
 #endif // __CEF_LOG_HEADER__
 

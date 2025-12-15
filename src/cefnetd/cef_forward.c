@@ -66,6 +66,21 @@
  Static Function Declaration
  ****************************************************************************************/
 
+void
+cef_forward_send_txque (
+	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
+	CefT_FwdStrtgy_Param* fwdstr
+) {
+	uint16_t 		faceids[CefC_Elem_Face_Num];	/* outgoing FaceIDs that were 		*/
+
+	memset(faceids, 0x00, sizeof(faceids));
+	faceids[0] = faceid;
+
+	cefnetd_frame_send_core(fwdstr->hdl_cefnetd, 1, faceids,
+			fwdstr->msg, fwdstr->payload_len + fwdstr->header_len,
+			fwdstr->tx_prio, fwdstr->tx_copies);
+}
+
 /*--------------------------------------------------------------------------------------
 	Forward Interest API
 ----------------------------------------------------------------------------------------*/
@@ -96,8 +111,7 @@ cef_forward_interest (
 
 				cef_pit_entry_up_face_update (fwdstr->pe, face->faceid, fwdstr->pm, fwdstr->poh);
 
-				cefnetd_frame_send_txque (fwdstr->hdl_cefnetd,
-					face->faceid, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
+				cef_forward_send_txque (face->faceid, fwdstr);
 
 #ifdef CefC_Debug
 				cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the Interest to Face#%d\n", face->faceid);
@@ -124,8 +138,7 @@ cef_forward_interest (
 
 			cef_pit_entry_up_face_update (fwdstr->pe, face->faceid, fwdstr->pm, fwdstr->poh);
 
-			cefnetd_frame_send_txque (fwdstr->hdl_cefnetd,
-				face->faceid, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
+			cef_forward_send_txque (face->faceid, fwdstr);
 
 #ifdef CefC_Debug
 			cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the Interest to Face#%d\n", face->faceid);
@@ -151,54 +164,20 @@ void
 cef_forward_object (
 	CefT_FwdStrtgy_Param* fwdstr
 ) {
-	CefT_Down_Faces*	face;
 	int					fidx;
 	uint16_t			fid;
-	int					break_f = 0;
 
 	for (fidx = 0; fidx < fwdstr->faceid_num;fidx++) {
 		fid = fwdstr->faceids[fidx];
 
-		face = &(fwdstr->pe->dnfaces);
-
-		while (face->next) {
-			face = face->next;
-
-			if (fwdstr->pm->org.longlife_f) {
-				if (face->faceid == fid) {
-					break_f = 1;
-					break;
-				}
-			} else {
-				if ((face->faceid == fid) && (face->nonce == fwdstr->pm->nonce)) {
-					break_f = 1;
-					break;
-				}
-			}
-		}
-		if (break_f == 0) {
-			continue;
-		}
-		break_f = 0;
-
-		if (!cef_pit_entry_down_face_search (face, 0, fwdstr->pm)){
-			continue;
-		}
-
-		if (cef_face_check_active (face->faceid) > 0) {
-			cefnetd_frame_send_txque (fwdstr->hdl_cefnetd,
-                face->faceid, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
-
+		if (cef_face_check_active (fid) > 0) {
+			cef_forward_send_txque (fid, fwdstr);
 #ifdef CefC_Debug
-			cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the ContentObject to Face#%d\n", face->faceid);
+			cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the ContentObject to Face#%d\n", fid);
 #endif // CefC_Debug
 
 			/* Count send ContentObject */
 			(*(fwdstr->cnt_send_frames))++;
-
-			cef_pit_entry_down_face_remove (fwdstr->pe, face, fwdstr->pm);
-		} else {
-			cef_pit_down_faceid_remove (fwdstr->pe, face->faceid);
 		}
 	}
 
@@ -257,8 +236,7 @@ cef_forward_ccninforeq (
 
 				cef_pit_entry_up_face_update (fwdstr->pe, face->faceid, fwdstr->pm, fwdstr->poh);
 
-				cefnetd_frame_send_txque (fwdstr->hdl_cefnetd,
-					face->faceid, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
+				cef_forward_send_txque (face->faceid, fwdstr);
 
 #ifdef CefC_Debug
 				cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the CcninfoReq to Face#%d\n", face->faceid);
@@ -280,8 +258,7 @@ cef_forward_ccninforeq (
 
 			cef_pit_entry_up_face_update (fwdstr->pe, face->faceid, fwdstr->pm, fwdstr->poh);
 
-			cefnetd_frame_send_txque (fwdstr->hdl_cefnetd,
-				face->faceid, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
+			cef_forward_send_txque (face->faceid, fwdstr);
 
 #ifdef CefC_Debug
 			cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the CcninfoReq to Face#%d\n", face->faceid);

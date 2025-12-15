@@ -194,8 +194,8 @@ int main (
 			work_arg = argv[i + 1];
 			block_size = atoi (work_arg);
 
-			if (block_size < 60) {
-				block_size = 60;
+			if (block_size < CefC_Min_Block) {
+				block_size = CefC_Min_Block;
 			}
 			if (block_size > CefC_Max_Block) {
 				block_size = CefC_Max_Block;

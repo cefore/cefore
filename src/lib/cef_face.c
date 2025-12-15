@@ -909,8 +909,8 @@ cef_face_accept_connect (
 	int index;
 	char ip_str[NI_MAXHOST];
 	char port_str[NI_MAXSERV];
-	char peer_str[BUFSIZ];
-	char src_peer_str[BUFSIZ];
+	char peer_str[BUFSIZ_8K];
+	char src_peer_str[BUFSIZ_8K];
 
 	memset (&sa, 0, sizeof (struct sockaddr_storage));
 	cs = accept (face_tbl[CefC_Faceid_ListenTcpv4].fd, (struct sockaddr*) &sa, &len);

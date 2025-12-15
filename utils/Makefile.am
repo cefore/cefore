@@ -53,7 +53,7 @@ default all: $(CEF_UTIL)
 
 cefnetdstart: cefnetdstart.sh
 	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
-		echo "# !"$(SH) > $@; \
+		echo "#!"$(SH) > $@; \
 		cat $(@:=.sh) >> $@; \
 		chmod +x $@; \
 	else \
@@ -62,7 +62,7 @@ cefnetdstart: cefnetdstart.sh
 
 cefnetdstop: cefnetdstop.sh
 	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
-		echo "# !"$(SH) > $@; \
+		echo "#!"$(SH) > $@; \
 		cat $(@:=.sh) >> $@; \
 		chmod +x $@; \
 	else \
@@ -71,7 +71,7 @@ cefnetdstop: cefnetdstop.sh
 
 cefstatus: cefstatus.sh
 	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
-		echo "# !"$(SH) > $@; \
+		echo "#!"$(SH) > $@; \
 		cat $(@:=.sh) >> $@; \
 		chmod +x $@; \
 	else \
@@ -80,7 +80,7 @@ cefstatus: cefstatus.sh
 
 cefroute: cefroute.sh
 	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
-		echo "# !"$(SH) > $@; \
+		echo "#!"$(SH) > $@; \
 		cat $(@:=.sh) >> $@; \
 		chmod +x $@; \
 	else \
@@ -90,7 +90,7 @@ cefroute: cefroute.sh
 if CSMGR_ENABLE
 csmgrdstart: csmgrdstart.sh
 	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
-		echo "# !"$(SH) > $@; \
+		echo "#!"$(SH) > $@; \
 		cat $(@:=.sh) >> $@; \
 		chmod +x $@; \
 	else \
@@ -99,7 +99,7 @@ csmgrdstart: csmgrdstart.sh
 
 csmgrdstop: csmgrdstop.sh
 	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
-		echo "# !"$(SH) > $@; \
+		echo "#!"$(SH) > $@; \
 		cat $(@:=.sh) >> $@; \
 		chmod +x $@; \
 	else \
@@ -110,7 +110,7 @@ endif # CSMGR_ENABLE
 if CONPUB_ENABLE
 conpubdstart: conpubdstart.sh
 	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
-		echo "# !"$(SH) > $@; \
+		echo "#!"$(SH) > $@; \
 		cat $(@:=.sh) >> $@; \
 		chmod +x $@; \
 	else \
@@ -119,7 +119,7 @@ conpubdstart: conpubdstart.sh
 
 conpubdstop: conpubdstop.sh
 	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
-		echo "# !"$(SH) > $@; \
+		echo "#!"$(SH) > $@; \
 		cat $(@:=.sh) >> $@; \
 		chmod +x $@; \
 	else \

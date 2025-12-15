@@ -68,7 +68,7 @@ cef_node_run (
 		cef_log_write (CefC_Log_Error, "Failed to create cefnetd handle\n");
 		cef_log_write (CefC_Log_Error, "Stop\n");
 #ifdef CefC_Debug
-		cef_dbg_write (CefC_Dbg_Fine, "Failed to create cefnetd handle, Stop.\n");
+		cef_dbg_write (CefC_Dbg_Fine, "Failed to create cefnetd handle, Stop.\nCheck /tmp/cefnetd_*.log for more details.\n");
 #endif // CefC_Debug
 		return (-1);
 	}

@@ -198,7 +198,7 @@ int main (
 			}
 			res = strlen (work_arg);
 			
-			if (res >= 1204) {
+			if (res >= CefC_NAME_MAXLEN) {
 				printerr("uri is too long.\n");
 				USAGE;
 				return (-1);

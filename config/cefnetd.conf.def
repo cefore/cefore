@@ -19,7 +19,7 @@
 # Port number used by cefnetd.
 # This value must be higther than 1024 and lower than 65536.
 #
-#PORT_NUM=9896
+#PORT_NUM=9695
 
 #
 # Socket ID used by cefnetd.
@@ -48,11 +48,11 @@
 # Maximum number of PIT(APP) entries.
 # This value must be higther than 0 and lower than 1025.
 #
-#PIT_SIZE_APP=64
+#PIT_SIZE_APP=1024
 
 #
 # Maximum number of FIB entries.
-# This value must be higther than 0 and lower than 65536.
+# This value must be higther than 0 and lower than 16777216.
 #
 #FIB_SIZE=1024
 
@@ -60,7 +60,7 @@
 # Maximum number of FIB(APP) entries.
 # This value must be higther than 0 and lower than 1024000.
 #
-#FIB_SIZE_APP=64
+#FIB_SIZE_APP=1024
 
 #
 # Content Store used by cefnetd
@@ -244,8 +244,8 @@
 #
 # cefore encryption key pair for validation
 #
-PATH_PRIVATE_KEY=/usr/local/cefore/default-private-key
-PATH_PUBLIC_KEY=/usr/local/cefore/default-public-key
+#PATH_PRIVATE_KEY=/usr/local/cefore/default-private-key
+#PATH_PUBLIC_KEY=/usr/local/cefore/default-public-key
 
 # Debug log level
 #

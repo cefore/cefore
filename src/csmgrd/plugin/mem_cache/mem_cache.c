@@ -431,7 +431,6 @@ mem_cs_create (
 		csmgrd_log_write (CefC_Log_Error, "Failed to create the new thread\n");
 		return (-1);
 	}
-	mem_thread_f = 1;
 
 	if (mem_cache_delete_thread_create () < 0) {
 		return (-1);
@@ -458,6 +457,8 @@ mem_cob_process_thread (
 	void* arg
 ) {
 	int i;
+
+	mem_thread_f = 1;
 
 	while (mem_thread_f) {
 		sem_wait (mem_comn_buff_sem);
@@ -488,6 +489,10 @@ mem_cob_process_thread (
 			pthread_mutex_unlock (&mem_comn_buff_mutex[i]);
 		}
 	}
+
+#ifdef CefC_Debug
+	csmgrd_dbg_write (CefC_Dbg_Fine, "%s terminate.\n", __func__);
+#endif // CefC_Debug
 
 	pthread_exit (NULL);
 

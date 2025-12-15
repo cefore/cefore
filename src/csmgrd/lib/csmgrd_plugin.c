@@ -346,7 +346,12 @@ cef_csmgr_con_entry_create (
 		return (-1);
 	}
 	index += CefC_S_Length;
-	if (!(buff[index] == 0x00 && buff[index+1] == 0x01)) {
+#ifdef REFLEXIVE_FORWARDING
+	if (!(buff[index] == ((CefC_T_NAMESEGMENT & 0xFF00) >> 8) && (buff[index+1] == (CefC_T_NAMESEGMENT & 0x00FF)))
+		&& !(buff[index] == ((CefC_T_REFLEXIVE_NAME & 0xFF00) >> 8) && (buff[index+1] == (CefC_T_REFLEXIVE_NAME & 0x00FF)))) {
+#else // REFLEXIVE_FORWARDING
+	if (!(buff[index] == ((CefC_T_NAMESEGMENT & 0xFF00) >> 8) && (buff[index+1] == (CefC_T_NAMESEGMENT & 0x00FF)))) {
+#endif // REFLEXIVE_FORWARDING
 		free (entry->msg);
 		if (entry->version != NULL) {
 			free (entry->version);
@@ -431,7 +436,7 @@ csmgrd_cache_algo_availability_check (
 				if (ret != -1) {
 					total_kiro = ret;
 #ifdef CefC_Debug
-					cef_dbg_write (CefC_Dbg_Finest, "total_kiro:%ld\n", total_kiro);
+					cef_dbg_write (CefC_Dbg_Finest, "total_kiro:"FMTU64"\n", total_kiro);
 #endif // CefC_Debug
 				}
 
@@ -443,7 +448,7 @@ csmgrd_cache_algo_availability_check (
 				if (ret != -1) {
 					free_kiro = ret;
 #ifdef CefC_Debug
-					cef_dbg_write (CefC_Dbg_Finest, "free_kiro:%ld\n", free_kiro);
+					cef_dbg_write (CefC_Dbg_Finest, "free_kiro:"FMTU64"\n", free_kiro);
 #endif // CefC_Debug
 				}
 			}

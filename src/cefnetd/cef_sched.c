@@ -119,6 +119,13 @@ cefnetd_interest_forward (
 		fwdstr.header_len      = header_len;
 		fwdstr.pm              = pm;
 		fwdstr.poh             = poh;
+		if ( poh ){
+			fwdstr.tx_prio     = poh->tx_prio;
+			/* In transmit threads, the default value of 0 is treated as a special value of 1. */
+			/* If less than 0, it will not be transmit. */
+			fwdstr.tx_copies   = poh->tx_copies;
+			fwdstr.tx_routes   = poh->tx_routes;
+		}
 		fwdstr.pe              = pe;
 
 		if (pm->chunk_num_f){
@@ -131,7 +138,7 @@ cefnetd_interest_forward (
 
 			if ( fwdstr.pe_refer == NULL ){
 				/* Find PIT with lower chunk number */
-				fwdstr.pe_refer    = cef_pit_entry_search_with_anychunk (hdl->pit, pm, poh);
+				fwdstr.pe_refer    = cef_pit_entry_search_with_anychunk (hdl->pit, pm, poh, 0);
 			}
 		}
 
@@ -207,8 +214,7 @@ cefnetd_object_forward (
 	uint16_t payload_len, 					/* Payload Length of this message			*/
 	uint16_t header_len,					/* Header Length of this message			*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed message 							*/
-	CefT_CcnMsg_OptHdr* poh, 				/* Parsed Option Header						*/
-	CefT_Pit_Entry* pe	 					/* PIT entry matching this Interest 		*/
+	CefT_CcnMsg_OptHdr* poh 				/* Parsed Option Header						*/
 ) {
 	CefT_FwdStrtgy_Param		fwdstr = { 0 };
 	uint16_t					name_len;
@@ -224,7 +230,12 @@ cefnetd_object_forward (
 		fwdstr.header_len      = header_len;
 		fwdstr.pm              = pm;
 		fwdstr.poh             = poh;
-		fwdstr.pe              = pe;
+		if ( poh ){
+			fwdstr.tx_prio     = poh->tx_prio;
+			/* In transmit threads, the default value of 0 is treated as a special value of 1. */
+			/* If less than 0, it will not be transmit. */
+			fwdstr.tx_copies   = poh->tx_copies;
+		}
 		fwdstr.cnt_send_frames = &(hdl->stat_send_frames);
 
 		/* Searches a FIB entry matching the Interest requested this ContentObject */

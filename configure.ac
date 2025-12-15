@@ -5,7 +5,7 @@ dnl
 dnl  project setting
 dnl
 AC_PREREQ([2.69])
-AC_INIT([cefore], [0.11.0], [])
+AC_INIT([cefore], [0.12.0], [])
 AC_CONFIG_AUX_DIR(autotools)
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
@@ -88,7 +88,7 @@ dnl
 if test "$prefix" != "NONE"; then
   CEFORE_DIR_PATH=$prefix/
 else if test -z "$CEFORE_DIR"; then
-  CEFORE_DIR_PATH=/usr/local/
+  CEFORE_DIR_PATH=${STAGING_DIR}/usr/local/
 	else
 	  CEFORE_DIR_PATH=${CEFORE_DIR}/
 	fi
@@ -105,12 +105,17 @@ AC_ARG_WITH([openssl-dir],
   [AS_HELP_STRING([--with-openssl-dir=DIR],[An openssl path (default /usr)
   ])],
   [openssl_path=$withval],
-  [openssl_path=/usr]
+  [openssl_path=${STAGING_DIR}/usr]
 )
 # check_openssl_header=${openssl_path}/include/openssl/sha.h
 # for OpenSSL3
 check_openssl_header=${openssl_path}/include/openssl/decoder.h
 
+##################################################################
+# In a cross-compilation environment such as openwrt, 
+# if you get the error configure: error: cannot check for file existence when cross compiling, 
+# give up and comment out the AC_CHECK_FILES line.
+##################################################################
 AC_CHECK_FILES([${check_openssl_header}],[],[AC_MSG_ERROR("OpenSSL3 is not installed.")])
 # CFLAGS="${CFLAGS} -I${openssl_path}/include"
 CFLAGS="${CFLAGS} -DOPENSSL_API_COMPAT=0x10101000L -I${openssl_path}/include"
@@ -230,6 +235,8 @@ AC_CONFIG_FILES([
   tools/cefputfile/Makefile
   tools/cefgetchunk/Makefile
   tools/ccninfo/Makefile
+  tools/cefsubfile/Makefile
+  tools/cefpubfile/Makefile
 ])
 
 dnl

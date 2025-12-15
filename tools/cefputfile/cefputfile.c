@@ -29,7 +29,7 @@
 /*
  * cefputfile.c
  */
- 
+
 
 #define __CEF_PUTFILE_SOURECE__
 
@@ -112,13 +112,13 @@ int main (
 ) {
 	int res;
 	unsigned char buff[CefC_Max_Length];
-	CefT_CcnMsg_OptHdr opt;	
+	CefT_CcnMsg_OptHdr opt;
 	CefT_CcnMsg_MsgBdy params;
 	uint64_t seqnum = 0;
 	char uri[1024];
 	size_t uri_len;
 	struct stat statBuf;
-	
+
 	char filename[1024];
 	FILE* fp;
 	double interval;
@@ -130,20 +130,20 @@ int main (
 	uint64_t now_ms;
 	char*	work_arg;
 	int 	i;
-	
+
 	char 	conf_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
 	char 	valid_type[1024];
-	
+
 	unsigned char* 	work_buff = NULL;
 	uint32_t 		work_buff_idx = 0;
 	int 			cob_len;
 	unsigned char 	cob_buff[CefC_Max_Length*2];
 	unsigned char   wbuff[CefC_Max_Length*2];
-	
+
 	long int int_rate;
 	long sending_time_us;
-	
+
 	/***** flags 		*****/
 	int uri_f 		= 0;
 	int file_f 		= 0;
@@ -155,7 +155,7 @@ int main (
 	int dir_path_f 	= 0;
 	int port_num_f 	= 0;
 	int valid_f 	= 0;
-	
+
 	/***** parameters 	*****/
 	uint64_t cache_time 	= 300;
 	uint64_t expiry 		= 3600;
@@ -166,26 +166,26 @@ int main (
 	uint64_t dummy_size;
 	uint64_t dummy_sent_size	= 0;
 #endif //-----@@@@@ DUMMY FILE
-	
+
 	/*------------------------------------------
 		Checks specified options
 	--------------------------------------------*/
 	uri[0] 			= 0;
 	valid_type[0] 	= 0;
-	
+
 	printf ("[cefputfile] Start\n");
-	
+
 	/* Inits logging 		*/
 	cef_log_init ("cefputfile", 1);
-	
+
 	/* Obtains options 		*/
 	for (i = 1 ; i < argc ; i++) {
-		
+
 		work_arg = argv[i];
 		if (work_arg == NULL || work_arg[0] == 0) {
 			break;
 		}
-#if 1 //+++++@@@@@ DUMMY FILE		
+#if 1 //+++++@@@@@ DUMMY FILE
 		if (strcmp (work_arg, "-D") == 0) {
 			if (file_f) {
 				printerr("[-D] is duplicated.");
@@ -205,8 +205,8 @@ int main (
 			printf ("[cefputfile] dummy_size   = "FMTU64"\n", dummy_size);
 			dummy_f++;
 			i++;
-		} else 
-#endif //-----@@@@@ DUMMY FILE		
+		} else
+#endif //-----@@@@@ DUMMY FILE
 		if (strcmp (work_arg, "-f") == 0) {
 			if (file_f) {
 				printerr("[-f] is duplicated.");
@@ -241,10 +241,10 @@ int main (
 			if (rate > CefC_RateMbps_Max) {
 				rate = CefC_RateMbps_Max;
 			}
-			
+
 			int_rate = (long int)(rate * 1000.0);
 			rate = (double)int_rate / 1000.0;
-			
+
 			rate_f++;
 			i++;
 		} else if (strcmp (work_arg, "-b") == 0) {
@@ -260,22 +260,13 @@ int main (
 			}
 			work_arg = argv[i + 1];
 			block_size = atoi (work_arg);
-			
-#if 0 //+++++@@@@@@ VALIABLE MSGLEN
-			if (block_size < 60) {
-				block_size = 60;
+
+			if (block_size < CefC_Min_Block) {
+				block_size = CefC_Min_Block;
 			}
-			if (block_size > 1460) {
-				block_size = 1460;
+			if (block_size > CefC_Max_Block) {
+				block_size = CefC_Max_Block;
 			}
-#else
-			if (block_size < 1) {
-				block_size = 1;
-			}
-			if (block_size > 65000) {
-				block_size = 65000;
-			}
-#endif  //-----@@@@@@ VALIABLE MSGLEN
 			blocks_f++;
 			i++;
 		} else if (strcmp (work_arg, "-e") == 0) {
@@ -291,7 +282,7 @@ int main (
 			}
 			work_arg = argv[i + 1];
 			expiry = atoi (work_arg);
-			
+
 			if ((expiry < 1) || (expiry > 31536000)) {
 				expiry = 0;
 			}
@@ -310,7 +301,7 @@ int main (
 			}
 			work_arg = argv[i + 1];
 			cache_time = atoi (work_arg);
-			
+
 			if ((cache_time < 0) || (cache_time > 31536000)) {
 				cache_time = 10;
 			}
@@ -390,22 +381,22 @@ int main (
 			valid_f++;
 			i++;
 		} else {
-			
+
 			work_arg = argv[i];
-			
+
 			if (work_arg[0] == '-') {
 				printerr("unknown option (%s) is specified.\n", work_arg);
 				USAGE;
 				return (-1);
 			}
-			
+
 			if (uri_f) {
 				printerr("uri is duplicated.\n");
 				USAGE;
 				return (-1);
 			}
 			res = strlen (work_arg);
-			
+
 			if (res >= 1024) {
 				printerr("uri is too long.\n");
 				USAGE;
@@ -415,7 +406,7 @@ int main (
 			uri_f++;
 		}
 	}
-	
+
 	if (uri_f == 0) {
 		printerr("uri is not specified.\n");
 		USAGE;
@@ -424,7 +415,7 @@ int main (
 	if (file_f == 0) {
 		/* Use the last string in the URL */
 		res = strlen (uri);
-		if (res >= 1204) {
+		if (res >= CefC_NAME_MAXLEN) {
 			printerr("uri is too long.\n");
 			USAGE;
 			return (-1);
@@ -472,11 +463,11 @@ int main (
 #ifdef CefC_Debug
 	cef_dbg_init ("cefputfile", conf_path, 1);
 #endif // CefC_Debug
-	
+
 	/*------------------------------------------
 		Creates the name from URI
 	--------------------------------------------*/
-	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));	
+	memset (&opt, 0, sizeof (CefT_CcnMsg_OptHdr));
 	memset (&params, 0, sizeof (CefT_CcnMsg_MsgBdy));
 	cef_frame_init ();
 	res = cef_client_init (port_num, conf_path);
@@ -496,26 +487,26 @@ int main (
 		exit (1);
 	}
 	printf ("[cefputfile] Conversion from URI into Name ... OK\n");
-	
+
 	params.name_len 	= res;
 	params.chunk_num_f 	= 1;
-	
+
 	/*------------------------------------------
 		Sets Expiry Time and RCT
 	--------------------------------------------*/
 	gettimeofday (&now_t, NULL);
 //#832	now_ms = now_t.tv_sec * 1000 + now_t.tv_usec / 1000;
 	now_ms = now_t.tv_sec * 1000llu + now_t.tv_usec / 1000llu;	//#832
-	
+
 	opt.cachetime_f 	= 1;
 	opt.cachetime 	= now_ms + cache_time * 1000;
-	
+
 	if (expiry) {
 		params.expiry = now_ms + expiry * 1000;
 	} else {
 		params.expiry = now_ms + 3600000;
 	}
-	
+
 	/*------------------------------------------
 		Checks the input file
 	--------------------------------------------*/
@@ -537,23 +528,23 @@ int main (
 		for (int i=0; i<strlen (uri); i++) {
 			seed += (unsigned int)uri[i];
 		}
-		srand((unsigned int) seed); 
+		srand((unsigned int) seed);
 		statBuf.st_size = dummy_size;
 	}
-	
+
 	/*------------------------------------------
 		Set Validation Alglithm
 	--------------------------------------------*/
 	if (valid_f == 1) {
 		cef_valid_init (conf_path);
 		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_type);
-		
+
 		if (params.alg.valid_type == CefC_T_ALG_INVALID) {
 			printerr("-v has the invalid parameter %s\n", valid_type);
 			exit (1);
 		}
 	}
-	
+
 	/*------------------------------------------
 		Connects to CEFORE
 	--------------------------------------------*/
@@ -567,56 +558,56 @@ int main (
 		exit (1);
 	}
 	printf ("[cefputfile] Connect to cefnetd ... OK\n");
-	
+
 	app_running_f = 1;
 	printf ("[cefputfile] URI         = %s\n", uri);
 	if (dummy_f == 1) {
 		printf ("[cefputfile] Dummy File  = "FMTU64" KByte\n", dummy_para);
-	} else {		
+	} else {
 		printf ("[cefputfile] File        = %s\n", filename);
 	}
 	printf ("[cefputfile] Rate        = %.3f Mbps\n", rate);
 	printf ("[cefputfile] Block Size  = %d Bytes\n", block_size);
 	printf ("[cefputfile] Cache Time  = "FMTU64" sec\n", cache_time);
 	printf ("[cefputfile] Expiration  = "FMTU64" sec\n", expiry);
-	
+
 	/*------------------------------------------
 		Calculates the interval
 	--------------------------------------------*/
 	interval = (rate * 1000000.0) / (double)(block_size * 8);
 	interval_us = (long)((1.0 / interval) * 1000000.0);
 	sending_time_us = (long)(((double)(block_size * 8) / (rate * 1000000.0)) * 1000000.0);
-	
+
 	/*------------------------------------------
 		Main Loop
 	--------------------------------------------*/
 	gettimeofday (&start_t, NULL);
 	next_tus = start_t.tv_sec * 1000000llu + start_t.tv_usec + interval_us;
 	work_buff = (unsigned char*) malloc (sizeof (unsigned char) * CefC_Putfile_Max);
-	
+
 	printf ("[cefputfile] Start creating Content Objects\n");
-	
+
 	while (app_running_f) {
 		if (SIG_ERR == signal (SIGINT, sigcatch)) {
 			break;
 		}
 		cob_len = 0;
-		
+
 		while (work_buff_idx < 1) {
 			if(dummy_f == 0){
 				res = fread (buff, sizeof (unsigned char), block_size, fp);
 				if(seqnum > UINT32_MAX){
 					res = 0;
 				}
-		
+
 			} else {
 
 				if ((dummy_size - dummy_sent_size) >= block_size){
-			        res = block_size; 
+			        res = block_size;
 				} else if ((dummy_size - dummy_sent_size) < block_size) {
 		    	    res = dummy_size - dummy_sent_size;
 				} else {
-			        res = 0; 
+			        res = 0;
 				}
 				if(seqnum > UINT32_MAX){
 					res = 0;
@@ -627,15 +618,15 @@ int main (
 					rv = (unsigned char)rand() % 255;
 					buff[i] = rv;
 					dummy_sum += (unsigned char)rv;
-				}	
+				}
 			}
 			cob_len = 0;
-			
+
 			if (res > 0) {
 				memcpy (params.payload, buff, res);
 				params.payload_len = (uint16_t) res;
 				params.chunk_num = (uint32_t)seqnum;
-				
+
 				if ( (stat_send_bytes + res) == statBuf.st_size ) {
 					params.end_chunk_num_f = 1;
 					params.end_chunk_num = seqnum;
@@ -661,7 +652,7 @@ int main (
 	struct in_addr node;
 	uint64_t nowt = cef_client_present_timeus_get ();
 
-{	
+{
 	struct cef_hdr {
 		uint8_t 	version;
 		uint8_t 	type;
@@ -684,35 +675,35 @@ int main (
 	cob_buff[CefC_O_Fix_Ver]  = CefC_Version;
 	cob_buff[CefC_O_Fix_Type] = 0x03/*** CefC_Csmgr_Msg_Type_UpReq ***/;
 	index += 4 /*** CefC_Csmgr_Msg_HeaderLen ***/;
-		
+
 	/* set payload length */
 	value16 = htons (params.payload_len);
 	memcpy (cob_buff + index, &value16, CefC_S_Length);
 	index += CefC_S_Length;
-		
+
 	/* set cob message */
 	value16 = htons (cob_len);
 	memcpy (cob_buff + index, &value16, CefC_S_Length);
 	memcpy (cob_buff + index + CefC_S_Length, wbuff, cob_len);
 	index += CefC_S_Length + cob_len;
-		
+
 	/* set cob name */
 		value16_namelen = params.name_len;
 		value16 = htons (value16_namelen);
 		memcpy (cob_buff + index, &value16, CefC_S_Length);
 		memcpy (cob_buff + index + CefC_S_Length, params.name, value16_namelen);
 		index += CefC_S_Length + value16_namelen;
-		
+
 	/* set chunk num */
 	value32 = htonl (params.chunk_num);
 	memcpy (cob_buff + index, &value32, CefC_S_ChunkNum);
 	index += CefC_S_ChunkNum;
-		
+
 	/* set cache time */
 	value64 = cef_client_htonb (opt.cachetime*1000);
 	memcpy (cob_buff + index, &value64, CefC_S_Cachetime);
 	index += CefC_S_Cachetime;
-		
+
 	/* set expiry */
 	value64 = cef_client_htonb (params.expiry*1000);
 	memcpy (cob_buff + index, &value64, CefC_S_Expiry);
@@ -723,7 +714,7 @@ int main (
 	/* set address */
 	memcpy (cob_buff + index, &node, sizeof (struct in_addr));
 	index += sizeof (struct in_addr);
-	
+
 	/* set Length */
 	value16 = htons (index);
 	memcpy (cob_buff + CefC_O_Length, &value16, CefC_S_Length);
@@ -746,15 +737,15 @@ int main (
 					printerr ("       Try shortening the block size specification.\n");
 					exit (1);
 				}
-				
+
 				if (work_buff_idx + cob_len <= CefC_Putfile_Max) {
 					memcpy (&work_buff[work_buff_idx], cob_buff, cob_len);
 					work_buff_idx += cob_len;
 					cob_len = 0;
-					
+
 					stat_send_frames++;
 					stat_send_bytes += res;
-					
+
 					seqnum++;
 				} else {
 					break;
@@ -766,15 +757,15 @@ int main (
 		}
 		gettimeofday (&now_t, NULL);
 		now_tus = now_t.tv_sec * 1000000llu + now_t.tv_usec;
-		
+
 		if (next_tus > now_tus) {
 			usleep ((useconds_t)(next_tus - now_tus));
 		}
 		gettimeofday (&now_t, NULL);
 		now_tus2 = now_t.tv_sec * 1000000llu + now_t.tv_usec;
-		
+
 		next_tus = now_tus + interval_us + sending_time_us + (next_tus - now_tus2);
-		
+
 		if (work_buff_idx > 0) {
 #ifndef TO_CSMGRD
 			cef_client_message_input (fhdl, work_buff, work_buff_idx);
@@ -785,14 +776,14 @@ int main (
 		} else {
 			break;
 		}
-		
+
 		if (cob_len > 0) {
 			memcpy (&work_buff[work_buff_idx], cob_buff, cob_len);
 			work_buff_idx += cob_len;
-			
+
 			stat_send_frames++;
 			stat_send_bytes += res;
-			
+
 			seqnum++;
 		}
 	}
@@ -812,7 +803,7 @@ static void
 print_usage (
 	FILE* ofp
 ) {
-	
+
 	fprintf (ofp, "\nUsage: cefputfile\n");
 	fprintf (ofp, "  cefputfile uri -f path [-r rate] [-b block_size] [-e expiry] "
 						  "[-t cache_time] [-v valid_algo] [-d config_file_dir] [-p port_num] \n\n");
@@ -836,7 +827,7 @@ post_process (
 	double thrpt = 0.0;
 	uint64_t send_bits;
 	struct timeval diff_tval;
-	
+
 	if (stat_send_frames) {
 		timersub( &end_t, &start_t, &diff_tval );
 		diff_t = diff_tval.tv_sec * 1000000llu + diff_tval.tv_usec;
@@ -846,7 +837,7 @@ post_process (
 	usleep (1000000);
 	cef_client_close (fhdl);
 	fprintf (ofp, "[cefputfile] Unconnect to cefnetd ... OK\n");
-	
+
 	fprintf (ofp, "[cefputfile] Terminate\n");
 	fprintf (ofp, "[cefputfile] Tx Frames  = "FMTU64"\n", stat_send_frames);
 	fprintf (ofp, "[cefputfile] Tx Bytes   = "FMTU64"\n", stat_send_bytes);
@@ -867,7 +858,7 @@ post_process (
 if(dummy_f == 1){
 		fprintf (ofp, "[cefputfile] Dummy Sum  = %u\n", dummy_sum);
 }
-	
+
 	exit (0);
 }
 

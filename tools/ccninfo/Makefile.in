@@ -670,9 +670,8 @@ ps: ps-am
 ps-am:
 
 uninstall-am: uninstall-binPROGRAMS
-	@$(NORMAL_INSTALL)
-	$(MAKE) $(AM_MAKEFLAGS) uninstall-hook
-.MAKE: install-am install-exec-am install-strip uninstall-am
+
+.MAKE: install-am install-exec-am install-strip
 
 .PHONY: CTAGS GTAGS TAGS all all-am am--depfiles check check-am clean \
 	clean-binPROGRAMS clean-generic clean-libtool cscopelist-am \
@@ -687,18 +686,13 @@ uninstall-am: uninstall-binPROGRAMS
 	maintainer-clean maintainer-clean-generic mostlyclean \
 	mostlyclean-compile mostlyclean-generic mostlyclean-libtool \
 	pdf pdf-am ps ps-am tags tags-am uninstall uninstall-am \
-	uninstall-binPROGRAMS uninstall-hook
+	uninstall-binPROGRAMS
 
 .PRECIOUS: Makefile
 
 
 install-exec-hook:
 	chmod +s $(DESTDIR)$(bindir)/$(bin_PROGRAMS)
-	-rm $(DESTDIR)$(bindir)/cefinfo
-	cd $(DESTDIR)$(bindir) && $(LN_S) $(DESTDIR)$(bindir)/ccninfo $(DESTDIR)$(bindir)/cefinfo
-
-uninstall-hook:
-	-rm $(DESTDIR)$(bindir)/cefinfo
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

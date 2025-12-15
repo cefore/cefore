@@ -60,12 +60,14 @@
 #endif // TARGET_IPHONE_SIMULATOR
 
 //#define FMTU64 		"%llu"	//20210408
+#define FMT64 		"%"PRId64
 #define FMTU64 		"%"PRIu64
 #define FMTLINT 	"%03d"
 
 #else // __APPLE__
 
 //#define FMTU64 		"%lu"	//20210408
+#define FMT64 		"%"PRId64
 #define FMTU64 		"%"PRIu64
 #define FMTLINT 	"%03ld"
 
@@ -92,7 +94,18 @@
 #define CefC_Node_Type_Router			0x04
 
 #define CefC_Max_Length					65535
+#define CefC_Min_Block					1
 #define CefC_Max_Block					57344
+
+/*************** Type of object sender Node ****************/
+#define CefC_OBJ_Sender_Type_Neighbor	0x00
+#define CefC_OBJ_Sender_Type_Csmgr		0x01
+#define CefC_OBJ_Sender_Type_Localcache	0x02
+
+/*************** Flag of PIT search key ****************/
+#define CefC_PitKey_With_KEYID		1
+#define CefC_PitKey_With_COBHASH	2
+#define CefC_PitKey_With_NAME		4
 
 /*************** Prameter Names ***************/
 #define CefC_ParamName_PortNum			"PORT_NUM"
@@ -137,19 +150,19 @@
 #define CefC_ParamName_CcninfoReplyTimeout	"CCNINFO_REPLY_TIMEOUT"
 
 /*************** Default Values ***************/
-#define CefC_Default_PortNum			9896
+#define CefC_Default_PortNum			9695
 #define CefC_Default_PitSize			65535
+#define CefC_Maximum_PitSize			16777215	/* 16777216=2^24 */
 #define CefC_Default_FibSize			1024
+#define CefC_Maximum_FibSize			16777215
 #define CefC_Default_Sktype				SOCK_STREAM
-#define CefC_Default_NbrSize			1
 #define CefC_Default_NbrInterval		10000000
-#define CefC_Default_NbrThread			3
 #define CefC_Default_LifetimeSec		2
 #define CefC_Default_LifetimeUs			2000000
 #define CefC_Default_ForwardingStrategy	"default"
 //2020
-#define	CefC_Default_PitAppSize			512
-#define	CefC_Default_FibAppSize			64
+#define	CefC_Default_PitAppSize			1024
+#define	CefC_Default_FibAppSize			1024
 #define	CefC_PitAppSize_MAX				4096
 #define	CefC_FibAppSize_MAX				1024000
 //0.8.3
@@ -231,6 +244,19 @@ typedef	enum	{
 
 #define CefC_InbandTelem_Size	64			/* In-band Telemetry Metric Size		*/
 
+/* Clarified that it is not dependent on the operating environment */
+/* For example, OpenWRT's BUFSIZ is 1024 */
+#define	BUFSIZ_32	32
+#define	BUFSIZ_64	64
+#define	BUFSIZ_128	128
+#define	BUFSIZ_256	256
+#define	BUFSIZ_512	512
+#define	BUFSIZ_1K	1024
+#define	BUFSIZ_2K	(BUFSIZ_1K*2)
+#define	BUFSIZ_4K	(BUFSIZ_1K*4)
+#define	BUFSIZ_8K	(BUFSIZ_1K*8)
+#define	CefC_BUFSIZ	BUFSIZ_8K
+
 /* Linux has a restriction that "Network Interface names can be up to 15 characters."	*/
 #define	CefC_IFNAME_SIZ		16
 
@@ -257,5 +283,16 @@ typedef	enum	{
 #define	CefC_GET_MEMORY_INFO_SH	"get_memory_info.sh"
 
 extern char *CEF_PROGRAM_ID;
+
+/*------------------------------------------------------------------*/
+/* Reflexive Forwarding                                             */
+/*------------------------------------------------------------------*/
+#define REFLEXIVE_FORWARDING
+#ifdef REFLEXIVE_FORWARDING
+#define CefC_RNP_Len		16
+#define CefC_Reflexive_Msg	0x01
+#define CefC_Trigger_Msg	0x02
+#define CefC_TPIT_LIFETIME_BUFF	1000
+#endif // REFLEXIVE_FORWARDING
 
 #endif // __CEF_DEFINE_HEADER__

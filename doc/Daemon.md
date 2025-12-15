@@ -131,7 +131,7 @@ Next, the cefstatus utility shows the downed face status (#down marking). The do
 > *cefstatus*  
 >
 > *Version    : 01  
-Port       : 9896  
+Port       : 9695
 Rx Frames  : 0  
 Tx Frames  : 0  
 Cache Mode : None  
@@ -171,7 +171,7 @@ For standard output of cefnetd and csmgrd logs, set CEF_LOG_LEVEL in the configu
 The following is sample output, where the time is the local time:
 
 > *2022-01-23 12:00:00.000 [cefnetd] INFO: [client] Local Socket Name is /tmp/cef_9896.0  
-2022-01-23 12:00:00.001 [cefnetd] INFO: [client] Listen Port is 9896*
+2022-01-23 12:00:00.001 [cefnetd] INFO: [client] Listen Port is 9695*
 
 For standard output of cefnetd and csmgrd debug information, you must run the build with --enable-debug option for configure command, and set CEF_DEBUG_LEVEL in the configuration file cefnetd.conf or csmgrd.conf. The default value is 0.
 You can also set the level from 1 to 3, the higher the value, the more detailed debug information is output (if 3 is set, the dump of received packets is also output).

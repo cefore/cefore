@@ -73,10 +73,6 @@ typedef struct CefT_Down_Faces {
 	uint64_t		nonce;					/* Nonce 									*/
 	struct CefT_Down_Faces* next;			/* pointer to next Down Stream Face entry 	*/
 
-	/*--------------------------------------------
-		Variables related to Content Store
-	----------------------------------------------*/
-	uint8_t			reply_f;				/* Reply Content Flag. To stop Interest	 	*/
 	//0.8.3
 	uint8_t				IR_Type;			/* InterestReturn Type 						*/
 	unsigned int 		IR_len;				/* Length of IR_msg 						*/
@@ -109,6 +105,12 @@ typedef struct {
 	unsigned char* 		key;				/* Key of the PIT entry 					*/
 	unsigned int 		klen;				/* Length of this key 						*/
 	uint8_t				longlife_f;			/* set to not 0 if it shows Longlife PIT 	*/
+#ifdef REFLEXIVE_FORWARDING
+	int16_t				rnp_pos;			/* Position of RNP in this Key				*/
+											/*  less than 0   : Normal message			*/
+											/*  equal to 0    : Reflexive message		*/
+											/*  greater than 0: Trigger message 		*/
+#endif // REFLEXIVE_FORWARDING
 	CefT_Down_Faces		dnfaces;			/* Down Stream Face entries 				*/
 	unsigned int 		dnfacenum;			/* Number of Down Stream Face entries 		*/
 	CefT_Up_Faces		upfaces;			/* Up Stream Face entry		 				*/
@@ -117,17 +119,12 @@ typedef struct {
 	uint16_t 			tp_variant;			/* Transport Variant 						*/
 	uint64_t	 		clean_us;			/* time to cleaning							*/
 	CefT_Down_Faces		clean_dnfaces;		/* Down Stream Face entries to clean		*/
-	uint64_t			nonce;				/* Nonce 									*/
 	uint64_t 			adv_lifetime_us;	/* Advertised lifetime 						*/
 	uint64_t 			drp_lifetime_us;
 	//0.8.3
 	uint8_t				hoplimit;			/* Hop Limit of Forwarding Interest 		*/
 	int					PitType;			/* PitType									*/
 	int64_t				Last_chunk_num;		/* Last Forward Object Chunk Number 		*/
-	unsigned int 		KIDR_len;			/* KIDR_selector Len 						*/
-	unsigned char* 		KIDR_selector;		/* KeyIdRestriction selector				*/
-	unsigned int 		COBHR_len;			/* COBHR_selector Len 						*/
-	unsigned char* 		COBHR_selector;		/* ContentObjectHashRestriction selector 	*/
 
 	pthread_mutex_t 	pe_mutex_pt;		/* mutex for thread safe for Pthread 		*/
 
@@ -162,9 +159,10 @@ CefT_Pit_Entry* 							/* a PIT entry								*/
 cef_pit_entry_lookup (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
-	, unsigned char* ccninfo_pit,			/* pit name for ccninfo ccninfo-03			*/
-	int	ccninfo_pit_len						/* ccninfo pit length						*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned char* ccninfo_pit,				/* pit name for ccninfo ccninfo-03			*/
+	int	ccninfo_pit_len,					/* ccninfo pit length						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH	*/
 );
 /*--------------------------------------------------------------------------------------
 	Searches a PIT entry matching the specified Name
@@ -173,9 +171,10 @@ CefT_Pit_Entry* 							/* a PIT entry								*/
 cef_pit_entry_search (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
-	, unsigned char* ccninfo_pit,			/* pit name for ccninfo ccninfo-03			*/
-	int	ccninfo_pit_len						/* ccninfo pit length						*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned char* ccninfo_pit,				/* pit name for ccninfo ccninfo-03			*/
+	int	ccninfo_pit_len,					/* ccninfo pit length						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH	*/
 );
 
 #ifdef CefC_Debug
@@ -206,7 +205,8 @@ cef_pit_entry_lookup_and_down_face_update (
 	uint16_t faceid,						/* Face-ID									*/
 	unsigned char* msg,						/* cefore packet 							*/
 	int		 Resend_method,					/* Resend method 0.8.3 						*/
-	int		 *pit_res						/* Returns 1 if the return entry is new	 	*/
+	int		 *pit_res,						/* Returns 1 if the return entry is new	 	*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH	*/
 );
 /*--------------------------------------------------------------------------------------
 	Looks up and creates the specified Up Face entry
@@ -242,7 +242,8 @@ int
 cef_pit_symbolic_pit_check (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH	*/
 );
 /*--------------------------------------------------------------------------------------
 	Searches a PIT entry matching the specified Name with chunk number
@@ -251,7 +252,8 @@ CefT_Pit_Entry* 							/* a PIT entry								*/
 cef_pit_entry_search_with_chunk (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH	*/
 );
 /*--------------------------------------------------------------------------------------
 	Searches a Symbolic-PIT entry matching the specified Name
@@ -260,7 +262,8 @@ CefT_Pit_Entry* 							/* a PIT entry								*/
 cef_pit_entry_search_symbolic (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH	*/
 );
 /*--------------------------------------------------------------------------------------
 	Searches a PIT entry matching the specified Name with any chunk number
@@ -269,7 +272,8 @@ CefT_Pit_Entry* 							/* a PIT entry								*/
 cef_pit_entry_search_with_anychunk (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH	*/
 );
 /*--------------------------------------------------------------------------------------
 	Returns the faceid of the upstream face from an existing PIT entry
@@ -291,16 +295,6 @@ cef_pit_interest_return_set (
 	unsigned int 		IR_len,				/* Length of IR_msg 						*/
 	unsigned char* 		IR_msg				/* InterestReturn msg 						*/
 ) ;
-/*--------------------------------------------------------------------------------------
-	Search the version entry in specified Down Face entry
-----------------------------------------------------------------------------------------*/
-int											/* found entry = 1							*/
-cef_pit_entry_down_face_search (
-	CefT_Down_Faces* dnface,				/* Down Face entry							*/
-	int head_or_point_f,					/* 1: dnface is head of down face lest		*/
-											/* 0: dnface is pointer of 1 entry			*/
-	CefT_CcnMsg_MsgBdy* pm 					/* Parsed CEFORE message					*/
-);
 /*--------------------------------------------------------------------------------------
 	Remove the version entry in specified Down Face entry
 ----------------------------------------------------------------------------------------*/
@@ -336,6 +330,19 @@ cef_pit_entry_lookup_with_lock (
 	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
 	unsigned char* name,					/* pit name (for ccninfo ccninfo-03)		*/
 	int	name_len,							/* pit name length							*/
-	int	with_lock							/* entry lock flag							*/
+	int	with_lock,							/* entry lock flag							*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH	*/
 );
+#ifdef REFLEXIVE_FORWARDING
+/*--------------------------------------------------------------------------------------
+	Searches a t-PIT entry matching the specified Name with chunk number
+----------------------------------------------------------------------------------------*/
+CefT_Pit_Entry*
+cef_pit_entry_search_templete_pit (
+	CefT_Hash_Handle pit,		/* PIT */
+	CefT_CcnMsg_MsgBdy* pm, 	/* Parsed CEFORE message */
+	CefT_CcnMsg_OptHdr* poh,	/* Parsed Option Header */
+	uint16_t peer_faceid		/* peer Face-ID */
+);
+#endif // REFLEXIVE_FORWARDING
 #endif // __CEF_PIT_HEADER__

@@ -127,6 +127,8 @@ typedef struct {
 	char			cache_path[PATH_MAX];
 	int				contents_num;
 	uint64_t		contents_capacity;
+	char			restore_path[PATH_MAX];
+	char			restore_fname[PATH_MAX];
 
 	/********** Cob parameters info. ***********/
 	int				block_size;
@@ -152,7 +154,11 @@ typedef struct {
 	/********** Receive Content Object		***********/
 	unsigned char*	msg;						/* Message								*/
 	uint16_t		msg_len;					/* Message length						*/
+#ifndef CefC_Db
 	unsigned char*	name;						/* Content name							*/
+#else
+	unsigned char	name[CefC_NAME_MAXLEN];		/* Content name							*/
+#endif
 	uint16_t		name_len;					/* Content name length					*/
 	uint16_t		pay_len;					/* Payload length						*/
 	uint32_t		chunk_num;					/* Chunk num							*/

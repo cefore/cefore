@@ -85,11 +85,11 @@
 # cefnetd's TCP port number.
 # This value must be higher than 1024 and lower than 65536.
 #
-#CEFNETD_PORT_NUM=9896
+#CEFNETD_PORT_NUM=9695
 
-#CONT_INFO_RESORE_DIR=/usr/local/cefore/restore
+#CONT_INFO_RESTORE_DIR=/usr/local/cefore/restore
 
-#CONT_INFO_RESORE_FILE=conpubcont.restore
+#CONT_INFO_RESTORE_FILE=conpubcont.restore
 
 #
 # UCINC Pendind timer.

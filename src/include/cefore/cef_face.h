@@ -47,7 +47,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <sys/fcntl.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <sys/un.h>
 
@@ -136,6 +136,7 @@ typedef struct {
 #define CefC_Face_Type_Tcp			0x01
 #define CefC_Face_Type_Udp			0x02
 #define CefC_Face_Type_Local		0x03
+#define CefC_Face_Type_Quic			0x04
 
 
 /****************************************************************************************

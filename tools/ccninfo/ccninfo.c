@@ -62,11 +62,8 @@
  Macros
  ****************************************************************************************/
 
-#define BUFSIZ_1K		 		1024
-#define BUFSIZ_2K		 		(BUFSIZ_1K*2)
-
 #define USAGE(msg)              ct_usage_output(CefFp_Usage, msg)
-#define printerr(...)           fprintf(stderr,"[cefinfo] ERROR: " __VA_ARGS__)
+#define printerr(...)           fprintf(stderr,"[ccninfo] ERROR: " __VA_ARGS__)
 
 /****************************************************************************************
  Structures Declaration
@@ -74,7 +71,7 @@
 
 typedef struct {
 
-	char 			prefix[BUFSIZ];
+	char 			prefix[BUFSIZ_8K];
 	unsigned char 	name[CefC_NAME_MAXLEN];
 	int 			name_len;
 	int 			hop_limit;

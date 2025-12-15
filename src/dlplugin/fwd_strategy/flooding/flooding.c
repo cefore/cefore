@@ -167,8 +167,8 @@ fwd_flooding_forward_interest (
 		for ( int i = 0; i < send_num; i++ )
 			cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the Interest to Face#%d\n", faceids[i]);
 #endif // CefC_Debug
-		cefnetd_frame_send_txque_faces (fwdstr->hdl_cefnetd,
-			send_num, faceids, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
+		cefnetd_frame_send_core (fwdstr->hdl_cefnetd,
+			send_num, faceids, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len, CefT_TxQue_Normal, 1);
 	}
 
 	return;
@@ -177,76 +177,9 @@ fwd_flooding_forward_interest (
 /*--------------------------------------------------------------------------------------
 	Forward ContentObject API
 ----------------------------------------------------------------------------------------*/
-void
-fwd_flooding_forward_object (
-	CefT_FwdStrtgy_Param* fwdstr
-) {
-	uint16_t 			faceids[CefC_Elem_Face_Num];	/* outgoing FaceIDs that were 		*/
-	CefT_Down_Faces*	face;
-	int					fidx;
-	uint16_t			fid;
-	int					break_f = 0;
-	int					send_num = 0;
 
-	memset(faceids, 0x00, sizeof(faceids));
-
-	for (fidx = 0; fidx < fwdstr->faceid_num;fidx++) {
-		fid = fwdstr->faceids[fidx];
-
-		face = &(fwdstr->pe->dnfaces);
-
-		while (face->next) {
-			face = face->next;
-
-			if (fwdstr->pm->org.longlife_f) {
-				if (face->faceid == fid) {
-					break_f = 1;
-					break;
-				}
-			} else {
-				if ((face->faceid == fid) && (face->nonce == fwdstr->pm->nonce)) {
-					break_f = 1;
-					break;
-				}
-			}
-		}
-		if (break_f == 0) {
-			continue;
-		}
-		break_f = 0;
-
-		if (!cef_pit_entry_down_face_search (face, 0, fwdstr->pm))
-			continue;
-
-		if (cef_face_check_active (face->faceid) > 0) {
-			/* Count number of send face */
-			faceids[send_num++] = face->faceid;
-
-			/* Count send ContentObject */
-			(*(fwdstr->cnt_send_frames))++;
-
-#ifdef CefC_Debug
-			cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the ContentObject to Face#%d\n", face->faceid);
-#endif // CefC_Debug
-
-			cef_pit_entry_down_face_remove (fwdstr->pe, face, fwdstr->pm);
-		} else {
-
-			cef_pit_down_faceid_remove (fwdstr->pe, face->faceid);
-		}
-	}
-
-	if ( send_num ){
-#ifdef CefC_Debug
-		for ( int i = 0; i < send_num; i++ )
-			cef_dbg_write (CefC_Dbg_Finest, LOGTAG"Forward the ContentObject to Face#%d\n", faceids[i]);
-#endif // CefC_Debug
-		cefnetd_frame_send_txque_faces (fwdstr->hdl_cefnetd,
-			send_num, faceids, fwdstr->msg, fwdstr->payload_len + fwdstr->header_len);
-	}
-
-	return;
-}
+/*	Do not implement your own forwarding strategy, 	*/
+/*	rely on the default common processing. 			*/
 
 /*--------------------------------------------------------------------------------------
 	Road the plugin
@@ -258,7 +191,6 @@ cefnetd_fwd_flooding_plugin_load (
 	fwd_in->init           = fwd_flooding_init;
 	fwd_in->destroy        = fwd_flooding_destroy;
 	fwd_in->fwd_int        = fwd_flooding_forward_interest;
-	fwd_in->fwd_cob        = fwd_flooding_forward_object;
 
 	return (0);
 }

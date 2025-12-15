@@ -46,7 +46,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <sys/fcntl.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <sys/un.h>
 
@@ -297,6 +297,16 @@ void
 cef_client_prefix_reg_for_pit (
 	CefT_Client_Handle fhdl, 					/* client handle						*/
 	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
+	const unsigned char* name,					/* Name (not URI)						*/
+	uint16_t name_len							/* length of the Name					*/
+);
+/*--------------------------------------------------------------------------------------
+	Route Add/Del the specified Name of the network (accept prefix match of Name)
+----------------------------------------------------------------------------------------*/
+void
+cef_client_prefix_route (
+	CefT_Client_Handle fhdl,					/* client handle						*/
+	uint16_t func,								/* CefC_T_OPT_ROUTE_ADD/CefC_T_OPT_ROUTE_DEL	*/
 	const unsigned char* name,					/* Name (not URI)						*/
 	uint16_t name_len							/* length of the Name					*/
 );

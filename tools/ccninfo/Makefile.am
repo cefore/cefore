@@ -53,8 +53,4 @@ bindir=bin
 
 install-exec-hook:
 	chmod +s $(DESTDIR)$(bindir)/$(bin_PROGRAMS)
-	-rm $(DESTDIR)$(bindir)/cefinfo
-	cd $(DESTDIR)$(bindir) && $(LN_S) $(DESTDIR)$(bindir)/ccninfo $(DESTDIR)$(bindir)/cefinfo
 
-uninstall-hook:
-	-rm $(DESTDIR)$(bindir)/cefinfo

@@ -155,8 +155,10 @@
 #define CefC_T_OBJHASHRESTR			0x0003		/* ContentObjectHashRestriction			*/
 #define CefC_T_PAYLDTYPE			0x0005		/* PayloadType							*/
 #define CefC_T_EXPIRY				0x0006		/* ExpiryTime 							*/
-#define CefC_T_ENDCHUNK				0x0007		/* EndChunkNumber						*/
-#define CefC_T_MSG_TLV_NUM			(CefC_T_ENDCHUNK+1)
+#define CefC_T_CURVERSION			0x0007		/* CurrentVersion						*/
+#define CefC_T_ENDCHUNK				0x0008		/* EndChunkNumber						*/
+#define CefC_T_CHUNK_SIZE			0x0009		/* CnunkSize							*/
+#define CefC_T_MSG_TLV_NUM			(CefC_T_CHUNK_SIZE+1)
 
 #define CefC_T_DISC_REQ				0x000D		/* CCNinfo Request Block	(RFC9344)	*/
 #define CefC_T_DISC_REPLY			0x000E		/* CCNinfo Reply Block		(RFC9344)	*/
@@ -172,6 +174,7 @@
 #define CefC_T_LONGLIFE				0x0002		/* Long Life Interest					*/
 #define CefC_T_FROM_PUB				0x000D		/* Require to get the content from the 	*/
 												/* publisher (a.k.a T_APP_FROM_PUB)		*/
+#define CefC_T_REFLEXIVE_SMI 		0x0013		/* Flag of SMI for Reflexive			*/
 
 /*------------------------------------------------------------------*/
 /* CCNx Name Segment Types											*/
@@ -180,7 +183,9 @@
 #define CefC_T_NAMESEGMENT			0x0001		/* Name Segment							*/
 #define CefC_T_IPID					0x0002		/* Interest Payload ID 					*/
 #define CefC_T_NONCE				0x0003		/* Nonce 								*/
-#define CefC_T_CHUNK				0x0004		/* Chunk Number							*/
+#define CefC_T_VERSION				0x0004		/* Version								*/
+#define CefC_T_CHUNK				0x0005		/* Chunk Number							*/
+#define CefC_T_REFLEXIVE_NAME		0x0006		/* Reflexive Name Prefix				*/
 /* 0x0010-0x0013    Reserved    [RFC8609] */
 /* 0x0014-0x0FFE    Unassigned            */
 
@@ -194,6 +199,9 @@
 /*----- PIT search key extension for KeyId/CoBHash restriction	-----*/
 #define CefC_T_PIT_KEYID		(CefC_T_APP_MAX+CefC_T_KEYIDRESTR)
 #define CefC_T_PIT_COBHASH		(CefC_T_APP_MAX+CefC_T_OBJHASHRESTR)
+
+/*----- Reflexive forwarding	-----*/
+#define CefC_T_TPIT 			(CefC_T_APP_MAX+CefC_T_REFLEXIVE_NAME)	/* t-PIT flag */
 
 /*------------------------------------------------------------------*/
 /* Hash Function Type Registry										*/
@@ -257,6 +265,9 @@
 #define CefC_T_OPT_APP_PIT_REG		0x1004		/* Register Name in PIT					*/
 #define CefC_T_OPT_APP_PIT_DEREG	0x1005		/* DeRegister Name in PIT				*/
 #define CefC_T_OPT_DEV_REG_PIT		0x1006		/* Register Name in PIT (develop)		*/
+
+#define CefC_T_OPT_ROUTE_ADD		0x1007		/* Accept prefix match of Name for network	*/
+#define CefC_T_OPT_ROUTE_DEL		0x1008
 
 /*----- TLVs for use in the CefC_T_OPT_INT TLV -----*/
 #define CefC_T_OPT_INT				0x8701		/* In-band Network Telemetry			*/
@@ -411,7 +422,7 @@ struct cef_app_request {
 } __attribute__((__packed__));
 
 struct fixed_hdr {
-	uint8_t 	version;
+	uint8_t 	ccn_ver;
 	uint8_t 	type;
 	uint16_t 	pkt_len;
 	uint8_t		hoplimit;
@@ -483,7 +494,11 @@ struct ccninfo_rep_block {
 	uint32_t 	remain_time;
 } __attribute__((__packed__));
 
-
+typedef struct _CefT_HashData_ {	/***** Hash DataSet *****/
+	uint16_t	 		hash_type;						/* Hash type			*/
+	uint16_t	 		hash_length;					/* Hash Length			*/
+	unsigned char 		hash_value[CefC_S_KeyId];		/* Hash Value(=KeyId)	*/
+}	CefT_HashData;
 
 /*--------------------------------------------------------------*/
 /* Parameters to set Validation Algorithm of Interest/Object	*/
@@ -500,7 +515,7 @@ typedef struct {
 
 	/***** KeyId						*****/
 	uint16_t	 		keyid_len;						/* Length of KeyId				*/
-	unsigned char 		keyid[CefC_S_KeyId];			/* KeyId						*/
+	CefT_HashData	 	keyid;							/* KeyId						*/
 	uint16_t	 		publickey_len;					/* Length of publickey			*/
 	unsigned char 		publickey[CefC_S_PUBLICKEY];	/* Public key					*/
 
@@ -622,30 +637,33 @@ typedef struct _CefT_MsgOrg_Params_t {
 	}	encryptalg;
 
 	/***** T_ORG_KEYID TLV						*****/
-	struct _CefT_OrgKeyid_Params_t {
-		/***** T_SHA_256/T_SHA_512 TLV			*****/
-		uint16_t				hash_type;
-		uint16_t				hash_len;				/* If it is not 0, T_SHA_256/T_SHA_512 length	*/
-		char					hash_val[SHA512_DIGEST_LENGTH];
-	}	orgkeyid;
+	CefT_HashData	orgkeyid;
+
+#ifdef REFLEXIVE_FORWARDING
+	/***** Flag for Reflexive forwarding		*****/
+	uint8_t					reflexive_smi_f;			/* flag of Symbolic Ref.Int			*/
+#endif // REFLEXIVE_FORWARDING
 
 } CefT_MsgOrg_Params;
 
 /*--------------------------------------------------------------*/
 /* Parameters to Option Header 									*/
 /*--------------------------------------------------------------*/
+#define	CefC_HashVal_Len	32
 typedef struct _CefT_CcnMsg_OptHdr_t {
 
 	/***** Interest Lifetime 			*****/
 	uint16_t			lifetime_f;				/* flag to set Lifetime					*/
-	uint16_t			lifetime;				/* Lifetime [unit: sec] 				*/
+	uint16_t			lifetime;				/* Lifetime [unit: msec] 				*/
 
 	/***** Recommended Cache Time (RCT) *****/
 	uint16_t			cachetime_f;			/* flag to set RCT						*/
 	uint64_t			cachetime;				/* Recommended Cache Time[unit: usec]	*/
 
 	/***** Message Hash					*****/
-	// TBD
+	uint16_t			MsgHash_f;				/* Offset of OPT_MSGHASH				*/
+	uint16_t			MsgHash_len;			/* Length of OPT_MSGHASH				*/
+	CefT_HashData 		MsgHash;				/* MsgHashData							*/
 
 	/***** Vendor Specific Information	*****/
 	uint16_t 	org_len;						/* Length of Vendor Specific Information */
@@ -671,13 +689,21 @@ typedef struct _CefT_CcnMsg_OptHdr_t {
 	uint16_t 			app_reg_f;				/* App Register 						*/
 	uint32_t 			dev_reg_pit_num;		/* Number of T_OPT_DEV_REG_PIT			*/
 
+	/***** ObjHash	*****/
+	uint16_t		ObjHash_len;				/* Length of ObjHash					*/
+	uchar_t		 	ObjHash_val[CefC_HashVal_Len];	/* ObjHash							*/
+
+	/***** Plugin Interface: Transport to Forwarding	*****/
+	int				tx_prio;			/* priority		*/
+	int				tx_copies;			/* copies		*/
+	int				tx_routes;			/* routes		*/
+
 } CefT_CcnMsg_OptHdr;
 #define CeforeLifetime(op,n) {(op)->lifetime_f=1; (op)->lifetime=(n);}
 
 /*--------------------------------------------------------------*/
 /* Parameters to CEFORE message									*/
 /*--------------------------------------------------------------*/
-#define	CefC_HashVal_Len	32
 typedef struct _CefT_CcnMsg_MsgBdy_t {
 
 	/***** Fixed Header 	*****/
@@ -696,6 +722,12 @@ typedef struct _CefT_CcnMsg_MsgBdy_t {
 	uint16_t		end_chunk_num_f;			/* Offset of End Chunk Number			*/
 	uint16_t		end_chunk_len;				/* Length of End Chunk Number 			*/
 	uint32_t		end_chunk_num;				/* End Chunk Number						*/
+#ifdef REFLEXIVE_FORWARDING
+	int16_t			rnp_pos;					/* Position of RNP in this Name			*/
+												/*  less than 0   : Normal message		*/
+												/*  equal to 0    : Reflexive message	*/
+												/*  greater than 0: Trigger message		*/
+#endif // REFLEXIVE_FORWARDING
 
 	/***** for NDN TLV		*****/
 	uint8_t 		nonce_f;					/* flag to set Nonce 					*/
@@ -726,14 +758,14 @@ typedef struct _CefT_CcnMsg_MsgBdy_t {
 
 	/***** for more information	*****/
 	int				InterestType;				/* for PIT marking */
-	/***** KeyIdRester *****/
-	uint16_t		KeyIdRester_f;				/* Offset of KeyIdRester				*/
-	uint16_t		KeyIdRester_len;			/* Length of KeyIdRester_selector		*/
-	uchar_t 		KeyIdRester_val[CefC_HashVal_Len];	/* KeyIdRester_selector			*/
-	/***** ObjHashRester *****/
-	uint16_t		ObjHash_f;					/* Offset of ObjHashRester				*/
-	uint16_t		ObjHash_len;				/* Length of ObjHash					*/
-	uchar_t		 	ObjHash_val[CefC_HashVal_Len];	/* ObjHash							*/
+	/***** KeyIdRestr *****/
+	uint16_t		KeyIdRestr_f;				/* Offset of KeyIdRestr					*/
+	uint16_t		KeyIdRestr_len;				/* Length of KeyIdRestr					*/
+	CefT_HashData	KeyIdRestr;					/* HashData of KeyIdRestr				*/
+	/***** ObjHashRestr *****/
+	uint16_t		ObjHashRestr_f;				/* Offset of ObjHashRestr				*/
+	uint16_t		ObjHashRestr_len;			/* Length of ObjHashRestr				*/
+	CefT_HashData	ObjHashRestr;				/* HashData of ObjHashRestr				*/
 
 } CefT_CcnMsg_MsgBdy;
 #define Cef_Int_Regular(msg)     {(msg).org.symbolic_f=0; (msg).org.longlife_f=0;}
@@ -984,6 +1016,19 @@ cef_frame_conversion_name_to_string (
 	char* uri,
 	char* protocol
 );
+#ifdef REFLEXIVE_FORWARDING
+/*--------------------------------------------------------------------------------------
+	Convert name to refrexive name
+----------------------------------------------------------------------------------------*/
+int
+cef_frame_conversion_name_to_reflexivename (
+	unsigned char* name,
+	unsigned int name_len,
+	unsigned char* name_ref,
+	int tpit_f,
+	int rnp_pos
+);
+#endif // REFLEXIVE_FORWARDING
 /*--------------------------------------------------------------------------------------
 	Get total length of T_NAMESEGMENT part
 ----------------------------------------------------------------------------------------*/
@@ -1096,5 +1141,12 @@ uint16_t
 cef_frame_build_msgorg_value (
 	unsigned char* buff, 					/* buffer to set a message					*/
 	CefT_MsgOrg_Params* org					/* Parameters to set Interest 				*/
+);
+/*--------------------------------------------------------------------------------------
+	Get the info of Restriction flags from parsed CEFORE message
+----------------------------------------------------------------------------------------*/
+unsigned int
+cef_frame_get_restr_type_from_pm (
+	CefT_CcnMsg_MsgBdy* pm		/* Parsed CEFORE message */
 );
 #endif // __CEF_FRAME_HEADER__

@@ -54,5 +54,7 @@ then
   exit 1;
 fi;
 
+export DYLD_LIBRARY_PATH=/usr/local/lib:$DYLD_LIBRARY_PATH
+
 # start conpubd
 conpubd $@ &

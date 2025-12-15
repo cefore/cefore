@@ -89,11 +89,12 @@
 
 /***** Request to cefnetd 		*****/
 #define CefC_Pi_Interest_Send 			0x0001
-#define CefC_Pi_Interest_NoSend 		0x0002
-#define CefC_Pi_Object_Send 			0x0004
-#define CefC_Pi_Object_NoSend 			0x0008
-#define CefC_Pi_Object_Match 			0x0010
-#define CefC_Pi_All_Permission 			0x0015
+#define CefC_Pi_Interest_NoSend 		0x0100
+#define CefC_Pi_Object_Send 			0x0002
+#define CefC_Pi_Object_Match 			0x0004
+#define CefC_Pi_Object_SendComp			0x0008
+#define CefC_Pi_Object_NoSend 			0x0200
+#define CefC_Pi_All_Permission 			0x00FF
 
 /*---------------------------------------------------------
 	Forwarding Strategy Plugin
@@ -141,7 +142,6 @@ typedef struct plugin_tag {
 
 } CefT_Plugin_Tag;
 
-
 /***** Data of Rx Queue Element for Interest/Object 	*****/
 typedef struct {
 
@@ -176,6 +176,14 @@ typedef struct {
 
 } CefT_Rx_Elem_Sig_DelPit;
 
+/***** Class of Tx Queue *****/
+typedef	enum	{
+	CefT_TxQue_High = 0,
+	CefT_TxQue_Normal = 1,
+	CefT_TxQue_Low = 2,
+	CefC_TxQueClass_Num
+}	CefT_TxQueClass;
+
 /***** Data of Tx Queue Element for Interest/Object 	*****/
 typedef struct {
 
@@ -187,8 +195,10 @@ typedef struct {
 													/* searched from PIT/FIB 			*/
 	int				faceid_num;						/* number of outgoing FaceID		*/
 
-} CefT_Tx_Elem;
+	CefT_TxQueClass	tx_prio;						/* priority							*/
+	int				tx_copies;						/* copies							*/
 
+} CefT_Tx_Elem;
 
 /*---------------------------------------------------------
 	Transport
@@ -203,10 +213,7 @@ typedef struct _CefT_Plugin_Tp {
 	int (*init)(struct _CefT_Plugin_Tp*, void*);
 
 	/*** callback to process the received cob		***/
-	int (*cob)(struct _CefT_Plugin_Tp*, CefT_Rx_Elem*);
-
-	/*** callback to process the received cob from cs	***/
-	int (*cob_from_cs)(struct _CefT_Plugin_Tp*, CefT_Rx_Elem*);
+	int (*cob)(struct _CefT_Plugin_Tp*, CefT_Rx_Elem*, unsigned int);
 
 	/*** callback to process the received interest	***/
 	int (*interest)(struct _CefT_Plugin_Tp*, CefT_Rx_Elem*);
@@ -331,6 +338,10 @@ typedef struct CefT_FwdStrtgy_Param {
 	CefT_Pit_Entry*			pe;					/* I/C  */
 	CefT_Pit_Entry*			pe_refer;			/* I    */
 	CefT_Fib_Entry*			fe;					/* I/C  */
+
+	CefT_TxQueClass			tx_prio;			/* priority		*/
+	int						tx_copies;			/* copies		*/
+	int						tx_routes;			/* routes		*/
 
 	uint64_t*				cnt_send_frames;	/* I/C: Pointer of variable in Cefnetd handle              */
 												/*      for Count the number of frames sent in the Plugin. */
@@ -522,16 +533,18 @@ cefnetd_cefstatus_thread (
 );
 
 void
-cefnetd_frame_send_txque_faces (
+cefnetd_frame_send_core (
 	void*			hdl,					/* cefnetd handle							*/
 	uint16_t 		faceid_num, 			/* number of Face-ID				 		*/
 	uint16_t 		faceid[], 				/* Face-ID indicating the destination 		*/
 	unsigned char* 	msg, 					/* a message to send						*/
-	size_t			msg_len					/* length of the message to send 			*/
+	size_t			msg_len,				/* length of the message to send 			*/
+	CefT_TxQueClass	tx_prio,				/* priority									*/
+	int				tx_copies				/* copies 									*/
 );
 
 void
-cefnetd_frame_send_txque (
+cefnetd_frame_send_normal (
 	void*			hdl,					/* cefnetd handle							*/
 	uint16_t 		faceid, 				/* Face-ID indicating the destination 		*/
 	unsigned char* 	msg, 					/* a message to send						*/

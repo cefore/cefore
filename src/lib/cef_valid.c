@@ -59,9 +59,6 @@
  Macros
  ****************************************************************************************/
 
-#define	BUFSIZ1K	1024
-#define	BUFSIZ2K	2048
-
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
@@ -614,7 +611,7 @@ cef_valid_keyid_create_forccninfo (
 //	SHA256(ccninfo_sha256_pub_key_bi, ccninfo_sha256_pub_key_bi_len, hash);
 	cef_valid_sha256( ccninfo_sha256_pub_key_bi, ccninfo_sha256_pub_key_bi_len, hash );	/* for OpenSSL 3.x */
 	memcpy (pubkey, ccninfo_sha256_pub_key_bi, ccninfo_sha256_pub_key_bi_len);
-	memcpy (keyid, hash, 32);
+	memcpy (keyid, hash, SHA256_DIGEST_LENGTH);
 
 	return (ccninfo_sha256_pub_key_bi_len);
 }
@@ -1256,7 +1253,7 @@ cef_valid_read_conf (
 	const char* conf_path
 ) {
 	char 	file_path[PATH_MAX];
-	char	buff[BUFSIZ1K];
+	char	buff[BUFSIZ_1K];
 	FILE	*fp;
 	char	ccn_uri[] = { "ccnx:/" };
 	char	pprv_key[PATH_MAX] = { "/usr/local/cefore/default-private-key" };
@@ -1285,11 +1282,11 @@ cef_valid_read_conf (
 	}
 
 	/* Reads and records written values in the cefnetd's config file. */
-	while (fgets (buff, (BUFSIZ1K-1), fp) != NULL) {
-		char 	keyword[BUFSIZ1K];
-		char 	value[BUFSIZ1K];
+	while (fgets (buff, (BUFSIZ_1K-1), fp) != NULL) {
+		char 	keyword[BUFSIZ_1K];
+		char 	value[BUFSIZ_1K];
 
-		buff[(BUFSIZ1K-1)] = 0;
+		buff[(BUFSIZ_1K-1)] = 0;
 
 		if ( buff[0] == '#' ) {
 			continue;
@@ -1408,11 +1405,11 @@ cef_valid_sha256_keypath_ccninfoRT(
 	FILE* 	fp;
 	char 	file_path[PATH_MAX];
 	char 	cef_conf_dir[PATH_MAX];
-	char	buff[BUFSIZ1K];
-	char 	ws[BUFSIZ1K];
-	char 	pname[BUFSIZ1K];
+	char	buff[BUFSIZ_1K];
+	char 	ws[BUFSIZ_1K];
+	char 	pname[BUFSIZ_1K];
 	int 	res;
-	char	key_prfx[BUFSIZ2K];
+	char	key_prfx[BUFSIZ_2K];
 
 	strcpy(key_prfx, "ccninfo_rt");
 
@@ -1437,8 +1434,8 @@ cef_valid_sha256_keypath_ccninfoRT(
 	}
 
 	/* Reads and records written values in the cefnetd's config file. */
-	while (fgets (buff, (BUFSIZ1K-1), fp) != NULL) {
-		buff[(BUFSIZ1K-1)] = 0;
+	while (fgets (buff, (BUFSIZ_1K-1), fp) != NULL) {
+		buff[(BUFSIZ_1K-1)] = 0;
 
 		if (buff[0] == 0x23/* '#' */) {
 			continue;
@@ -1511,7 +1508,7 @@ cef_valid_trim_line_string (
 	char* p2,									/* name string after trimming			*/
 	char* p3									/* value string after trimming			*/
 ) {
-	char ws[BUFSIZ1K];
+	char ws[BUFSIZ_1K];
 	char* wp = ws;
 	char* rp = p2;
 	int equal_f = -1;

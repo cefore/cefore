@@ -57,10 +57,6 @@
  Macros
  ****************************************************************************************/
 
-#define CefC_Pit_False				1		/* False									*/
-#define CefC_Pit_True				1		/* True										*/
-#define CefC_Maximum_Lifetime		16000	/* Maximum lifetime [ms] 					*/
-
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
@@ -160,11 +156,12 @@ make_searchkey_interest (
 	CefT_CcnMsg_OptHdr *poh,				/* Parsed Option Header						*/
 	unsigned char *name,					/* pit name (for ccninfo ccninfo-03)		*/
 	int	name_len,							/* pit name length							*/
+	unsigned int key_type_f,				/* Flag to make PIT key with KeyID or COH 	*/
 	unsigned char *key_buff,
 	int	*ret_key_len
 ) {
 	unsigned char *key_ptr = name;
-	int		key_len = name_len;
+	int	key_len = 0;
 
 	if ( CefC_NAME_MAXLEN < name_len ){
 		*ret_key_len = -1;
@@ -172,46 +169,39 @@ make_searchkey_interest (
 	}
 
 #ifdef CefC_Debug
-cef_dbg_write (CefC_Dbg_Finer, "[pit] KeyIdRester_f=%d, KeyIdRester_len=%d, ObjHash_f=%d, ObjHash_len=%d,\n",
-	pm->KeyIdRester_f, pm->KeyIdRester_len, pm->ObjHash_f, pm->ObjHash_len);
+cef_dbg_write (CefC_Dbg_Finer, "[pit] KeyIdRestr_f=%d, KeyIdRestr_len=%d, ObjHashRestr_f=%d, ObjHashRestr_len=%d,\n",
+	pm->KeyIdRestr_f, pm->KeyIdRestr_len, pm->ObjHashRestr_f, pm->ObjHashRestr_len);
 #endif // CefC_Debug
 
-	/* PIT search key extended by KeyIdRester */
-	if ( pm->KeyIdRester_f && 0 < pm->KeyIdRester_len
-			&& ((key_len + pm->KeyIdRester_len) < CefC_NAME_BUFSIZ) ){
+	/* PIT search key extended by KeyIdRestr */
+	if ( key_type_f & CefC_PitKey_With_KEYID && 0 < pm->KeyIdRestr_len
+			&& ((key_len + pm->KeyIdRestr_len) < CefC_NAME_BUFSIZ) ){
 
-		key_len = 0;
-		key_len += cef_pit_set_typelen(key_buff, CefC_T_PIT_KEYID, pm->KeyIdRester_len);
-		memcpy(&key_buff[key_len], pm->KeyIdRester_val, pm->KeyIdRester_len);
-		key_len += pm->KeyIdRester_len;
-
-		/* KeyIdRester and ObjectHashRester */
-		if ( pm->ObjHash_f && 0 < pm->ObjHash_len
-				&& ((key_len + pm->ObjHash_len) < CefC_NAME_BUFSIZ) ){
-
-			key_len += cef_pit_set_typelen(key_buff, CefC_T_PIT_COBHASH, pm->ObjHash_len);
-			memcpy(&key_buff[key_len], pm->ObjHash_val, pm->ObjHash_len);
-			key_len += pm->ObjHash_len;
-		}
-		memcpy(&key_buff[key_len], name, name_len);
-		key_len += name_len;
-		key_ptr = key_buff;
-
-	/* PIT search key extended by ObjectHashRester */
-	} else if ( pm->ObjHash_f && 0 < pm->ObjHash_len
-			&& ((key_len + pm->ObjHash_len) < CefC_NAME_BUFSIZ) ){
-
-		key_len = 0;
-		key_len += cef_pit_set_typelen(key_buff, CefC_T_PIT_COBHASH, pm->ObjHash_len);
-		memcpy(&key_buff[key_len], pm->ObjHash_val, pm->ObjHash_len);
-		key_len += pm->ObjHash_len;
-		memcpy(&key_buff[key_len], name, name_len);
-		key_len += name_len;
-		key_ptr = key_buff;
+		key_len += cef_pit_set_typelen(&key_buff[key_len], CefC_T_PIT_KEYID, pm->KeyIdRestr_len);
+		memcpy(&key_buff[key_len], &(pm->KeyIdRestr), pm->KeyIdRestr_len);
+		key_len += pm->KeyIdRestr_len;
 	}
 
+	/* PIT search key extended by ObjectHashRestr */
+	if ( key_type_f & CefC_PitKey_With_COBHASH && 0 < pm->ObjHashRestr_len
+			&& ((key_len + pm->ObjHashRestr_len) < CefC_NAME_BUFSIZ) ){
+
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Finer, "[pit] ObjHashRestr_len=%d, type=%u,length=%u, ObjHashRestr=0x%02x%02x%02x%02x\n",
+	pm->ObjHashRestr_len, pm->ObjHashRestr.hash_type, pm->ObjHashRestr.hash_length,
+	pm->ObjHashRestr.hash_value[0], pm->ObjHashRestr.hash_value[1], pm->ObjHashRestr.hash_value[2], pm->ObjHashRestr.hash_value[3]);
+#endif // CefC_Debug
+		key_len += cef_pit_set_typelen(&key_buff[key_len], CefC_T_PIT_COBHASH, pm->ObjHashRestr_len);
+		memcpy(&key_buff[key_len], &(pm->ObjHashRestr), pm->ObjHashRestr_len);
+		key_len += pm->ObjHashRestr_len;
+	}
+
+	memcpy(&key_buff[key_len], name, name_len);
+	key_len += name_len;
+	key_ptr = key_buff;
+
 	/***************************************************************
-	 * If neither KeyIdRester nor ObjectHashRester is present,
+	 * If neither KeyIdRestr nor ObjectHashRestr is present,
 	 * the original name address is returned without duplication.
 	 ***************************************************************/
 
@@ -226,11 +216,12 @@ make_searchkey_object (
 	CefT_CcnMsg_OptHdr *poh,				/* Parsed Option Header						*/
 	unsigned char *name,					/* pit name (for ccninfo ccninfo-03)		*/
 	int	name_len,							/* pit name length							*/
+	unsigned int key_type_f,				/* Flag to make PIT key with KeyID or COH 	*/
 	unsigned char *key_buff,
 	int	*ret_key_len
 ) {
 	unsigned char *key_ptr = name;
-	int		key_len = name_len;
+	int	key_len = 0;
 
 	if ( CefC_NAME_MAXLEN < name_len ){
 		*ret_key_len = -1;
@@ -238,27 +229,38 @@ make_searchkey_object (
 	}
 
 #ifdef CefC_Debug
-cef_dbg_write (CefC_Dbg_Finer, "[pit] alg.valid_type=%d, alg.keyid_len=%d, alg.publickey_len=%d,\n",
-	pm->alg.valid_type, pm->alg.keyid_len, pm->alg.publickey_len);
+cef_dbg_write (CefC_Dbg_Finer, "[pit] chunk=%u, alg.valid_type=%d, alg.keyid_len=%d, alg.publickey_len=%d,\n",
+	pm->chunk_num, pm->alg.valid_type, pm->alg.keyid_len, pm->alg.publickey_len);
 #endif // CefC_Debug
 
-	/* PIT search key extended by KeyIdRester */
-	if ( pm->alg.valid_type && 0 < pm->alg.keyid_len
-			&& ((key_len + pm->alg.keyid_len) < CefC_NAME_BUFSIZ) ){
+	/* PIT search key extended by KeyIdRestr */
+	if ( (key_type_f & CefC_PitKey_With_KEYID) && (pm->alg.valid_type)
+			&& (0 < pm->alg.keyid_len) && ((key_len + pm->alg.keyid_len) < CefC_NAME_BUFSIZ) ){
 
-		key_len = 0;
-		key_len += cef_pit_set_typelen(key_buff, CefC_T_PIT_KEYID, pm->alg.keyid_len);
-		memcpy(&key_buff[key_len], pm->alg.keyid, pm->alg.keyid_len);
+		key_len += cef_pit_set_typelen(&key_buff[key_len], CefC_T_PIT_KEYID, pm->alg.keyid_len);
+		memcpy(&key_buff[key_len], &(pm->alg.keyid), pm->alg.keyid_len);
 		key_len += pm->alg.keyid_len;
-
-		memcpy(&key_buff[key_len], name, name_len);
-		key_len += name_len;
-		key_ptr = key_buff;
-
 	}
 
+	/* PIT search key extended by ObjectHash */
+	if ( (key_type_f & CefC_PitKey_With_COBHASH) && (0 < poh->MsgHash_len)
+			&& ((key_len + poh->MsgHash_len) < CefC_NAME_BUFSIZ) ){
+
+		key_len += cef_pit_set_typelen(&key_buff[key_len], CefC_T_PIT_COBHASH, poh->MsgHash_len);
+		memcpy(&key_buff[key_len], &(poh->MsgHash), poh->MsgHash_len);
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Finer, "[pit] MsgHash_len=%d, type=%u,length=%u, MsgHash=0x%02x%02x%02x%02x\n",
+	poh->MsgHash_len, poh->MsgHash.hash_type, poh->MsgHash.hash_length,
+	poh->MsgHash.hash_value[0], poh->MsgHash.hash_value[1], poh->MsgHash.hash_value[2], poh->MsgHash.hash_value[3]);
+#endif // CefC_Debug
+	}
+
+	memcpy(&key_buff[key_len], name, name_len);
+	key_len += name_len;
+	key_ptr = key_buff;
+
 	/***************************************************************
-	 * If neither KeyIdRester nor ObjectHashRester is present,
+	 * If neither KeyIdRestr nor ObjectHashRestr is present,
 	 * the original name address is returned without duplication.
 	 ***************************************************************/
 
@@ -273,6 +275,7 @@ make_searchkey (
 	CefT_CcnMsg_OptHdr *poh,				/* Parsed Option Header						*/
 	unsigned char *name,					/* pit name (for ccninfo ccninfo-03)		*/
 	int	name_len,							/* pit name length							*/
+	unsigned int key_type_f,				/* Flag to make PIT key with KeyID or COH 	*/
 	unsigned char *key_buff,
 	int	*ret_key_len
 ) {
@@ -280,11 +283,13 @@ make_searchkey (
 
 	switch ( pm->top_level_type ){
 	case CefC_T_OBJECT:			/* for T_OBJECT */
-		key_ptr = make_searchkey_object(pit, pm, poh, name, name_len, key_buff, ret_key_len);
+		key_ptr = make_searchkey_object(pit, pm, poh, name, name_len,
+			key_type_f, key_buff, ret_key_len);
 		break;
 	case CefC_T_INTEREST:		/* for T_INTEREST */
 	default:
-		key_ptr = make_searchkey_interest(pit, pm, poh, name, name_len, key_buff, ret_key_len);
+		key_ptr = make_searchkey_interest(pit, pm, poh, name, name_len,
+			key_type_f, key_buff, ret_key_len);
 		break;
 	}
 
@@ -298,22 +303,23 @@ cef_pit_entry_lookup_with_lock (
 	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
 	unsigned char* name,					/* pit name (for ccninfo ccninfo-03)		*/
 	int	name_len,							/* pit name length							*/
-	int	with_lock							/* entry lock flag							*/
+	int	with_lock,							/* entry lock flag							*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH 	*/
 ) {
 	CefT_Pit_Entry* entry;
 	int		f_new_entry = 0;
 	unsigned char key_buff[CefC_NAME_BUFSIZ], *key_ptr;
 	int		key_len = 0;
 
-	/* PIT search key extended with KeyIdRester/ObjectHashRester */
-	key_ptr = make_searchkey(pit, pm, poh, name, name_len, key_buff, &key_len);
+	/* PIT search key extended with KeyIdRestr/ObjectHashRestr */
+	key_ptr = make_searchkey(pit, pm, poh, name, name_len, key_type_f, key_buff, &key_len);
 
 	if ( !key_ptr || key_len < 1 ){
 		return (NULL);
 	}
 
 	/***********************************************************************
-	 * If neither KeyIdRester nor ObjectHashRester is present,
+	 * If neither KeyIdRestr nor ObjectHashRestr is present,
 	 * key_ptr points to the address of the original name, not the key_buff
 	 ***********************************************************************/
 
@@ -332,7 +338,7 @@ cef_pit_entry_lookup_with_lock (
 
 		entry = (CefT_Pit_Entry*) malloc (alloc_size);
 		if ( entry == NULL ){
-			cef_log_write (CefC_Log_Error, "%s(%u) malloc(%ld) failed, %s\n", __func__, __LINE__,
+			cef_log_write (CefC_Log_Error, "%s(%u) malloc(%zu) failed, %s\n", __func__, __LINE__,
 				alloc_size, strerror(errno));
 			return (NULL);
 		}
@@ -365,30 +371,15 @@ cef_pit_entry_lookup_with_lock (
 		entry->hashv = cef_lhash_tbl_hashv_get (pit, entry->key, entry->klen);
 		entry->clean_us = cef_client_present_timeus_get () + CefC_Pit_CleaningTime;
 		entry->tp_variant = poh->org.tp_variant;
-		entry->nonce = 0;
 		entry->adv_lifetime_us = 0;
 		entry->drp_lifetime_us = 0;
+#ifdef REFLEXIVE_FORWARDING
+		entry->rnp_pos = pm->rnp_pos;
+#endif // REFLEXIVE_FORWARDING
 		//0.8.3
 		entry->hoplimit = 0;
 		entry->PitType  = pm->InterestType;
 		entry->Last_chunk_num = 0;
-		entry->KIDR_len = pm->KeyIdRester_len;
-		if ( 0 < entry->KIDR_len ) {
-			entry->KIDR_selector = (unsigned char*)malloc( entry->KIDR_len );
-			memcpy( entry->KIDR_selector, pm->KeyIdRester_val, entry->KIDR_len );
-		} else {
-			entry->KIDR_selector = NULL;
-		}
-		entry->COBHR_len = pm->ObjHash_len;
-		if ( 0 < entry->COBHR_len ) {
-			entry->COBHR_selector = (unsigned char*)malloc( entry->COBHR_len );
-			memcpy( entry->COBHR_selector, pm->ObjHash_val, entry->COBHR_len );
-		} else {
-			entry->COBHR_selector = NULL;
-		}
-#ifdef __RESTRICT__
-		printf( "%s entry->KIDR_len:%d   entry->COBHR_len:%d\n", __func__, entry->KIDR_len, entry->COBHR_len );
-#endif
 	}
 #ifdef CefC_Debug
 	{
@@ -423,7 +414,8 @@ cef_pit_entry_lookup (
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
 	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
 	unsigned char* ccninfo_pit,				/* pit name for ccninfo ccninfo-03			*/
-	int	ccninfo_pit_len						/* ccninfo pit length						*/
+	int	ccninfo_pit_len,					/* ccninfo pit length						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH 	*/
 ) {
 	CefT_Pit_Entry* entry = NULL;			/* PIT entry								*/
 
@@ -434,12 +426,14 @@ cef_pit_entry_lookup (
 		if ( tmp_name != NULL ){
 			memcpy( tmp_name, ccninfo_pit, ccninfo_pit_len );
 			// entry lookup without lock
-			entry = cef_pit_entry_lookup_with_lock(pit, pm, poh, tmp_name, ccninfo_pit_len, CefC_PitEntry_NoLock);
+			entry = cef_pit_entry_lookup_with_lock(pit, pm, poh, tmp_name,
+						ccninfo_pit_len, CefC_PitEntry_NoLock, key_type_f);
 			free(tmp_name);
 		}
 	} else {
 		// entry lookup without lock
-		entry = cef_pit_entry_lookup_with_lock(pit, pm, poh, pm->name, pm->name_len, CefC_PitEntry_NoLock);
+		entry = cef_pit_entry_lookup_with_lock(pit, pm, poh, 
+					pm->name, pm->name_len, CefC_PitEntry_NoLock, key_type_f);
 	}
 
 	return entry;
@@ -455,23 +449,24 @@ cef_pit_entry_search_core (
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
 	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
 	unsigned char* name,					/* pit name									*/
-	int	name_len							/* pit name length							*/
+	int	name_len,							/* pit name length							*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH 	*/
 ) {
 	CefT_Pit_Entry* entry;
 	uint64_t now;
-	int found_ver_f = 0;
 	unsigned char key_buff[CefC_NAME_BUFSIZ], *key_ptr;
 	int		key_len = 0;
 
-	/* PIT search key extended with KeyIdRester/ObjectHashRester */
-	key_ptr = make_searchkey(pit, pm, poh, name, name_len, key_buff, &key_len);
+	/* PIT search key extended with KeyIdRestr/ObjectHashRestr */
+	key_ptr = make_searchkey(pit, pm, poh, name, name_len,
+		key_type_f, key_buff, &key_len);
 
 	if ( !key_ptr || key_len < 1 ){
 		return (NULL);
 	}
 
 	/***********************************************************************
-	 * If neither KeyIdRester nor ObjectHashRester is present,
+	 * If neither KeyIdRestr nor ObjectHashRestr is present,
 	 * key_ptr points to the address of the original name, not the key_buff
 	 ***********************************************************************/
 
@@ -493,12 +488,6 @@ cef_pit_entry_search_core (
 	now = cef_client_present_timeus_get ();
 
 	if (entry != NULL) {
-//0.8.3c ----- START ----- version
-		//move to pit_entry_down_face_remove
-//		if (!entry->longlife_f) {
-//			entry->stole_f = 1;
-//		}
-//0.8.3c ----- END ----- version
 		/* for ccninfo "full discovery" */
 		if (poh->ccninfo_flag & CefC_CtOp_FullDisCover) {
 			entry->stole_f = 0;
@@ -519,11 +508,7 @@ cef_pit_entry_search_core (
 		if ((now > entry->adv_lifetime_us) && (poh->app_reg_f != CefC_T_OPT_APP_PIT_DEREG)){	//20190822
 			return (NULL);
 		}
-		found_ver_f = cef_pit_entry_down_face_search (&(entry->dnfaces), 1, pm);
-		if (found_ver_f)
-			return (entry);
-		else
-			return (NULL);
+		return (entry);
 	}
 
 	if (pm->chunk_num_f) {
@@ -553,11 +538,7 @@ cef_pit_entry_search_core (
 				if (now > entry->adv_lifetime_us) {
 					return (NULL);
 				}
-				found_ver_f = cef_pit_entry_down_face_search (&(entry->dnfaces), 1, pm);
-				if (found_ver_f)
-					return (entry);
-				else
-					return (NULL);
+				return (entry);
 			}
 		}
 	}
@@ -574,15 +555,16 @@ cef_pit_entry_search (
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
 	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
 	unsigned char* ccninfo_pit,				/* pit name for ccninfo ccninfo-03			*/
-	int	ccninfo_pit_len						/* ccninfo pit length						*/
+	int	ccninfo_pit_len,					/* ccninfo pit length						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH 	*/
 ) {
 	CefT_Pit_Entry* ret = NULL;
 
 	if (pm->top_level_type == CefC_T_DISCOVERY) { /* for CCNINFO */
 		/* KEY: Name + NodeIdentifier + RequestID */
-		ret = cef_pit_entry_search_core(pit, pm, poh, ccninfo_pit, ccninfo_pit_len);
+		ret = cef_pit_entry_search_core(pit, pm, poh, ccninfo_pit, ccninfo_pit_len, key_type_f);
 	} else {
-		ret = cef_pit_entry_search_core(pit, pm, poh, pm->name, pm->name_len);
+		ret = cef_pit_entry_search_core(pit, pm, poh, pm->name, pm->name_len, key_type_f);
 	}
 	return ret;
 }
@@ -888,7 +870,8 @@ cef_pit_entry_lookup_and_down_face_update (
 	uint16_t faceid,						/* Face-ID									*/
 	unsigned char* msg,						/* cefore packet 							*/
 	int		 Resend_method,					/* Resend method 0.8.3 						*/
-	int		 *pit_res						/* Returns 1 if the return entry is new	 	*/
+	int		 *pit_res,						/* Returns 1 if the return entry is new	 	*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH 	*/
 ) {
 	CefT_Pit_Entry* entry = NULL;			/* PIT entry								*/
 	int	 forward_interest_f = 0;
@@ -899,10 +882,12 @@ cef_pit_entry_lookup_and_down_face_update (
 
 		/* CCNINFO PIT KEY: Name + NodeIdentifier + RequestID */
 		// entry lookup with lock
-		entry = cef_pit_entry_lookup_with_lock (pit, pm, poh, ccninfo_name, ccninfo_namelen, CefC_PitEntry_Lock);
+		entry = cef_pit_entry_lookup_with_lock (pit, pm, poh, 
+					ccninfo_name, ccninfo_namelen, CefC_PitEntry_Lock, key_type_f);
 	} else {
 		// entry lookup with lock
-		entry = cef_pit_entry_lookup_with_lock (pit, pm, poh, pm->name, pm->name_len, CefC_PitEntry_Lock);
+		entry = cef_pit_entry_lookup_with_lock (pit, pm, poh,
+					pm->name, pm->name_len, CefC_PitEntry_Lock, key_type_f);
 	}
 
 	if (entry != NULL) {
@@ -1001,14 +986,6 @@ cef_dbg_write (CefC_Dbg_Finer, "\t clean dnface->IR_len:%d Type:%d\n", dnface->I
 	}
 }
 
-	//0.8.3
-	if ( entry->KIDR_len > 0 && entry->KIDR_selector ) {
-		free( entry->KIDR_selector );
-	}
-	if ( entry->COBHR_len > 0 && entry->COBHR_selector ) {
-		free( entry->COBHR_selector );
-	}
-
 	pthread_mutex_destroy (&entry->pe_mutex_pt);
 
 #ifdef	__PIT_DEBUG__
@@ -1052,7 +1029,7 @@ cef_pit_entry_down_face_lookup (
 
 	dnface->next = (CefT_Down_Faces*) malloc (sizeof (CefT_Down_Faces));
 	if (dnface->next == NULL) {
-		cef_log_write (CefC_Log_Error, "%s(%u) malloc(%ld) failed\n", __func__, __LINE__, sizeof (CefT_Down_Faces));
+		cef_log_write (CefC_Log_Error, "%s(%u) malloc(%zu) failed\n", __func__, __LINE__, sizeof (CefT_Down_Faces));
 		return (0);
 	}
 	memset (dnface->next, 0, sizeof (CefT_Down_Faces));
@@ -1074,20 +1051,7 @@ cef_pit_entry_down_face_lookup (
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
-	Search the version entry in specified Down Face entry
-----------------------------------------------------------------------------------------*/
-int											/* found entry = 1							*/
-cef_pit_entry_down_face_search (
-	CefT_Down_Faces* dnface,				/* Down Face entry							*/
-	int head_or_point_f,					/* 1: dnface is head of down face list		*/
-											/* 0: dnface is pointer of 1 entry			*/
-	CefT_CcnMsg_MsgBdy* pm 				/* Parsed CEFORE message					*/
-) {
-
-	return (1);
-}
-/*--------------------------------------------------------------------------------------
-	Remove the version entry in specified Down Face entry
+	Remove the specified Down Face entry
 ----------------------------------------------------------------------------------------*/
 void
 cef_pit_entry_down_face_remove (
@@ -1283,23 +1247,38 @@ int
 cef_pit_symbolic_pit_check (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH 	*/
 )	{
 	CefT_Pit_Entry* entry;
 	unsigned char key_buff[CefC_NAME_BUFSIZ], *key_ptr;
 	int		key_len = 0;
 
-	/* PIT search key extended with KeyIdRester/ObjectHashRester */
-	key_ptr = make_searchkey(pit, pm, poh, pm->name, pm->name_len, key_buff, &key_len);
+	/* PIT search key extended with KeyIdRestr/ObjectHashRestr */
+	key_ptr = make_searchkey(pit, pm, poh, pm->name, pm->name_len,
+		key_type_f, key_buff, &key_len);
 
 	if ( !key_ptr || key_len < 1 ){
 		return (-1);
 	}
 
 	/***********************************************************************
-	 * If neither KeyIdRester nor ObjectHashRester is present,
+	 * If neither KeyIdRestr nor ObjectHashRestr is present,
 	 * key_ptr points to the address of the original name, not the key_buff
 	 ***********************************************************************/
+
+#ifdef CefC_Debug
+	{
+		int dbg_x;
+		int len = 0;
+
+		len = sprintf (pit_dbg_msg, "[pit] Search the entry [");
+		for (dbg_x = 0 ; dbg_x < key_len ; dbg_x++) {
+			len = len + sprintf (pit_dbg_msg + len, " %02X", key_buff[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
+	}
+#endif // CefC_Debug
 
 #ifdef	__INTEREST__
 	fprintf (stderr, "%s IN\n", __func__ );
@@ -1333,13 +1312,21 @@ CefT_Pit_Entry* 							/* a PIT entry								*/
 cef_pit_entry_search_with_chunk (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh				/* Parsed Option Header						*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH 	*/
 ) {
 	CefT_Pit_Entry* entry;
 	uint64_t now;
-	int found_ver_f = 0;
 	unsigned char key_buff[CefC_NAME_BUFSIZ], *key_ptr;
 	int		key_len = 0;
+
+	/* PIT search key extended with KeyIdRestr/ObjectHashRestr */
+	key_ptr = make_searchkey(pit, pm, poh, pm->name, pm->name_len,
+		key_type_f, key_buff, &key_len);
+
+	if ( !key_ptr || key_len < 1 ){
+		return (NULL);
+	}
 
 #ifdef CefC_Debug
 	{
@@ -1347,27 +1334,15 @@ cef_pit_entry_search_with_chunk (
 		int len = 0;
 
 		len = sprintf (pit_dbg_msg, "[pit] Search the entry [");
-		for (dbg_x = 0 ; dbg_x < pm->name_len ; dbg_x++) {
-			len = len + sprintf (pit_dbg_msg + len, " %02X", pm->name[dbg_x]);
+		for (dbg_x = 0 ; dbg_x < key_len ; dbg_x++) {
+			len = len + sprintf (pit_dbg_msg + len, " %02X", key_buff[dbg_x]);
 		}
 		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
 	}
 #endif // CefC_Debug
 
-	/* PIT search key extended with KeyIdRester/ObjectHashRester */
-	key_ptr = make_searchkey(pit, pm, poh, pm->name, pm->name_len, key_buff, &key_len);
-	if ( !key_ptr || key_len < 1 ){
-		return (NULL);
-	}
-
 	/* Searches a PIT entry 	*/
 	entry = (CefT_Pit_Entry*) cef_lhash_tbl_item_get (pit, key_ptr, key_len);
-	if (!entry) {
-		/* PIT search key without KeyIdRester/ObjectHashRester */
-		key_ptr = pm->name;
-		key_len = pm->name_len;
-		entry = (CefT_Pit_Entry*) cef_lhash_tbl_item_get (pit, key_ptr, key_len);
-	}
 #ifdef CefC_Debug
 cef_dbg_write (CefC_Dbg_Finer, "[pit] key_buff=%p, key_ptr=%p, name_len=%d, key_len=%d.\n",
 key_buff, key_ptr, pm->name_len, key_len);
@@ -1375,13 +1350,6 @@ key_buff, key_ptr, pm->name_len, key_len);
 	now = cef_client_present_timeus_get ();
 
 	if (entry != NULL) {
-		found_ver_f = cef_pit_entry_down_face_search (&(entry->dnfaces), 1, pm);
-//0.8.3c ----- START ----- version
-		//move to pit_entry_down_face_remove
-//		if (!entry->longlife_f) {
-//			entry->stole_f = 1;
-//		}
-//0.8.3c ----- END ----- version
 #ifdef CefC_Debug
 		{
 			int dbg_x;
@@ -1401,14 +1369,7 @@ cef_dbg_write (CefC_Dbg_Finer, "\t entry=%p, now="FMTU64", adv_lifetime_us="FMTU
 		if ((now > entry->adv_lifetime_us) && (poh->app_reg_f != CefC_T_OPT_APP_PIT_DEREG)){	//20190822
 			return (NULL);
 		}
-		if (found_ver_f) {
-			return (entry);
-		} else {
-#ifdef CefC_Debug
-			cef_dbg_write (CefC_Dbg_Finest, "[pit] ... Unmatched Version.\n");
-#endif // CefC_Debug
-			return (NULL);
-		}
+		return (entry);
 	}
 
 #ifdef CefC_Debug
@@ -1424,12 +1385,12 @@ CefT_Pit_Entry* 							/* a PIT entry								*/
 cef_pit_entry_search_symbolic (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH 	*/
 ) {
 	CefT_Pit_Entry* entry;
 	uint16_t key_len_wo_chunk;
 	uint64_t now;
-	int found_ver_f = 0;
 	unsigned char key_buff[CefC_NAME_BUFSIZ], *key_ptr;
 	int		key_len = 0;
 
@@ -1443,8 +1404,9 @@ cef_pit_entry_search_symbolic (
 		return NULL;
 	}
 
-	/* PIT search key extended with KeyIdRester/ObjectHashRester */
-	key_ptr = make_searchkey(pit, pm, poh, pm->name, pm->name_len, key_buff, &key_len);
+	/* PIT search key extended with KeyIdRestr/ObjectHashRestr */
+	key_ptr = make_searchkey(pit, pm, poh, pm->name, pm->name_len,
+		key_type_f, key_buff, &key_len);
 
 	if ( !key_ptr || key_len < 1 ){
 		return (NULL);
@@ -1467,13 +1429,6 @@ cef_pit_entry_search_symbolic (
 
 	/* Searches a PIT entry 	*/
 	entry = (CefT_Pit_Entry*) cef_lhash_tbl_item_get (pit, key_ptr, key_len_wo_chunk);
-	if (!entry) {
-		/* PIT search key without KeyIdRester/ObjectHashRester */
-		key_ptr = pm->name;
-		key_len = pm->name_len;
-		key_len_wo_chunk = key_len - (CefC_S_Type + CefC_S_Length + CefC_S_ChunkNum);
-		entry = (CefT_Pit_Entry*) cef_lhash_tbl_item_get (pit, key_ptr, key_len_wo_chunk);
-	}
 #ifdef CefC_Debug
 cef_dbg_write (CefC_Dbg_Finer, "[pit] key_buff=%p, key_ptr=%p, name_len=%d, key_len=%d.\n",
 key_buff, key_ptr, pm->name_len, key_len);
@@ -1517,15 +1472,7 @@ cef_dbg_write (CefC_Dbg_Finer, "\t entry=%p, now="FMTU64", adv_lifetime_us="FMTU
 		return (NULL);
 	}
 
-	found_ver_f = cef_pit_entry_down_face_search (&(entry->dnfaces), 1, pm);
-	if (found_ver_f) {
-		cef_dbg_write (CefC_Dbg_Finest, "[pit] ... Matched Version\n");
-		return (entry);
-	}
-
-	cef_dbg_write (CefC_Dbg_Finest, "[pit] ... Unmatched Version\n");
-
-	return (NULL);
+	return (entry);
 }
 
 /*--------------------------------------------------------------------------------------
@@ -1535,7 +1482,8 @@ CefT_Pit_Entry* 							/* a PIT entry								*/
 cef_pit_entry_search_with_anychunk (
 	CefT_Hash_Handle pit,					/* PIT										*/
 	CefT_CcnMsg_MsgBdy* pm, 				/* Parsed CEFORE message					*/
-	CefT_CcnMsg_OptHdr* poh					/* Parsed Option Header						*/
+	CefT_CcnMsg_OptHdr* poh,				/* Parsed Option Header						*/
+	unsigned int key_type_f					/* Flag to make PIT key with KeyID or COH 	*/
 ) {
 #ifdef CefC_Debug
 	char pit_dbg_msg[2048];
@@ -1547,13 +1495,27 @@ cef_pit_entry_search_with_anychunk (
 	uint32_t *ptr_chunknum;
 	uint32_t i, start, end;
 
-	/* PIT search key extended with KeyIdRester/ObjectHashRester */
+	/* PIT search key extended with KeyIdRestr/ObjectHashRestr */
 	memcpy(buf_tmpname, pm->name, pm->name_len);
-	key_ptr = make_searchkey(pit, pm, poh, pm->name, pm->name_len, buf_tmpname, &len_tmpname);
+	key_ptr = make_searchkey(pit, pm, poh, pm->name, pm->name_len,
+		key_type_f, buf_tmpname, &len_tmpname);
 
 	if ( !key_ptr || len_tmpname < 1 ){
 		return (NULL);
 	}
+
+#ifdef CefC_Debug
+	{
+		int dbg_x;
+		int len = 0;
+
+		len = sprintf (pit_dbg_msg, "[pit] Search the entry [");
+		for (dbg_x = 0 ; dbg_x < len_tmpname ; dbg_x++) {
+			len = len + sprintf (pit_dbg_msg + len, " %02X", buf_tmpname[dbg_x]);
+		}
+		cef_dbg_write (CefC_Dbg_Finest, "%s ]\n", pit_dbg_msg);
+	}
+#endif // CefC_Debug
 
 	if (!pm->chunk_num_f) {
 		uint16_t	type_t_chunk = htons(CefC_T_CHUNK);
@@ -1714,3 +1676,65 @@ cef_pit_entry_unlock (
 	return;
 }
 
+#ifdef REFLEXIVE_FORWARDING
+/*--------------------------------------------------------------------------------------
+	Searches a t-PIT entry matching the specified Name
+----------------------------------------------------------------------------------------*/
+CefT_Pit_Entry*
+cef_pit_entry_search_templete_pit (
+	CefT_Hash_Handle pit,		/* PIT */
+	CefT_CcnMsg_MsgBdy* pm,		/* Parsed CEFORE message */
+	CefT_CcnMsg_OptHdr* poh,	/* Parsed Option Header */
+	uint16_t peer_faceid		/* peer Face-ID */
+) {
+	CefT_Pit_Entry* entry;
+
+	uint16_t name_len = 0;
+	unsigned char search_name[CefC_Max_Length];
+
+	struct tlv_hdr* tlv_hdr;
+	int seg_len;
+	uint16_t sub_type;
+
+	uint16_t ftvn_tpit;
+	uint16_t tpit_len = 0;
+	uint16_t tpit_len_ns;
+
+	unsigned int pit_key_type = 0;
+
+	/* set RNP TLV to search key */
+	tlv_hdr = (struct tlv_hdr*) &pm->name[pm->rnp_pos];
+	seg_len = ntohs (tlv_hdr->length);
+	sub_type = ntohs (tlv_hdr->type);
+	if (sub_type != CefC_T_REFLEXIVE_NAME) {
+		return (NULL);
+	}
+	memcpy(&search_name[name_len] , &pm->name[pm->rnp_pos], CefC_S_Type + CefC_S_Length + seg_len);
+	name_len += CefC_S_Type + CefC_S_Length + seg_len;
+
+	/* set t-PIT TLV to search key */
+	ftvn_tpit = htons (CefC_T_TPIT);
+	tpit_len_ns = htons(tpit_len);
+	memcpy (&search_name[name_len], &ftvn_tpit, CefC_S_Type);
+	name_len += CefC_S_Type;
+	memcpy (&search_name[name_len], &tpit_len_ns, CefC_S_Length);
+	name_len += CefC_S_Length;
+
+	/* Searches a PIT entry */
+	pit_key_type = CefC_PitKey_With_NAME;
+	entry = cef_pit_entry_search_core(pit, pm, poh, search_name, name_len, pit_key_type);
+
+	if (entry != NULL) {
+		CefT_Down_Faces* dnfaces = NULL;
+		dnfaces = entry->dnfaces.next;
+		while (dnfaces != NULL) {
+			if (peer_faceid == dnfaces->faceid) {
+				return (entry);
+			}
+			dnfaces = dnfaces->next;
+		}
+	}
+
+	return (NULL);
+}
+#endif // REFLEXIVE_FORWARDING

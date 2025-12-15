@@ -123,7 +123,9 @@
 #define CefC_Csmgr_Msg_Type_PreCcninfo	0x14		/* Type Prepare Ccninfo message		*/
 #define CefC_Csmgr_Msg_Type_ContInfo	0x15		/* Type Get Contents Information	*/
 #define CefC_Csmgr_Msg_Type_SockID		0x16		/* Type Sending Socket Identifier	*/
-#define CefC_Csmgr_Msg_Type_Num			0x17
+#define CefC_Csmgr_Msg_Type_CnpbCntAdd	0x17		/* Type Conpub Contents Add			*/
+#define CefC_Csmgr_Msg_Type_CnpbCntDel	0x18		/* Type Conpub Contents Delete		*/
+#define CefC_Csmgr_Msg_Type_Num			0x19
 //#define CefC_Csmgr_Msg_Type_Num			0x15
 
 #define CefC_Csmgr_Cob_Exist			0x00		/* Type Content is exist			*/
@@ -371,15 +373,6 @@ cef_csmgr_cache_lookup (
 	unsigned char** cob
 );
 
-/*--------------------------------------------------------------------------------------
-	Check reply flag. Don't forward interest if reply flag is on.
-----------------------------------------------------------------------------------------*/
-int									/* The return value is 0 if an error occurs			*/
-cef_csmgr_rep_f_check (
-	CefT_Pit_Entry* pe, 					/* PIT entry								*/
-	int faceid								/* Face-ID to reply to the origin of 		*/
-											/* transmission of the message(s)			*/
-);
 /*--------------------------------------------------------------------------------------
 	Insert the Cob into the temporary cache
 ----------------------------------------------------------------------------------------*/

@@ -188,7 +188,7 @@ am__define_uniq_tagged_files = \
     if test -f "$$i"; then echo $$i; else echo $(srcdir)/$$i; fi; \
   done | $(am__uniquify_input)`
 DIST_SUBDIRS = cefgetstream cefputstream cefgetfile cefputfile \
-	cefgetchunk ccninfo csmgr conpub
+	cefgetchunk ccninfo cefpubfile cefsubfile csmgr conpub
 am__DIST_COMMON = $(srcdir)/Makefile.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 am__relativize = \
@@ -338,7 +338,7 @@ top_srcdir = @top_srcdir@
 
 # load sub directry
 SUBDIRS = cefgetstream cefputstream cefgetfile cefputfile cefgetchunk \
-	ccninfo $(am__append_1) $(am__append_2)
+	ccninfo cefpubfile cefsubfile $(am__append_1) $(am__append_2)
 all: all-recursive
 
 .SUFFIXES:

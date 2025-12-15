@@ -28,13 +28,14 @@ f_ccn.symbolic = ProtoField.none("ccn.symbolic", "T_SYMBOLIC", base.DEC)
 f_ccn.osymbolic = ProtoField.none("ccn.osymbolic", "T_OSYMBOLIC", base.DEC)
 f_ccn.longlife = ProtoField.none("ccn.longlife", "T_LONGLIFE", base.DEC)
 f_ccn.selective = ProtoField.bytes("ccn.selective", "T_SELECTIVE")
-f_ccn.chunk = ProtoField.uint32("ccn.chunk", "T_CHUNK", base.DEC)
+f_ccn.chunk = ProtoField.uint64("ccn.chunk", "T_CHUNK", base.DEC)
+f_ccn.endchunk = ProtoField.uint64("ccn.endchunk", "T_CHUNK", base.DEC)
 f_ccn.seqnum = ProtoField.uint32("ccn.seqnum", "T_SEQNUM", base.DEC)
 f_ccn.intlife = ProtoField.uint16("ccn.intlife", "T_INTLIFE", base.DEC)
 f_ccn.cachetime = ProtoField.uint64("ccn.cachetime", "T_CACHETIME", base.DEC)
+f_ccn.expiry = ProtoField.uint64("ccn.expiry", "T_EXPIRY", base.DEC)
 
 f_ccn.epn					= ProtoField.bytes("ccn.org.epn", "T_ORG/EPN")
-f_ccn.version				= ProtoField.string("ccn.version", "T_VERSION")
 f_ccn.frompub				= ProtoField.none("ccn.frompub", "T_FROM_PUB", base.DEC)
 f_ccn.pending				= ProtoField.uint16("ccn.pending", "T_PENDING", base.DEC)
 f_ccn.csact					= ProtoField.uint64("ccn.csact", "T_CSACT")
@@ -58,15 +59,13 @@ f_ccn.valid_alg_publickey = ProtoField.bytes("ccn.valid_alg.publickey", "T_PUBLI
 f_ccn.valid_alg_cert = ProtoField.bytes("ccn.valid_alg.cert", "T_CERT")
 f_ccn.valid_payload = ProtoField.bytes("ccn.valid_payload", "T_VALIDATION_PAYLOAD")
 
-f_ccn.reflexive = ProtoField.string("ccn.reflexive", "T_REFLEXIVE_NAME")
-f_ccn.keyidrestr_hash_type = ProtoField.uint16("ccn.keyidrestr.hash_type", "HASH_TYPE", base.HEX)
-f_ccn.keyidrestr_hash_length = ProtoField.uint16("ccn.keyidrestr.hash_length", "LENGTH", base.DEC)
-f_ccn.keyidrestr_hash_value = ProtoField.bytes("ccn.keyidrestr.hash_value", "VALUE")
-f_ccn.objhash_hash_type = ProtoField.uint16("ccn.objhash.hash_type", "HASH_TYPE", base.HEX)
-f_ccn.objhash_hash_length = ProtoField.uint16("ccn.objhash.hash_length", "LENGTH", base.DEC)
-f_ccn.objhash_hash_value = ProtoField.bytes("ccn.objhash.hash_value", "VALUE")
-f_ccn.msghash_hash_type = ProtoField.uint16("ccn.msghash_hash_type", "HASH_TYPE", base.HEX)
+f_ccn.reflexive = ProtoField.bytes("ccn.reflexive", "T_REFLEXIVE_NAME")
+f_ccn.keyidrestr = ProtoField.bytes("ccn.keyidrestr", "T_KEYIDRESTR")
+f_ccn.objhashrestr = ProtoField.bytes("ccn.objhashrestr", "T_OBJHASHRESTR")
+f_ccn.msghash = ProtoField.bytes("ccn.msghash", "T_MSGHASH")
 f_ccn.returncode = ProtoField.uint16("ccn.returncode", "ReturnCode", base.DEC)
+
+f_ccn.trailer_keyid = ProtoField.bytes("ccn.trailer.keyid", "T_KEYID")
 
 -----------------------------------------------------
 -----------------------------------------------------
@@ -142,20 +141,6 @@ switch_NictVenderTLV[0x000A] = function(block, root, pInfo)
 
 --   treeInfo:add(f_ccn.osymbolic, blk_sym)
    pInfo.cols.info = string.format("%s,OSYM", pInfo.cols.info)
-
-   return treeInfo
-end
---
--- T_VERSION
---
-switch_NictVenderTLV[0x800B] = function(block, root, pInfo)
-   local blk_version = block.tvb(block.offset + block.typeLen + block.lengthLen, block.size-4)
-   local treeInfo = root:add(block.tvb(block.offset, block.size),
-             string.format("T_VERSION(0x%x) Length: %d  Value: %s",
-             block.type, block.length, blk_version:string()))
-
-   treeInfo:add(f_ccn.version, blk_version)
-   pInfo.cols.info = string.format("%s,T_VERSION=%s", pInfo.cols.info, blk_version:string())
 
    return treeInfo
 end
@@ -676,8 +661,13 @@ end
 --
 switch_OptHdrTLV[2] = function(block, root, pInfo)
    local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):uint64()
+   local unixtime = value / 1000
+   local epoch_time = math.floor(unixtime:tonumber())
+   local milisec = value:tonumber() % 1000
+   local localtime = os.date("%Y-%m-%d %H:%M:%S", epoch_time)
    local treeInfo = root:add(block.tvb(block.offset, block.size),
-         "T_CACHETIME(" .. block.type .. ") Length: " .. block.length .. " Value: " .. value)
+         string.format("T_CACHETIME(0x%04x) Length:%d %s.%03d",
+           block.type, block.length, localtime, milisec))
 
    treeInfo:add(f_ccn.cachetime, value)
 
@@ -686,13 +676,36 @@ end
 --
 -- T_MSGHASH
 --
-switch_OptHdrTLV[3] = function(block, root, pInfo)
-   local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):uint()
-   local treeInfo = root:add(block.tvb(block.offset, block.size),
-         "T_MSGHASH(" .. block.type .. ") Length: " .. block.length .. " Value: " .. value)
+switch_OptHdrTLV[3] = function(block, msginfo, msgroot, pInfo, CcnMsg)
+   local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
+         "T_MSGHASH(" .. block.type .. ") Length: " .. block.length)
 
-   local blk_hash_type = block.tvb(block.offset + block.typeLen + block.typeLen, block.typeLen)
-   treeInfo:add(f_ccn.msghash_hash_type, blk_hash_type)
+   local blk_offset = block.offset + block.typeLen + block.lengthLen
+   local hash_type = block.tvb(blk_offset, 2):uint()
+   local hash_length = block.tvb(blk_offset+2, 2):uint()
+
+   treeInfo:add(block.tvb(blk_offset, 4),
+         string.format("HASH Type: 0x%04x  Length: %d", hash_type, hash_length))
+
+   blk_offset = blk_offset + 4
+   treeInfo:add(f_ccn.msghash,
+                block.tvb(blk_offset, hash_length))
+
+   -- Only the first 8 bytes of the hash value
+   local val_hex = "0x"
+   local blk_offset = block.offset + block.typeLen + block.lengthLen + 4
+   for i = 0, 7 do
+      val_hex = string.format("%s%02x", val_hex, block.tvb(blk_offset + i, 1):uint())
+   end
+   val_hex = val_hex .. ".."
+
+   if ( pInfo ) then
+      pInfo.cols.info = string.format("%s/OBJHASH=%s", pInfo.cols.info, val_hex)
+   end
+
+   if ( CcnMsg ) then
+      CcnMsg:append_text(string.format("/OBJHASH=%s", val_hex))
+   end
 
    return treeInfo
 end
@@ -734,16 +747,12 @@ end
 --
 -- T_DISC_REPORT
 --
-local switch_Nodeid_SubTLV = {}
---
--- T_NODEID_SEGMENT
---
-switch_Nodeid_SubTLV[1] = function(block, root, info)
+function GetNodeIdentifier(block, root, info)
    local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):string()
    local treeInfo = root:add(block.tvb(block.offset, block.size),
-         "T_NAMESEGMENT(" .. block.type .. ") Length: " .. block.length .. " Value: \x22" .. value .."\x22")
+         "T_NODENAME(" .. block.type .. ") Length: " .. block.length .. " Value: \x22" .. value .."\x22")
 
-   root:append_text(string.format("/%s", value))
+   root:append_text(string.format("%s", value))
 
    return treeInfo
 end
@@ -759,26 +768,13 @@ switch_OptHdrTLV[9] = function(block, root, pInfo)
    end
 
    local offset   = block.offset + block.typeLen + block.lengthLen+4
-   local treeNodeId = treeInfo:add(block.tvb(offset, block.length-4), "NodeIdentifier: ")
-   local NodeTLVs = getBlock(block.tvb, block.offset + block.typeLen + block.lengthLen+4)
+   local NodeTLVs = getBlock(block.tvb, offset)
+   local treeNodeId = treeInfo:add(NodeTLVs.tvb(offset, NodeTLVs.size), "NodeIdentifier: ")
 
--- print (string.format("T_DISC_REPLY:block.offset=%d,length=%d", block.offset, block.length))
--- print (string.format("T_DISC_REPLY:NodeTLVs.offset=%d,length=%d,size=%d", NodeTLVs.offset, NodeTLVs.length, NodeTLVs.size))
+print (string.format("T_DISC_REPORT:block.offset=%d,length=%d", block.offset, block.length))
+print (string.format("T_DISC_REPORT:NodeTLVs.offset=%d,length=%d,size=%d", NodeTLVs.offset, NodeTLVs.length, NodeTLVs.size))
 
-   offset   = offset + 4
-   local valueLeft = NodeTLVs.length
-
-   while valueLeft > 0 do
-      local subTLVs = getBlock(NodeTLVs.tvb, offset)
--- print (string.format("T_DISC_REPLY:subTLVs.offset=%d,type=%d,length=%d,size=%d", subTLVs.offset, subTLVs.type, subTLVs.length, subTLVs.size))
-
-      if ( nil ~= switch_Nodeid_SubTLV[subTLVs.type] ) then
-          subTLVs.msginfo = switch_Nodeid_SubTLV[subTLVs.type](subTLVs, treeNodeId, treeInfo)
-      end
-      valueLeft = valueLeft - subTLVs.size
-      offset    = offset    + subTLVs.size
-      ::continue::
-   end
+   GetNodeIdentifier(getBlock(NodeTLVs.tvb, offset+4), treeNodeId, pInfo)
 
    return treeInfo
 end
@@ -877,6 +873,30 @@ switch_OptUserTLV[0x1006] = function(block, root, pInfo)
 
    return treeInfo
 end
+--
+-- OPT_ROUTE_ADD
+--
+switch_OptUserTLV[0x1007] = function(block, root, pInfo)
+   local treeInfo = root:add(block.tvb(block.offset, block.size),
+         "OPT_ROUTE_ADD(" .. string.format("0x%x", block.type) .. ") Length: " .. block.length)
+
+   local text = string.format("%s", pInfo.cols.info)
+   pInfo.cols.info = text .. " OPT_ROUTE_ADD"
+
+   return treeInfo
+end
+--
+-- OPT_ROUTE_DEL
+--
+switch_OptUserTLV[0x1008] = function(block, root, pInfo)
+   local treeInfo = root:add(block.tvb(block.offset, block.size),
+         "OPT_ROUTE_DEL(" .. string.format("0x%x", block.type) .. ") Length: " .. block.length)
+
+   local text = string.format("%s", pInfo.cols.info)
+   pInfo.cols.info = text .. " OPT_ROUTE_DEL"
+
+   return treeInfo
+end
 function addOptUserInfo(block, root, pInfo) -- may be add additional context later
 
 -- print (string.format("#%d OptUser::type=0x%04x", pInfo.number, block.type))
@@ -902,53 +922,6 @@ switch_OptHdrTLV[0x1000] = function(block, root, pInfo)
    local blk_user = getBlock(block.tvb, block.offset + block.typeLen + block.lengthLen)
 
    pInfo.cols.info = "[OPT_USER_TLV:"
-
-   blk_user.elements = getSubBlocks(blk_user)
-
-   local subtree = addOptUserInfo(blk_user, treeInfo, pInfo)
-   if (block.elements ~= nil) then
-      for i, subBlock in pairs(blk_user.elements) do
-         subBlock.tree = subtree
-      end
-   end
-
-   pInfo.cols.info = string.format("%s]", pInfo.cols.info)
-
-   return treeInfo
-end
-
---
--- OPT_USER_TLV (deprecated)
---
-switch_OptHdrTLV[0x1000] = function(block, root, pInfo)
-   local treeInfo = root:add(block.tvb(block.offset, block.size),
-         "OPT_USER_TLV(" .. string.format("0x%x", block.type) .. ") Length: " .. block.length)
-   local blk_user = getBlock(block.tvb, block.offset + block.typeLen + block.lengthLen)
-
-   pInfo.cols.info = "[OPT_USER_TLV:"
-
-   blk_user.elements = getSubBlocks(blk_user)
-
-   local subtree = addOptUserInfo(blk_user, treeInfo, pInfo)
-   if (block.elements ~= nil) then
-      for i, subBlock in pairs(blk_user.elements) do
-         subBlock.tree = subtree
-      end
-   end
-
-   pInfo.cols.info = string.format("%s]", pInfo.cols.info)
-
-   return treeInfo
-end
---
--- OPT_SYMBOLIC (Highly discouraged)
---
-switch_OptHdrTLV[0x1001] = function(block, root, pInfo)
-   local treeInfo = root:add(block.tvb(block.offset, block.size),
-         "OPT_SYMBOLIC(" .. string.format("0x%x", block.type) .. ") Length: " .. block.length)
-   local blk_user = getBlock(block.tvb, block.offset + block.typeLen + block.lengthLen)
-
-   pInfo.cols.info = "[OPT_SYMBOLIC:"
 
    blk_user.elements = getSubBlocks(blk_user)
 
@@ -1070,6 +1043,7 @@ function addCcnFixHdrInfo(msg, root, pInfo) -- may be add additional context lat
    local ReturnCode = msg.tvb(msg.offset+5, 1):uint()
    local Flags      = msg.tvb(msg.offset+6, 1):uint()
    local packet_type    = "Unknown"
+   local retstatus  = ""
 
    msg.PacketLength  = msg.tvb(msg.offset+2, 2):uint()
    msg.HeaderLength  = msg.tvb(msg.offset+7, 1):uint()
@@ -1084,18 +1058,18 @@ function addCcnFixHdrInfo(msg, root, pInfo) -- may be add additional context lat
    elseif ( msg.type == 0x02 ) then
       packet_type = "RETURN"
       if ( nil ~= interest_returncode[ReturnCode+1] ) then
-         packet_type = string.format("%s(%s) ", packet_type, interest_returncode[ReturnCode+1])
+         retstatus = string.format("(%s) ", interest_returncode[ReturnCode+1])
       else
-         packet_type = string.format("%s(0x%04x) ", packet_type, ReturnCode)
+         retstatus = string.format("(0x%04x) ", ReturnCode)
       end
    elseif ( msg.type == 0x03 ) then
       packet_type = "CCNINFO_REQUEST"
    elseif ( msg.type == 0x04 ) then
       packet_type = "CCNINFO_REPLY"
       if ( nil ~= reply_returncode[ReturnCode+1] ) then
-         packet_type = string.format("%s(%s) ", packet_type, reply_returncode[ReturnCode+1])
+         retstatus = string.format("(%s) ", reply_returncode[ReturnCode+1])
       else
-         packet_type = string.format("%s(0x%04x) ", packet_type, ReturnCode)
+         retstatus = string.format("(0x%04x) ", ReturnCode)
       end
    elseif ( msg.type == 0x05 ) then
       msgtype = "PING_REQUEST"
@@ -1109,7 +1083,7 @@ function addCcnFixHdrInfo(msg, root, pInfo) -- may be add additional context lat
       msgtype = "PT_CTRL"
    end
 
-   pInfo.cols.info = string.format("%s ", packet_type)
+   pInfo.cols.info = string.format(" %s %s", packet_type, retstatus)
 
    treeInfo = root:add(msg.tvb(msg.offset+1, 1), "Type: " .. packet_type .. "(" .. msg.type .. ")")
    treeInfo:add(f_ccn.msgtype, msg.tvb(msg.offset+1, 1))
@@ -1140,25 +1114,27 @@ function addCcnFixHdrInfo(msg, root, pInfo) -- may be add additional context lat
    treeInfo = root:add(msg.tvb(msg.offset+6, 1), "Flags: "          .. Flags)
    treeInfo = root:add(msg.tvb(msg.offset+7, 1), "HeaderLength: "   .. msg.HeaderLength)
 
-   root:append_text(" " .. packet_type)
+   root:append_text(string.format(" %s %s", packet_type, retstatus))
 
    msg.root = treeInfo
    return msg.root
 end
 
 -----------------------------------------------------
--- Name TLVs
+-- Name Registry TLVs
 -----------------------------------------------------
-local switch_Name_TLV = {}
+local switch_TLV_NameReg = {}
 --
 -- T_NAMESEGMENT
 --
-switch_Name_TLV[1] = function(block, nametree, msgroot, pInfo, CcnMsg)
+switch_TLV_NameReg[1] = function(block, nametree, msgroot, pInfo, CcnMsg)
    local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):string()
    local treeInfo = nametree:add(block.tvb(block.offset, block.size),
          "T_NAMESEGMENT(" .. block.type .. ") Length: " .. block.length .. " Value: \x22" .. value .."\x22")
 
-   msgroot:append_text(string.format("/%s", value))
+   if ( msgroot ) then
+      msgroot:append_text(string.format("/%s", value))
+   end
 
    if ( pInfo ) then
       local text = string.format("%s", pInfo.cols.info)
@@ -1174,7 +1150,7 @@ end
 --
 -- T_IPID
 --
-switch_Name_TLV[2] = function(block, nametree, msgroot, pInfo)
+switch_TLV_NameReg[2] = function(block, nametree, msgroot, pInfo)
    local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):uint()
    local treeInfo = nametree:add(block.tvb(block.offset, block.size),
          "T_IPID(" .. block.type .. ") Length: " .. block.length .. " Value: " .. value)
@@ -1184,7 +1160,7 @@ end
 --
 -- T_NONCE
 --
-switch_Name_TLV[0x03] = function(block, nametree, msgroot, pInfo)
+switch_TLV_NameReg[0x03] = function(block, nametree, msgroot, pInfo)
    local blk_nonce = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length)
    local value
 
@@ -1202,25 +1178,24 @@ end
 --[[
 -- T_CHUNK
 --]]
-switch_Name_TLV[0x04] = function(block, nametree, msgroot, pInfo, CcnMsg)
+switch_TLV_NameReg[0x04] = function(block, nametree, msgroot, pInfo, CcnMsg)
 
    if ( block.length < 12 ) then
        local blk_chunk = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length)
-       local value = blk_chunk:uint()
+       local value = blk_chunk:uint64()
        local treeInfo = nametree:add(block.tvb(block.offset, block.size),
              "T_CHUNK(" .. block.type .. ") Length: " .. block.length .. " Value: " .. value)
 
-       msgroot:append_text(string.format("/%%%u", value))
+       msgroot:append_text(string.format("/%%%s", value))
 
        treeInfo:add(f_ccn.chunk, blk_chunk)
 
        if ( pInfo ) then
-          local text = string.format("%s", pInfo.cols.info)
-          pInfo.cols.info = string.format("%s/%%%u", text, value)
+          pInfo.cols.info = string.format("%s/%%%s", pInfo.cols.info, value)
        end
 
        if ( CcnMsg ) then
-          CcnMsg:append_text(string.format("/%%%u", value))
+          CcnMsg:append_text(string.format("/%%%s", value))
        end
    elseif ( 12 <= block.length ) then
        local treeInfo = nametree:add(block.tvb(block.offset, block.size),
@@ -1297,38 +1272,55 @@ switch_Name_TLV[0x04] = function(block, nametree, msgroot, pInfo, CcnMsg)
 end
 --
 -- T_REFLEXIVE_NAME
+-- The next version will have T_VERSION(4), T_CHUNK(5), and T_REFLEXIVE(6).
 --
-switch_Name_TLV[0x05] = function(block, nametree, msgroot, pInfo, CcnMsg)
-   local val_hex = "0x"
-   local blk_offset = block.offset + block.typeLen + block.lengthLen
-   for i = 0, block.length - 1 do
-      local value_int = block.tvb(blk_offset + i, 1):uint()
-      val_hex = string.format("%s%x", val_hex, value_int)
+switch_TLV_NameReg[0x05] = function(block, nametree, msgroot, pInfo, CcnMsg)
+
+   if ( block.size <= 16 ) then
+       -- Behavior as T_CHUNK
+       local treeInfo = switch_TLV_NameReg[0x04](block, nametree, msgroot, pInfo, CcnMsg)
+       return treeInfo
    end
 
+   -- Behavior as T_REFLEXIVE_NAME
+   local treeInfo = switch_TLV_NameReg[0x06](block, nametree, msgroot, pInfo, CcnMsg)
+
+   return treeInfo
+end
+--
+-- T_REFLEXIVE_NAME
+-- The next version will have T_VERSION(4), T_CHUNK(5), and T_REFLEXIVE(6).
+--
+switch_TLV_NameReg[0x06] = function(block, nametree, msgroot, pInfo, CcnMsg)
+
    local treeInfo = nametree:add(block.tvb(block.offset, block.size),
-         "T_REFLEXIVE_NAME(" .. block.type .. ") Length: " .. block.length .. " Value: \x22" .. val_hex .."\x22")
+         "T_REFLEXIVE_NAME(" .. block.type .. ") Length: " .. block.length)
+   local blk_offset = block.offset + block.typeLen + block.lengthLen
+   treeInfo:add(f_ccn.reflexive, block.tvb(blk_offset, block.length))
+
+   local val_hex = "0x"
+   for i = 0, 7 do
+      val_hex = string.format("%s%02x", val_hex, block.tvb(blk_offset + i, 1):uint())
+   end
+   val_hex = val_hex .. ".."
 
    msgroot:append_text(string.format("/RNP=%s", val_hex))
 
    if ( pInfo ) then
-      local text = string.format("%s", pInfo.cols.info)
-      pInfo.cols.info = string.format("%s/RNP=%s", text, val_hex)
+      pInfo.cols.info = string.format("%s/RNP=%s", string.format("%s", pInfo.cols.info), val_hex)
    end
 
    if ( CcnMsg ) then
       CcnMsg:append_text(string.format("/RNP=%s", val_hex))
    end
 
-   treeInfo:add(f_ccn.reflexive, val_hex)
-
    return treeInfo
 end
 --[[
 -- T_CHUNK
 --]]
-switch_Name_TLV[0x10] = function(block, nametree, msgroot, pInfo, CcnMsg)
-   local treeInfo = switch_Name_TLV[0x04](nametree, msgroot, pInfo, CcnMsg)
+switch_TLV_NameReg[0x10] = function(block, nametree, msgroot, pInfo, CcnMsg)
+   local treeInfo = switch_TLV_NameReg[0x04](block, nametree, msgroot, pInfo, CcnMsg)
 
    return treeInfo
 end
@@ -1336,112 +1328,20 @@ end
 --
 -- T_META
 --
-switch_Name_TLV[0x11] = function(block, nametree, msgroot, pInfo)
+switch_TLV_NameReg[0x11] = function(block, nametree, msgroot, pInfo)
    local treeInfo = nametree:add(block.tvb(block.offset, block.size),
          "T_META(" .. string.format("0x%x", block.type) .. ") Length: " .. block.length)
 
    return treeInfo
 end
 -----------------------------------------------------
--- Discovery TLVs
+-- CCNx Message Types
 -----------------------------------------------------
-local switch_DiscoveryTLV = {}
---
--- T_DISC_CONTENT
---
-switch_DiscoveryTLV[0x0000] = function(block, msginfo, pInfo)
-   local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
-         string.format("T_DISC_CONTENT(%u) Length: %u ", block.type, block.length))
-
-   local ObjectSize = block.tvb(block.offset + block.typeLen + block.lengthLen, 4)
-   local ObjectCount = block.tvb(block.offset + block.typeLen + block.lengthLen+4, 4)
-   local NumInterest = block.tvb(block.offset + block.typeLen + block.lengthLen+8, 4)
-   local FirstSeqnum = block.tvb(block.offset + block.typeLen + block.lengthLen+12, 4)
-   local LastSeqnum  = block.tvb(block.offset + block.typeLen + block.lengthLen+16, 4)
-   local ElapsedCacheTime  = block.tvb(block.offset + block.typeLen + block.lengthLen+20, 4)
-   local RemainCacheTime   = block.tvb(block.offset + block.typeLen + block.lengthLen+24, 4)
-   local Tname       = getBlock(block.tvb, (block.offset + block.typeLen + block.lengthLen+28))
-
-   treeInfo:add(ObjectSize,       string.format("       ObjectSize: %u", ObjectSize:uint()))
-   treeInfo:add(ObjectCount,      string.format("      ObjectCount: %u", ObjectCount:uint()))
-   treeInfo:add(NumInterest,      string.format("       # Interest: %u", NumInterest:uint()))
-   treeInfo:add(FirstSeqnum,      string.format("      FirstSeqnum: %u", FirstSeqnum:uint()))
-   treeInfo:add(LastSeqnum,       string.format("       LastSeqnum: %u", LastSeqnum:uint()))
-   treeInfo:add(ElapsedCacheTime, string.format(" ElapsedCacheTime: %u", ElapsedCacheTime:uint()))
-   treeInfo:add(RemainCacheTime,  string.format("  RemainCacheTime: %u", RemainCacheTime:uint()))
-
-   local treeName = treeInfo:add(Tname.tvb(Tname.offset, Tname.size), "T_NAME(" .. Tname.type .. ") Length: " .. Tname.length)
-
-   local offset   = Tname.offset + Tname.typeLen + Tname.lengthLen
-   local valueLeft = Tname.length
-
-   while valueLeft > 0 do
-      local subTLVs = getBlock(Tname.tvb, offset)
-
-      if ( nil == switch_Name_TLV[subTLVs.type] ) then
-          -- no valid tlv found
-          break
-      end
-
-      subTLVs.msginfo = switch_Name_TLV[subTLVs.type](subTLVs, treeName, treeInfo, nil)
-      valueLeft = valueLeft - subTLVs.size
-      offset    = offset    + subTLVs.size
-   end
-
-   return treeInfo
-end
---
--- T_DISC_CONTENT_PUBLISHER
---
-switch_DiscoveryTLV[0x0001] = function(block, msginfo, pInfo)
-   local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
-         string.format("T_DISC_CONTENT_PUBLISHER(%u) Length: %u ", block.type, block.length))
-
-   local ObjectSize = block.tvb(block.offset + block.typeLen + block.lengthLen, 4)
-   local ObjectCount = block.tvb(block.offset + block.typeLen + block.lengthLen+4, 4)
-   local NumInterest = block.tvb(block.offset + block.typeLen + block.lengthLen+8, 4)
-   local FirstSeqnum = block.tvb(block.offset + block.typeLen + block.lengthLen+12, 4)
-   local LastSeqnum  = block.tvb(block.offset + block.typeLen + block.lengthLen+16, 4)
-   local ElapsedCacheTime  = block.tvb(block.offset + block.typeLen + block.lengthLen+20, 4)
-   local RemainCacheTime   = block.tvb(block.offset + block.typeLen + block.lengthLen+24, 4)
-   local Tname       = getBlock(block.tvb, (block.offset + block.typeLen + block.lengthLen+28))
-
-   treeInfo:add(ObjectSize,       string.format("       ObjectSize: %u", ObjectSize:uint()))
-   treeInfo:add(ObjectCount,      string.format("      ObjectCount: %u", ObjectCount:uint()))
-   treeInfo:add(NumInterest,      string.format("       # Interest: %u", NumInterest:uint()))
-   treeInfo:add(FirstSeqnum,      string.format("      FirstSeqnum: %u", FirstSeqnum:uint()))
-   treeInfo:add(LastSeqnum,       string.format("       LastSeqnum: %u", LastSeqnum:uint()))
-   treeInfo:add(ElapsedCacheTime, string.format(" ElapsedCacheTime: %u", ElapsedCacheTime:uint()))
-   treeInfo:add(RemainCacheTime,  string.format("  RemainCacheTime: %u", RemainCacheTime:uint()))
-
-   local treeName = treeInfo:add(Tname.tvb(Tname.offset, Tname.size), "T_NAME(" .. Tname.type .. ") Length: " .. Tname.length)
-
-   local offset   = Tname.offset + Tname.typeLen + Tname.lengthLen
-   local valueLeft = Tname.length
-
-   while valueLeft > 0 do
-      local subTLVs = getBlock(Tname.tvb, offset)
-
-      if ( nil == switch_Name_TLV[subTLVs.type] ) then
-          -- no valid tlv found
-          break
-      end
-
-      subTLVs.msginfo = switch_Name_TLV[subTLVs.type](subTLVs, treeName, treeInfo, pInfo)
-      valueLeft = valueLeft - subTLVs.size
-      offset    = offset    + subTLVs.size
-   end
-
-   return treeInfo
-end
------------------------------------------------------
--- Message TLVs
------------------------------------------------------
-local switch_MessageTLV = {}
+local switch_TLV_MessageType = {}
 --
 -- T_NAME
 --
-switch_MessageTLV[0] = function(block, msginfo, msgroot, pInfo, CcnMsg)
+switch_TLV_MessageType[0] = function(block, msginfo, msgroot, pInfo, CcnMsg)
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
          "T_NAME(" .. block.type .. ") Length: " .. block.length .. "   ")
 
@@ -1460,8 +1360,8 @@ switch_MessageTLV[0] = function(block, msginfo, msgroot, pInfo, CcnMsg)
           offset    = (offset + 1)
           goto continue
       end
-      if ( nil ~= switch_Name_TLV[subTLVs.type] ) then
-          subTLVs.msginfo = switch_Name_TLV[subTLVs.type](subTLVs, treeInfo, msgroot, pInfo, CcnMsg)
+      if ( nil ~= switch_TLV_NameReg[subTLVs.type] ) then
+          subTLVs.msginfo = switch_TLV_NameReg[subTLVs.type](subTLVs, treeInfo, msgroot, pInfo, CcnMsg)
       end
       valueLeft = valueLeft - subTLVs.size
       offset    = offset    + subTLVs.size
@@ -1473,7 +1373,7 @@ end
 --
 -- T_PAYLOAD
 --
-switch_MessageTLV[1] = function(block, msginfo, msgroot, pInfo)
+switch_TLV_MessageType[1] = function(block, msginfo, msgroot, pInfo, CcnMsg)
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
          "T_PAYLOAD(" .. block.type .. ") Length: " .. block.length)
 
@@ -1487,41 +1387,82 @@ end
 --
 -- T_KEYIDRESTR
 --
-switch_MessageTLV[2] = function(block, msginfo, msgroot, pInfo)
+switch_TLV_MessageType[2] = function(block, msginfo, msgroot, pInfo, CcnMsg)
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
          "T_KEYIDRESTR(" .. block.type .. ") Length: " .. block.length)
 
-   treeInfo:add(f_ccn.keyidrestr_hash_type,
-                block.tvb(block.offset + block.typeLen + block.lengthLen, 2))
-   local hash_length = block.tvb(block.offset + block.typeLen + block.lengthLen + 2, 2):uint()
-   treeInfo:add(f_ccn.keyidrestr_hash_length,
-                block.tvb(block.offset + block.typeLen + block.lengthLen + 2, 2))
-   treeInfo:add(f_ccn.keyidrestr_hash_value,
-                block.tvb(block.offset + block.typeLen + block.lengthLen + 2 + block.lengthLen, hash_length))
+   local blk_offset = block.offset + block.typeLen + block.lengthLen
+   local hash_type = block.tvb(blk_offset, 2):uint()
+   local hash_length = block.tvb(blk_offset+2, 2):uint()
+
+   treeInfo:add(block.tvb(blk_offset, 4),
+         string.format("HASH Type: 0x%04x  Length: %d", hash_type, hash_length))
+
+   blk_offset = blk_offset + 4
+   treeInfo:add(f_ccn.keyidrestr,
+                block.tvb(blk_offset, hash_length))
+
+   -- Only the first 8 bytes of the hash value
+   local val_hex = "0x"
+   for i = 0, 7 do
+      val_hex = string.format("%s%02x", val_hex, block.tvb(blk_offset + i, 1):uint())
+   end
+   val_hex = val_hex .. ".."
+
+   if ( pInfo ) then
+      pInfo.cols.info = string.format("%s/KEYID=%s", pInfo.cols.info, val_hex)
+   end
+
+   if ( CcnMsg ) then
+      CcnMsg:append_text(string.format("/KEYID=%s", val_hex))
+   end
+
+   if ( msgroot ) then
+      msgroot:append_text(string.format(" to %s", val_hex))
+   end
 
    return treeInfo
 end
 --
 -- T_OBJHASHRESTR
 --
-switch_MessageTLV[3] = function(block, msginfo, msgroot, pInfo)
+switch_TLV_MessageType[3] = function(block, msginfo, msgroot, pInfo, CcnMsg)
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
          "T_OBJHASHRESTR(" .. block.type .. ") Length: " .. block.length)
 
-   treeInfo:add(f_ccn.objhash_hash_type,
-                block.tvb(block.offset + block.typeLen + block.lengthLen, 2))
-   local hash_length = block.tvb(block.offset + block.typeLen + block.lengthLen + 2, 2):uint()
-   treeInfo:add(f_ccn.objhash_hash_length,
-                block.tvb(block.offset + block.typeLen + block.lengthLen + 2, 2))
-   treeInfo:add(f_ccn.objhash_hash_value,
-                block.tvb(block.offset + block.typeLen + block.lengthLen + 2 + block.lengthLen, hash_length))
+   local blk_offset = block.offset + block.typeLen + block.lengthLen
+   local hash_type = block.tvb(blk_offset, 2):uint()
+   local hash_length = block.tvb(blk_offset+2, 2):uint()
+
+   treeInfo:add(block.tvb(blk_offset, 4),
+         string.format("HASH Type: 0x%04x  Length: %d", hash_type, hash_length))
+
+   blk_offset = blk_offset + 4
+   treeInfo:add(f_ccn.objhashrestr,
+                block.tvb(blk_offset, hash_length))
+
+   -- Only the first 8 bytes of the hash value
+   local val_hex = "0x"
+   local blk_offset = block.offset + block.typeLen + block.lengthLen + 4
+   for i = 0, 7 do
+      val_hex = string.format("%s%02x", val_hex, block.tvb(blk_offset + i, 1):uint())
+   end
+   val_hex = val_hex .. ".."
+
+   if ( pInfo ) then
+      pInfo.cols.info = string.format("%s/OBJHASH=%s", pInfo.cols.info, val_hex)
+   end
+
+   if ( CcnMsg ) then
+      CcnMsg:append_text(string.format("/OBJHASH=%s", val_hex))
+   end
 
    return treeInfo
 end
 --
 -- T_PAYLDTYPE
 --
-switch_MessageTLV[5] = function(block, msginfo, msgroot, pInfo)
+switch_TLV_MessageType[5] = function(block, msginfo, msgroot, pInfo, CcnMsg)
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
          "T_PAYLDTYPE(" .. block.type .. ") Length: " .. block.length)
 
@@ -1530,35 +1471,55 @@ end
 --
 -- T_EXPIRY
 --
-switch_MessageTLV[6] = function(block, msginfo, msgroot, pInfo)
+switch_TLV_MessageType[6] = function(block, msginfo, msgroot, pInfo, CcnMsg)
    local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):uint64()
+   local unixtime = value / 1000
+   local epoch_time = math.floor(unixtime:tonumber())
+   local milisec = value:tonumber() % 1000
+   local localtime = os.date("%Y-%m-%d %H:%M:%S", epoch_time)
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
-         "T_EXPIRY(" .. block.type .. ") Length: " .. block.length .. " Value: " .. value)
+         string.format("T_EXPIRY(0x%04x) Length:%d %s.%03d",
+           block.type, block.length, localtime, milisec))
+
+   treeInfo:add(f_ccn.expiry, value)
 
    return treeInfo
 end
+--
+-- T_CURVERSION
+--
+switch_TLV_MessageType[7] = function(block, msginfo, msgroot, pInfo, CcnMsg)
+
+   if ( block.length <= 4 ) then
+      return switch_TLV_MessageType[8](block, msginfo, msgroot, pInfo, CcnMsg)
+   end
+
+   return treeInfo
+end
+
 --
 -- T_ENDCHUNK
 --
-switch_MessageTLV[7] = function(block, msginfo, msgroot, pInfo)
-   local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):uint()
+switch_TLV_MessageType[8] = function(block, msginfo, msgroot, pInfo, CcnMsg)
+   local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):uint64()
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
          "T_ENDCHUNK(" .. block.type .. ") Length: " .. block.length .. " Value: " .. value)
 
-   --- pInfo.cols.info = string.format("%s", pInfo.cols.info) .. " EndChunkNo=" .. value
+   --- pInfo.cols.info = string.format("%s", pInfo.cols.info) .. " EndChunk=" .. value
+   treeInfo:add(f_ccn.endchunk, value)
 
    return treeInfo
 end
 
 --
--- T_END_CHUNK
+-- T_CHUNK_SIZE
 --
-switch_MessageTLV[12] = function(block, msginfo, msgroot, pInfo)
+switch_TLV_MessageType[9] = function(block, msginfo, msgroot, pInfo, CcnMsg)
    local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length):uint()
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
-         "T_END_CHUNK(" .. block.type .. ") Length: " .. block.length .. " Value: " .. value)
+         "T_CHUNK_SIZE(" .. block.type .. ") Length: " .. block.length .. " Value: " .. value)
 
-   --- pInfo.cols.info = string.format("%s", pInfo.cols.info) .. " EndChunkNo=" .. value
+   --- pInfo.cols.info = string.format("%s", pInfo.cols.info) .. " ChunkSize=" .. value
 
    return treeInfo
 end
@@ -1566,7 +1527,7 @@ end
 --
 -- T_ORG
 --
-switch_MessageTLV[0x0FFF] = function(block, msginfo, msgroot, pInfo)
+switch_TLV_MessageType[0x0FFF] = function(block, msginfo, msgroot, pInfo, CcnMsg)
    local blk_epn = block.tvb(block.offset + block.typeLen + block.lengthLen, 3)
    local epn = blk_epn:uint()
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
@@ -1621,45 +1582,50 @@ end
 -- Validation Algorithm TLVs
 -----------------------------------------------------
 local switch_ValidationAlgSubTLV = {}
-local switch_ValidationAlgTLV = {}
---
--- T_CRC32C
---
-switch_ValidationAlgTLV[2] = function(block, valdinfo, valdroot)
-   local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
-         "T_CRC32C(" .. block.type .. ") Length: " .. block.length)
-
-   valdroot:append_text(" Validation with CRC32C")
-
-   return treeInfo
-end
---
--- T_HMAC_SHA256
---
-switch_ValidationAlgTLV[4] = function(block, valdinfo, valdroot)
-   local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
-         string.format("T_HMAC_SHA256(%u) Length: %d", block.type, block.length))
-
-   valdroot:append_text(" Validation with HMAC SHA256")
-
-   return treeInfo
-end
 --
 -- T_KEYID
 --
-switch_ValidationAlgSubTLV[0x0009] = function(block, valdinfo, valdroot)
-   local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
-         string.format("T_KEYID(%u) Length: %d", block.type, block.length))
+switch_ValidationAlgSubTLV[0x0009] = function(block, valdinfo, valdroot, pInfo, CcnMsg)
+   local blk_offset = block.offset + block.typeLen + block.lengthLen
+   local hash_type = block.tvb(blk_offset, 2):uint()
+   local keyid_length = block.tvb(blk_offset+2, 2):uint()
 
-   treeInfo:add(f_ccn.valid_alg_keyid,
-                block.tvb(block.offset + block.typeLen + block.lengthLen, block.size-4))
+   local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
+         string.format("T_KEYID(%u) Length: %d  HashType: 0x%04x  KeyIdLen: %d", block.type, block.length, hash_type, keyid_length))
+
+   if ( 0x0002 < hash_type or block.length < keyid_length) then
+      treeInfo:append_text("  **Malformed**")
+      keyid_length = block.length - 4
+   else
+      blk_offset = (blk_offset + 4)
+   end
+
+   treeInfo:add(f_ccn.valid_alg_keyid, block.tvb(blk_offset, keyid_length))
+
+   local val_hex = "0x"
+   for i = 0, 7 do
+      val_hex = string.format("%s%02x", val_hex, block.tvb(blk_offset + i, 1):uint())
+   end
+   val_hex = val_hex .. ".."
+
+--    if ( pInfo ) then
+--       pInfo.cols.info = string.format("%s/KEYID=%s", pInfo.cols.info, val_hex)
+--    end
+
+--    if ( CcnMsg ) then
+--       CcnMsg:append_text(string.format("/KEYID=%s", val_hex))
+--    end
+
+   if ( valdroot ) then
+      valdroot:append_text(string.format(" by %s", val_hex))
+   end
 
    return treeInfo
 end
 --
 -- T_PUBLICKEY
 --
-switch_ValidationAlgSubTLV[0x000B] = function(block, valdinfo, valdroot)
+switch_ValidationAlgSubTLV[0x000B] = function(block, valdinfo, valdroot, pInfo, CcnMsg)
    local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
          string.format("T_PUBLICKEY(%u) Length: %d", block.type, block.length))
 
@@ -1671,7 +1637,7 @@ end
 --
 -- T_CERT
 --
-switch_ValidationAlgSubTLV[0x000C] = function(block, valdinfo, valdroot)
+switch_ValidationAlgSubTLV[0x000C] = function(block, valdinfo, valdroot, pInfo, CcnMsg)
    local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
          string.format("T_CERT(%u) Length: %d", block.type, block.length))
 
@@ -1680,16 +1646,28 @@ switch_ValidationAlgSubTLV[0x000C] = function(block, valdinfo, valdroot)
 
    return treeInfo
 end
+local switch_ValidationAlgTLV = {}
 --
--- T_RSA_SHA256
+-- T_CRC32C
 --
-switch_ValidationAlgTLV[5] = function(block, valdinfo, valdroot)
+switch_ValidationAlgTLV[2] = function(block, valdinfo, valdroot, pInfo, CcnMsg)
    local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
-         string.format("T_RSA_SHA256(%u) Length: %d", block.type, block.length))
+         "T_CRC32C(" .. block.type .. ") Length: " .. block.length)
+
+   valdroot:append_text(" Validation with CRC32C")
+
+   return treeInfo
+end
+--
+-- T_HMAC_SHA256
+--
+switch_ValidationAlgTLV[4] = function(block, valdinfo, valdroot, pInfo, CcnMsg)
+   local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
+         string.format("T_HMAC_SHA256(%u) Length: %d", block.type, block.length))
    local offset   = block.offset + block.typeLen + block.lengthLen
    local valueLeft = block.length
 
-   valdroot:append_text(" Validation with RSA SHA256")
+   valdroot:append_text(" HAMC-SHA256 coded")
 
    while valueLeft > 0 do
       local subTLVs = getBlock(block.tvb, offset)
@@ -1699,8 +1677,45 @@ switch_ValidationAlgTLV[5] = function(block, valdinfo, valdroot)
           break
       end
       if ( switch_ValidationAlgSubTLV[subTLVs.type] ) then
-          subTLVs.root = switch_ValidationAlgSubTLV[subTLVs.type](subTLVs, treeInfo, valdroot)
-      elseif ( nil == switch_NictVenderTLV[subTLVs.type] ) then
+          subTLVs.root = switch_ValidationAlgSubTLV[subTLVs.type](subTLVs, treeInfo, valdroot, pInfo, CcnMsg)
+      elseif ( switch_NictVenderTLV[subTLVs.type] ) then
+          subTLVs.root = switch_NictVenderTLV[subTLVs.type](subTLVs, treeInfo, pInfo)
+      else
+          -- no valid tlv found
+          local value = subTLVs.tvb(subTLVs.offset + subTLVs.typeLen + subTLVs.lengthLen, subTLVs.length)
+          valdroot:add(subTLVs.tvb(subTLVs.offset, subTLVs.size),
+                 string.format("T_X(0x%04x) Length:%d Value:", subTLVs.type, subTLVs.length) .. value)
+      end
+
+      valueLeft = valueLeft - subTLVs.size
+      offset    = offset    + subTLVs.size
+   end
+
+   return treeInfo
+end
+--
+-- T_RSA_SHA256
+--
+switch_ValidationAlgTLV[5] = function(block, valdinfo, valdroot, pInfo, CcnMsg)
+   local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
+         string.format("T_RSA_SHA256(%u) Length: %d", block.type, block.length))
+   local offset   = block.offset + block.typeLen + block.lengthLen
+   local valueLeft = block.length
+
+   valdroot:append_text(" RSA_SHA256 signed")
+
+   while valueLeft > 0 do
+      local subTLVs = getBlock(block.tvb, offset)
+
+      if (subTLVs == nil or subTLVs.size == nil) then
+          -- no valid tlv found
+          break
+      end
+      if ( switch_ValidationAlgSubTLV[subTLVs.type] ) then
+          subTLVs.root = switch_ValidationAlgSubTLV[subTLVs.type](subTLVs, treeInfo, valdroot, pInfo, CcnMsg)
+      elseif ( switch_NictVenderTLV[subTLVs.type] ) then
+          subTLVs.root = switch_NictVenderTLV[subTLVs.type](subTLVs, treeInfo, pInfo)
+      else
           -- no valid tlv found
           local value = subTLVs.tvb(subTLVs.offset + subTLVs.typeLen + subTLVs.lengthLen, subTLVs.length)
           valdroot:add(subTLVs.tvb(subTLVs.offset, subTLVs.size),
@@ -1718,7 +1733,7 @@ end
 --
 -- T_CERT_FORWARDER
 --
-switch_ValidationAlgTLV[0x1001] = function(block, valdinfo, valdroot)
+switch_ValidationAlgTLV[0x1001] = function(block, valdinfo, valdroot, pInfo, CcnMsg)
    local treeInfo = valdinfo:add(block.tvb(block.offset, block.size),
          "T_CERT_FORWARDER(" .. string.format("0x%x", block.type) .. ") Length: " .. block.length)
 
@@ -1741,13 +1756,13 @@ switch_ControllerTLV[0x1001] = function(block, root)
 end
 
 -----------------------------------------------------
--- Message Types
+-- CCNx Top-Level Types
 -----------------------------------------------------
-local switch_MessageType = {}
+local switch_TopLevelType = {}
 --
 -- T_INTEREST
 --
-switch_MessageType[1] = function(block, root, pInfo, CcnMsg)
+switch_TopLevelType[1] = function(block, root, pInfo, CcnMsg)
    local treeInfo = root:add(block.tvb(block.offset, block.size),
          "T_INTEREST(" .. block.type .. ") Length: " .. block.length)
    local offset   = block.offset + block.typeLen + block.lengthLen
@@ -1762,8 +1777,8 @@ switch_MessageType[1] = function(block, root, pInfo, CcnMsg)
          -- no valid tlv found
          break
       end
-      if ( switch_MessageTLV[subTLVs.type] ) then
-          subTLVs.root = switch_MessageTLV[subTLVs.type](subTLVs, treeInfo, root, pInfo, CcnMsg)
+      if ( switch_TLV_MessageType[subTLVs.type] ) then
+          subTLVs.root = switch_TLV_MessageType[subTLVs.type](subTLVs, treeInfo, root, pInfo, CcnMsg)
       else
           -- no valid tlv found
           local value = subTLVs.tvb(subTLVs.offset + subTLVs.typeLen + subTLVs.lengthLen, subTLVs.length)
@@ -1780,7 +1795,7 @@ end
 --
 -- T_OBJECT
 --
-switch_MessageType[2] = function(block, root, pInfo, CcnMsg)
+switch_TopLevelType[2] = function(block, root, pInfo, CcnMsg)
    local treeInfo = root:add(block.tvb(block.offset, block.size),
          "T_OBJECT(" .. block.type .. ") Length: " .. block.length)
    local offset   = block.offset + block.typeLen + block.lengthLen
@@ -1795,8 +1810,8 @@ switch_MessageType[2] = function(block, root, pInfo, CcnMsg)
          -- no valid tlv found
          break
       end
-      if ( switch_MessageTLV[subTLVs.type] ) then
-          subTLVs.root = switch_MessageTLV[subTLVs.type](subTLVs, treeInfo, root, pInfo, CcnMsg)
+      if ( switch_TLV_MessageType[subTLVs.type] ) then
+          subTLVs.root = switch_TLV_MessageType[subTLVs.type](subTLVs, treeInfo, root, pInfo, CcnMsg)
       else
           -- no valid tlv found
           local value = subTLVs.tvb(subTLVs.offset + subTLVs.typeLen + subTLVs.lengthLen, subTLVs.length)
@@ -1813,7 +1828,7 @@ end
 --
 -- T_VALIDATION_ALG
 --
-switch_MessageType[3] = function(block, root, pInfo, CcnMsg)
+switch_TopLevelType[3] = function(block, root, pInfo, CcnMsg)
    local treeInfo = root:add(block.tvb(block.offset, block.size),
          "T_VALIDATION_ALG(" .. block.type .. ") Length: " .. block.length)
    local offset   = block.offset + block.typeLen + block.lengthLen
@@ -1844,7 +1859,7 @@ end
 --
 -- T_VALIDATION_PAYLOAD
 --
-switch_MessageType[4] = function(block, root, pInfo, CcnMsg)
+switch_TopLevelType[4] = function(block, root, pInfo, CcnMsg)
    local treeInfo = root:add(block.tvb(block.offset, block.size),
          "T_VALIDATION_PAYLOAD(" .. block.type .. ") Length: " .. block.length)
 
@@ -1854,13 +1869,15 @@ switch_MessageType[4] = function(block, root, pInfo, CcnMsg)
    return treeInfo
 end
 -----------------------------------------------------
--- CCNInfo TLVs
+-- T_DISCOVERY Sub TLVs
+-- Registered as a CCNx message type
+-- https://www.iana.org/assignments/ccnx/ccnx.xhtml
 -----------------------------------------------------
-local switch_CCNInfoTLV = {}
+local switch_DiscoverySubTLV = {}
 --
 -- T_NAME
 --
-switch_CCNInfoTLV[0x00] = function(block, msginfo, msgroot, pInfo, CcnMsg)
+switch_DiscoverySubTLV[0x00] = function(block, msginfo, msgroot, pInfo, CcnMsg)
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
          "T_NAME(" .. block.type .. ") Length: " .. block.length .. "   ")
 
@@ -1879,8 +1896,8 @@ switch_CCNInfoTLV[0x00] = function(block, msginfo, msgroot, pInfo, CcnMsg)
           offset    = (offset + 1)
           goto continue
       end
-      if ( nil ~= switch_Name_TLV[subTLVs.type] ) then
-          subTLVs.msginfo = switch_Name_TLV[subTLVs.type](subTLVs, treeInfo, msgroot, pInfo, CcnMsg)
+      if ( nil ~= switch_TLV_NameReg[subTLVs.type] ) then
+          subTLVs.msginfo = switch_TLV_NameReg[subTLVs.type](subTLVs, treeInfo, nil, nil, CcnMsg)
       end
       valueLeft = valueLeft - subTLVs.size
       offset    = offset    + subTLVs.size
@@ -1892,7 +1909,7 @@ end
 --
 -- T_DISC_REQ
 --
-switch_CCNInfoTLV[0x07] = function(block, msginfo, msgroot, pInfo)
+switch_DiscoverySubTLV[0x0d] = function(block, msginfo, msgroot, pInfo)
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
          "T_DISC_REQ(" .. block.type .. ") Length: " .. block.length)
    local ArrivalTime  = block.tvb(block.offset + block.typeLen + block.lengthLen, 4)
@@ -1904,33 +1921,115 @@ switch_CCNInfoTLV[0x07] = function(block, msginfo, msgroot, pInfo)
    end
 
    local offset   = block.offset + block.typeLen + block.lengthLen+4
-   local treeNodeId = treeInfo:add(block.tvb(offset, block.length-4), "NodeIdentifier: ")
-   local NodeTLVs = getBlock(block.tvb, block.offset + block.typeLen + block.lengthLen+4)
+   local NodeTLVs = getBlock(block.tvb, offset)
+   local treeNodeId = treeInfo:add(NodeTLVs.tvb(offset, NodeTLVs.size), "NodeIdentifier: ")
 
--- print (string.format("T_DISC_REPLY:block.offset=%d,length=%d", block.offset, block.length))
--- print (string.format("T_DISC_REPLY:NodeTLVs.offset=%d,length=%d,size=%d", NodeTLVs.offset, NodeTLVs.length, NodeTLVs.size))
+print (string.format("T_DISC_REQ:block.offset=%d,length=%d", block.offset, block.length))
+print (string.format("T_DISC_REQ:NodeTLVs.offset=%d,length=%d,size=%d", NodeTLVs.offset, NodeTLVs.length, NodeTLVs.size))
 
-   offset   = offset + 4
-   local valueLeft = NodeTLVs.length
+   GetNodeIdentifier(getBlock(NodeTLVs.tvb, offset+4), treeNodeId, pInfo)
+
+   return treeInfo
+end
+
+-----------------------------------------------------
+-- ReplySubBlockTLV
+-----------------------------------------------------
+local switch_ReplySubBlockTLV = {}
+
+--
+-- T_DISC_CONTENT
+--
+switch_ReplySubBlockTLV[0x0000] = function(block, msginfo, pInfo)
+   local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
+         string.format("T_DISC_CONTENT(%u) Length: %u ", block.type, block.length))
+
+   local ObjectSize = block.tvb(block.offset + block.typeLen + block.lengthLen, 4)
+   local ObjectCount = block.tvb(block.offset + block.typeLen + block.lengthLen+4, 4)
+   local NumInterest = block.tvb(block.offset + block.typeLen + block.lengthLen+8, 4)
+   local FirstSeqnum = block.tvb(block.offset + block.typeLen + block.lengthLen+12, 4)
+   local LastSeqnum  = block.tvb(block.offset + block.typeLen + block.lengthLen+16, 4)
+   local ElapsedCacheTime  = block.tvb(block.offset + block.typeLen + block.lengthLen+20, 4)
+   local RemainCacheTime   = block.tvb(block.offset + block.typeLen + block.lengthLen+24, 4)
+   local Tname       = getBlock(block.tvb, (block.offset + block.typeLen + block.lengthLen+28))
+
+   treeInfo:add(ObjectSize,       string.format("         ObjectSize: %u", ObjectSize:uint()))
+   treeInfo:add(ObjectCount,      string.format("        ObjectCount: %u", ObjectCount:uint()))
+   treeInfo:add(NumInterest,      string.format("# Received Interest: %u", NumInterest:uint()))
+   treeInfo:add(FirstSeqnum,      string.format("        FirstSeqnum: %u", FirstSeqnum:uint()))
+   treeInfo:add(LastSeqnum,       string.format("         LastSeqnum: %u", LastSeqnum:uint()))
+   treeInfo:add(ElapsedCacheTime, string.format("   ElapsedCacheTime: %u", ElapsedCacheTime:uint()))
+   treeInfo:add(RemainCacheTime,  string.format("   RemainCacheTime: %u", RemainCacheTime:uint()))
+
+   local treeName = treeInfo:add(Tname.tvb(Tname.offset, Tname.size), "T_NAME(" .. Tname.type .. ") Length: " .. Tname.length)
+
+   local offset   = Tname.offset + Tname.typeLen + Tname.lengthLen
+   local valueLeft = Tname.length
 
    while valueLeft > 0 do
-      local subTLVs = getBlock(NodeTLVs.tvb, offset)
--- print (string.format("T_DISC_REPLY:subTLVs.offset=%d,type=%d,length=%d,size=%d", subTLVs.offset, subTLVs.type, subTLVs.length, subTLVs.size))
+      local subTLVs = getBlock(Tname.tvb, offset)
 
-      if ( nil ~= switch_Nodeid_SubTLV[subTLVs.type] ) then
-          subTLVs.msginfo = switch_Nodeid_SubTLV[subTLVs.type](subTLVs, treeNodeId, treeInfo)
+      if ( nil == switch_TLV_NameReg[subTLVs.type] ) then
+          -- no valid tlv found
+          break
       end
+
+      subTLVs.msginfo = switch_TLV_NameReg[subTLVs.type](subTLVs, treeName, nil, nil, nil)
       valueLeft = valueLeft - subTLVs.size
       offset    = offset    + subTLVs.size
-      ::continue::
    end
 
    return treeInfo
 end
 --
+-- T_DISC_CONTENT_OWNER
+--
+switch_ReplySubBlockTLV[0x0001] = function(block, msginfo, pInfo)
+   local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
+         string.format("T_DISC_CONTENT_PUBLISHER(%u) Length: %u ", block.type, block.length))
+
+   local ObjectSize = block.tvb(block.offset + block.typeLen + block.lengthLen, 4)
+   local ObjectCount = block.tvb(block.offset + block.typeLen + block.lengthLen+4, 4)
+   local NumInterest = block.tvb(block.offset + block.typeLen + block.lengthLen+8, 4)
+   local FirstSeqnum = block.tvb(block.offset + block.typeLen + block.lengthLen+12, 4)
+   local LastSeqnum  = block.tvb(block.offset + block.typeLen + block.lengthLen+16, 4)
+   local ElapsedCacheTime  = block.tvb(block.offset + block.typeLen + block.lengthLen+20, 4)
+   local RemainCacheTime   = block.tvb(block.offset + block.typeLen + block.lengthLen+24, 4)
+   local Tname       = getBlock(block.tvb, (block.offset + block.typeLen + block.lengthLen+28))
+
+   treeInfo:add(ObjectSize,       string.format("         ObjectSize: %u", ObjectSize:uint()))
+   treeInfo:add(ObjectCount,      string.format("        ObjectCount: %u", ObjectCount:uint()))
+   treeInfo:add(NumInterest,      string.format("# Received Interest: %u", NumInterest:uint()))
+   treeInfo:add(FirstSeqnum,      string.format("        FirstSeqnum: %u", FirstSeqnum:uint()))
+   treeInfo:add(LastSeqnum,       string.format("         LastSeqnum: %u", LastSeqnum:uint()))
+   treeInfo:add(ElapsedCacheTime, string.format("   ElapsedCacheTime: %u", ElapsedCacheTime:uint()))
+   treeInfo:add(RemainCacheTime,  string.format("   RemainCacheTime: %u", RemainCacheTime:uint()))
+
+   local treeName = treeInfo:add(Tname.tvb(Tname.offset, Tname.size), "T_NAME(" .. Tname.type .. ") Length: " .. Tname.length)
+
+   local offset   = Tname.offset + Tname.typeLen + Tname.lengthLen
+   local valueLeft = Tname.length
+
+   while valueLeft > 0 do
+      local subTLVs = getBlock(Tname.tvb, offset)
+
+      if ( nil == switch_TLV_NameReg[subTLVs.type] ) then
+          -- no valid tlv found
+          break
+      end
+
+      subTLVs.msginfo = switch_TLV_NameReg[subTLVs.type](subTLVs, treeName, nil, nil, nil)
+      valueLeft = valueLeft - subTLVs.size
+      offset    = offset    + subTLVs.size
+   end
+
+   return treeInfo
+end
+
+--
 -- T_DISC_REPLY
 --
-switch_CCNInfoTLV[0x08] = function(block, msginfo, msgroot, pInfo)
+switch_DiscoverySubTLV[0x0e] = function(block, msginfo, msgroot, pInfo)
    local treeInfo = msginfo:add(block.tvb(block.offset, block.size),
          "T_DISC_REPLY(" .. block.type .. ") Length: " .. block.length)
 
@@ -1942,45 +2041,16 @@ switch_CCNInfoTLV[0x08] = function(block, msginfo, msgroot, pInfo)
    end
 
    local offset   = block.offset + block.typeLen + block.lengthLen+4
-   local treeNodeId = treeInfo:add(block.tvb(offset, block.length-4), "NodeIdentifier: ")
-   local NodeTLVs = getBlock(block.tvb, block.offset + block.typeLen + block.lengthLen+4)
+   local NodeTLVs = getBlock(block.tvb, offset)
+   local treeNodeId = treeInfo:add(NodeTLVs.tvb(offset, NodeTLVs.size), "NodeIdentifier: ")
 
--- print (string.format("T_DISC_REPLY:block.offset=%d,length=%d", block.offset, block.length))
--- print (string.format("T_DISC_REPLY:NodeTLVs.offset=%d,length=%d,size=%d", NodeTLVs.offset, NodeTLVs.length, NodeTLVs.size))
+print (string.format("T_DISC_REPLY:block.offset=%d,length=%d", block.offset, block.length))
+print (string.format("T_DISC_REPLY:NodeTLVs.offset=%d,length=%d,size=%d", NodeTLVs.offset, NodeTLVs.length, NodeTLVs.size))
 
-   offset   = offset + 4
-   local valueLeft = NodeTLVs.length
+   GetNodeIdentifier(getBlock(NodeTLVs.tvb, offset+4), treeNodeId, pInfo)
 
-   while valueLeft > 0 do
-      local subTLVs = getBlock(NodeTLVs.tvb, offset)
--- print (string.format("T_DISC_REPLY:subTLVs.offset=%d,type=%d,length=%d,size=%d", subTLVs.offset, subTLVs.type, subTLVs.length, subTLVs.size))
-
-      if ( nil ~= switch_Nodeid_SubTLV[subTLVs.type] ) then
-          subTLVs.msginfo = switch_Nodeid_SubTLV[subTLVs.type](subTLVs, treeNodeId, treeInfo)
-      end
-      valueLeft = valueLeft - subTLVs.size
-      offset    = offset    + subTLVs.size
-      ::continue::
-   end
-
-   return treeInfo
-end
-switch_CCNInfoTLV[0x0d] = function(block, msginfo, msgroot, pInfo)
-   return switch_CCNInfoTLV[0x07](block, msginfo, msgroot, pInfo)
-end
-switch_CCNInfoTLV[0x0e] = function(block, msginfo, msgroot, pInfo)
-   return switch_CCNInfoTLV[0x08](block, msginfo, msgroot, pInfo)
-end
---
--- T_DISCOVERY
---
-switch_MessageType[5] = function(block, root, pInfo, CcnMsg)
-   local treeInfo = root:add(block.tvb(block.offset, block.size),
-         "T_DISCOVERY(" .. block.type .. ") Length: " .. block.length)
-   local offset   = block.offset + block.typeLen + block.lengthLen
-   local valueLeft = block.length
-
-   root:append_text(" DISCOVERY ")
+   local valueLeft = block.size - NodeTLVs.size
+   offset   = offset + NodeTLVs.size
 
    while valueLeft > 0 do
       local subTLVs = getBlock(block.tvb, offset)
@@ -1989,8 +2059,11 @@ switch_MessageType[5] = function(block, root, pInfo, CcnMsg)
          -- no valid tlv found
          break
       end
-      if ( switch_CCNInfoTLV[subTLVs.type] ) then
-          subTLVs.root = switch_CCNInfoTLV[subTLVs.type](subTLVs, treeInfo, root, pInfo, CcnMsg)
+
+print (string.format("ReplySubBlockTLV:block.offset=%d,type=%d,length=%d,size=%d", subTLVs.offset, subTLVs.type, subTLVs.length, subTLVs.size))
+
+      if ( switch_ReplySubBlockTLV[subTLVs.type] ) then
+          subTLVs.root = switch_ReplySubBlockTLV[subTLVs.type](subTLVs, treeInfo, pInfo)
       else
           -- no valid tlv found
           local value = subTLVs.tvb(subTLVs.offset + subTLVs.typeLen + subTLVs.lengthLen, subTLVs.length)
@@ -2006,9 +2079,114 @@ switch_MessageType[5] = function(block, root, pInfo, CcnMsg)
    return treeInfo
 end
 --
+-- T_DISCOVERY
+--
+switch_TopLevelType[5] = function(block, root, pInfo, CcnMsg)
+   local treeInfo = root:add(block.tvb(block.offset, block.size),
+         "T_DISCOVERY(" .. block.type .. ") Length: " .. block.length)
+   local offset   = block.offset + block.typeLen + block.lengthLen
+   local valueLeft = block.length
+
+   while valueLeft > 0 do
+      local subTLVs = getBlock(block.tvb, offset)
+
+      if (subTLVs == nil or subTLVs.size == nil) then
+         -- no valid tlv found
+         break
+      end
+      if ( switch_DiscoverySubTLV[subTLVs.type] ) then
+          subTLVs.root = switch_DiscoverySubTLV[subTLVs.type](subTLVs, treeInfo, root, pInfo, CcnMsg)
+      else
+          -- no valid tlv found
+          local value = subTLVs.tvb(subTLVs.offset + subTLVs.typeLen + subTLVs.lengthLen, subTLVs.length)
+          treeInfo:add(subTLVs.tvb(subTLVs.offset, subTLVs.size),
+                 string.format("T_X(0x%04x) Length:%d Value:", subTLVs.type, subTLVs.length) .. value)
+          break
+      end
+
+      valueLeft = valueLeft - subTLVs.size
+      offset    = offset    + subTLVs.size
+   end
+
+   return treeInfo
+end
+--
+-- T_KEYID
+--
+local switch_TrailerTLV = {}
+switch_TrailerTLV[0x0001] = function(block, treeinfo, treeroot, pInfo, CcnMsg)
+   local blk_offset = block.offset + block.typeLen + block.lengthLen
+   local hash_type = block.tvb(blk_offset, 2):uint()
+   local keyid_length = block.tvb(blk_offset+2, 2):uint()
+
+   local treeInfo = treeinfo:add(block.tvb(block.offset, block.size),
+         string.format("T_FULLSOURCE_KEYID(%u) Length: %d  HashType: 0x%04x  KeyIdLen: %d", block.type, block.length, hash_type, keyid_length))
+
+   if ( 0x0002 < hash_type or block.length < keyid_length) then
+      treeInfo:append_text("  **Malformed**")
+      keyid_length = block.length - 4
+   else
+      blk_offset = (blk_offset + 4)
+   end
+
+   treeInfo:add(f_ccn.trailer_keyid, block.tvb(blk_offset, keyid_length))
+
+   local val_hex = "0x"
+   for i = 0, 7 do
+      val_hex = string.format("%s%02x", val_hex, block.tvb(blk_offset + i, 1):uint())
+   end
+   val_hex = val_hex .. ".."
+
+   if ( pInfo ) then
+      pInfo.cols.info = string.format("%s/KEYID=%s", pInfo.cols.info, val_hex)
+   end
+
+   if ( CcnMsg ) then
+      CcnMsg:append_text(string.format("/KEYID=%s", val_hex))
+   end
+
+   if ( treeroot ) then
+      treeroot:append_text(string.format(" to %s", val_hex))
+   end
+
+   return treeInfo
+end
+--
+-- T_TRAILER
+--
+switch_TopLevelType[6] = function(block, root, pInfo, CcnMsg)
+   local treeInfo = root:add(block.tvb(block.offset, block.size),
+         string.format("T_TRAILER(%u) Length: %d", block.type, block.length))
+   local offset   = block.offset + block.typeLen + block.lengthLen
+   local valueLeft = block.length
+
+   while valueLeft > 0 do
+      local subTLVs = getBlock(block.tvb, offset)
+
+      if (subTLVs == nil or subTLVs.size == nil) then
+          -- no valid tlv found
+          break
+      end
+
+      if ( switch_TrailerTLV[subTLVs.type] ) then
+         subTLVs.root = switch_TrailerTLV[subTLVs.type](subTLVs, treeInfo, root, pInfo, CcnMsg)
+      else
+          -- no valid tlv found
+          local value = subTLVs.tvb(subTLVs.offset + subTLVs.typeLen + subTLVs.lengthLen, subTLVs.length)
+          treeInfo:add(subTLVs.tvb(subTLVs.offset, subTLVs.size),
+                 string.format("T_X(0x%04x) Length:%d Value:", subTLVs.type, subTLVs.length) .. value)
+      end
+
+      valueLeft = valueLeft - subTLVs.size
+      offset    = offset    + subTLVs.size
+   end
+
+   return treeInfo
+end
+--
 -- T_HOPAUTH_CERT
 --
-switch_MessageType[7] = function(block, root, pInfo, CcnMsg)
+switch_TopLevelType[7] = function(block, root, pInfo, CcnMsg)
    local treeInfo = root:add(block.tvb(block.offset, block.size),
          "T_HOPAUTH_CERT(" .. block.type .. ") Length: " .. block.length)
 
@@ -2018,7 +2196,7 @@ end
 --
 -- T_NOTIFY
 --
-switch_MessageType[0x4321] = function(block, root, pInfo, CcnMsg)
+switch_TopLevelType[0x4321] = function(block, root, pInfo, CcnMsg)
    local treeInfo = root:add(block.tvb(block.offset, block.size),
          "T_NOTIFY(" .. string.format("0x%x", block.type) .. ") Length: " .. block.length)
    local offset   = block.offset + block.typeLen + block.lengthLen
@@ -2042,9 +2220,9 @@ switch_MessageType[0x4321] = function(block, root, pInfo, CcnMsg)
    return treeInfo
 end
 
-function addMessageInfo(block, root, pInfo, CcnMsg) -- may be add additional context later
-   if ( switch_MessageType[block.type] ) then
-      block.root = switch_MessageType[block.type](block, root, pInfo, CcnMsg)
+function addTopLevelMessage(block, root, pInfo, CcnMsg) -- may be add additional context later
+   if ( switch_TopLevelType[block.type] ) then
+      block.root = switch_TopLevelType[block.type](block, root, pInfo, CcnMsg)
    else
       local value = block.tvb(block.offset + block.typeLen + block.lengthLen, block.length)
       block.root = root:add(block.tvb(block.offset, block.size),
@@ -2285,7 +2463,7 @@ function ccn_dissector(CcnMsg, pInfo, root) -- Tvb, Pinfo, TreeItem
 -- print (pInfo.number .. ":: blocktype: " .. block.type .. " of length " .. block.size .. " bytesLeft: " .. nBytesLeft)
 
       block.elements = getSubBlocks(block)
-      local subtree = addMessageInfo(block, MsgBlock.tree, pInfo, CcnMsg.tree)
+      local subtree = addTopLevelMessage(block, MsgBlock.tree, pInfo, CcnMsg.tree)
 
       if (block.elements ~= nil) then
          for i, subBlock in pairs(block.elements) do
@@ -2361,11 +2539,14 @@ function p_ccn.dissector(tvb, pInfo, root) -- Tvb, Pinfo, TreeItem
 
 end
 
+local legacyDissectorTable = DissectorTable.get("udp.port")
+legacyDissectorTable:add("9896", p_ccn)
+
 local udpDissectorTable = DissectorTable.get("udp.port")
-udpDissectorTable:add("9896", p_ccn)
+udpDissectorTable:add("9695", p_ccn)
 
 local tcpDissectorTable = DissectorTable.get("tcp.port")
-tcpDissectorTable:add("9896", p_ccn)
+tcpDissectorTable:add("9695", p_ccn)
 
 local ethernetDissectorTable = DissectorTable.get("ethertype")
 ethernetDissectorTable:add(0x0801, p_ccn)

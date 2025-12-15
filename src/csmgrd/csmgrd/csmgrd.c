@@ -828,7 +828,7 @@ csmgrd_handle_create (
 
 #ifdef CefC_Debug
 	/* Show config value */
-	cef_dbg_write (CefC_Dbg_Fine, "CACHE_INTERVAL = %lu\n", hdl->interval);
+	cef_dbg_write (CefC_Dbg_Fine, "CACHE_INTERVAL = %u\n", hdl->interval);
 	cef_dbg_write (CefC_Dbg_Fine, "CACHE_TYPE = %s\n", hdl->cs_mod_name);
 	cef_dbg_write (CefC_Dbg_Fine, "PORT_NUM = %u\n", hdl->port_num);
 	int x;
@@ -1290,6 +1290,10 @@ csmgrd_expire_check_thread (
 	uint64_t nowt = cef_client_present_timeus_calc ();
 	uint64_t expire_check_time = nowt + interval;
 
+#ifdef CefC_Debug
+	csmgrd_dbg_write (CefC_Dbg_Fine, "%s start.\n", __func__);
+#endif // CefC_Debug
+
 	while (csmgrd_running_f) {
 		sleep (1);
 		cef_log_flush();
@@ -1297,13 +1301,17 @@ csmgrd_expire_check_thread (
 		/* Checks content expire 			*/
 		if ((interval != 0) && (nowt > expire_check_time)) {
 #ifdef CefC_Debug
-			cef_dbg_write (CefC_Dbg_Finer, "Checks for expired contents.\n");
+			cef_dbg_write (CefC_Dbg_Finest, "%s, Checks for expired contents.\n", __func__);
 #endif // CefC_Debug
 			hdl->cs_mod_int->expire_check ();
 			/* set interval */
 			expire_check_time = nowt + interval;
 		}
 	}
+
+#ifdef CefC_Debug
+	csmgrd_dbg_write (CefC_Dbg_Fine, "%s terminate.\n", __func__);
+#endif // CefC_Debug
 
 	pthread_exit (NULL);
 
@@ -2050,6 +2058,31 @@ csmgrd_free_sock_index_search (
 /*--------------------------------------------------------------------------------------
 	Creates the listening TCP socket with the specified port
 ----------------------------------------------------------------------------------------*/
+#include <netdb.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
+static void addrinfo2str(char *buf, const struct addrinfo *ai) {
+    char host[NI_MAXHOST];
+    char serv[NI_MAXSERV];
+    int error;
+
+    error = getnameinfo(ai->ai_addr, ai->ai_addrlen, host, sizeof(host),
+                       serv, sizeof(serv), NI_NUMERICHOST | NI_NUMERICSERV);
+    if (error != 0) {
+        sprintf(buf, "getnameinfo error: %s", gai_strerror(error));
+        return;
+    }
+
+    sprintf(buf, "Family=%d (%s), Type=%d, Protocol=%d, len=%d, Address=%s:%s",
+           ai->ai_family,
+           ai->ai_family == AF_INET ? "IPv4" :
+           ai->ai_family == AF_INET6 ? "IPv6" : "Other",
+           ai->ai_socktype, ai->ai_protocol, ai->ai_addrlen,
+           host, serv);
+}
+
 static int									/* Returns a negative value if it fails 	*/
 csmgrd_tcp_sock_create (
 	CefT_Csmgrd_Handle* hdl,				/* csmgr daemon handle						*/
@@ -2060,46 +2093,58 @@ csmgrd_tcp_sock_create (
 	struct addrinfo* cres;
 	int err;
 	char port_str[32];
-	int sock;
+	int sock = -1;
 	int create_sock_f = 0;
 	int reuse_f = 1;
 	int flag;
+    char straddr[BUFSIZ_2K];
 
 	/* Creates the hint 		*/
 	memset (&hints, 0, sizeof (hints));
 	hints.ai_family = AF_UNSPEC;
+	hints.ai_family = AF_INET;		// Fixing to IPv4 as an emergency solution
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
 	sprintf (port_str, "%d", port_num);
 
 	/* Obtains the addrinfo 		*/
 	if ((err = getaddrinfo (NULL, port_str, &hints, &res)) != 0) {
-		cef_log_write (CefC_Log_Error,
-			"Could not create the TCP listen socket. : %s\n", gai_strerror (err));
+		cef_log_write (CefC_Log_Error, "getaddrinfo() before line %u of %s : %s\n", __LINE__, __FILE__, gai_strerror (err));
 		return (-1);
 	}
 
 	for (cres = res; cres != NULL; cres = cres->ai_next) {
+        addrinfo2str(straddr, cres);
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Fine, "find addrinfo %s \n", straddr);
+#endif // CefC_Debug
 		sock = socket (cres->ai_family, cres->ai_socktype, 0);
 		if (sock < 0) {
-			cef_log_write (CefC_Log_Warn,
-				"Could not create the TCP listen socket. : %s\n", strerror (errno));
+            cef_log_write (CefC_Log_Error, "socket() before line %u of %s : %s\n", __LINE__, __FILE__, strerror (err));
 			continue;
 		}
 		setsockopt (sock,
 			SOL_SOCKET, SO_REUSEADDR, &reuse_f, sizeof (reuse_f));
 
 		switch (cres->ai_family) {
+			case AF_INET6:
 			case AF_INET: {
+                int ret = 0;
+                if ((ret = bind (sock, cres->ai_addr, cres->ai_addrlen)) < 0) {
+#ifdef CefC_Debug
+                    cef_dbg_write (CefC_Dbg_Fine,
+                        "bind(%s) failed, before line %u of %s, ret=%d : %s\n", straddr, __LINE__, __FILE__, ret, strerror (err));
+#endif // CefC_Debug
+                    cef_log_write (CefC_Log_Info,
+                        "bind(%s) failed, before line %u of %s, ret=%d : %s\n", straddr, __LINE__, __FILE__, ret, strerror (err));
+                    continue;
+                }
+#ifdef CefC_Debug
+                cef_dbg_write (CefC_Dbg_Fine, "%s bind OK, ret=%d\n", straddr, ret);
+#endif // CefC_Debug
 				create_sock_f = 1;
-				hdl->ai_addr 		= cres->ai_addr;
-				hdl->ai_addrlen 	= cres->ai_addrlen;
-				hdl->tcp_listen_fd 	= sock;
-				break;
-			}
-			case AF_INET6: {
-				create_sock_f = 1;
-				hdl->ai_addr 		= cres->ai_addr;
+				// hdl->ai_addr 		= cres->ai_addr;
+				memcpy(&(hdl->ai_addr), cres->ai_addr, cres->ai_addrlen);
 				hdl->ai_addrlen 	= cres->ai_addrlen;
 				hdl->tcp_listen_fd 	= sock;
 				break;
@@ -2120,31 +2165,38 @@ csmgrd_tcp_sock_create (
 	}
 
 	if (create_sock_f) {
+        int ret = 0;
 
-		if (bind (hdl->tcp_listen_fd, hdl->ai_addr, hdl->ai_addrlen) < 0) {
-			close (hdl->tcp_listen_fd);
+		if ((ret = listen (hdl->tcp_listen_fd, CsmgrdC_Max_Sock_Num)) < 0) {
 			cef_log_write (CefC_Log_Error,
-				"Could not create the TCP listen socket. : %s\n", strerror (errno));
-			return (-1);
-		}
-		if (listen (hdl->tcp_listen_fd, CsmgrdC_Max_Sock_Num) < 0) {
-			cef_log_write (CefC_Log_Error,
-				"Could not create the TCP listen socket. : %s\n", strerror (errno));
+                "listen(%s) failed, before line %u of %s, ret=%d : %s\n", straddr, __LINE__, __FILE__, ret, strerror (err));
+#ifdef CefC_Debug
+            cef_dbg_write (CefC_Dbg_Fine,
+                "listen(%s) failed, before line %u of %s, ret=%d : %s\n", straddr, __LINE__, __FILE__, ret, strerror (err));
+#endif // CefC_Debug
 			return (-1);
 		}
 		flag = fcntl (hdl->tcp_listen_fd, F_GETFL, 0);
 		if (flag < 0) {
 			cef_log_write (CefC_Log_Error,
-				"Could not create the TCP listen socket. : %s\n", strerror (errno));
+                "fcntl(F_GETFL) failed, before line %u of %s : %s\n", __LINE__, __FILE__, strerror (err));
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Fine, "fcntl(F_GETFL) failed, before line %u of %s : %s\n", __LINE__, __FILE__, strerror (err));
+#endif // CefC_Debug
 			return (-1);
 		}
 		if (fcntl (hdl->tcp_listen_fd, F_SETFL, flag | O_NONBLOCK) < 0) {
 			cef_log_write (CefC_Log_Error,
-				"Could not create the TCP listen socket. : %s\n", strerror (errno));
+                "fcntl(F_SETFL) failed, before line %u of %s : %s\n", __LINE__, __FILE__, strerror (err));
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Fine, "fcntl(F_SETFL) failed, before line %u of %s : %s\n", __LINE__, __FILE__, strerror (err));
+#endif // CefC_Debug
 			return (-1);
 		}
 
 		return (hdl->tcp_listen_fd);
+	} else if ( 0 < sock ) {
+        close(sock);
 	}
 
 	return (-1);
@@ -3580,7 +3632,6 @@ csmgrd_resource_mon_thread (
 	pthread_detach (self_thread);
 	unsigned char cs_type;
 
-	sleep (3);
 	pthread_mutex_lock (&csmgr_Lack_of_resources_mutex);
 	Lack_of_M_resources = 0;
 	Lack_of_F_resources = 0;
@@ -3906,7 +3957,12 @@ cef_csmgr_frame_check (
 		return (-8);
 	}
 	index += CefC_S_Length;
+#ifdef REFLEXIVE_FORWARDING
+	if (!(buff[index] == ((CefC_T_NAMESEGMENT & 0xFF00) >> 8) && (buff[index+1] == (CefC_T_NAMESEGMENT & 0x00FF)))
+		&& !(buff[index] == ((CefC_T_REFLEXIVE_NAME & 0xFF00) >> 8) && (buff[index+1] == (CefC_T_REFLEXIVE_NAME & 0x00FF)))) {
+#else // REFLEXIVE_FORWARDING
 	if (!(buff[index] == 0x00 && buff[index+1] == 0x01)) {
+#endif // REFLEXIVE_FORWARDING
 //@@@@@fprintf(stderr, "[%s]: ------ retern(%d) -----\n", __FUNCTION__, __LINE__);
 		return (-9);
 	}

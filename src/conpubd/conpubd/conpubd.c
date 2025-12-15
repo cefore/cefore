@@ -117,8 +117,6 @@ static pthread_mutex_t 		conpub_cnt_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static uint64_t Intial_free_mem_mega = 0;
 
-static CefT_Cpubctlg_Hdl Cpbctlghdl;					/* Catalog Data entry */
-
 /* Work areas */
 static CefT_CcnMsg_MsgBdy* Cob_prames_p = NULL;
 static unsigned char* 		Cob_msg_p = NULL;
@@ -486,27 +484,6 @@ get_filesystem_info (
 		char *filepath,
 		uint64_t* free_file_mega
 );
-/*--------------------------------------------------------
-	Inits Catalog Data
-----------------------------------------------------------*/
-static void
-conpubd_catalog_data_init (
-	void
-);
-/*--------------------------------------------------------
-	Destroy Catalog Data
-----------------------------------------------------------*/
-static void
-conpubd_catalog_data_destory (
-	void
-);
-/*--------------------------------------------------------
-	Create Catalog Data
-----------------------------------------------------------*/
-static void
-conpubd_catalog_data_create (
-	void
-);
 
 #ifdef CefC_Debug
 static void
@@ -515,6 +492,29 @@ conpubd_dbg_convert_name_to_str_put_workstr (
 	int name_len
 );
 #endif //CefC_Debug
+
+#ifdef CefC_Db
+/*--------------------------------------------------------------------------------------
+	Receive the Conpub Contents Add Message
+----------------------------------------------------------------------------------------*/
+static void
+conpubd_incoming_cont_add_msg (
+	CefT_Conpubd_Handle* hdl,					/* conpub daemon handle					*/
+	int sock,									/* recv socket							*/
+	unsigned char* buff,						/* receive message						*/
+	int buff_len								/* receive message length				*/
+);
+/*--------------------------------------------------------------------------------------
+	Receive the Conpub Contents Delete Message
+----------------------------------------------------------------------------------------*/
+static void
+conpubd_incoming_cont_del_msg (
+	CefT_Conpubd_Handle* hdl,					/* conpub daemon handle					*/
+	int sock,									/* recv socket							*/
+	unsigned char* buff,						/* receive message						*/
+	int buff_len								/* receive message length				*/
+);
+#endif
 
 /*--------------------------------------------------------------------------------------
 	Convert string to binary
@@ -747,6 +747,8 @@ conpubd_handle_create (
 	hdl->block_size = conf_param.block_size;
 	hdl->t_pending = conf_param.t_pending;
 	memcpy (hdl->publisher_id, conf_param.publisher_id, SHA512_DIGEST_LENGTH);
+	strcpy (hdl->restore_path, conf_param.restore_path);
+	strcpy (hdl->restore_fname, conf_param.restore_fname);
 
 	/********** Published info.  ***********/
 	hdl->published_contents_num = 0;
@@ -1527,6 +1529,10 @@ conpubd_config_read (
 			    ) {
 				cef_log_write (CefC_Log_Error,
 					"CACHE_TYPE is invalid. (Invalid value %s=%s)\n", option, value);
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine,
+					"CACHE_TYPE is invalid. (Invalid value %s=%s)\n", option, value);
+#endif // CefC_Debug
 				fclose (fp);
 				return (-1);
 			}
@@ -1584,6 +1590,11 @@ conpubd_config_read (
 				cef_log_write (CefC_Log_Error,
 				"CONTENTS_NUM value must be greater than or equal to 1 "
 				"and less than or equal to 1000000.\n");
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine,
+					"CONTENTS_NUM value must be greater than or equal to 1 "
+					"and less than or equal to 1000000.\n");
+#endif // CefC_Debug
 				fclose (fp);
 				return (-1);
 			}
@@ -1604,16 +1615,26 @@ conpubd_config_read (
 				cef_log_write (CefC_Log_Error,
 				"CONTENTS_CAPACITY value must be greater than  or equal to 1 "
 				"and less than or equal to 68,719,476,735(0xFFFFFFFFF).\n");
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine,
+					"CONTENTS_CAPACITY value must be greater than  or equal to 1 "
+					"and less than or equal to 68,719,476,735(0xFFFFFFFFF).\n");
+#endif // CefC_Debug
 				fclose (fp);
 				return (-1);
 			}
 		} else
 		if (strcmp (option, "BLOCK_SIZE") == 0) {
 			res = conpubd_config_value_get (option, value);
-			if (!(1024 <= res && res <= 57344)) {
+			if (!(CefC_Min_Block <= res && res <= CefC_Max_Block)) {
 				cef_log_write (CefC_Log_Error,
-				"BLOCK_SIZE value must be greater than or equal to 1024 "
-				"and less than or equal to 57344.\n");
+					"BLOCK_SIZE="FMTU64" is out of range, must be greater than or equal to %d "
+					"and less than or equal to %d.\n", res, CefC_Min_Block, CefC_Max_Block);
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine,
+					"BLOCK_SIZE="FMTU64" is out of range, must be greater than or equal to %d "
+					"and less than or equal to %d.\n", res, CefC_Min_Block, CefC_Max_Block);
+#endif // CefC_Debug
 				fclose (fp);
 				return (-1);
 			}
@@ -1623,6 +1644,10 @@ conpubd_config_read (
 			if (strlen (value) > sizeof (conf_param->cefnetd_node)-1) {
 				cef_log_write (CefC_Log_Error,
 					"CEFNETD_NODE must be less than or equal to 128.\n");
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine,
+					"CEFNETD_NODE must be less than or equal to 128.\n");
+#endif // CefC_Debug
 				fclose (fp);
 				return (-1);
 			}
@@ -1633,6 +1658,10 @@ conpubd_config_read (
 			if ((res < 1025) || (res > 65535)) {
 				cef_log_write (CefC_Log_Error,
 					"CEFNETD_PORT_NUM must be higher than 1024 and lower than 65536.\n");
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine,
+					"CEFNETD_PORT_NUM must be higher than 1024 and lower than 65536.\n");
+#endif // CefC_Debug
 				fclose (fp);
 				return (-1);
 			}
@@ -1666,9 +1695,14 @@ conpubd_config_read (
    		   && access (conf_param->cache_path, X_OK) == 0)) {
 			cef_log_write (CefC_Log_Error,
 				"EXCACHE_PLUGIN (Invalid value CACHE_PATH=%s) - %s\n", conf_param->cache_path, strerror (errno));
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine,
+					"EXCACHE_PLUGIN (Invalid value CACHE_PATH=%s) - %s\n", conf_param->cache_path, strerror (errno));
+#endif // CefC_Debug
 			return (-1);
 	    }
 	}
+
 
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Fine, "conf_param->port_num=%d\n", conf_param->port_num);
@@ -1734,11 +1768,19 @@ conpubd_config_read (
 			res = conpubd_config_value_get (option, value);
 			if ( res < 1 ) {
 				cef_log_write (CefC_Log_Warn, "FIB_SIZE_APP must be higher than 0.\n");
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine,
+					"FIB_SIZE_APP must be higher than 0.\n");
+#endif // CefC_Debug
 				fclose (fp);
 				return (-1);
 			}
 			if (res >= CefC_FibAppSize_MAX) {
 				cef_log_write (CefC_Log_Warn, "FIB_SIZE_APP must be lower than 1024000.\n");
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine,
+					"FIB_SIZE_APP must be lower than 1024000.\n");
+#endif // CefC_Debug
 				fclose (fp);
 				return (-1);
 			}
@@ -2255,6 +2297,22 @@ conpubd_input_message_process (
 			conpubd_incoming_cnpbrload_msg (hdl, sock, msg, msg_len);
 			break;
 		}
+#ifdef CefC_Db
+		case CefC_Csmgr_Msg_Type_CnpbCntAdd: {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "Receive the Conpub Contents Add Message\n");
+#endif // CefC_Debug
+			conpubd_incoming_cont_add_msg (hdl, sock, msg, msg_len);
+			break;
+		}
+		case CefC_Csmgr_Msg_Type_CnpbCntDel: {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "Receive the Conpub Contents Delete Message\n");
+#endif // CefC_Debug
+			conpubd_incoming_cont_del_msg (hdl, sock, msg, msg_len);
+			break;
+		}
+#endif
 		default: {
 #ifdef CefC_Debug
 			cef_dbg_write (CefC_Dbg_Finest, "Receive the Unknown Message\n");
@@ -2853,9 +2911,6 @@ conpubd_content_load_thread (
 	pthread_mutex_lock (&conpub_cnt_mutex);
 	conpubd_cntent_load_stat = 1;
 
-	/* Reset Catalog Data */
-	conpubd_catalog_data_destory ();
-
 	memset (&delcnthdl, 0, sizeof (CefT_Cpubcnt_Hdl));
 	/* Execute load processing */
 	{
@@ -2957,6 +3012,13 @@ conpubd_content_load_thread (
 		}
 	}
 
+#ifdef CefC_Db
+	if (strcmp (hdl->cache_type, CefC_Cnpb_db_Cache_Type) == 0) {
+		/* DB */
+		sleep(30);
+	}
+#endif
+
 	/* Delete contnts from delete list */
 	{
 		CefT_Cpubcnt_Hdl* bwk;
@@ -3013,16 +3075,12 @@ conpubd_content_load_thread (
 		}
 	}
 
-	/* Create Catalog Data */
-	conpubd_catalog_data_create ();
-
 #ifdef CefC_Debug
 {
 	CefT_Cpubcnt_Hdl* work;
 	work = Cpubcnthdl.next;
 	struct tm* timeptr;
 	char date_str[256];
-	CefT_Cpubctlg_Hdl*	wk;
 	cef_dbg_write (CefC_Dbg_Fine, "----- Contents -----\n");
 	while (work) {
 		/* Name 			*/
@@ -3046,18 +3104,6 @@ conpubd_content_load_thread (
 		cef_dbg_write (CefC_Dbg_Fine, "    Expiry=%s\n", date_str);
 		cef_dbg_write (CefC_Dbg_Fine, "    PendingTimer=%d\n", work->t_pending);
 		work = work->next;
-	}
-	cef_dbg_write (CefC_Dbg_Fine, "----- Catalog -----\n");
-	wk = Cpbctlghdl.next;
-	while (wk) {
-		/* Name 			*/
-		conpubd_dbg_convert_name_to_str_put_workstr (wk->name, wk->name_len);
-		cef_dbg_write (CefC_Dbg_Fine, "Name=%s\n", workstr);
-		if (wk->version_len != 0)
-			cef_dbg_write (CefC_Dbg_Fine, "    Version=%s\n", wk->version);
-		else
-			cef_dbg_write (CefC_Dbg_Fine, "    Version=None\n");
-		wk = wk->next;
 	}
 	cef_dbg_write (CefC_Dbg_Fine, "--------------------\n");
 }
@@ -3205,6 +3251,12 @@ conpub_contdef_read (
 			cef_log_write (CefC_Log_Warn, "<%d> Invalid URI (%s) specified.\n", line_no, uri);
 			continue;
 		}
+#ifdef CefC_Db
+		if (name_len > 1024) {
+			cef_log_write (CefC_Log_Warn, "<%d> The converted name is too long (%s) specified.\n", line_no, uri);
+			continue;
+		}
+#endif
 
 		uri_len = strlen (uri);
 		if (uri_len && (uri[uri_len-1]=='/')) {
@@ -3282,7 +3334,7 @@ conpub_contdef_read (
 
 		work->next = (CefT_Cpubcnt_Hdl*) malloc (sizeof (CefT_Cpubcnt_Hdl));
 		if (work->next == NULL) {
-			cef_log_write (CefC_Log_Error, "malloc error(Cpubcnt)\n", ws);
+			cef_log_write (CefC_Log_Error, "malloc error(Cpubcnt)\n");
 			return (-1);
 		}
 
@@ -3617,8 +3669,6 @@ conpubd_init (
 		return (-1);
 	}
 
-	conpubd_catalog_data_init ();
-
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
@@ -3639,8 +3689,6 @@ conpubd_destroy (
 		wk = bwk;
 		wk = wk->next;
 	}
-
-	conpubd_catalog_data_destory ();
 
 	return (0);
 }
@@ -3745,8 +3793,8 @@ conpubd_publish_content_create (
 			Cob_prames_p->org.encryptalg.encryptalg_f = 1;
 			Cob_prames_p->org.encryptalg.type = CefC_T_EA_CPABE;
 			Cob_prames_p->org.orgkeyid.hash_type = CefC_T_SHA_512;
-			memcpy (Cob_prames_p->org.orgkeyid.hash_val, hdl->publisher_id, SHA512_DIGEST_LENGTH);
-			Cob_prames_p->org.orgkeyid.hash_len = SHA512_DIGEST_LENGTH;
+			memcpy (Cob_prames_p->org.orgkeyid.hash_value, hdl->publisher_id, SHA512_DIGEST_LENGTH);
+			Cob_prames_p->org.orgkeyid.hash_length = SHA512_DIGEST_LENGTH;
 		}
 	} else {
 		entry->t_pending = 0;
@@ -3867,6 +3915,7 @@ conpubd_publish_content_create (
 				}
 				memcpy (cont_entry.msg, cobbuff, len);
 				cont_entry.msg_len = len;
+#ifndef CefC_Db
 				if ((cont_entry.name = calloc (1, Cob_prames_p->name_len)) == NULL) {
 					cef_log_write (CefC_Log_Critical, "Failed to alloc memory\n");
 					conpubd_running_f = 0;
@@ -3876,6 +3925,7 @@ conpubd_publish_content_create (
 					}
 					return (-1);
 				}
+#endif
 				memcpy (cont_entry.name, Cob_prames_p->name, Cob_prames_p->name_len);
 				cont_entry.name_len = Cob_prames_p->name_len;
 				cont_entry.pay_len = Cob_prames_p->payload_len;
@@ -4260,7 +4310,7 @@ conpubd_free_memsize_get (
 				if (ret != -1) {
 					*free_mem_mega = ret;
 #ifdef CefC_Debug
-					cef_dbg_write (CefC_Dbg_Finest, "free_mem_mega:%ld\n", *free_mem_mega);
+					cef_dbg_write (CefC_Dbg_Finest, "free_mem_mega:"FMTU64"\n", *free_mem_mega);
 #endif // CefC_Debug
 				}
 			}
@@ -4297,69 +4347,6 @@ get_filesystem_info (
 	*free_file_mega = buf.f_frsize * buf.f_bavail / 1024 / 1024;
 
 	return (0);
-}
-
-/*--------------------------------------------------------
-	Inits Catalog Data
-----------------------------------------------------------*/
-static void
-conpubd_catalog_data_init (
-	void
-) {
-	memset (&Cpbctlghdl, 0, sizeof (CefT_Cpubctlg_Hdl));
-	return;
-}
-
-/*--------------------------------------------------------
-	Destroy Catalog Data
-----------------------------------------------------------*/
-static void
-conpubd_catalog_data_destory (
-	void
-) {
-	CefT_Cpubctlg_Hdl* bwk;
-	CefT_Cpubctlg_Hdl* wk;
-
-	bwk = &Cpbctlghdl;
-	wk = Cpbctlghdl.next;
-	while (wk) {
-		bwk->next = wk->next;
-		free (wk);
-		wk = bwk;
-		wk = wk->next;
-	}
-
-	return;
-}
-
-/*--------------------------------------------------------
-	Create Catalog Data
-----------------------------------------------------------*/
-static void
-conpubd_catalog_data_create (
-	void
-) {
-	CefT_Cpubctlg_Hdl*	wk;
-	CefT_Cpubcnt_Hdl*	work;
-
-	wk = &Cpbctlghdl;
-
-	work = Cpubcnthdl.next;
-
-	while (work) {
-
-		wk->next = (CefT_Cpubctlg_Hdl*) malloc (sizeof (CefT_Cpubctlg_Hdl));
-		memset (wk->next, 0, sizeof (CefT_Cpubctlg_Hdl));
-		wk = wk->next;
-		wk->name_len    = work->name_len;
-		wk->name        = work->name;
-		wk->version_len = work->version_len;
-		wk->version     = work->version;
-
-		work = work->next;
-	}
-
-	return;
 }
 
 #ifdef CefC_Debug
@@ -4411,4 +4398,422 @@ conpubd_str2byte (
 		wp ++;
 	}
 }
+
+#ifdef CefC_Db
+/*--------------------------------------------------------------------------------------
+	Receive the Conpub Contents Add Message
+----------------------------------------------------------------------------------------*/
+static void
+conpubd_incoming_cont_add_msg (
+	CefT_Conpubd_Handle* hdl,					/* conpub daemon handle					*/
+	int sock,									/* recv socket							*/
+	unsigned char* buff,						/* receive message						*/
+	int buff_len								/* receive message length				*/
+) {
+	unsigned char *ret_buff;
+	uint16_t index = 0;
+	uint16_t value16;
+	char* rspmsg;
+
+	uint32_t buff_idx = 0;
+	uint16_t name_len;
+	unsigned char name[1024] = {0};
+	char version[64] = {0};
+	int  version_len;
+	uint64_t value64;
+	uint64_t expiry;
+	char filepath[2048] = {0};
+	int  fn_len = 0;
+	uint64_t cob_num;
+	int  res;
+	int  find_f = 0;
+
+	CefT_Cpubcnt_Hdl* work;
+	CefT_Cpubcnt_Hdl* bwork;
+	bwork = &Cpubcnthdl;
+	work = Cpubcnthdl.next;
+
+	ret_buff = calloc (1, CefC_Max_Length);
+	if (ret_buff == NULL) {
+		return;
+	}
+
+	/* Create message */
+	/* Set header */
+	ret_buff[CefC_O_Fix_Ver]  = CefC_Version;
+	ret_buff[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_CnpbCntAdd;
+	index += CefC_Csmgr_Msg_HeaderLen;
+
+	if (conpubd_cntent_load_stat == 0) {
+//		rspmsg = "Content Add request accepted.";
+	} else {
+		rspmsg = "Since the content is being loaded, the request was not accepted.";
+		strcpy ((char*)(ret_buff + index), rspmsg);
+		index += strlen (rspmsg)+1;
+		/* Set Length */
+		value16 = htons (index);
+		memcpy (ret_buff + CefC_O_Length, &value16, CefC_S_Length);
+		/* Send response */
+		cef_csmgr_send_msg (sock, ret_buff, index);
+		return;
+	}
+
+/* =====================================================================
+                          1                   2                   3
+      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+     +---------------+---------------+---------------+---------------+
+     |    			 			  expiry							 /
+     +---------------+---------------+---------------+---------------+
+     /																 |
+     +---------------+---------------+---------------+---------------+
+     |       NameLen                 |        Name(URI)              /
+     +---------------+---------------+---------------+---------------+
+     /                                                               /
+     +---------------+---------------+---------------+---------------+
+     |  		VersionLen           |    Version                    /
+     +---------------+---------------+---------------+---------------+
+     /                                                               |
+     +---------------+---------------+---------------+---------------+
+     |  FilePathLen                  |       FilePath                /
+     +---------------+---------------+---------------+---------------+
+     /                                                               |
+     +---------------+---------------+---------------+---------------+
+   ===================================================================== */
+
+	memcpy(&value64, buff + buff_idx, sizeof(uint64_t));
+	expiry = cef_client_ntohb(value64);
+	buff_idx += sizeof(uint64_t);
+	memcpy(&value16, buff + buff_idx, sizeof(uint16_t));
+	name_len = ntohs(value16);
+	buff_idx += sizeof(uint16_t);
+	memcpy(name, buff + buff_idx, name_len);
+	buff_idx += name_len;
+	memcpy(&value16, buff + buff_idx, sizeof(uint16_t));
+	version_len = ntohs(value16);
+	buff_idx += sizeof(uint16_t);
+	memcpy(version, buff + buff_idx, version_len);
+	buff_idx += version_len;
+	memcpy(&value16, buff + buff_idx, sizeof(uint16_t));
+	fn_len = ntohs(value16);
+	buff_idx += sizeof(uint16_t);
+	memcpy(filepath, buff + buff_idx, fn_len);
+
+	/* Get file path 		*/
+	res = conpub_check_file_path (filepath);
+	if (res < 0) {
+		cef_log_write (CefC_Log_Error, "Fail to open %s\n", filepath);
+		rspmsg = "Fail to open.";
+		goto CONT_ADD_ERROR;
+	}
+
+	/* Calculates number of cobs */
+	{
+	    struct stat statBuf;
+		if (stat (filepath, &statBuf) == 0) {
+			cob_num = statBuf.st_size / hdl->block_size;
+			if (statBuf.st_size % hdl->block_size != 0) {
+				cob_num++;
+			}
+		} else {
+			cef_log_write (CefC_Log_Error, "Error in accessing content file. (%s)\n", filepath);
+			rspmsg = "Error in accessing content file.";
+			goto CONT_ADD_ERROR;
+		}
+	}
+	if (cob_num > (uint64_t)UINT32_MAX + 1) {
+		cef_log_write (CefC_Log_Error, "Error in accessing content file. (%s) - chunk_num over\n", filepath);
+		rspmsg = "Error in accessing content file.";
+		goto CONT_ADD_ERROR;
+	}
+
+	/* Check Content num  */
+	if (hdl->published_contents_num >= hdl->contents_num) {
+		/* Error */
+		cef_frame_conversion_name_to_string (name, name_len, Uri_buff_p, "ccn");
+		cef_log_write (CefC_Log_Warn
+						, "CONTENTS CAPACITY over : %s, Publishied contents=%d\n"
+						, Uri_buff_p, hdl->contents_num);
+		rspmsg = "CONTENTS CAPACITY over Contents_Num.";
+		goto CONT_ADD_ERROR;
+	}
+	/* Check capacity */
+	uint64_t capacity;
+	uint64_t cobs;
+	capacity = csmgr_stat_cache_capacity_get (stat_hdl);
+	cobs = hdl->cs_mod_int->cached_cobs();
+	if ((capacity - cobs) < cob_num) {
+		/* Error */
+		rspmsg = "CONTENTS CAPACITY over Cob_Num.";
+		goto CONT_ADD_ERROR;
+	}
+
+	pthread_mutex_lock (&conpub_cnt_mutex);
+	while(work) {
+		if ( (work->name_len == name_len) &&
+			 memcmp(work->name, name, name_len) == 0 ) {
+			/* same name */
+			if ( (version_len == 0) && (work->version_len == 0) ) {
+				/* same version None */
+				find_f = 1;
+				break;
+			} else {
+				if ( version_len == work->version_len ) {
+					if (memcmp (version, work->version, version_len) == 0) {
+						/* same version None */
+						find_f = 1;
+						break;
+					} else {
+						/* different version */
+					}
+				}
+			}
+		}
+		bwork = work;
+		work = bwork->next;
+	}
+	pthread_mutex_unlock (&conpub_cnt_mutex);
+
+	if ( find_f == 1 ) {
+		/* Error same name & version */
+		rspmsg = "Content with the same name and version exists.";
+		goto CONT_ADD_ERROR;
+	}
+
+	rspmsg = "Content Add request accepted.";
+
+	/* Add Content */
+	if (conpubd_cntent_load_stat == 0) {
+		CefT_Cpubcnt_Hdl* add_cont;
+		time_t now;
+		time_t timer;
+		struct tm *local;
+		
+		timer = time (NULL);
+		local = localtime (&timer);
+		now = mktime (local);
+		
+		add_cont = (CefT_Cpubcnt_Hdl*) malloc (sizeof (CefT_Cpubcnt_Hdl));
+		if ( add_cont == NULL ) {
+			/* Error */
+			cef_log_write (CefC_Log_Error, "malloc error(Cpubcnt)\n");
+			rspmsg = "malloc error(Cpubcnt).";
+			goto CONT_ADD_ERROR;
+		}
+		memset (add_cont, 0, sizeof (CefT_Cpubcnt_Hdl));
+		strcpy (add_cont->file_path, filepath);
+		memcpy (add_cont->name, name, name_len);
+		add_cont->name_len 	= name_len;
+		add_cont->expiry = expiry;
+		add_cont->date = now;
+		add_cont->cob_num = cob_num;
+		if (version_len == 0) {
+			add_cont->version[0] = 0x00;
+			add_cont->version_len = 0;
+		} else {
+			memcpy (add_cont->version, version, version_len);
+			add_cont->version_len = version_len;
+		}
+		add_cont->line_no = -99;
+		add_cont->t_pending = CefC_CnpbDefault_Pending_Timer;
+		
+		res = hdl->cs_mod_int->cache_item_puts (hdl, sizeof (CefT_Cpubcnt_Hdl), add_cont);
+		if ( res < 0 ) {
+			cef_frame_conversion_name_to_string (name, name_len, Uri_buff_p, "ccn");
+			cef_log_write (CefC_Log_Critical, "Failed to publish %s (cache_item_puts)\n", Uri_buff_p);
+			rspmsg = "Failed to publish.";
+			goto CONT_ADD_ERROR;
+		}
+		
+		pthread_mutex_lock (&conpub_cnt_mutex);
+		work = &Cpubcnthdl;
+		while(1) {
+			if ( work->next == NULL ) {
+				work->next = add_cont;
+				break;
+			}
+			work = work->next;
+		}
+		res = conpubd_cnthdl_save ( hdl, &Cpubcnthdl );
+		if ( res < 0 ) {
+			cef_log_write (CefC_Log_Error, "Failed to Cpubcnt_Hdl Save.\n");
+			rspmsg = "Failed to Cpubcnt_Hdl Save.";
+			goto CONT_ADD_ERROR;
+		}
+		pthread_mutex_unlock (&conpub_cnt_mutex);
+
+		/* CefC_T_OPT_APP_REG */
+		{
+			CefT_Connect connect;
+			connect.ai = 0;
+			connect.sock = hdl->cefnetd_sock;
+			CefT_Client_Handle fhdl;
+			fhdl = (CefT_Client_Handle) &connect;
+			if (connect.sock != -1) {
+				cef_client_prefix_reg (fhdl, CefC_T_OPT_APP_REG, name, name_len);
+			}
+		}
+		hdl->published_contents_num ++;
+		goto CONT_ADD_END;
+	}
+
+CONT_ADD_ERROR:;
+	cef_log_write (CefC_Log_Error, "conpubd_incoming_cont_add_msg\n");
+
+	strcpy ((char*)(ret_buff + index), rspmsg);
+	index += strlen (rspmsg)+1;
+	/* Set Length */
+	value16 = htons (index);
+	memcpy (ret_buff + CefC_O_Length, &value16, CefC_S_Length);
+	/* Send response */
+	cef_csmgr_send_msg (sock, ret_buff, index);
+	return;
+
+CONT_ADD_END:;
+	strcpy ((char*)(ret_buff + index), rspmsg);
+	index += strlen (rspmsg)+1;
+	/* Set Length */
+	value16 = htons (index);
+	memcpy (ret_buff + CefC_O_Length, &value16, CefC_S_Length);
+	/* Send response */
+	cef_csmgr_send_msg (sock, ret_buff, index);
+	return;
+}
+/*--------------------------------------------------------------------------------------
+	Receive the Conpub Contents Delete Message
+----------------------------------------------------------------------------------------*/
+static void
+conpubd_incoming_cont_del_msg (
+	CefT_Conpubd_Handle* hdl,					/* conpub daemon handle					*/
+	int sock,									/* recv socket							*/
+	unsigned char* buff,						/* receive message						*/
+	int buff_len								/* receive message length				*/
+) {
+	unsigned char *ret_buff;
+	uint16_t index = 0;
+	uint16_t value16;
+	char* rspmsg;
+
+	uint32_t buff_idx = 0;
+	uint16_t name_len;
+	unsigned char name[1024] = {0};
+	char version[64] = {0};
+	int  version_len;
+	int  find_f = 0;
+	CsmgrT_Stat* rcd = NULL;
+
+	time_t now;
+	time_t timer;
+	struct tm *local;
+
+
+	CefT_Cpubcnt_Hdl* work;
+	CefT_Cpubcnt_Hdl* bwork;
+	bwork = &Cpubcnthdl;
+	work = Cpubcnthdl.next;
+
+	ret_buff = calloc (1, CefC_Max_Length);
+	if (ret_buff == NULL) {
+		return;
+	}
+
+	/* Create message */
+	/* Set header */
+	ret_buff[CefC_O_Fix_Ver]  = CefC_Version;
+	ret_buff[CefC_O_Fix_Type] = CefC_Csmgr_Msg_Type_CnpbCntDel;
+	index += CefC_Csmgr_Msg_HeaderLen;
+
+	if (conpubd_cntent_load_stat == 0) {
+		 rspmsg = "Content Delete request accepted.";
+	} else {
+		rspmsg = "Since the content is being loaded, the request was not accepted.";
+		strcpy ((char*)(ret_buff + index), rspmsg);
+		index += strlen (rspmsg)+1;
+		/* Set Length */
+		value16 = htons (index);
+		memcpy (ret_buff + CefC_O_Length, &value16, CefC_S_Length);
+		/* Send response */
+		cef_csmgr_send_msg (sock, ret_buff, index);
+		return;
+	}
+
+/* =====================================================================
+                          1                   2                   3
+      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+     +---------------+---------------+---------------+---------------+
+     |           Name Len            |           Name(URI)           /
+     +---------------+---------------+---------------+---------------+
+	 /				                                                 |
+     +---------------+---------------+---------------+---------------+
+     |  		VersionLen           |    Version                    /
+     +---------------+---------------+---------------+---------------+
+     /                                                               |
+     +---------------+---------------+---------------+---------------+
+  ===================================================================== */
+
+	memcpy(&value16, buff + buff_idx, sizeof(uint16_t));
+	name_len = ntohs(value16);
+	buff_idx += sizeof(uint16_t);
+	memcpy(name, buff + buff_idx, name_len);
+	buff_idx += name_len;
+	memcpy(&value16, buff + buff_idx, sizeof(uint16_t));
+	version_len = ntohs(value16);
+	buff_idx += sizeof(uint16_t);
+	memcpy(version, buff + buff_idx, version_len);
+
+	pthread_mutex_lock (&conpub_cnt_mutex);
+	while(work) {
+		if ( (work->name_len == name_len) &&
+			 memcmp(work->name, name, name_len) == 0 ) {
+			/* same name */
+			if ( (version_len == 0) && (work->version_len == 0) ) {
+				/* version None */
+				find_f = 1;
+				break;
+			} else {
+				if ( version_len == work->version_len ) {
+					if (memcmp (version, work->version, version_len) == 0) {
+						/* OK find */
+						find_f = 1;
+						break;
+					} else {
+						/* Error version mismatch */
+					}
+				}
+			}
+		}
+		bwork = work;
+		work = bwork->next;
+	}
+
+	if ( find_f == 1 ) {
+		timer = time (NULL);
+		local = localtime (&timer);
+		now = mktime (local);
+		work->expiry = now;
+		conpubd_stat_content_lifetime_update(stat_hdl, name, name_len, now);
+		rcd = conpubd_stat_content_info_access ( stat_hdl, name, name_len );
+		if ( rcd == NULL ) {
+			/* OK */
+		}
+	} else {
+		 rspmsg = "There is no content with the specified name.";
+	}
+	pthread_mutex_unlock (&conpub_cnt_mutex);
+
+	strcpy ((char*)(ret_buff + index), rspmsg);
+	index += strlen (rspmsg)+1;
+
+	/* Set Length */
+	value16 = htons (index);
+	memcpy (ret_buff + CefC_O_Length, &value16, CefC_S_Length);
+
+	/* Send message 		*/
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Fine, "Send the Conpub Contents Del response(len = %u).\n", index);
+	cef_dbg_buff_write (CefC_Dbg_Finest, ret_buff, index);
+#endif // CefC_Debug
+	/* Send response */
+	cef_csmgr_send_msg (sock, ret_buff, index);	return;
+}
+#endif
 

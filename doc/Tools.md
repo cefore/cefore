@@ -12,13 +12,13 @@ If the "-f" option is omitted, the last name of the specified URI becomes the in
 
 | Parameter  | Description                                                   |
 | ---------- | ------------------------------------------------------------- |
-| uri        | URI. This parameter cannot be ommited.                        |
+| uri        | URI. This parameter cannot be omited.                         |
 | path       | Path to the file you enter. This parameter cannot be omitted. |
 | block_size | Max length of the payload of Content Object (Byte)<br>Range: 60 <= block_size <= 57344 (default: 1024)    |
-| rate       | Transfer rate from cefputfile to cefnetd (Mbps)<br>Range: 0.001 <= rate <= 10240.000 (default: 5)<br>You can specify up to three decimal places and ignore values less than three decimal places.  |
-| expiry     | Content Object lifetime (second). (Current time + expiry) is the effective time.<br>Range: 1 <= expiry <= 86400 (default: 3600) |
-| cache_time | The number of seconds after which Content Object is cached before it is deleted.<br>Range: 1 <= cache_time <= 65535 (default: 300) |
-| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either rsa-sha256 or crc32c when used. |
+| rate       | Sending rate (Mbps) from the app (cefputfile) to the network stack (cefnetd). <br>If you enter more than four decimal places, the value will be rounded to three decimal places, and any digits beyond that will be ignored. <br>Range: 0.001 <= rate <= 10240.000 (default: 5) |
+| expiry | Lifetime (s) of Content Object. Long value may improve the hit ratio, but it increases the risk of retaining outdated content objects. <br>Range: 1 <= expiry <= 86400 (default: 3600) |
+| cache_time | Recommended cache time (RCT) (s) of the ContentObject packet for intermediate routers. <br>Range: 1 <= cache_time <= 65535 (default: 300) |
+| valid_alg  | Validation algorithm used for the message. If no validation algorithm specified, validation will not be performed. In this version, validation algorithm must be either rsa-sha256 or crc32c. |
 
 
 ## 2. cefgetfile
@@ -31,13 +31,12 @@ If the "-f" option is omitted, the last name of the specified URI becomes the in
 
 | Parameter  | Description                                                   |
 | ---------- | ------------------------------------------------------------- |
-| uri        | URI. This parameter cannot be ommited.                        |
+| uri        | URI. This parameter cannot be omited.                         |
 | path       | Path to the file you enter. This parameter cannot be omitted. |
-| -o         | Retrieve content from the publisher's cache instead of from the transit router's cache. If the publisher is unknown (for example, the route is disconnected or the publisher is down), content cannot be retrieved. |
+| -o         | Retrieve content directly from the publisher app instead of from the in-network router's cache. If the publisher is unknown (for example, the route is disconnected or the publisher is down), content cannot be retrieved. |
 | chunk      | Specify the number of chunks to get. The application terminates when it receives the specified number of chunks.  |
 | pipeline   | Specify the number of pipelines when sending interest. The default value is 4. |
-| cache_time | The number of seconds after which Content Object is cached before it is deleted.<br>Range: 1 <= cache_time <= 65535 (default: 300) |
-| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either rsa-sha256 or crc32c when used. |
+| valid_alg  | Validation algorithm used for the message. If no validation algorithm specified, validation will not be performed. In this version, validation algorithm must be either rsa-sha256 or crc32c. |
 
 If content was successfully downloaded with cefgetfile, "Complete" is displayed as shown in bold characters below. When "Incomplete" is displayed, a packet loss has occurred and there are chunks that could not be retrieved. Even though the interest was retransmitted, the content download was interrupted.
 The "Duration" output is specified to three decimal places (rounded up to four decimal places).
@@ -53,7 +52,7 @@ cefgetchunk tool retrieves the content object and chunk number specified in the 
 
 | Parameter  | Description                                                   |
 | ---------- | ------------------------------------------------------------- |
-| uri        | URI. This parameter cannot be ommited.                        |
+| uri        | URI. This parameter cannot be omited.                         |
 | chunknum   | Specify the chunk number of the Content Object you want to retrieve. This parameter cannot be omitted. |
 
 
@@ -65,12 +64,12 @@ cefputstream is a tool that converts stream content in STDIN into a content obje
 
 | Parameter  | Description                                                   |
 | ---------- | ------------------------------------------------------------- |
-| uri        | URI. This parameter cannot be ommited.                        |
+| uri        | URI. This parameter cannot be omited.                         |
 | block_size | Max length of the payload of Content Object (Byte)<br>Range: 60 <= block_size <= 57344 (default: 1024)    |
-| rate       | Transfer rate from cefputstream to cefnetd (Mbps)<br>Range: 1 <= rate <= 32 (default: 5) |
-| expiry     | Content Object lifetime (second). (Current time + expiry) is the effective time.<br>Range: 0 <= expiry <= 86400 (default: 0) |
-| cache_time | The number of seconds after which Content Object is cached before it is deleted.<br>Range: 1 <= cache_time <= 65535 (default: 0) |
-| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either rsa-sha256 or crc32c when used. |
+| rate       | Sending rate (Mbps) from the app (cefputstream) to the network stack (cefnetd). <br>Range: 1 <= rate <= 32 (default: 5) |
+| expiry | Lifetime (s) of Content Object. Long value may improve the hit ratio, but it increases the risk of retaining outdated content objects. <br>Range: 1 <= expiry <= 86400 (default: 0) |
+| cache_time | Recommended cache time (RCT) (s) of the ContentObject packet for intermediate routers. <br>Range: 1 <= cache_time <= 65535 (default: 0) |
+| valid_alg  | Validation algorithm used for the message. If no validation algorithm specified, validation will not be performed. In this version, validation algorithm must be either rsa-sha256 or crc32c. |
 
 
 ## 5. cefgetstream
@@ -81,16 +80,16 @@ cefgetstream is a tool that shows the stream content of the specified URI retrie
 
 | Parameter  | Description                                                   |
 | ---------- | ------------------------------------------------------------- |
-| uri        | URI. This parameter cannot be ommited.                        |
-| -o         | Retrieve content from the publisher's cache instead of from the transit router's cache. If the publisher is unknown (for example, the route is disconnected or the publisher is down), content cannot be retrieved. |
+| uri        | URI. This parameter cannot be omited.                         |
+| -o         | Retrieve content directly from the publisher app instead of from the in-network router's cache. If the publisher is unknown (for example, the route is disconnected or the publisher is down), content cannot be retrieved. |
 | chunk      | Specify the number of chunks to get. The application terminates when it receives the specified number of chunks.|
 | pipeline   | Specify the number of pipelines when sending interest (default: 4). |
 | lifetime   | Specify lifetime interval inserted in Symbolic Interest (default: 4).<br>If this value is bigger than the value configured in cefnetd, it will be ignored, and the value configured in cefnetd will be used. |
-| valid_alg  | Validation Algorithm added to the message. If it is omitted, validation won't be added. Specify either rsa-sha256 or crc32c when used. |
+| valid_alg  | Validation algorithm used for the message. If no validation algorithm specified, validation will not be performed. In this version, validation algorithm must be either rsa-sha256 or crc32c. |
 
 ## 6. cefinfo
 
-cefinfo is a tool that identifies the cefnetd that caches the content for a specified prefix. cefinfo is known as CCNinfo whose specification is described in IRTF RFC 9344. It is possible to identify the responder (i.e., caching node) and to measure the RTT between the cefinfo performer and the respondents. Note that althourh the RTT is accurate, the latency between each cefnetd on the path is not accurate if the time on each cefnetd is not synchronized. If you start cefnetd with the "-d config_file_dir" and "-p port_num" options, you must specify the same startup options.
+cefinfo is a tool that identifies the cefnetd that caches the content for a specified prefix. cefinfo is known as CCNinfo whose specification is described in IRTF RFC 9344. It is possible to identify the responder (i.e., caching node) and to measure the RTT between the cefinfo performer and the respondents. Note that although the RTT is accurate, the latency between each cefnetd on the path is not accurate if the time on each cefnetd is not synchronized. If you start cefnetd with the "-d config_file_dir" and "-p port_num" options, you must specify the same startup options.
 
 `cefinfo name_prefix [-c] [-o] [-f] [-r hop_count] [-s skip_hop] [-d config_file_dir] [-p port_num] [-V]`
 
@@ -121,3 +120,43 @@ cefinfo terminates when a single reply message is given back (the default behavi
     &emsp;&emsp;&emsp;&emsp;.<br>
     &emsp;&emsp;&emsp;&emsp;.<br>
   &emsp;N cache information-N*
+
+
+## 7. cefsubfile
+
+cefsubfile is a tool that subscribes a file using Reflexive Forwarding. This tool sends Reflexive Interest to cefnetd upon receiving Trigger Interest with the specified URI, thereby retrieving Reflexive Data. After completing content retrieval, it sends Trigger Data to terminate subscription. To exit manually, press Ctrl + C.
+
+`cefsubfile uri [-f output_path] [-s pipeline] [-v_RI valid_algo] [-v_TD valid_algo] [-d config_file_dir] [-p port_num]`
+
+Retrieved content is output as a file named "RNP0x{RNP value}.out" to the path specified with the "-f" option. If the "-f" is omitted, output the file in the current directory. If "-f -" is specified, output to stdout instead of a file.
+
+| Parameter  | Description                                                   |
+| ---------- | ------------------------------------------------------------- |
+| uri        | URI. This parameter cannot be omitted.                        |
+| output_path| Path to output file. When "-" is specified, output to stdout. |
+| pipeline   | Specify the number of pipelines when sending Reflexive Interest. <br>Range: 1 <= pipeline <= 10000 (default: 8) |
+| valid_alg  | Validation algorithm used for the message. If no validation algorithm specified, validation will not be performed. In this version, validation algorithm must be either rsa-sha256 or crc32c. |
+
+If content was successfully downloaded with cefsubfile, "Complete" is displayed. When "ERROR: Timeout" is displayed, a packet loss has occurred and there are chunks that could not be retrieved. Even though the interest was retransmitted, the content download was interrupted.
+
+
+## 8. cefpubfile
+
+cefpubfile is a tool used to publish a file using Reflexive Forwarding. The tool first sends a Trigger Interest for the specified URI and RNP to cefnetd. It then encapsulates the specified file into Reflexive Data using the generated RNP. If the file size exceeds a single packet, it is divided into chunks and transmitted with independent Reflexive Data packets. The Reflexive Data is transmitted to cefnetd. The process terminates when Trigger Data for the specified URI and RNP is received from cefnetd. To exit manually, press Ctrl + C.
+Note that Content Store must be enabled on the node that executes cefpubfile.
+
+`cefpubfile uri -f path [-r rate] [-b block_size] [-e expiry] [-t cache_time] [-l lifetime] [-m retry_limit] [-z target] [-v_TI valid_algo] [-v_RD valid_algo]`
+
+The "-f path" option specifies the name of the file to be pushed. It is a mandatory parameter. The file name must be provided as a full path; otherwise, cefpubfile uses the specified file located in the current working directory.
+
+| Parameter  | Description                                                   |
+| ---------- | ------------------------------------------------------------- |
+| uri        | URI. This parameter cannot be omitted.                        |
+| path       | File name with path. This parameter cannot be omitted.        |
+| rate       | Transfer rate from cefpubfile to cefnetd (Mbps)<br>Range: 0.001 <= rate <= 100000000 (default: 50)<br>You can specify up to three decimal places and ignore values less than three decimal places.  |
+| block_size | Max length of the payload of Content Object (Byte)<br>Range: 1 <= block_size <= 65000 (default: 1024)    |
+| expiry     | Reflexive Data lifetime (s). (Current time + expiry) is the effective time.<br>Range: 1 <= expiry <= 31536000 (default: 10) |
+| cache_time | The number of seconds after which Reflexive Data is cached before it is deleted.<br>Range: 1 <= cache_time <= 31536000 (default: 10) |
+| lifetime   | Specify the lifetime (s) of Trigger Interest. <br>Range: 0 <= lifetime <= 64 (default: 3) |
+| retry_limit| Maximum number of transmitted Trigger Interests to extend t-PIT lifetime. <br>Range: 0 <= retry_limit <= 65535 (default: unlimited) |
+| valid_alg  | Validation algorithm used for the message. If no validation algorithm specified, validation will not be performed. In this version, validation algorithm must be either rsa-sha256 or crc32c. |
