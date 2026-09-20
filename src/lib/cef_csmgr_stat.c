@@ -108,12 +108,33 @@ csmgr_stat_content_lookup (
 	uint16_t name_len,
 	int* create_f
 );
+
+static CsmgrT_Stat*
+csmgr_stat_content_lookup_keyid (
+	CsmgrT_Stat_Table* tbl,
+	const unsigned char* name,
+	uint16_t name_len,
+	const CefT_HashData* keyid,
+	uint16_t keyid_len,
+	int* create_f
+);
+
 static CsmgrT_Stat*
 csmgr_stat_content_search (
 	CsmgrT_Stat_Table* tbl,
 	const unsigned char* name,
 	uint16_t name_len
 );
+
+static CsmgrT_Stat*
+csmgr_stat_content_search_keyid (
+	CsmgrT_Stat_Table* tbl,
+	const unsigned char* name,
+	uint16_t name_len,
+	const CefT_HashData* keyid,
+	uint16_t keyid_len
+);
+
 static CsmgrT_Stat*
 csmgr_stat_content_salvage (
 	CsmgrT_Stat_Table* tbl,
@@ -599,6 +620,8 @@ csmgr_stat_cob_update (
 	CsmgrT_Stat_Handle hdl,
 	const unsigned char* name,
 	uint16_t name_len,
+	const CefT_HashData* keyid,
+	uint16_t keyid_len,
 	uint32_t seq,
 	uint32_t cob_size,
 	uint64_t expiry,
@@ -615,12 +638,23 @@ csmgr_stat_cob_update (
 		return;
 	}
 
-	pthread_mutex_lock (&tbl->stat_mutex);
-	rcd = csmgr_stat_content_lookup (tbl, name, name_len, &create_f);
+	pthread_mutex_lock(&tbl->stat_mutex);
+
+	rcd = csmgr_stat_content_lookup_keyid( tbl, name, name_len, keyid, keyid_len, &create_f);
+
 	if (!rcd) {
-		pthread_mutex_unlock (&tbl->stat_mutex);
-		return;
+	    pthread_mutex_unlock(&tbl->stat_mutex);
+	    return;
 	}
+
+	if (keyid && keyid_len > 0) {
+		memcpy(&rcd->keyid, keyid, sizeof(CefT_HashData));
+		rcd->keyid_len = keyid_len;
+	} else {
+		memset(&rcd->keyid, 0, sizeof(CefT_HashData));
+		rcd->keyid_len = 0;
+	}
+
 	x = seq / 64;
 	mask <<= (seq % 64);
 
@@ -763,7 +797,9 @@ void
 csmgr_stat_access_count_update (
 	CsmgrT_Stat_Handle hdl,
 	const unsigned char* name,
-	uint16_t name_len
+	uint16_t name_len,
+	const CefT_HashData* keyid,
+	uint16_t keyid_len
 ) {
 	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
 	CsmgrT_Stat* rcd;
@@ -771,19 +807,15 @@ csmgr_stat_access_count_update (
 	if (!tbl) {
 		return;
 	}
-
 	pthread_mutex_lock (&tbl->stat_mutex);
-	rcd = csmgr_stat_content_search (tbl, name, name_len);
-	if (!rcd) {
-		pthread_mutex_unlock (&tbl->stat_mutex);
-		return;
-	}
-	if (rcd->access < UINT64_MAX) {
-		rcd->access++;
-	}
-	pthread_mutex_unlock (&tbl->stat_mutex);
+	rcd = csmgr_stat_content_lookup_keyid( tbl, name, name_len, keyid, keyid_len, NULL);
 
-	return;
+	if (rcd) {
+		if (rcd->access < UINT64_MAX) {
+			rcd->access++;
+		}
+	}
+	pthread_mutex_unlock(&tbl->stat_mutex);
 }
 
 /*--------------------------------------------------------------------------------------
@@ -916,33 +948,6 @@ csmgr_stat_content_info_init (
 	return (rcd);
 }
 /*--------------------------------------------------------------------------------------
-	Init the valiables of the specified content (for version)
-----------------------------------------------------------------------------------------*/
-int
-csmgr_stat_content_info_version_init (
-	CsmgrT_Stat_Handle hdl,
-	CsmgrT_Stat* rcd,
-	unsigned char* version,
-	uint16_t ver_len
-) {
-	CsmgrT_Stat_Table* tbl = (CsmgrT_Stat_Table*) hdl;
-
-	pthread_mutex_lock (&tbl->stat_mutex);
-	rcd->ver_len = ver_len;
-	if (ver_len) {
-		rcd->version = (unsigned char*) malloc (ver_len);
-		if (rcd->version == NULL) {
-			pthread_mutex_unlock (&tbl->stat_mutex);
-			return (-1);
-		}
-		memcpy (rcd->version, version, ver_len);
-	} else {
-		rcd->version = NULL;
-	}
-	pthread_mutex_unlock (&tbl->stat_mutex);
-	return (1);
-}
-/*--------------------------------------------------------------------------------------
 	Deletes the content information
 ----------------------------------------------------------------------------------------*/
 void
@@ -977,9 +982,6 @@ csmgr_stat_content_info_delete (
 			tbl->cached_con_num--;
 			stat_index_mngr[cp->index] = 0;
 			free (cp->cob_map);
-			if (cp->version != NULL && cp->ver_len > 0) {
-				free (cp->version);
-			}
 			if (cp->ssl_public_key_val != NULL && cp->ssl_public_key_len > 0) {
 				free (cp->ssl_public_key_val);
 			}
@@ -996,9 +998,6 @@ csmgr_stat_content_info_delete (
 					tbl->cached_con_num--;
 					stat_index_mngr[wcp->index] = 0;
 					free (wcp->cob_map);
-					if (wcp->version != NULL && wcp->ver_len > 0) {
-						free (wcp->version);
-					}
 					if (wcp->ssl_public_key_val != NULL && wcp->ssl_public_key_len > 0) {
 						free (wcp->ssl_public_key_val);
 					}
@@ -1279,7 +1278,7 @@ csmgr_stat_cob_verify_ucinc (
 
 	if ((signature_len) && (signature_val) && (plain_val) && (plain_len)
 		&& (rcd->ssl_public_key_len) && (rcd->ssl_public_key_val)) {
-		cef_valid_sha384(plain_val, plain_len, hash_buf);
+		cef_valid_sha384(plain_val, plain_len, hash_buf, NULL);
 		ret = csmgr_verify_sig_of_buff( rcd->ssl_public_key_val, rcd->ssl_public_key_len,
 			hash_buf, SHA384_DIGEST_LENGTH, signature_val, signature_len);
 		if (ret == 1) {
@@ -1464,7 +1463,7 @@ csmgr_stat_content_lookup (
 		cp->min_seq = UINT_MAX;
 		cp->max_seq = 0;
 		cp->tx_seq = 0;
-		cp->tx_num = -1;
+		cp->tx_num = 0;
 		cp->tx_time = 0;
 		cp->cob_map = (uint64_t *) calloc (1, sizeof (uint64_t) * CsmgrT_Add_Maps);
 		cp->map_max = CsmgrT_Add_Maps;
@@ -1494,7 +1493,7 @@ csmgr_stat_content_lookup (
 		cp->min_seq = UINT_MAX;
 		cp->max_seq = 0;
 		cp->tx_seq = 0;
-		cp->tx_num = -1;
+		cp->tx_num = 0;
 		cp->tx_time = 0;
 		cp->cob_map = (uint64_t *) calloc (1, sizeof (uint64_t) * CsmgrT_Add_Maps/*@*/);
 		cp->map_max = CsmgrT_Add_Maps;
@@ -1512,6 +1511,119 @@ csmgr_stat_content_lookup (
 	}
 
 	return (NULL);
+}
+
+static CsmgrT_Stat*
+csmgr_stat_content_lookup_keyid (
+	CsmgrT_Stat_Table* tbl,
+	const unsigned char* name,
+	uint16_t name_len,
+	const CefT_HashData* keyid,
+	uint16_t keyid_len,
+	int* create_f
+) {
+	uint32_t hash;
+	uint32_t index;
+	CsmgrT_Stat* rcd;
+	CsmgrT_Stat* cp;
+	CsmgrT_Stat* wcp;
+
+	if (create_f) {
+		*create_f = 0;
+	}
+
+	if ((!name_len) || (!tbl)) {
+		return (NULL);
+	}
+
+	/* KeyID指定時は Name + KeyID で検索 */
+	if ((keyid != NULL) && (keyid_len > 0)) {
+		rcd = csmgr_stat_content_search_keyid( tbl, name, name_len, keyid, keyid_len);
+	} else {
+		/* KeyIDなしは従来通り */
+		rcd = csmgr_stat_content_search(tbl, name, name_len);
+	}
+
+	if (rcd) {
+		return (rcd);
+	}
+
+	if (tbl->cached_con_num == CsmgrT_Stat_Max) {
+		return (NULL);
+	}
+
+	hash = csmgr_stat_hash_number_create(name, name_len);
+	index = hash % CsmgrT_Stat_Max;
+
+	if (tbl->rcds[index] == NULL) {
+
+		tbl->rcds[index] =
+			(CsmgrT_Stat*)calloc(1, sizeof(CsmgrT_Stat) + name_len);
+
+		if (tbl->rcds[index] == NULL) {
+			return (NULL);
+		}
+
+		tbl->rcds[index]->name =
+			((unsigned char*)tbl->rcds[index]) + sizeof(CsmgrT_Stat);
+
+		cp = tbl->rcds[index];
+
+	} else {
+
+		wcp = tbl->rcds[index];
+
+		tbl->rcds[index] =
+			(CsmgrT_Stat*)calloc(1, sizeof(CsmgrT_Stat) + name_len);
+
+		if (tbl->rcds[index] == NULL) {
+			return (NULL);
+		}
+
+		tbl->rcds[index]->name =
+			((unsigned char*)tbl->rcds[index]) + sizeof(CsmgrT_Stat);
+
+		cp = tbl->rcds[index];
+		cp->next = wcp;
+	}
+
+	cp->name_len = name_len;
+	memcpy(cp->name, name, name_len);
+
+	/* KeyIDを保持 */
+	if ((keyid != NULL) && (keyid_len > 0)) {
+		memcpy(&cp->keyid, keyid, sizeof(CefT_HashData));
+		cp->keyid_len = keyid_len;
+	}
+
+	cp->min_seq = UINT_MAX;
+	cp->max_seq = 0;
+	cp->tx_seq = 0;
+	cp->tx_num = 0;
+	cp->tx_time = 0;
+
+	cp->cob_map = (uint64_t*)calloc(1, sizeof(uint64_t) * CsmgrT_Add_Maps);
+
+	if (cp->cob_map == NULL) {
+		free(cp);
+		return (NULL);
+	}
+
+	cp->map_max = CsmgrT_Add_Maps;
+
+	for (int i = 0; i < CsmgrT_Stat_Max; i++) {
+		if (stat_index_mngr[i] == 0) {
+			stat_index_mngr[i] = 1;
+			cp->index = i;
+			break;
+		}
+	}
+
+	if (create_f) {
+		*create_f = 1;
+	}
+
+	return (cp);
 }
 
 static CsmgrT_Stat*
@@ -1534,10 +1646,62 @@ csmgr_stat_content_search (
 
 	cp = tbl->rcds[i];
 	while (cp != NULL) {
-		if ((cp->name_len == name_len) &&
-		   (memcmp (cp->name, name, name_len) == 0)) {
-			return (cp);
+		if ((cp->name_len == name_len) && (memcmp (cp->name, name, name_len) == 0)) {
+			if (cp->keyid_len == 0) {
+				return cp;
+			}
 		}
+		cp = cp->next;
+	}
+	return NULL;
+}
+
+static CsmgrT_Stat*
+csmgr_stat_content_search_keyid (
+	CsmgrT_Stat_Table* tbl,
+	const unsigned char* name,
+	uint16_t name_len,
+	const CefT_HashData* keyid,
+	uint16_t keyid_len
+) {
+	uint32_t hash;
+	uint32_t i;
+	CsmgrT_Stat* cp;
+
+	if ((!name_len) || (!tbl)) {
+		return (NULL);
+	}
+
+	hash = csmgr_stat_hash_number_create(name, name_len);
+	i = hash % CsmgrT_Stat_Max;
+
+	cp = tbl->rcds[i];
+
+	while (cp != NULL) {
+
+		if ((cp->name_len == name_len) &&
+			(memcmp(cp->name, name, name_len) == 0)) {
+
+			if ((keyid == NULL) || (keyid_len == 0)) {
+				if (cp->keyid_len == 0) {
+					return (cp);
+				}
+			}
+
+			if ((cp->keyid_len == keyid_len) &&
+				(cp->keyid.hash_type == keyid->hash_type) &&
+				(cp->keyid.hash_length == keyid->hash_length) &&
+				(cp->keyid.hash_length > 0) &&
+				(memcmp(
+					cp->keyid.hash_value,
+					keyid->hash_value,
+					keyid->hash_length
+				) == 0)) {
+
+				return (cp);
+			}
+		}
+
 		cp = cp->next;
 	}
 

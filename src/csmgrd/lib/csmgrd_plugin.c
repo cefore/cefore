@@ -186,26 +186,6 @@ csmgrd_lib_api_get (
 
 	return (1);
 }
-/*--------------------------------------------------------------------------------------
-	Creates key from name and chunk number
-----------------------------------------------------------------------------------------*/
-int												/* length of the created key 			*/
-csmgrd_key_create (
-	CsmgrdT_Content_Entry* entry,
-	unsigned char* key
-) {
-	uint32_t chunk_num;
-
-	memcpy (&key[0], entry->name, entry->name_len);
-	key[entry->name_len] 		= 0x00;
-	key[entry->name_len + 1] 	= 0x10;
-	key[entry->name_len + 2] 	= 0x00;
-	key[entry->name_len + 3] 	= 0x04;
-	chunk_num = htonl (entry->chunk_num);
-	memcpy (&key[entry->name_len + 4], &chunk_num, sizeof (uint32_t));
-
-	return (entry->name_len + 4 + sizeof (uint32_t));
-}
 
 /*--------------------------------------------------------------------------------------
 	Concatenates name and chunk number
@@ -214,20 +194,111 @@ int												/* length of the created key 			*/
 csmgrd_name_chunknum_concatenate (
 	const unsigned char* name,
 	uint16_t name_len,
-	uint32_t chunknum,
+	uint32_t chunk_num,
 	unsigned char* key
 ) {
-	uint32_t no_chunknum;
+	uint16_t ftvh_chunk = CefC_T_CHUNK;
+	uint16_t chunk_len = sizeof (uint32_t);
+	int index = 0;
+	struct tlv_hdr fld_thdr;
 
-	memcpy (&key[0], name, name_len);
-	key[name_len] 		= 0x00;
-	key[name_len + 1] 	= 0x10;
-	key[name_len + 2] 	= 0x00;
-	key[name_len + 3] 	= 0x04;
-	no_chunknum = htonl (chunknum);
-	memcpy (&key[name_len + 4], &no_chunknum, sizeof (uint32_t));
+	memcpy (&key[index], name, name_len);
+	index += name_len;
 
-	return (name_len + 4 + sizeof (uint32_t));
+	fld_thdr.type = htons (ftvh_chunk);
+	fld_thdr.length = htons (chunk_len);
+	memcpy (&key[index], &fld_thdr, CefC_S_TLF);
+	index += CefC_S_TLF;
+
+	chunk_num = htonl (chunk_num);
+	memcpy (&key[index], &chunk_num, chunk_len);
+	index += chunk_len;
+
+	return index;
+}
+
+/*--------------------------------------------------------------------------------------
+	Concatenates name and chunk number
+----------------------------------------------------------------------------------------*/
+int												/* length of the created key 			*/
+name_index_key (
+	const unsigned char* name,
+	uint16_t name_len,
+	uint32_t chunk_num,
+	unsigned char* key
+) {
+
+	uint16_t ftvh_chunk = CefC_T_CHUNK;
+	uint16_t chunk_len = sizeof (uint32_t);
+	int index = 0;
+	struct tlv_hdr fld_thdr;
+
+	memcpy (&key[index], name, name_len);
+	index += name_len;
+
+	fld_thdr.type = htons (ftvh_chunk);
+	fld_thdr.length = htons (chunk_len);
+	memcpy (&key[index], &fld_thdr, CefC_S_TLF);
+	index += CefC_S_TLF;
+
+	chunk_num = htonl (chunk_num);
+	memcpy (&key[index], &chunk_num, chunk_len);
+	index += chunk_len;
+
+	return index;
+}
+
+int
+keyid_index_key (
+	const unsigned char* name,
+	uint16_t name_len,
+	const CefT_HashData* keyid,
+	uint16_t keyid_len,
+	uint32_t chunk_num,
+	unsigned char* key
+) {
+
+	uint16_t ftvh_keyid = CefC_T_KEYID;
+	uint16_t ftvh_chunk = CefC_T_CHUNK;
+	uint16_t chunk_len = sizeof(uint32_t);
+	int index = 0;
+	struct tlv_hdr fld_thdr;
+
+	/* Name */
+	memcpy(&key[index], name, name_len);
+	index += name_len;
+
+	/* KeyID TLV */
+	fld_thdr.type = htons(ftvh_keyid);
+	fld_thdr.length = htons(keyid_len);
+	memcpy(&key[index], &fld_thdr, CefC_S_TLF);
+	index += CefC_S_TLF;
+
+	memcpy(&key[index], keyid, keyid_len);
+	index += keyid_len;
+
+	/* Chunk TLV */
+	fld_thdr.type = htons(ftvh_chunk);
+	fld_thdr.length = htons(chunk_len);
+	memcpy(&key[index], &fld_thdr, CefC_S_TLF);
+	index += CefC_S_TLF;
+
+	chunk_num = htonl(chunk_num);
+	memcpy(&key[index], &chunk_num, chunk_len);
+	index += chunk_len;
+
+	return index;
+}
+
+int
+MsgHash_index_key (
+	const CefT_HashData* MsgHash,
+	uint16_t MsgHash_len,
+	unsigned char* key
+) {
+    memcpy(key, MsgHash, MsgHash_len);
+
+	return MsgHash_len;
 }
 
 /*--------------------------------------------------------------------------------------
@@ -321,17 +392,39 @@ cef_csmgr_con_entry_create (
 		free (entry->msg);
 		return (-1);
 	}
-	if (pm.org.version_f) {
-		entry->ver_len = pm.org.version_len;
-		if (pm.org.version_len) {
-			entry->version = (unsigned char*) malloc (pm.org.version_len);
-			memcpy (entry->version, pm.org.version_val, pm.org.version_len);
-		} else {
-			entry->version = NULL;
+
+	/* get KeyID */
+	entry->keyid_len = pm.alg.keyid_len;
+	if (entry->keyid_len > sizeof(entry->keyid)) {
+		free (entry->msg);
+		return (-1);
+	} else if (entry->keyid_len > 0) {
+		memcpy(&entry->keyid, &pm.alg.keyid, entry->keyid_len);
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest, "KeyId_len=%d\n", entry->keyid_len);
+		if (entry->keyid_len) {
+			unsigned char dbg[256];
+			memcpy(dbg, &entry->keyid, entry->keyid_len);
+			cef_dbg_buff_write (CefC_Dbg_Fine, dbg, entry->keyid_len);
 		}
-	} else {
-		entry->ver_len = 0;
-		entry->version = NULL;
+#endif // CefC_Debug
+	}
+
+	/* get MsgHash */
+	entry->MsgHash_len = poh.MsgHash_len;
+	if (entry->MsgHash_len > sizeof(entry->MsgHash)) {
+		free (entry->msg);
+		return (-1);
+	} else if (entry->MsgHash_len > 0) {
+		memcpy(&entry->MsgHash, &poh.MsgHash, entry->MsgHash_len);
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest, "MsgHash_len=%d\n", entry->MsgHash_len);
+		if (entry->MsgHash_len) {
+			unsigned char dbg[256];
+			memcpy(dbg, &entry->MsgHash, entry->MsgHash_len);
+			cef_dbg_buff_write (CefC_Dbg_Fine, dbg, entry->MsgHash_len);
+		}
+#endif // CefC_Debug
 	}
 }
 
@@ -340,9 +433,6 @@ cef_csmgr_con_entry_create (
 	entry->name_len = ntohs (value16);
 	if (entry->name_len > entry->msg_len) {
 		free (entry->msg);
-		if (entry->version != NULL) {
-			free (entry->version);
-		}
 		return (-1);
 	}
 	index += CefC_S_Length;
@@ -353,17 +443,11 @@ cef_csmgr_con_entry_create (
 	if (!(buff[index] == ((CefC_T_NAMESEGMENT & 0xFF00) >> 8) && (buff[index+1] == (CefC_T_NAMESEGMENT & 0x00FF)))) {
 #endif // REFLEXIVE_FORWARDING
 		free (entry->msg);
-		if (entry->version != NULL) {
-			free (entry->version);
-		}
 		return (-1);
 	}
 	entry->name = calloc (1 , entry->name_len);
 	if (entry->name == NULL) {
 		free (entry->msg);
-		if (entry->version != NULL) {
-			free (entry->version);
-		}
 		return (-1);
 	}
 	memcpy (entry->name, &buff[index], entry->name_len);

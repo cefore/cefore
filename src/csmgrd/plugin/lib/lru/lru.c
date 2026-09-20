@@ -108,7 +108,7 @@ init (
 ) {
     int i;
     cache_count = 0;
-    
+
 	/* Records the capacity of cache		*/
 	if (capacity < 1) {
 		fprintf (stderr, "[LRU LIB] Invalid Cacacity\n");
@@ -123,7 +123,7 @@ init (
 	}
 	store_api 	= store;
 	remove_api 	= remove;
-    
+
 	/* Creates the memory pool 				*/
     cache_entry_list = (LrufT_Entry*) calloc(cache_cap, sizeof(LrufT_Entry));
     empty_entry_list = (int*) calloc(cache_cap, sizeof(int));
@@ -135,10 +135,10 @@ init (
     }
     lru_index = -1;
     mru_index = -1;
-    
+
     /* Creates lookup table */
     crlib_lookup_table_init(capacity);
-    
+
 	return (0);
 }
 
@@ -247,11 +247,11 @@ static void lru_store_entry(
 	CsmgrdT_Content_Entry* entry,
     int index
 ) {
-    unsigned char 	key[CsmgrdC_Key_Max];
+    unsigned char 	key[CefC_Csmgr_Key_Max];
     int 			key_len;
     LrufT_Entry*    rsentry;
 	unsigned char* q;
-    
+
     key_len = csmgrd_name_chunknum_concatenate (
                     entry->name, entry->name_len, entry->chunk_num, key);
     rsentry = &cache_entry_list[index];

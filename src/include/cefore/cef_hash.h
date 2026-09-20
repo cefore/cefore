@@ -61,9 +61,7 @@
 #define CefC_Hash_New			1
 #define CefC_Hash_Old			2
 
-#if 1
-#define CefC_Max_KLen 				1024
-#endif
+#define CefC_Hash_Key_MaxLen 	CefC_NAME_MAXLEN
 
 /* [Coefficients for expanding hash tables]                                         */
 /* Hash tables other than the following do not use coefficients.                    */
@@ -75,12 +73,9 @@
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
-typedef size_t CefT_Hash_Handle;
-
-#if 1
 typedef struct CefT_Hash_Table {
 	uint32_t 		hash;
-	unsigned char 	key[CefC_Max_KLen + 1];
+	unsigned char 	key[CefC_Hash_Key_MaxLen + 1];
 	void* 			elem;
 	uint32_t 		klen;
 	uint8_t			opt_f;
@@ -93,7 +88,9 @@ typedef struct CefT_Hash {
 	uint32_t 			elem_num;
 	uint32_t 			def_elem_max;		/* User defined maximum size	*/
 } CefT_Hash;
-#endif
+
+typedef CefT_Hash *CefT_Hash_Handle;
+
 /****************************************************************************************
  Global Variables
  ****************************************************************************************/
@@ -212,14 +209,14 @@ cef_hash_tbl_item_check_exact (
 	const unsigned char* key,
 	uint32_t klen
 );
-void* 
+void*
 cef_hash_tbl_item_set_prg (
 	CefT_Hash_Handle handle,
 	const unsigned char* key,
 	uint32_t klen,
 	void* elem
 );
-void* 
+void*
 cef_hash_tbl_item_get_prg (
 	CefT_Hash_Handle handle,
 	const unsigned char* key,

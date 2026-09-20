@@ -25,14 +25,14 @@ It is recommended that the TCP and UDP buffer sizes be tuned by the sysctl comma
 
 Ubuntu: Change buffers to 10 Mbytes:
 
-`sudo sysctl -w net.core.rmem_default=10000000`  
-`sudo sysctl -w net.core.wmem_default=10000000`  
-`sudo sysctl -w net.core.rmem_max=10000000`  
+`sudo sysctl -w net.core.rmem_default=10000000`
+`sudo sysctl -w net.core.wmem_default=10000000`
+`sudo sysctl -w net.core.rmem_max=10000000`
 `sudo sysctl -w net.core.wmem_max=10000000`
 
 macOS: Change buffers to 2 Mbytes:
 
-`sudo sysctl -w net.local.stream.sendspace=2000000`  
+`sudo sysctl -w net.local.stream.sendspace=2000000`
 `sudo sysctl -w net.local.stream.recvspace=2000000`
 
 It is possible to specify the boot option described in "1.1. Startup Option for Daemons and Tools" for the cefnetdstart utility. For example, the following command starts cefnetd using the configuration file located in "/tmp/foo" with port 5678:
@@ -60,20 +60,20 @@ The "cefstatus" utility checks the cefnetd status. If the cefnetd has been start
 
 Below is the output of the "cefstatus" utility. "-v" and "--version" show the version number of cefnetd.
 
-> *Version    : cefnetd's version number*  
-*Port       : port number cefnetd is using*  
-*Rx Frames  : number of the received frames after cefnetd is launched*  
-*Tx Frames  : number of the transmitted frames after cefnetd is launched*  
-*Cache Mode : cache type (None or External)*  
-*Faces :  
-  &emsp;Face information currently available on the node*  
-*FIB(App) : num of the entries  
-  &emsp;FIB entries for applications*  
-*FIB : num of the entries  
-  &emsp;FIB entries*  
-*PIT(App) : num of the entries  
-  &emsp;PIT entries for applications*  
-*PIT : num of the entries  
+> *Version    : cefnetd's version number*
+*Port       : port number cefnetd is using*
+*Rx Frames  : number of the received frames after cefnetd is launched*
+*Tx Frames  : number of the transmitted frames after cefnetd is launched*
+*Cache Mode : cache type (None or External)*
+*Faces :
+  &emsp;Face information currently available on the node*
+*FIB(App) : num of the entries
+  &emsp;FIB entries for applications*
+*FIB : num of the entries
+  &emsp;FIB entries*
+*PIT(App) : num of the entries
+  &emsp;PIT entries for applications*
+*PIT : num of the entries
   &emsp;PIT entries*
 
 
@@ -87,11 +87,11 @@ For (1), see "1.4.2. Static Management of FIB Entries," while (2) is under devel
 
 Depending on the method of adding the FIB entry, the permission for FIB deletion is determined by the bit field after the face number, in the FIB column of the cefstatus utility. The bit fields are, from left to right, the c bit (added by the controller, which is not included in this release), the s bit (statically added by the configuration of cefnet.fib and cefroute utility), and the d bit (dynamically added by the routing protocol). The permissions are in the order of c, s, and d. An example of this is shown below.
 
-> *FIB :  
-  &emsp;ccnx:/foo/bar/  
-    &emsp;&emsp;Faces : 17 (-s-) 31 (csd)  
-  &emsp;ccnx:/hoge/piyo/  
-    &emsp;&emsp;Faces : 21 (c--) 37 (--d)*  
+> *FIB :
+  &emsp;ccnx:/foo/bar/
+    &emsp;&emsp;Faces : 17 (-s-) 31 (csd)
+  &emsp;ccnx:/hoge/piyo/
+    &emsp;&emsp;Faces : 21 (c--) 37 (--d)*
 
 #### 1.4.2. Static Management of FIB Entries
 
@@ -128,29 +128,29 @@ If you are TCP-connected to an upstream router, you may lose the TCP connection 
 
 Next, the cefstatus utility shows the downed face status (#down marking). The downed face cannot be used for communications, but remains in the FIB entry until the face is removed.
 
-> *cefstatus*  
+> *cefstatus*
 >
-> *Version    : 01  
+> *Version    : 01
 Port       : 9695
-Rx Frames  : 0  
-Tx Frames  : 0  
-Cache Mode : None  
-Faces :  
-  &emsp;faceid =   5 : IPv6 Listen face (udp)  
-  &emsp;faceid =  24 : address = 172.16.6.184:9999 (tcp) # down  
-  &emsp;faceid =   0 : Local face  
-  &emsp;faceid =  26 : Local face  
-  &emsp;faceid =   6 : IPv4 Listen face (tcp)  
-  &emsp;faceid =   4 : IPv4 Listen face (udp)  
-  &emsp;faceid =   7 : IPv6 Listen face (tcp)  
-FIB(App) :  
-  &emsp;Entry is empty  
-FIB : 1  
-  &emsp;ccnx:/test/  
-    &emsp;&emsp;Faces : 24  
-PIT(App) :  
-  &emsp;Entry is empty  
-PIT :  
+Rx Frames  : 0
+Tx Frames  : 0
+Cache Mode : None
+Faces :
+  &emsp;faceid =   5 : IPv6 Listen face (udp)
+  &emsp;faceid =  24 : address = 172.16.6.184:9999 (tcp) # down
+  &emsp;faceid =   0 : Local face
+  &emsp;faceid =  26 : Local face
+  &emsp;faceid =   6 : IPv4 Listen face (tcp)
+  &emsp;faceid =   4 : IPv4 Listen face (udp)
+  &emsp;faceid =   7 : IPv6 Listen face (tcp)
+FIB(App) :
+  &emsp;Entry is empty
+FIB : 1
+  &emsp;ccnx:/test/
+    &emsp;&emsp;Faces : 24
+PIT(App) :
+  &emsp;Entry is empty
+PIT :
   &emsp;Entry is empty*
 
 To recover a face that is down, run the "enable" operation. Log information on the recovery result is output to the terminal. In addition, if the recovery is successful, one can run the cefstatus utility to check that there are no faces with #down marking.
@@ -170,8 +170,8 @@ For standard output of cefnetd and csmgrd logs, set CEF_LOG_LEVEL in the configu
 
 The following is sample output, where the time is the local time:
 
-> *2022-01-23 12:00:00.000 [cefnetd] INFO: [client] Local Socket Name is /tmp/cef_9695.0  
-2022-01-23 12:00:00.001 [cefnetd] INFO: [client] Listen Port is 9695*
+> *2026-06-15 12:00:00.000 [cefnetd] INFO: [client] Local Socket Name is /tmp/cef_9695.0
+2026-06-15 12:00:00.001 [cefnetd] INFO: [client] Listen Port is 9695*
 
 For standard output of cefnetd and csmgrd debug information, you must run the build with --enable-debug option for configure command, and set CEF_DEBUG_LEVEL in the configuration file cefnetd.conf or csmgrd.conf. The default value is 0.
 You can also set the level from 1 to 3, the higher the value, the more detailed debug information is output (if 3 is set, the dump of received packets is also output).
@@ -187,8 +187,8 @@ Before starting csmgrd, check the "4. csmgrd.conf" in Configuration document. Co
 
 Set the following parameters for cefnetd.conf before starting cefnetd, which connects to csmgrd. Use the csmgrstatus tool (see "2.3. csmgrd Status") to check if you can connect to csmgrd before starting cefnetd.
 
-> *CS_MODE=2  
-CSMGR_NODE=IP address of the node on which csmgrd runs  
+> *CS_MODE=2
+CSMGR_NODE=IP address of the node on which csmgrd runs
 CSMGR_PORT_NUM=TCP port number csmgrd uses*
 
 If the CSMGR_NODE in cefnetd.conf is "localhost", cefnetd and csmgrd communicate over a UNIX domain socket. The UNIX domain socket used for communication is created in the /tmp directory. The created socket file name is "csmgr_PORT.ID". The communication with remote cefnetds is established over TCP.
@@ -201,7 +201,7 @@ Start csmgrd from the terminal If you want to start it as a daemon, run it in th
 
 csmgrdstart and csmgrdstop parameters are shown below.
 
-`csmgrdstart [-d config_file_dir]`  
+`csmgrdstart [-d config_file_dir]`
 `csmgrdstop [-F] [-d config_file_dir]`
 
 | Parameter | Description                      |
@@ -212,14 +212,14 @@ It is recommended to tune the TCP and UDP buffer sizes before starting csmgrd. I
 
 Example of changing the buffer size to 10 Mbytes at Ubuntu:
 
-`sudo sysctl -w net.core.rmem_default=10000000`  
-`sudo sysctl -w net.core.wmem_default=10000000`  
-`sudo sysctl -w net.core.rmem_max=10000000`  
+`sudo sysctl -w net.core.rmem_default=10000000`
+`sudo sysctl -w net.core.wmem_default=10000000`
+`sudo sysctl -w net.core.rmem_max=10000000`
 `sudo sysctl -w net.core.wmem_max=10000000`
 
 Example of changing the buffer size to 2 Mbytes at macOS:
 
-`sudo sysctl -w net.local.stream.sendspace=2000000`  
+`sudo sysctl -w net.local.stream.sendspace=2000000`
 `sudo sysctl -w net.local.stream.recvspace=2000000`
 
 ### 2.3. csmgrd Status
@@ -231,17 +231,17 @@ Use the csmgrstatus utility to see if you can connect to the csmgrd or check the
 | Parameter | Description |
 | --------- | ----------- |
 | uri | Specifies the Prefix of the content to check.|
-| port| The port number to use for the connection. Default value is 9799.|
+| port| The port number to use for the connection. Default value is 9696.|
 | host | Specifies the host identifier (e.g., IP address) on which the connecting csmgrd is running. If omitted, connects to the local csmgrd.|
 
 csmgrstatus displays the information as follows. Multiple contents can be displayed.
 
-> *Connect to "host name csmgrd is running" ("port number")  
-All Connection Num 		: Num. of connected nodes to csmgrd  
-Number of Cached Contents  :*  
-\* *Following information appeared only when content specified "uri" option is cached.  
-  &emsp;Content Name  :  
-  &emsp;Content Size  : (Bytes)  
-  &emsp;Access Count  : Num of content access  
-  &emsp;Freshness     : Remaining time of the content (Sec)  
+> *Connect to "host name csmgrd is running" ("port number")
+All Connection Num 		: Num. of connected nodes to csmgrd
+Number of Cached Contents  :*
+\* *Following information appeared only when content specified "uri" option is cached.
+  &emsp;Content Name  :
+  &emsp;Content Size  : (Bytes)
+  &emsp;Access Count  : Num of content access
+  &emsp;Freshness     : Remaining time of the content (Sec)
   &emsp;Elapsed Time  : Elapsed time since cached (Sec)*

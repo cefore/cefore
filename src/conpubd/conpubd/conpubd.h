@@ -70,7 +70,7 @@ typedef struct {
 	uint16_t 		port_num;
 	char 			local_sock_id[CefC_LOCAL_SOCK_ID_SIZ+1];
 	char			cache_type[ConpubdC_Max_Plugin_Name_Len];
-	char			cache_path[PATH_MAX];
+	char			cache_path[ConpubdC_CachePathSize];
 	uint32_t		purge_interval;
 	uint32_t		cache_default_rct;
 	char			Valid_Alg[128];
@@ -114,7 +114,7 @@ typedef struct {
 
 	/********** CS parameters info. ***********/
 	uint32_t		purge_interval;				/* Interval that to purge cache			*/
-	char			cache_path[PATH_MAX];
+	char			cache_path[ConpubdC_CachePathSize];
 	int				contents_num;
 	uint64_t		contents_capacity;
 

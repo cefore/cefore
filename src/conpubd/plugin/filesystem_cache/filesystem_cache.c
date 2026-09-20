@@ -155,9 +155,7 @@ fsc_cache_item_get (
 	unsigned char* key,							/* content name							*/
 	uint16_t key_size,							/* content name Length					*/
 	uint32_t seqno,								/* chunk num							*/
-	int sock,									/* received socket						*/
-	unsigned char* version,						/* version								*/
-	uint16_t ver_len							/* length of version					*/
+	int sock									/* received socket						*/
 );
 /*--------------------------------------------------------------------------------------
 	Upload content byte steream
@@ -405,9 +403,7 @@ fsc_cache_item_get (
 	unsigned char* key,							/* content name							*/
 	uint16_t key_size,							/* content name Length					*/
 	uint32_t seqno,								/* chunk num							*/
-	int sock,									/* received socket						*/
-	unsigned char* version,						/* version								*/
-	uint16_t ver_len							/* length of version					*/
+	int sock									/* received socket						*/
 ) {
 
 	CsmgrT_Stat* rcd = NULL;
@@ -430,9 +426,6 @@ fsc_cache_item_get (
 	struct timeval tv;
 	static unsigned char*	page_cob_buf = NULL;
 	int			rcdsize;
-	int			update_ver = 1;
-	static uint16_t red_ver_len = 0;
-	static unsigned char red_version[PATH_MAX] = {0};
 
 #ifdef CefC_Debug
 	conpubd_dbg_write (CefC_Dbg_Finest, "Incoming Interest : seqno = %u\n", seqno);
@@ -464,9 +457,9 @@ fsc_cache_item_get (
 
 	if (nowt > rcd->tx_time) {
 		rcd->tx_seq = 0;
-		rcd->tx_num = -1;
+		rcd->tx_num = 0;
 	}
-	if (rcd->tx_num ==-1) {
+	if (rcd->tx_num < 1) {
 		send_cob_f = 1;
 	} else {
 		if (seqno >= rcd->tx_seq && seqno < (rcd->tx_seq + rcd->tx_num)) {
@@ -490,22 +483,16 @@ fsc_cache_item_get (
 	page_index = (int)(seqno / FscC_Page_Cob_Num/FscC_File_Page_Num);
 	sprintf (file_path, "%s/%d/%d", cobpub_hdl->fsc_cache_path, (int) rcd->index, page_index);
 
-	if (ver_len) {
-		if (red_ver_len == ver_len &&
-			memcmp (version, red_version, red_ver_len) == 0) {
-			update_ver = 0;
-		}
-	} else {
-		update_ver = 0;
-	}
-
-	if (strcmp (red_file_path, file_path) != 0 || cob_block_index != red_cob_block_index ||
-		(strcmp (red_file_path, file_path) == 0 && update_ver != 0)) {
+	if (strcmp (red_file_path, file_path) != 0 || cob_block_index != red_cob_block_index) {
 		if (page_cob_buf != NULL) {
 			free (page_cob_buf);
 			page_cob_buf = NULL;
 		}
 
+#ifdef CefC_Debug
+conpubd_dbg_write (CefC_Dbg_Finer, "%s(%d) seqno=%u, fopen(%s), cob_block_index=%d\n",
+__func__, __LINE__, seqno, file_path, cob_block_index);
+#endif // CefC_Debug
 		fp = fopen (file_path, "rb");
 		if (fp == NULL) {
 			conpubd_log_write (CefC_Log_Error, "Failed to open the cache file (%s)\n", file_path);
@@ -520,13 +507,6 @@ fsc_cache_item_get (
 			if (rtc != 1) {
 				break;
 			}
-		}
-		if (red_ver_len) {
-			memset (red_version, 0, PATH_MAX);
-		}
-		red_ver_len = ver_len;
-		if (ver_len) {
-			memcpy (red_version, version, ver_len);
 		}
 	} else {
 		fp = NULL;
@@ -794,7 +774,6 @@ fsc_cache_cob_write (
 
 NEXTCOB:
 		free (cobs[index].msg);
-		free (cobs[index].name);
 		index++;
 	}
 

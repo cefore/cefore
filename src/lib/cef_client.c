@@ -65,12 +65,9 @@
  ****************************************************************************************/
 
 static uint64_t nowtus = 0;
-//static char cef_lsock_name[256] = {"/tmp/cef_9896.0"};
-//static char cbd_lsock_name[256] = {"/tmp/cbd_9896.0"};
-static char cef_lsock_name[2048] = {"/tmp/cef_9896.0"};
-static char csmgr_lsock_name[2048] = {"/tmp/csmgr_9799.0"};
-static char cbd_lsock_name[2048] = {"/tmp/cbd_9896.0"};
-static char cef_conf_dir[PATH_MAX*2] = {"/usr/local/cefore"};
+static char cef_lsock_name[PATH_MAX];
+static char cbd_lsock_name[PATH_MAX];
+static char cef_conf_dir[PATH_MAX] = {"/usr/local/cefore"};
 static int  cef_port_num = CefC_Default_PortNum;
 static unsigned char* work_buff = NULL;
 
@@ -99,23 +96,23 @@ cef_client_init (
 ) {
 	char*	wp;
 	FILE* 	fp;
-	char 	file_path[PATH_MAX*2];
-	char	buff[1024];
-	char 	ws[1024];
-	char 	pname[1024];
+	char 	file_path[PATH_MAX];
+	char	buff[BUFSIZ_1K];
+	char 	ws[BUFSIZ_1K];
+	char 	pname[BUFSIZ_1K];
 	char 	lsock_id[CefC_LOCAL_SOCK_ID_SIZ+1] = {"0"};
 	int 	res;
 
 	if (config_file_dir[0] != 0x00) {
-		sprintf (file_path, "%s/cefnetd.conf", config_file_dir);
+		snprintf (file_path, sizeof(file_path), "%s/cefnetd.conf", config_file_dir);
 		strcpy (cef_conf_dir, config_file_dir);
 	} else {
 		wp = getenv (CefC_CEFORE_DIR);
 		if (wp != NULL && wp[0] != 0) {
-			sprintf (file_path, "%s/cefore/cefnetd.conf", wp);
+			snprintf (file_path, sizeof(file_path), "%s/cefore/cefnetd.conf", config_file_dir);
 			sprintf (cef_conf_dir, "%s/cefore", wp);
 		} else {
-			sprintf (file_path, "%s/cefnetd.conf", CefC_CEFORE_DIR_DEF);
+			snprintf (file_path, sizeof(file_path), "%s/cefnetd.conf", CefC_CEFORE_DIR_DEF);
 			strcpy (cef_conf_dir, CefC_CEFORE_DIR_DEF);
 		}
 	}
@@ -132,9 +129,7 @@ cef_client_init (
 	}
 
 	/* Reads and records written values in the cefnetd's config file. */
-	while (fgets (buff, 1023, fp) != NULL) {
-		buff[1023] = 0;
-
+	while (fgets (buff, sizeof(buff), fp) != NULL) {
 		if (buff[0] == 0x23/* '#' */) {
 			continue;
 		}
@@ -304,9 +299,10 @@ cef_client_connect (
 }
 CefT_Client_Handle 								/* created client handle 				*/
 cef_client_connect_to_csmgrd (
-	void
+	int port_csmgrd
 ) {
 	CefT_Connect* conn;
+	char csmgr_lsock_name[PATH_MAX];
 	struct sockaddr_un saddr;
 	size_t saddr_len;
 	int sock;
@@ -316,6 +312,7 @@ cef_client_connect_to_csmgrd (
 		cef_log_write (CefC_Log_Error, "%s (socket:%s)\n", __func__, strerror(errno));
 		return ((CefT_Client_Handle) NULL);
 	}
+	snprintf(csmgr_lsock_name, PATH_MAX, "/tmp/csmgr_%u.0", port_csmgrd);
 
 	/* initialize sockaddr_un 		*/
 	memset (&saddr, 0, sizeof (saddr));
@@ -555,6 +552,18 @@ cef_client_name_reg (
 	const unsigned char* name,					/* Name (not URI)						*/
 	uint16_t name_len							/* length of the Name					*/
 ) {
+	cef_client_name_reg_with_validation (fhdl, func, name, name_len, NULL);
+
+	return;
+}
+void
+cef_client_name_reg_with_validation (
+	CefT_Client_Handle fhdl, 					/* client handle						*/
+	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
+	const unsigned char* name,					/* Name (not URI)						*/
+	uint16_t name_len,							/* length of the Name					*/
+	CefT_Valid_Alg_TLVs* alg					/* Validation TLV						*/
+) {
 	CefT_Connect* conn = (CefT_Connect*) fhdl;
 	CefT_CcnMsg_OptHdr opt;				/* parameters to Option Header(s)		*/
 	CefT_CcnMsg_MsgBdy tlvs;
@@ -569,6 +578,10 @@ cef_client_name_reg (
 	tlvs.hoplimit 		= 1;
 	opt.lifetime_f = 1;
 	opt.lifetime 	= 1;
+
+	if (alg != NULL) {
+		memcpy (&tlvs.alg, alg, sizeof(CefT_Valid_Alg_TLVs));
+	}
 
 	if (func == CefC_T_OPT_APP_REG) {
 		opt.app_reg_f = CefC_T_OPT_APP_REG;
@@ -598,6 +611,18 @@ cef_client_prefix_reg (
 	const unsigned char* name,					/* Name (not URI)						*/
 	uint16_t name_len							/* length of the Name					*/
 ) {
+	cef_client_prefix_reg_with_validation (fhdl, func, name, name_len, NULL);
+
+	return;
+}
+void
+cef_client_prefix_reg_with_validation (
+	CefT_Client_Handle fhdl, 					/* client handle						*/
+	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
+	const unsigned char* name,					/* Name (not URI)						*/
+	uint16_t name_len,							/* length of the Name					*/
+	CefT_Valid_Alg_TLVs* alg					/* Validation TLV						*/
+) {
 	CefT_Connect* conn = (CefT_Connect*) fhdl;
 	CefT_CcnMsg_OptHdr opt;				/* parameters to Option Header(s)		*/
 	CefT_CcnMsg_MsgBdy tlvs;
@@ -617,6 +642,10 @@ cef_client_prefix_reg (
 		opt.app_reg_f = CefC_T_OPT_APP_REG_P;		/* for partial match */
 	} else {
 		opt.app_reg_f = CefC_T_OPT_APP_DEREG;
+	}
+
+	if (alg != NULL) {
+		memcpy (&tlvs.alg, alg, sizeof(CefT_Valid_Alg_TLVs));
 	}
 
 	len = cef_frame_interest_create (buff, &opt, &tlvs);
@@ -1054,13 +1083,6 @@ cef_client_payload_get_with_info (
 	app_frame->name = &(app_frame->data_entity[0]);
 	app_frame->payload = &(app_frame->data_entity[pm.name_len]);
 
-	app_frame->version_f = pm.org.version_f;
-	app_frame->ver_len   = pm.org.version_len;
-	if (app_frame->ver_len) {
-		memcpy (app_frame->ver_value, pm.org.version_val, app_frame->ver_len);
-	} else {
-		app_frame->ver_value[0] = 0x00;
-	}
 	app_frame->putverify_f = pm.org.putverify_f;
 	app_frame->putverify_msgtype = pm.org.putverify_msgtype;
 
@@ -1169,14 +1191,6 @@ cef_client_request_get_with_info (
 	app_request->name_len = pm.name_len;
 	app_request->total_segs_len =
 		cef_frame_get_len_total_namesegments (pm.name, pm.name_len);
-
-	app_request->version_f = pm.org.version_f;
-	app_request->ver_len   = pm.org.version_len;
-	if (app_request->ver_len) {
-		memcpy (app_request->ver_value, pm.org.version_val, app_request->ver_len);
-	} else {
-		app_request->ver_value[0] = 0x00;
-	}
 
 	app_request->hdr_org_len   = poh.org_len;
 	if (0 < app_request->hdr_org_len) {
@@ -1329,7 +1343,7 @@ cef_client_trim_line_string (
 	char* p2,									/* name string after trimming			*/
 	char* p3									/* value string after trimming			*/
 ) {
-	char ws[1024];
+	char ws[BUFSIZ_1K];
 	char* wp = ws;
 	char* rp = p2;
 	int equal_f = -1;

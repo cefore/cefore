@@ -45,6 +45,7 @@
 #include <cefore/cef_csmgr.h>
 #include <cefore/cef_csmgr_stat.h>
 
+#include <cefore/cef_frame.h>
 #include <cefore/cef_ccninfo.h>
 #include <cefore/cef_log.h>
 
@@ -53,7 +54,6 @@
  ****************************************************************************************/
 
 #define CsmgrdC_Max_Plugin_Name_Len 	64
-#define CsmgrdC_Key_Max 				1024
 
 #define CsmgrC_Buff_Size 				10000000
 #define CsmgrC_Buff_Max 				100000000
@@ -64,6 +64,20 @@
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
+
+typedef struct CsmgrdT_Plugin_APIparam_get {
+	unsigned char name[CefC_NAME_MAXLEN];		/* content name							*/
+	uint16_t name_len;							/* content name Length					*/
+	uint32_t seqno;								/* chunk num							*/
+	int KeyIdRestr_num;							/* number of KeyIdRestrictions			*/
+	CefT_KeyidData KeyIdRestr[CefC_MAX_KEYID_NUM];  /* KeyIdRestr list					*/
+	uint16_t ObjHashRestr_len;					/* Length of ObjHashRestriction			*/
+	CefT_HashData ObjHashRestr;					/* HashData of ObjHashRestriction		*/
+	unsigned char csact_val[BUFSIZ_256];		/* Plain Text							*/
+	uint16_t csact_len;							/* length of Plain Text					*/
+	unsigned char signature_val[CefC_S_PUBLICKEY];		/* signature					*/
+	uint16_t signature_len;						/* length of signature					*/
+} CsmgrdT_Plugin_APIparam_get;
 
 typedef struct {
 
@@ -77,10 +91,12 @@ typedef struct {
 	uint64_t		cache_time;					/* Cache time							*/
 	uint64_t		expiry;						/* Expiry								*/
 	struct in_addr	node;						/* Node address							*/
+	uint16_t	 	keyid_len;					/* Length of KeyId						*/
+	CefT_HashData 	keyid;						/* KeyId								*/
+	uint16_t		MsgHash_len;				/* Length of OPT_MSGHASH				*/
+	CefT_HashData 	MsgHash;					/* MsgHashData							*/
 
 	uint64_t		ins_time;					/* Insert time(use mem cache only)		*/
-	unsigned char*	version;					/* version								*/
-	uint16_t		ver_len;					/* Length of version					*/
 } CsmgrdT_Content_Entry;
 
 typedef struct CsmgrdT_Plugin_Interface {
@@ -95,8 +111,7 @@ typedef struct CsmgrdT_Plugin_Interface {
 	void (*expire_check)(void);
 
 	/* Get Cob Entry */
-	int (*cache_item_get)(unsigned char*, uint16_t, uint32_t, int, unsigned char*, uint16_t,
-						  unsigned char*, uint16_t, unsigned char*, uint16_t);
+	int (*cache_item_get)(int sock, CsmgrdT_Plugin_APIparam_get *);
 
 	/* Put contents */
 	int (*cache_item_puts)(unsigned char*, int);
@@ -105,6 +120,10 @@ typedef struct CsmgrdT_Plugin_Interface {
 	void (*ac_cnt_inc)(unsigned char*, uint16_t, uint32_t);
 
 	int (*content_lifetime_get) (unsigned char*, uint16_t, uint32_t*, uint32_t*, uint8_t);
+
+	int (*cobhash_status_get) ( unsigned char*, uint32_t );
+
+	int (*index_status_get) ( unsigned char*, uint32_t );
 
 } CsmgrdT_Plugin_Interface;
 
@@ -166,7 +185,7 @@ typedef struct CsmgrdT_Lib_Interface {
 /****************************************************************************************
  Function Declarations
  ****************************************************************************************/
-#define CSMGRD_SET_CALLBACKS( fc_init, fc_destroy, fc_expire_check, fc_cache_item_get, fc_cache_item_puts, fc_ac_cnt_inc, fc_lifetime_get ) \
+#define CSMGRD_SET_CALLBACKS( fc_init, fc_destroy, fc_expire_check, fc_cache_item_get, fc_cache_item_puts, fc_ac_cnt_inc, fc_lifetime_get, fc_cobhash_status_get, fc_index_status_get) \
 	do { \
 		cs_in->init = (fc_init); \
 		cs_in->destroy = (fc_destroy); \
@@ -175,6 +194,8 @@ typedef struct CsmgrdT_Lib_Interface {
 		cs_in->cache_item_puts = (fc_cache_item_puts); \
 		cs_in->ac_cnt_inc = (fc_ac_cnt_inc); \
 		cs_in->content_lifetime_get = (fc_lifetime_get); \
+		cs_in->cobhash_status_get = (fc_cobhash_status_get); \
+		cs_in->index_status_get = (fc_index_status_get); \
 	} while (0)
 
 /*--------------------------------------------------------------------------------------
@@ -196,21 +217,38 @@ csmgrd_lib_api_get (
 	CsmgrdT_Lib_Interface* algo_apis
 );
 /*--------------------------------------------------------------------------------------
-	Creates tye key from name and chunk number
-----------------------------------------------------------------------------------------*/
-int												/* length of the created key 			*/
-csmgrd_key_create (
-	CsmgrdT_Content_Entry* entry,
-	unsigned char* key
-);
-/*--------------------------------------------------------------------------------------
 	Concatenates name and chunk number
 ----------------------------------------------------------------------------------------*/
 int												/* length of the created key 			*/
 csmgrd_name_chunknum_concatenate (
 	const unsigned char* name,
 	uint16_t name_len,
-	uint32_t chunknum,
+	uint32_t chunk_num,
+	unsigned char* key
+);
+
+int
+name_index_key (
+	const unsigned char* name,
+	uint16_t name_len,
+	uint32_t chunk_num,
+	unsigned char* key
+);
+
+int
+keyid_index_key (
+	const unsigned char* name,
+	uint16_t name_len,
+	const CefT_HashData* keyid,
+	uint16_t keyid_len,
+	uint32_t chunk_num,
+	unsigned char* key
+);
+
+int
+MsgHash_index_key (
+	const CefT_HashData* MsgHash,
+	uint16_t MsgHash_len,
 	unsigned char* key
 );
 
@@ -273,6 +311,7 @@ csmgrd_dbg_buff_write (
 	const unsigned char* buff,
 	int len
 );
+
 #endif // CefC_Debug
 
 /*--------------------------------------------------------------------------------------
@@ -313,7 +352,7 @@ csmgrd_cache_update_expiry (
 /*--------------------------------------------------------------------------------------
 	Verification for UCINC
 ----------------------------------------------------------------------------------------*/
-int 
+int
 csmgrd_cob_verify_ucinc (
 	CsmgrT_Stat_Handle hdl,
 	const unsigned char* name,

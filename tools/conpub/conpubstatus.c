@@ -43,6 +43,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <limits.h>
+#include <cefore/cef_define.h>
 #include <cefore/cef_csmgr.h>
 #include <cefore/cef_client.h>
 
@@ -326,18 +328,17 @@ output_result (
 	time_t 			expiry;
 	time_t 			pending;
 	uint64_t 		interests;
-	unsigned char ver[2048];
-	unsigned char name[2048];
-	unsigned char path[2048];
-	char uri[2048];
+	unsigned char name[CefC_NAME_MAXLEN];
+	unsigned char path[PATH_MAX];
+	char uri[CefC_NAME_MAXLEN];
 	struct tm* timeptr;
-	char date_str[64] = {'\0'};
-	char expiry_str[64] = {'\0'};
-	char pending_str[64] = {'\0'};
+	char date_str[BUFSIZ_64] = {'\0'};
+	char expiry_str[BUFSIZ_64] = {'\0'};
+	char pending_str[BUFSIZ_64] = {'\0'};
 	int rec_idx = 1;
 
 	fprintf (ofp,
-		"\nindex   name   version   file   date   expiry   interests   pending\n");
+		"\nindex   name   file   date   expiry   interests   pending\n");
 	if (memcmp (frame, "NONE", strlen("NONE")) == 0) {
 		frame_size = 0;
 	}
@@ -354,18 +355,6 @@ output_result (
 		}
 		memcpy (name, &frame[index], length);
 		cef_frame_conversion_name_to_string (name, length, uri, "ccn");
-		index += length;
-
-		/* Obtains Version */
-		rsp_hdr = (struct CefT_Csmgr_CnpbStatus_TL*) &frame[index];
-		type   = ntohs (rsp_hdr->type);
-		length = ntohs (rsp_hdr->length);
-		index += sizeof (struct CefT_Csmgr_CnpbStatus_TL);
-		if (type != CefC_CnpbStatus_Version) {
-			return;
-		}
-		memcpy (ver, &frame[index], length);
-		ver[length] = 0x00;
 		index += length;
 
 		/* Obtains Path 			*/
@@ -390,7 +379,7 @@ output_result (
 		}
 		date = cef_client_ntohb (cmd_64_tlv->value);
 		timeptr = localtime (&date);
-		strftime (date_str, 64, "%Y-%m-%d %H:%M", timeptr);
+		strftime (date_str, sizeof(date_str), "%Y-%m-%d %H:%M", timeptr);
 
 		/* Obtains Expiry 			*/
 		cmd_64_tlv = (struct conpub_rsp_value64*) &frame[index];
@@ -402,7 +391,7 @@ output_result (
 		}
 		expiry = cef_client_ntohb (cmd_64_tlv->value);
 		timeptr = localtime (&expiry);
-		strftime (expiry_str, 64, "%Y-%m-%d %H:%M", timeptr);
+		strftime (expiry_str, sizeof(expiry_str), "%Y-%m-%d %H:%M", timeptr);
 
 		/* Obtains Pending timer 			*/
 		cmd_64_tlv = (struct conpub_rsp_value64*) &frame[index];
@@ -414,9 +403,9 @@ output_result (
 		}
 		pending = cef_client_ntohb (cmd_64_tlv->value);
 		if (pending) {
-			sprintf(pending_str, "%lu Sec", pending);
+			snprintf(pending_str, sizeof(pending_str), "%lu Sec", pending);
 		} else {
-			sprintf(pending_str, "%s", "-");
+			snprintf(pending_str, sizeof(pending_str), "%s", "-");
 		}
 
 		/* Obtains Interests 			*/
@@ -430,8 +419,8 @@ output_result (
 		interests = cef_client_ntohb (cmd_64_tlv->value);
 
 		/* Outputs a record 			*/
-		fprintf (ofp, "%d  %s\t%s\t%s\t%s\t%s\t"
-			, rec_idx, uri, ver, path, date_str, expiry_str);
+		fprintf (ofp, "%d  %s\t%s\t%s\t%s\t"
+			, rec_idx, uri, path, date_str, expiry_str);
 
 		fprintf (ofp, "   "FMTU64"\t", interests);
 		fprintf (ofp, "\t%s\n", pending_str);
@@ -450,9 +439,9 @@ print_usage (
 	fprintf (ofp,
 		"\n\nUsage: conpubstatus\n\n"
 		"  conpubstatus [-h host] [-p port]\n\n"
-		"  host   Specify the host identifier (e.g., IP address) on which csmgrd \n"
+		"  host   Specify the host identifier (e.g., IP address) on which conpubd \n"
 		"         is running. The default value is localhost (i.e., 127.0.0.1).\n"
-		"  port   Port number to connect csmgrd. The default value is 9799.\n\n"
+		"  port   Port number to connect conpubd. The default value is 9696.\n\n"
 	);
 	return;
 }

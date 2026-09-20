@@ -27,9 +27,9 @@
 # SUCH DAMAGE.
 #
 
-EXTRA_DIST=cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh get_memory_info.sh get_memory_info_macos.sh
-SCRIPTSRC=cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh get_memory_info.sh get_memory_info_macos.sh
-CEF_UTIL=cefnetdstart cefnetdstop cefstatus cefroute
+EXTRA_DIST=cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh get_memory_info.sh get_memory_info_macos.sh cefvalidkey.sh
+SCRIPTSRC=cefnetdstart.sh cefnetdstop.sh cefstatus.sh cefroute.sh get_memory_info.sh get_memory_info_macos.sh cefvalidkey.sh
+CEF_UTIL=cefnetdstart cefnetdstop cefstatus cefroute cefvalidkey
 CEF_MEM_UTIL = get_memory_info.sh
 CEF_MEM_UTIL_MACOS = get_memory_info_macos.sh
 SH=/bin/sh
@@ -79,6 +79,15 @@ cefstatus: cefstatus.sh
 	fi
 
 cefroute: cefroute.sh
+	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
+		echo "#!"$(SH) > $@; \
+		cat $(@:=.sh) >> $@; \
+		chmod +x $@; \
+	else \
+		echo "***" You may need to rerun ./configure in the src directory. >&2; \
+	fi
+
+cefvalidkey: cefvalidkey.sh
 	@if [ -x $(SH) ] && [ -f $(@:=.sh) ]; then \
 		echo "#!"$(SH) > $@; \
 		cat $(@:=.sh) >> $@; \

@@ -62,6 +62,14 @@
 #define CefC_Arg_Route_Pro_TCP		"tcp"
 #define CefC_Arg_Route_Pro_UDP		"udp"
 #define CefC_StatusRspWait			200000		/* usec */
+#define CefC_Arg_ValidKey			"validkey"
+#define CefC_Arg_ValidKey_Ope_Add	"add"
+#define CefC_Arg_ValidKey_Ope_Del	"del"
+#define CefC_Arg_ValidKey_Ope_Show	"show"
+#define CefC_Arg_ValidKey_Use_Pubkey	"pubkey"
+#define CefC_Arg_ValidKey_Use_Keyid		"keyid"
+#define CefC_Arg_ValidKey_Opt_HasgType	"--hashtype"
+#define CefC_Arg_ValidKey_Opt_KeyidLen	"--keylength"
 
 /****************************************************************************************
  Structures Declaration
@@ -78,6 +86,14 @@
  ****************************************************************************************/
 static int
 cef_ctrl_create_route_msg (
+	unsigned char* buff,
+	int argc,
+	char** argv,
+	char* user_name
+);
+
+static int
+cef_ctrl_create_validkey_msg (
 	unsigned char* buff,
 	int argc,
 	char** argv,
@@ -217,6 +233,15 @@ int main (
 				printerr("[--fibv4udp-only] has no parameter.\n");
 				exit (1);
 			}
+		} else if (strcmp (work_arg, "--fibstatedown-only") == 0) {			//Secret option
+			if (strcmp (argv[1], CefC_Arg_Status) == 0) {
+				output_opt_f |= CefC_Ctrl_StatusOpt_FibOnly;
+				output_opt_f |= CefC_Ctrl_StatusOpt_FibInetOnly;
+				output_opt_f |= CefC_Ctrl_StatusOpt_FibStateDownOnly;
+			} else {
+				printerr("[--fibstatedown-only] has no parameter.\n");
+				exit (1);
+			}
 #endif //((defined CefC_Develop))
 		} else if (strcmp (work_arg, "-p") == 0) {
 			if (i + 1 == argc) {
@@ -232,7 +257,17 @@ int main (
 			fprintf (stdout, "%s\n", CEFORE_VERSION);
 			exit (1);
 		} else {
-			if (work_arg[0] == '-') {
+			if ((strcmp(work_arg, CefC_Arg_ValidKey_Opt_HasgType) == 0) ||
+				(strcmp(work_arg, CefC_Arg_ValidKey_Opt_KeyidLen) == 0)) {
+
+				if (i + 1 == argc) {
+					printerr("[%s] has no parameter.\n", work_arg);
+					exit(1);
+				}
+
+				i++;
+
+			} else if (work_arg[0] == '-') {
 				printerr("unknown option is specified.\n");
 				exit (1);
 			}
@@ -359,6 +394,55 @@ int main (
 		} else {
 			printerr("cefnetd does not send response.\n");
 		}
+	} else if (strcmp (argv[1], CefC_Arg_ValidKey) == 0) {
+		sprintf ((char*) buff, "%s%s", CefC_Ctrl, CefC_Ctrl_ValidKey);
+		len = cef_ctrl_create_validkey_msg (
+			buff + CefC_Ctrl_Len + CefC_Ctrl_ValidKey_Len,
+			argc - (dir_path_f * 2 + port_num_f * 2),
+			argv,
+			launched_user_name);
+
+		if (len <= 0) {
+			cef_client_close(fhdl);
+			exit(1);
+		} else {
+			cef_client_message_input (
+				fhdl, buff,
+				CefC_Ctrl_Len + CefC_Ctrl_ValidKey_Len + len);
+
+			usleep (CefC_StatusRspWait);
+			int ff = 1;
+			int resped = 0;
+
+			while (1) {
+				if (ff == 1) {
+					ff = 0;
+					for (int i = 0; i < 1200000000 / CefC_StatusRspWait; i++) { //600sec
+
+						res = cef_client_read(fhdl, rsp_msg, CefC_Max_Length);
+
+						if (res != 0) {
+							break;
+						}
+						usleep (CefC_StatusRspWait);
+					}
+				} else {
+					res = cef_client_read_core (fhdl, rsp_msg, CefC_Max_Length, 10);    // timeout=10ms
+				}
+
+				if (res > 0) {
+					resped = 1;
+					rsp_msg[res] = 0x00;
+					fprintf (stdout, "%s", (char*) rsp_msg);
+				} else {
+					if (resped == 0) {
+						printerr("cefnetd does not send response.\n");
+					}
+				}
+
+				break;
+			}
+		}
 	}
 	cef_client_close (fhdl);
 
@@ -433,8 +517,8 @@ cef_ctrl_create_route_msg (
 
 	/* check keyid */
 	if (strncmp (argv[i], CefC_Fib_Keyid_Identifier, strlen(CefC_Fib_Keyid_Identifier)) == 0) {
-		if (strlen (argv[i]) != strlen(CefC_Fib_Keyid_Identifier) + CefC_Fib_Keyid_Len * 2) {
-			printerr("KeyID is invalid length, cefore support only %d bytes KeyID.\n", CefC_Fib_Keyid_Len);
+		if (strlen (argv[i]) != strlen(CefC_Fib_Keyid_Identifier) + CefC_HashVal_Len * 2) {
+			printerr("KeyID is invalid length, cefore support only %d bytes KeyID.\n", CefC_HashVal_Len);
 			return (-1);
 		}
 		keyid_f = i;
@@ -491,7 +575,7 @@ cef_ctrl_create_route_msg (
 	if (keyid_f > 0) {
 		memcpy (buff + index, CefC_Fib_Keyid_Identifier, strlen(CefC_Fib_Keyid_Identifier));
 		index += strlen(CefC_Fib_Keyid_Identifier);
-		for (int j = 0; j < CefC_Fib_Keyid_Len; j++) {
+		for (int j = 0; j < CefC_HashVal_Len; j++) {
 			unsigned int x;
 			sscanf((char *)&argv[keyid_f][strlen(CefC_Fib_Keyid_Identifier) + j * 2], "%02x", &x);
 			buff[index] = x;
@@ -592,4 +676,183 @@ cef_dbg_write (CefC_Dbg_Finer, "host=%s, addr=%s\n", host, addr_str);
 	}
 
 	return (index);
+}
+
+static int
+cef_ctrl_create_validkey_msg (
+	unsigned char* buff,
+	int argc,
+	char** argv,
+	char* user_name
+) {
+	int index = 0;
+	int i = 3; /* argv[2]=add/del/show */
+	uint8_t op;
+	uint8_t type = 0;
+	uint16_t hashtype = CefC_T_SHA_256;
+	uint16_t keylength = CefC_ValidKey_KeyIdLen32;
+	size_t target_len;
+	char* target = NULL;
+
+	/* check minimum args */
+	if (argc < 3) {
+		printerr("Invalid cefvalidkey parameters.\n");
+		return (-1);
+	}
+
+	/* operation */
+	if (strcmp(argv[2], CefC_Arg_ValidKey_Ope_Add) == 0) {
+		op = CefC_ValidKey_OPE_ADD;
+	} else if (strcmp(argv[2], CefC_Arg_ValidKey_Ope_Del) == 0) {
+		op = CefC_ValidKey_OPE_DEL;
+	} else if (strcmp(argv[2], CefC_Arg_ValidKey_Ope_Show) == 0) {
+		op = CefC_ValidKey_OPE_SHOW;
+	} else {
+		printerr("Unknown cefvalidkey operation type [%s].\n", argv[2]);
+		return (-1);
+	}
+
+	/* user name */
+	memcpy(buff + index, user_name, CefC_Ctrl_User_Len);
+	index += CefC_Ctrl_User_Len;
+
+	/* operation */
+	buff[index] = op;
+	index += sizeof(uint8_t);
+
+	/* SHOW only */
+	if (op == CefC_ValidKey_OPE_SHOW) {
+		return index;
+	}
+
+	if (op == CefC_ValidKey_OPE_ADD) {
+		/* key type (pubkey or keyid) */
+		if (argc < 5) {
+			printerr("Missing cefvalidkey arguments.\n");
+			return (-1);
+		}
+
+		if (strcmp(argv[i], CefC_Arg_ValidKey_Use_Pubkey) == 0) {
+			type = CefC_ValidKey_CMD_TYPE_PUBKEY;
+		} else if (strcmp(argv[i], CefC_Arg_ValidKey_Use_Keyid) == 0) {
+			type = CefC_ValidKey_CMD_TYPE_KEYID;
+		} else {
+			printerr("Unknown cefvalidkey add type [%s].\n", argv[i]);
+			return (-1);
+		}
+
+		i++;
+
+	} else if (op == CefC_ValidKey_OPE_DEL) {
+		type = CefC_ValidKey_CMD_TYPE_KEYID;
+	}
+
+	buff[index] = type;
+	index += sizeof(uint8_t);
+
+	/* =========================
+	 * target value
+	 *  pubkey : file path
+	 *  keyid  : keyid string
+	 * ========================= */
+	target = argv[i];
+	i++;
+
+	if ((type == CefC_ValidKey_CMD_TYPE_KEYID) && (strlen(target) > 2) && (target[0] == '0') && (tolower(target[1]) == 'x')) {
+		target += 2;
+	}
+
+	/* optional args */
+	while (i < argc) {
+
+		if (strcmp(argv[i], CefC_Arg_ValidKey_Opt_HasgType) == 0) {
+
+			if ((i + 1) >= argc) {
+				printerr("--hashtype has no parameter.\n");
+				return (-1);
+			}
+
+			if (strcmp(argv[i + 1], CefC_Valid_HashStr_SHA256) == 0) {
+				hashtype = CefC_T_SHA_256;
+
+			} else if (strcmp(argv[i + 1], CefC_Valid_HashStr_SHA512) == 0) {
+				hashtype = CefC_T_SHA_512;
+
+			} else {
+				printerr("Unknown hash type [%s].\n", argv[i + 1]);
+				return (-1);
+			}
+
+			i += 2;
+
+		} else if (strcmp(argv[i], CefC_Arg_ValidKey_Opt_KeyidLen) == 0) {
+
+			if ((i + 1) >= argc) {
+				printerr("--keylength has no parameter.\n");
+				return (-1);
+			}
+
+			keylength = (uint16_t) atoi(argv[i + 1]);
+
+			if ((keylength != CefC_ValidKey_KeyIdLen32) && (keylength != CefC_ValidKey_KeyIdLen64)) {
+				printerr("Unsupported keylength.\n");
+				return (-1);
+			}
+
+			i += 2;
+
+		} else {
+			printerr("Unknown option [%s]\n", argv[i]);
+			return (-1);
+		}
+	}
+
+	/* target */
+	if (type == CefC_ValidKey_CMD_TYPE_KEYID) {
+		if (op == CefC_ValidKey_OPE_DEL) {
+			size_t hexlen = strlen(target);
+
+			if (hexlen == (CefC_ValidKey_KeyIdLen32 * 2)) {
+				keylength = CefC_ValidKey_KeyIdLen32;
+
+			} else if (hexlen == (CefC_ValidKey_KeyIdLen64 * 2)) {
+				keylength = CefC_ValidKey_KeyIdLen64;
+
+			} else {
+				printerr("Invalid KeyID length. supported lengths are %u or %u hex chars.\n", CefC_ValidKey_KeyIdLen32 * 2, CefC_ValidKey_KeyIdLen64 * 2);
+				return (-1);
+			}
+
+		} else {
+			/* validate keyid length */
+			if (strlen(target) != (keylength * 2)) {
+				printerr("Invalid KeyID length. required=%u hex chars.\n", keylength * 2);
+				return (-1);
+			}
+		}
+	} else if (type == CefC_ValidKey_CMD_TYPE_PUBKEY) {
+		/* validate pubkey path length */
+		if (strlen(target) >= PATH_MAX) {
+			printerr("Pubkey path is too long.\n");
+			return (-1);
+		}
+	}
+
+	/* hashtype */
+	memcpy(buff + index, &hashtype, sizeof(hashtype));
+	index += sizeof(hashtype);
+
+	/* keylength */
+	memcpy(buff + index, &keylength, sizeof(keylength));
+	index += sizeof(keylength);
+
+	target_len = strlen(target);
+
+	memcpy(buff + index, &target_len, sizeof(uint16_t));
+	index += sizeof(uint16_t);
+
+	memcpy(buff + index, target, target_len);
+	index += target_len;
+
+	return index;
 }

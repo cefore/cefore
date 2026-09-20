@@ -321,17 +321,21 @@ int main (
 
 	/* Set Validation Alglithm */
 	if (params.validf == 1) {
-		tlvs.alg.valid_type = (uint16_t) cef_valid_type_get (params.valid_algo);
+		res = cef_valid_init_ccninfoUSER (conf_path, params.valid_algo, &tlvs.alg.valid_type);
+		if (res != 1) {
+			printerr("Failed to initialize validation.\n");
+			exit (1);
+		}
 		if (tlvs.alg.valid_type == CefC_T_ALG_INVALID) {
 			printerr ("-v has the invalid parameter %s\n", params.valid_algo);
 			exit (1);
 		}
-		res = cef_valid_init_ccninfoUSER (conf_path, tlvs.alg.valid_type);
-		if (res < 0) {
+	} else {
+		res = cef_valid_init (conf_path);
+		if (res != 1) {
+			printerr("Failed to initialize validation.\n");
 			exit (1);
 		}
-	} else {
-		cef_valid_init(conf_path);
 	}
 
 	printf ("%s to %s with "	, name_exec, params.prefix);

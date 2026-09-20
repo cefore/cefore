@@ -55,10 +55,9 @@
  ****************************************************************************************/
 #define ConpubdC_Max_Sock_Num		32					/* Max number of TCP peer		*/
 
-#define CefC_Name_Max_Length	2048
-
 #define ConpubdC_Max_Plugin_Name_Len 	64
-#define ConpubdC_Key_Max 				1024
+
+#define	ConpubdC_CachePathSize	(PATH_MAX-BUFSIZ_128)
 
 #define ConpubC_Buff_Num 				65535
 
@@ -79,7 +78,7 @@ typedef struct ConpubdT_Plugin_Interface {
 	void (*expire_check)(void);
 
 	/* Get Cob Entry */
-	int (*cache_item_get)(unsigned char*, uint16_t, uint32_t, int, unsigned char*, uint16_t);
+	int (*cache_item_get)(unsigned char*, uint16_t, uint32_t, int);
 
 	/* Put contents */
 //JK	int (*cache_item_puts)(	ConpubdT_Content_Entry*, int);
@@ -110,21 +109,21 @@ typedef struct {
 	char				peer_id_str[ConpubdC_Max_Sock_Num][NI_MAXHOST];
 	char				peer_sv_str[ConpubdC_Max_Sock_Num][NI_MAXSERV];
 	int 				peer_num;
-	
+
 	/********** Local listen socket 	***********/
 	int 				local_listen_fd;
 	char 				local_sock_name[1024];
 	int					local_peer_sock;
-	
+
 	/********** load functions			***********/
 	ConpubdT_Plugin_Interface* cs_mod_int;		/* plugin interface						*/
 	char			cache_type[ConpubdC_Max_Plugin_Name_Len];
 												/* plugin library name					*/
 	void*			mod_lib;					/* plugin library						*/
-	
+
 	/********** CS parameters info. ***********/
 	uint32_t		purge_interval;				/* Interval that to purge cache			*/
-	char			cache_path[PATH_MAX];
+	char			cache_path[ConpubdC_CachePathSize];
 	int				contents_num;
 	uint64_t		contents_capacity;
 	char			restore_path[PATH_MAX];
@@ -143,10 +142,10 @@ typedef struct {
 	int 		cefnetd_port_num;
 	int			cefnetd_sock;
 	uint64_t 	cefnetd_reconnect_time;
-	
+
 	/********** Published info.  ***********/
 	int				published_contents_num;
-	
+
 } CefT_Conpubd_Handle;
 
 typedef struct {
@@ -154,11 +153,7 @@ typedef struct {
 	/********** Receive Content Object		***********/
 	unsigned char*	msg;						/* Message								*/
 	uint16_t		msg_len;					/* Message length						*/
-#ifndef CefC_Db
-	unsigned char*	name;						/* Content name							*/
-#else
 	unsigned char	name[CefC_NAME_MAXLEN];		/* Content name							*/
-#endif
 	uint16_t		name_len;					/* Content name length					*/
 	uint16_t		pay_len;					/* Payload length						*/
 	uint32_t		chunk_num;					/* Chunk num							*/
@@ -171,10 +166,8 @@ typedef struct {
 /* Content management entry */
 typedef struct _CefT_Cpubcnt_Hdl {
 
-	unsigned char 		name[CefC_Name_Max_Length];
+	unsigned char 		name[CefC_NAME_MAXLEN];
 	int 				name_len;
-	unsigned char 		version[CefC_Name_Max_Length];
-	int 				version_len;
 	char 				file_path[PATH_MAX];
 	time_t 				date;					/* date of upload */
 	time_t 				expiry;
@@ -246,21 +239,13 @@ conpubd_plugin_cob_msg_send (
 );
 
 /*--------------------------------------------------------------------------------------
-	Creates tye key from name and chunk number
-----------------------------------------------------------------------------------------*/
-int												/* length of the created key 			*/
-conpubd_key_create (
-	ConpubdT_Content_Entry* entry,
-	unsigned char* key
-);
-/*--------------------------------------------------------------------------------------
 	Concatenates name and chunk number
 ----------------------------------------------------------------------------------------*/
 int												/* length of the created key 			*/
 conpubd_name_chunknum_concatenate (
 	const unsigned char* name,
 	uint16_t name_len,
-	uint32_t chunknum,
+	uint32_t chunk_num,
 	unsigned char* key
 );
 

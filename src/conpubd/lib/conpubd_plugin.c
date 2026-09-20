@@ -164,47 +164,33 @@ conpubd_plugin_cob_msg_send (
 
 
 /*--------------------------------------------------------------------------------------
-	Creates tye key from name and chunk number
-----------------------------------------------------------------------------------------*/
-int												/* length of the created key 			*/
-conpubd_key_create (
-	ConpubdT_Content_Entry* entry,
-	unsigned char* key
-) {
-	uint32_t chunk_num;
-
-	memcpy (&key[0], entry->name, entry->name_len);
-	key[entry->name_len] 		= 0x00;
-	key[entry->name_len + 1] 	= 0x10;
-	key[entry->name_len + 2] 	= 0x00;
-	key[entry->name_len + 3] 	= 0x04;
-	chunk_num = htonl (entry->chunk_num);
-	memcpy (&key[entry->name_len + 4], &chunk_num, sizeof (uint32_t));
-
-	return (entry->name_len + 4 + sizeof (uint32_t));
-}
-
-/*--------------------------------------------------------------------------------------
 	Concatenates name and chunk number
 ----------------------------------------------------------------------------------------*/
 int												/* length of the created key 			*/
 conpubd_name_chunknum_concatenate (
 	const unsigned char* name,
 	uint16_t name_len,
-	uint32_t chunknum,
+	uint32_t chunk_num,
 	unsigned char* key
 ) {
-	uint32_t no_chunknum;
+	uint16_t ftvh_chunk = CefC_T_CHUNK;
+	uint16_t chunk_len = sizeof (uint32_t);
+	int index = 0;
+	struct tlv_hdr fld_thdr;
 
-	memcpy (&key[0], name, name_len);
-	key[name_len] 		= 0x00;
-	key[name_len + 1] 	= 0x10;
-	key[name_len + 2] 	= 0x00;
-	key[name_len + 3] 	= 0x04;
-	no_chunknum = htonl (chunknum);
-	memcpy (&key[name_len + 4], &no_chunknum, sizeof (uint32_t));
+	memcpy (&key[index], name, name_len);
+	index += name_len;
 
-	return (name_len + 4 + sizeof (uint32_t));
+	fld_thdr.type = htons (ftvh_chunk);
+	fld_thdr.length = htons (chunk_len);
+	memcpy (&key[index], &fld_thdr, CefC_S_TLF);
+	index += CefC_S_TLF;
+
+	chunk_num = htonl (chunk_num);
+	memcpy (&key[index], &chunk_num, chunk_len);
+	index += chunk_len;
+
+	return index;
 }
 
 void

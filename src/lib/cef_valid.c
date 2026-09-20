@@ -78,6 +78,18 @@ typedef struct {
 
 } CefT_Keys;
 
+typedef struct {
+
+	unsigned char keyid[CefC_S_KeyId];
+	uint16_t hash_type;
+	uint16_t keyid_len;
+	unsigned char* pub_key_bi;
+	uint16_t pub_key_bi_len;
+	EVP_PKEY* pub_key;
+	char pubkey_path[PATH_MAX];
+
+} CefT_valid_Key;
+
 /****************************************************************************************
  State Variables
  ****************************************************************************************/
@@ -118,13 +130,15 @@ static uint32_t 			crc_table[256] =  /* this lookup table made with normal form 
                                     0xd2dfb272, 0xcc03dd33, 0xef676cf0, 0xf1bb03b1, 0xa9ae0f76, 0xb7726037, 0x9416d1f4, 0x8acabeb5
                                 };
 static CefT_Hash_Handle		key_table;
+static CefT_Hash_Handle		keyid_table;
 static CefT_Keys* 			default_key_entry = NULL;
-static char					ccninfo_sha256_prvkey_path[PATH_MAX*2];
-static char					ccninfo_sha256_pubkey_path[PATH_MAX*2];
-unsigned char* 				ccninfo_sha256_pub_key_bi;
-size_t 						ccninfo_sha256_pub_key_bi_len;
-EVP_PKEY*					ccninfo_sha256_pub_key;
-EVP_PKEY*					ccninfo_sha256_prv_key;
+static char					ccninfo_prvkey_path[PATH_MAX*2];
+static char					ccninfo_pubkey_path[PATH_MAX*2];
+unsigned char* 				ccninfo_pub_key_bi;
+size_t 						ccninfo_pub_key_bi_len;
+EVP_PKEY*					ccninfo_pub_key;
+EVP_PKEY*					ccninfo_prv_key;
+int							validation_mode = CefC_ValidMode_InBand;
 
 /****************************************************************************************
  Static Function Declaration
@@ -157,7 +171,7 @@ cef_valid_key_entry_search (
 
 static int 							/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
-cef_valid_rsa_sha256_verify_forccninfo (
+cef_valid_signature_verify_forccninfo (
 	const unsigned char* msg,
 	uint16_t pkt_len, 				/* PacketLength 									*/
 	uint16_t hdr_len, 				/* HeaderLength (offset of CCN Message)				*/
@@ -171,7 +185,7 @@ cef_valid_create_keyinfo_forccninfo ();
 
 static int 							/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
-cef_valid_rsa_sha256_std_verify_forccninfo (
+cef_valid_signature_std_verify_forccninfo (
 	const unsigned char* msg,
 	uint16_t pkt_len, 				/* PacketLength 									*/
 	uint16_t hdr_len, 				/* HeaderLength (offset of CCN Message)				*/
@@ -181,7 +195,7 @@ cef_valid_rsa_sha256_std_verify_forccninfo (
 	unsigned char** 	rcvdpub_key_bi_pp
 );
 static int
-cef_valid_sha256_keypath_ccninfoRT(
+cef_valid_keypath_ccninfoRT(
 	const char* conf_path
 );
 
@@ -196,30 +210,33 @@ cef_valid_crc_verify (
 );
 static int 							/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
-cef_valid_rsa_sha256_verify (
+cef_valid_signature_verify (
 	const unsigned char* msg,
 	uint16_t pkt_len, 				/* PacketLength 									*/
 	uint16_t hdr_len, 				/* HeaderLength (offset of CCN Message)				*/
 	uint16_t alg_offset, 			/* offset of T_VALIDATION_ALG 						*/
-	uint16_t pld_offset		 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	uint16_t pld_offset,	 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	int* cache_f					/* Flag indicating whether caching is allowed		*/
 );
 static int 							/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
-cef_valid_rsa_sha256_std_verify (
+cef_valid_signature_std_verify (
 	const unsigned char* msg,
 	uint16_t pkt_len, 				/* PacketLength 									*/
 	uint16_t hdr_len, 				/* HeaderLength (offset of CCN Message)				*/
 	uint16_t alg_offset, 			/* offset of T_VALIDATION_ALG 						*/
-	uint16_t pld_offset		 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	uint16_t pld_offset,	 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	int* cache_f					/* Flag indicating whether caching is allowed		*/
 );
 static int 							/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
-cef_valid_rsa_sha256_hby_verify (
+cef_valid_signature_hby_verify (
 	const unsigned char* msg,
 	uint16_t pkt_len, 				/* PacketLength 									*/
 	uint16_t hdr_len, 				/* HeaderLength (offset of CCN Message)				*/
 	uint16_t alg_offset, 			/* offset of T_VALIDATION_ALG 						*/
-	uint16_t pld_offset		 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	uint16_t pld_offset,	 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	int* cache_f					/* Flag indicating whether caching is allowed		*/
 );
 
 static void
@@ -233,7 +250,7 @@ cef_valid_encoder_from_data (
 );
 
 static size_t
-cef_valid_i2d_rsa_pubkey (
+cef_valid_i2d_pubkey (
 	EVP_PKEY*		pkey,
 	unsigned char**	pdata
 );
@@ -250,23 +267,23 @@ cef_valid_decoder_from (
 );
 
 static EVP_PKEY *
-cef_valid_pem_read_rsa_pub_key (
+cef_valid_pem_read_pub_key (
 	FILE*	fp
 );
 
 static EVP_PKEY *
-cef_valid_pem_read_rsa_private_key (
+cef_valid_pem_read_private_key (
 	FILE*	fp
 );
 
 static EVP_PKEY *
-cef_valid_d2i_rsa_pubkey (
+cef_valid_d2i_pubkey (
 	const unsigned char**	pp,
 	size_t					length
 );
 
 static int
-cef_valid_rsa_sign (
+cef_valid_signature_sign_core (
 	int						type,
 	const unsigned char*	msg,
 	unsigned int			msg_len,
@@ -276,13 +293,39 @@ cef_valid_rsa_sign (
 );
 
 static int
-cef_valid_rsa_verify (
+cef_valid_signature_verify_core (
 	int						type,
 	const unsigned char*	msg,
 	unsigned int			msg_len,
     const unsigned char*	sigbuf,
 	unsigned int			siglen,
 	EVP_PKEY*				pkey
+);
+
+static int
+cef_valid_type_get_from_key (
+	EVP_PKEY* key
+);
+
+static int 							/* If the return value is 1, the verification succeeded,	*/
+									/* otherwise, the verification failed.						*/
+cef_valid_is_key_pair (
+	EVP_PKEY *prv_key,
+	EVP_PKEY *pub_key
+);
+
+static int
+cef_valid_hexstr_to_bin (
+	const char* hexstr,
+	unsigned char* bin,
+	int bin_len
+);
+
+static CefT_valid_Key*
+cef_valid_validkey_get (
+	const unsigned char* keyid,
+	uint16_t keyid_len,
+	uint16_t hash_type
 );
 
 /****************************************************************************************
@@ -297,48 +340,138 @@ cef_valid_init (
 	cef_valid_crc32c_init ();
 	res = cef_valid_read_conf (conf_path);
 
+	if (res != 1) {
+		cef_log_write (CefC_Log_Warn,
+			"Failed to load configuration file.\n");
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Failed to load configuration file.\n");
+#endif // CefC_Debug
+		goto err;
+	}
+
+	res = cef_valid_is_key_pair (default_key_entry->prv_key, default_key_entry->pub_key);
+	if (res != 1) {
+		cef_log_write (CefC_Log_Warn,
+			"The public key and private key do not match.\n");
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"The public key and private key do not match.\n");
+#endif // CefC_Debug
+		goto err;
+	}
+
+err:
 	return (res);
 }
 
 int
 cef_valid_init_ccninfoUSER (
 	const char* conf_path,
-	uint16_t 	valid_type
+	const char* valid_type_str,
+	uint16_t* valid_type
 ) {
 	int res = 0;
 
 	cef_valid_crc32c_init ();
-	if (valid_type == CefC_T_RSA_SHA256) {
-		sprintf(ccninfo_sha256_prvkey_path, "%s/.ccninfo/ccninfo_user-private-key"
+	if (strcmp (valid_type_str, CefC_ValidTypeStr_RSA256) == 0) {
+		sprintf(ccninfo_prvkey_path, "%s/.ccninfo/ccninfo_user-private-key"
 				, getenv("HOME"));
-		sprintf(ccninfo_sha256_pubkey_path, "%s/.ccninfo/ccninfo_user-public-key"
+		sprintf(ccninfo_pubkey_path, "%s/.ccninfo/ccninfo_user-public-key"
 				, getenv("HOME"));
 #ifdef DEB_CCNINFO
 {
-	fprintf (stderr, "DEB_CCNINFO: [%s] ccninfo_sha256_prvkey_path=%s\n"
-				   , __FUNCTION__, ccninfo_sha256_prvkey_path);
-	fprintf (stderr, "DEB_CCNINFO: [%s] ccninfo_sha256_pubkey_path=%s\n"
-				   , __FUNCTION__, ccninfo_sha256_pubkey_path);
+	fprintf (stderr, "DEB_CCNINFO: [%s] ccninfo_prvkey_path=%s\n"
+				   , __FUNCTION__, ccninfo_prvkey_path);
+	fprintf (stderr, "DEB_CCNINFO: [%s] ccninfo_pubkey_path=%s\n"
+				   , __FUNCTION__, ccninfo_pubkey_path);
 }
 #endif //DEB_CCNINFO
+
 		res = cef_valid_create_keyinfo_forccninfo();
+		if (res < 0) {
+			cef_log_write (CefC_Log_Warn,
+				"Failed to load specified private key or public key.\n");
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest,
+				"Failed to load specified private key or public key.\n");
+#endif // CefC_Debug
+			goto err;
+		}
+
+		*valid_type = (uint16_t) cef_valid_type_get_from_key(ccninfo_pub_key);
+		if (*valid_type <= 0) {
+			cef_log_write (CefC_Log_Warn,
+				"The public key is invalid algorithm Type.\n");
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest,
+				"The public key is invalid algorithm Type.\n");
+#endif // CefC_Debug
+			goto err;
+		}
+
+		res = cef_valid_is_key_pair (ccninfo_prv_key, ccninfo_pub_key);
+		if (res != 1) {
+			cef_log_write (CefC_Log_Warn,
+				"The public key and private key do not match.\n");
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest,
+				"The public key and private key do not match.\n");
+#endif // CefC_Debug
+			goto err;
+		}
 	}
+
+err:
 	return (res);
 }
 
 int
 cef_valid_init_ccninfoRT (
-	const char* conf_path
+	const char* conf_path,
+	uint16_t* valid_type
 ) {
 	int res = 0;
 
 	/* Create sha256 key file name for ccninfo */
-	res = cef_valid_sha256_keypath_ccninfoRT (conf_path);
+	res = cef_valid_keypath_ccninfoRT (conf_path);
 	if (res < 0) {
 		return (res);
 	}
 	res = cef_valid_create_keyinfo_forccninfo();
+	if (res < 0) {
+		cef_log_write (CefC_Log_Warn,
+			"Failed to load specified private key or public key.\n");
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Failed to load specified private key or public key.\n");
+#endif // CefC_Debug
+		goto err;
+	}
 
+	res = cef_valid_type_get_from_key(ccninfo_pub_key);
+	if (res <= 0) {
+		cef_log_write (CefC_Log_Warn,
+			"The public key is invalid algorithm Type.\n");
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"The public key is invalid algorithm Type.\n");
+#endif // CefC_Debug
+		goto err;
+	}
+
+	res = cef_valid_is_key_pair (ccninfo_prv_key, ccninfo_pub_key);
+	if (res != 1) {
+		cef_log_write (CefC_Log_Warn,
+			"The public key and private key do not match.\n");
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"The public key and private key do not match.\n");
+#endif // CefC_Debug
+		goto err;
+	}
+
+err:
 	return (res);
 }
 
@@ -349,7 +482,26 @@ cef_valid_type_get (
 	int res = CefC_T_ALG_INVALID;
 
 	if (strcmp (type, CefC_ValidTypeStr_RSA256) == 0) {
-		res = CefC_T_RSA_SHA256;
+		res = cef_valid_type_get_from_key(default_key_entry->pub_key);
+	} else if (strcmp (type, CefC_ValidTypeStr_CRC32C) == 0) {
+		res = CefC_T_CRC32C;
+	} else if (strcmp (type, default_key_entry->prv_key_path) == 0) {
+		res = cef_valid_type_get_from_key(default_key_entry->prv_key);
+	} else if (strcmp (type, default_key_entry->pub_key_path) == 0) {
+		res = cef_valid_type_get_from_key(default_key_entry->pub_key);
+	}
+
+	return (res);
+}
+
+int
+cef_valid_type_get_forccninfo (
+	const char* type
+) {
+	int res = CefC_T_ALG_INVALID;
+
+	if (strcmp (type, CefC_ValidTypeStr_RSA256) == 0) {
+		res = cef_valid_type_get_from_key(ccninfo_pub_key);
 	} else if (strcmp (type, CefC_ValidTypeStr_CRC32C) == 0) {
 		res = CefC_T_CRC32C;
 	}
@@ -393,6 +545,7 @@ cef_valid_keyid_create (
 ) {
 	CefT_Keys* key_entry;
 	unsigned char hash[SHA256_DIGEST_LENGTH];
+	size_t hash_len = 0;
 
 	key_entry = (CefT_Keys*) cef_valid_key_entry_search (name, name_len);
 
@@ -400,9 +553,9 @@ cef_valid_keyid_create (
 		return (0);
 	}
 //	SHA256(key_entry->pub_key_bi, key_entry->pub_key_bi_len, hash);
-	cef_valid_sha256( key_entry->pub_key_bi, key_entry->pub_key_bi_len, hash );	/* for OpenSSL 3.x */
+	cef_valid_sha256( key_entry->pub_key_bi, key_entry->pub_key_bi_len, hash, &hash_len);	/* for OpenSSL 3.x */
 	memcpy (pubkey, key_entry->pub_key_bi, key_entry->pub_key_bi_len);
-	memcpy (keyid, hash, SHA256_DIGEST_LENGTH);
+	memcpy (keyid, hash, hash_len);
 
 	return (key_entry->pub_key_bi_len);
 }
@@ -489,7 +642,7 @@ cef_valid_get_pubkey (
 }
 
 int
-cef_valid_rsa_sha256_dosign (
+cef_valid_signature_sign (
 	const unsigned char* msg,
 	uint16_t msg_len,
 	const unsigned char* name,
@@ -497,8 +650,10 @@ cef_valid_rsa_sha256_dosign (
 	unsigned char* sign,
 	unsigned int* sign_len
 ) {
-	unsigned char hash[SHA256_DIGEST_LENGTH+1] = {0};
+	unsigned char hash[EVP_MAX_MD_SIZE+1] = {0};
+	size_t hash_len = 0;
 	int res;
+	int type;
 	CefT_Keys* key_entry;
 
 	key_entry = (CefT_Keys*) cef_valid_key_entry_search (name, name_len);
@@ -507,11 +662,27 @@ cef_valid_rsa_sha256_dosign (
 		return (0);
 	}
 
-//	SHA256 (msg, msg_len, hash);
-	cef_valid_sha256( msg, msg_len, hash );	/* for OpenSSL 3.x */
-	res = cef_valid_rsa_sign (
-		NID_sha256, hash, SHA256_DIGEST_LENGTH, sign, sign_len, key_entry->prv_key);
+	type = cef_valid_type_get_from_key(key_entry->prv_key);
+	switch (type) {
+	case CefC_T_RSA_SHA256:
+	case CefC_T_EC_SECP_256K1:
+		cef_valid_sha256( msg, msg_len, hash, &hash_len );	/* for OpenSSL 3.x */
+		break;
+	case CefC_T_EC_SECP_384R1:
+		cef_valid_sha384( msg, msg_len, hash, &hash_len );	/* for OpenSSL 3.x */
+		break;
+	default:
+		cef_log_write (CefC_Log_Warn,
+			"Invalid digital signature algorithm (%s).\n", key_entry->prv_key_path);
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Invalid digital signature algorithm (%s).\n", key_entry->prv_key_path);
+#endif // CefC_Debug
+		return (-1);
+	}
 
+	res = cef_valid_signature_sign_core (
+		type, hash, hash_len, sign, sign_len, key_entry->prv_key);
 
 	return (res);
 }
@@ -520,7 +691,8 @@ int 								/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
 cef_valid_msg_verify (
 	const unsigned char* msg,
-	int msg_len
+	int msg_len,
+	int* cache_f
 ) {
 	int res = -1;
 	struct fixed_hdr* 	fixed_hp;
@@ -534,6 +706,10 @@ cef_valid_msg_verify (
 	uint16_t 	alg_offset = 0;
 	uint16_t 	pld_offset = 0;
 
+	if (cache_f != NULL) {
+		*cache_f = 0;
+	}
+
 	/* Obtains header length and packet length 		*/
 	fixed_hp = (struct fixed_hdr*) msg;
 	pkt_len  = ntohs (fixed_hp->pkt_len);
@@ -546,14 +722,29 @@ cef_valid_msg_verify (
 	tlv_ptr = (struct tlv_hdr*) &msg[hdr_len];
 	val_len = ntohs (tlv_ptr->length);
 	if (hdr_len + CefC_S_TLF + val_len == pkt_len) {
+		if (cache_f != NULL) {
+			*cache_f = 1;
+		}
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest, "This msg don't have validation tlvs, skip verification.\n");
+#endif // CefC_Debug
 		return (0);
 	}
 	index = hdr_len + CefC_S_TLF + val_len;
+
+	if (validation_mode == CefC_ValidMode_NONE) {
+		/* Skip validation in this validation mode. */
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest, "CefC_ValidMode_NONE mode, so skip Validation. (So caching isn't allowed)\n");
+#endif // CefC_Debug
+		return (0);
+	}
 
 	/* Checks Validation Algorithm TLVs 	*/
 	alg_offset = index;
 	tlv_ptr = (struct tlv_hdr*) &msg[alg_offset];
 	type = ntohs (tlv_ptr->type);
+
 	if (type != CefC_T_VALIDATION_ALG) {
 		return (-1);
 	}
@@ -586,14 +777,26 @@ cef_valid_msg_verify (
 		case CefC_T_CRC32C: {
 			res = cef_valid_crc_verify (
 					msg, pkt_len, hdr_len, alg_offset, pld_offset);
+			if ((res == 0) && (cache_f != NULL)) {
+				*cache_f = 1;
+			}
 			break;
 		}
-		case CefC_T_RSA_SHA256: {
-			res = cef_valid_rsa_sha256_verify (
-					msg, pkt_len, hdr_len, alg_offset, pld_offset);
+		case CefC_T_RSA_SHA256:
+		case CefC_T_EC_SECP_256K1:
+		case CefC_T_EC_SECP_384R1:
+		{
+			res = cef_valid_signature_verify (
+					msg, pkt_len, hdr_len, alg_offset, pld_offset, cache_f);
 			break;
 		}
 		default: {
+			cef_log_write (CefC_Log_Warn,
+				"Invalid digital signature algorithm (type value=%d).\n", alg_type);
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest,
+				"Invalid digital signature algorithm (type value=%d).\n", alg_type);
+#endif // CefC_Debug
 			break;
 		}
 	}
@@ -607,13 +810,14 @@ cef_valid_keyid_create_forccninfo (
 	unsigned char* keyid
 ) {
 	unsigned char	hash[SHA256_DIGEST_LENGTH];
+	size_t hash_len = 0;
 
-//	SHA256(ccninfo_sha256_pub_key_bi, ccninfo_sha256_pub_key_bi_len, hash);
-	cef_valid_sha256( ccninfo_sha256_pub_key_bi, ccninfo_sha256_pub_key_bi_len, hash );	/* for OpenSSL 3.x */
-	memcpy (pubkey, ccninfo_sha256_pub_key_bi, ccninfo_sha256_pub_key_bi_len);
-	memcpy (keyid, hash, SHA256_DIGEST_LENGTH);
+//	SHA256(ccninfo_pub_key_bi, ccninfo_pub_key_bi_len, hash);
+	cef_valid_sha256( ccninfo_pub_key_bi, ccninfo_pub_key_bi_len, hash, &hash_len);	/* for OpenSSL 3.x */
+	memcpy (pubkey, ccninfo_pub_key_bi, ccninfo_pub_key_bi_len);
+	memcpy (keyid, hash, hash_len);
 
-	return (ccninfo_sha256_pub_key_bi_len);
+	return (ccninfo_pub_key_bi_len);
 }
 
 int
@@ -698,19 +902,42 @@ cef_valid_get_pubkey_forccninfo (
 }
 
 int
-cef_valid_rsa_sha256_dosign_forccninfo (
+cef_valid_signature_sign_forccninfo (
 	const unsigned char* msg,
 	uint16_t msg_len,
 	unsigned char* sign,
 	unsigned int* sign_len
 ) {
-	unsigned char 	hash[SHA256_DIGEST_LENGTH+1] = {0};
+	unsigned char 	hash[EVP_MAX_MD_SIZE+1] = {0};
+	size_t hash_len = 0;
 	int res;
+	int type;
+
+	type = cef_valid_type_get_from_key (ccninfo_prv_key);
+
+	switch (type) {
+	case CefC_T_RSA_SHA256:
+	case CefC_T_EC_SECP_256K1:
+		cef_valid_sha256( msg, msg_len, hash, &hash_len );	/* for OpenSSL 3.x */
+		break;
+
+	case CefC_T_EC_SECP_384R1:
+		cef_valid_sha384( msg, msg_len, hash, &hash_len );	/* for OpenSSL 3.x */
+		break;
+
+	default:
+		cef_log_write (CefC_Log_Warn,
+			"Invalid digital signature algorithm (%s).\n", ccninfo_prvkey_path);
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Invalid digital signature algorithm (%s).\n", ccninfo_prvkey_path);
+#endif // CefC_Debug
+		return (0);
+	}
 
 //	SHA256 (msg, msg_len, hash);
-	cef_valid_sha256( msg, msg_len, hash );	/* for OpenSSL 3.x */
-	res = cef_valid_rsa_sign (
-		NID_sha256, hash, SHA256_DIGEST_LENGTH, sign, sign_len, ccninfo_sha256_prv_key);
+	res = cef_valid_signature_sign_core (
+		type, hash, hash_len, sign, sign_len, ccninfo_prv_key);
 
 	return (res);
 }
@@ -801,8 +1028,11 @@ cef_valid_msg_verify_forccninfo (
 					msg, pkt_len, hdr_len, alg_offset, pld_offset);
 			break;
 		}
-		case CefC_T_RSA_SHA256: {
-			res = cef_valid_rsa_sha256_verify_forccninfo (
+		case CefC_T_RSA_SHA256:
+		case CefC_T_EC_SECP_256K1:
+		case CefC_T_EC_SECP_384R1:
+		{
+			res = cef_valid_signature_verify_forccninfo (
 					msg, pkt_len, hdr_len, alg_offset, pld_offset,
 					rcvdpub_key_bi_len_p, rcvdpub_key_bi_pp);
 			break;
@@ -908,12 +1138,13 @@ cef_valid_crc_verify (
 
 static int 							/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
-cef_valid_rsa_sha256_verify (
+cef_valid_signature_verify (
 	const unsigned char* msg,
 	uint16_t pkt_len, 				/* PacketLength 									*/
 	uint16_t hdr_len, 				/* HeaderLength (offset of CCN Message)				*/
 	uint16_t alg_offset, 			/* offset of T_VALIDATION_ALG 						*/
-	uint16_t pld_offset		 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	uint16_t pld_offset,	 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	int* cache_f					/* Flag indicating whether caching is allowed		*/
 ) {
 	struct tlv_hdr* 	tlv_ptr;
 	int res;
@@ -935,11 +1166,11 @@ cef_valid_rsa_sha256_verify (
 
 	if (type == CefC_T_CERT_FORWARDER) {
 		/* HOP-BY-HOP */
-		res = cef_valid_rsa_sha256_hby_verify (
-					msg, pkt_len, hdr_len, alg_offset, pld_offset);
+		res = cef_valid_signature_hby_verify (
+					msg, pkt_len, hdr_len, alg_offset, pld_offset, cache_f);
 	} else {
-		res = cef_valid_rsa_sha256_std_verify (
-					msg, pkt_len, hdr_len, alg_offset, pld_offset);
+		res = cef_valid_signature_std_verify (
+					msg, pkt_len, hdr_len, alg_offset, pld_offset, cache_f);
 	}
 
 	return (res);
@@ -947,17 +1178,19 @@ cef_valid_rsa_sha256_verify (
 
 static int 							/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
-cef_valid_rsa_sha256_std_verify (
+cef_valid_signature_std_verify (
 	const unsigned char* msg,
 	uint16_t pkt_len, 				/* PacketLength 									*/
 	uint16_t hdr_len, 				/* HeaderLength (offset of CCN Message)				*/
 	uint16_t alg_offset, 			/* offset of T_VALIDATION_ALG 						*/
-	uint16_t pld_offset		 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	uint16_t pld_offset,	 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	int* cache_f					/* Flag indicating whether caching is allowed		*/
 ) {
 	struct tlv_hdr* 	tlv_ptr;
 	uint16_t 			index;
 	uint16_t 			length;
-	unsigned char 		hash[SHA256_DIGEST_LENGTH];
+	unsigned char 		hash[EVP_MAX_MD_SIZE];
+	size_t				hash_len = 0;
 	int 				res;
 	unsigned char* 		pub_key_bi;
 	int 				pub_key_bi_len;
@@ -969,8 +1202,8 @@ cef_valid_rsa_sha256_std_verify (
 	length = ntohs (tlv_ptr->length);
 	index += CefC_S_TLF;
 
-	/* Obtains the Public Key		 		*/
-	{
+	if (validation_mode == CefC_ValidMode_InBand) {
+		/* Obtains the EVP_PKEY by pubkey included in the message. */
 		uint16_t 		pkey_offset;
 		uint16_t 		type;
 		unsigned char* 	ptr_for_free;
@@ -982,23 +1215,88 @@ cef_valid_rsa_sha256_std_verify (
 					&msg[pkey_offset];
 		length = ntohs (tlv_ptr->length);
 		pkey_offset += (CefC_S_TLF + length);
-		/* Obtain */
+
 		tlv_ptr = (struct tlv_hdr*) &msg[pkey_offset];
 		type = ntohs (tlv_ptr->type);
 		length = ntohs (tlv_ptr->length);
 		if (type != CefC_T_PUBLICKEY) {
-			return (1);
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "Validation mode is CefC_ValidMode_InBand, " \
+					"but the message don't have T_PUBLICKEY, "\
+					"so the messages can be forwarded, but it cannot be cached.\n");
+#endif // CefC_Debug
+			return (0);
 		}
 		length = ntohs (tlv_ptr->length);
 		ptr_for_free = pub_key_bi = (unsigned char*)calloc(length, 1);
 		pub_key_bi_len = length;
 		memcpy (pub_key_bi, &msg[pkey_offset+CefC_S_TLF], pub_key_bi_len);
 
-		pub_key = cef_valid_d2i_rsa_pubkey ((const unsigned char**)&pub_key_bi, pub_key_bi_len);
+		pub_key = cef_valid_d2i_pubkey ((const unsigned char**)&pub_key_bi, pub_key_bi_len);
 		free(ptr_for_free);
 		if (pub_key == NULL) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "Failed to get EVP_PKEY from pub_key included in the message.\n");
+#endif // CefC_Debug
 			return (1);
 		}
+
+	} else if (validation_mode == CefC_ValidMode_OutOfBand) {
+		/* Obtains the EVP_PKEY from keyid_table by searching for the KeyID included in the message. */
+		CefT_valid_Key*	validkey_entry = NULL;
+		uint16_t 		pkey_offset;
+		uint16_t 		type;
+
+		pkey_offset = alg_offset;
+		pkey_offset += CefC_S_TLF; 			/* Move offset by TL size of T_VALIDATION_ALG	*/
+		pkey_offset += CefC_S_TLF; 			/* Move offset by TL size of T_RSA-SHA256		*/
+		tlv_ptr = (struct tlv_hdr*) 		/* Parse the T_KEYID							*/
+					&msg[pkey_offset];
+		type = ntohs (tlv_ptr->type);
+		if (type != CefC_T_KEYID) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "This message don't have CefC_T_KEYID.\n");
+#endif // CefC_Debug
+			return (1);
+		}
+
+		CefT_HashData keyid;
+		pkey_offset += CefC_S_TLF;
+		tlv_ptr = (struct tlv_hdr*) &msg[pkey_offset];
+		keyid.hash_type = ntohs (tlv_ptr->type);
+		keyid.hash_length = ntohs (tlv_ptr->length);
+		memcpy (&keyid.hash_value, &msg[pkey_offset + CefC_S_TLF], keyid.hash_length);
+
+		validkey_entry = cef_valid_validkey_get (keyid.hash_value, keyid.hash_length, keyid.hash_type);
+		if (validkey_entry == NULL) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "No matching keyid entry exists in the keyid table.\n");
+#endif // CefC_Debug
+			return (1);
+		}
+
+		if (validkey_entry->pubkey_path[0] == '\0') {
+			/* Do Lightweight verification, if the matching CefT_valid_Key entry have no pubkey's path. */
+			/* It accept if the KeyID in the message matches the KeyID registered with CefT_valid_Key.  */
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "Validation is OK. (by Lightweight verification)\n");
+#endif // CefC_Debug
+			return (0);
+		}
+
+		if (validkey_entry->pub_key == NULL) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "Matching keyid entry is invalid. (EVP_PKEY entry is Invalid)\n");
+#endif // CefC_Debug
+			return (1);
+		}
+		pub_key = validkey_entry->pub_key;
+
+	} else {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest, "Invalid Validation mode.\n");
+#endif // CefC_Debug
+		return (1);
 	}
 	/* Obtains the Validation Payload 		*/
 	tlv_ptr = (struct tlv_hdr*) &msg[pld_offset];
@@ -1006,31 +1304,55 @@ cef_valid_rsa_sha256_std_verify (
 	index = pld_offset + CefC_S_TLF;
 
 	/* Verification the sign 				*/
-//	SHA256 (&msg[hdr_len], pld_offset - hdr_len, hash);
-	cef_valid_sha256( &msg[hdr_len], pld_offset - hdr_len, hash );	/* for OpenSSL 3.x */
+	res = cef_valid_type_get_from_key (pub_key);
+	switch (res) {
+	case CefC_T_RSA_SHA256:
+	case CefC_T_EC_SECP_256K1:
+		cef_valid_sha256( &msg[hdr_len], pld_offset - hdr_len, hash, &hash_len);	/* for OpenSSL 3.x */
+		break;
 
-	res = cef_valid_rsa_verify (
-		NID_sha256, hash, SHA256_DIGEST_LENGTH, &msg[index], length, pub_key);
-	EVP_PKEY_free (pub_key);
+	case CefC_T_EC_SECP_384R1:
+		cef_valid_sha384( &msg[hdr_len], pld_offset - hdr_len, hash, &hash_len);	/* for OpenSSL 3.x */
+		break;
+
+	default:
+		cef_log_write (CefC_Log_Warn,
+			"Invalid digital signature algorithm (type value=%d).\n", res);
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Invalid digital signature algorithm (type value=%d).\n", res);
+#endif // CefC_Debug
+		return (1);
+	}
+
+	res = cef_valid_signature_verify_core (
+		res, hash, hash_len, &msg[index], length, pub_key);
+	if (validation_mode == CefC_ValidMode_InBand) {
+		EVP_PKEY_free (pub_key);
+	}
+	if ((res == 1) && (cache_f != NULL)) {
+		*cache_f = 1;
+	}
 
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Finest,
-		"[SHA256] validation is %s\n", (res == 1) ? "OK" : "NG");
+		"Validation is %s\n", (res == 1) ? "OK" : "NG");
 #endif // CefC_Debug
 
 	return ((res == 1) ? 0 : 1);
 }
 static int 							/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
-cef_valid_rsa_sha256_hby_verify (
+cef_valid_signature_hby_verify (
 	const unsigned char* msg,
 	uint16_t pkt_len, 				/* PacketLength 									*/
 	uint16_t hdr_len, 				/* HeaderLength (offset of CCN Message)				*/
 	uint16_t alg_offset, 			/* offset of T_VALIDATION_ALG 						*/
-	uint16_t pld_offset		 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	uint16_t pld_offset,	 		/* offset of T_VALIDATION_PAYLOAD 					*/
+	int* cache_f					/* Flag indicating whether caching is allowed		*/
 ) {
 	/* HOP-BY-HOP */
-	fprintf (stderr, "cef_valid_rsa_sha256_hby_verify ()\n");
+	fprintf (stderr, "cef_valid_signature_hby_verify ()\n");
 	return (0);
 }
 
@@ -1073,42 +1395,42 @@ static int
 cef_valid_create_keyinfo_forccninfo (
 ) {
 	FILE* 			key_fp;
-	key_fp = fopen (ccninfo_sha256_pubkey_path, "r");
+	key_fp = fopen (ccninfo_pubkey_path, "r");
 	if (key_fp == NULL) {
 		cef_log_write (CefC_Log_Error,
-			"Failed to open public key (%s)\n", ccninfo_sha256_pubkey_path);
+			"Failed to open public key (%s)\n", ccninfo_pubkey_path);
 		return (-1);
 	}
 
-	ccninfo_sha256_pub_key = cef_valid_pem_read_rsa_pub_key (key_fp);
-	if (ccninfo_sha256_pub_key == NULL) {
+	ccninfo_pub_key = cef_valid_pem_read_pub_key (key_fp);
+	if (ccninfo_pub_key == NULL) {
 		cef_log_write (CefC_Log_Error,
-			"Invalid public key (%s)\n", ccninfo_sha256_pubkey_path);
+			"Invalid public key (%s)\n", ccninfo_pubkey_path);
 		fclose (key_fp);
 		return (-1);
 	}
 
-	ccninfo_sha256_pub_key_bi_len
-		= cef_valid_i2d_rsa_pubkey (ccninfo_sha256_pub_key, &ccninfo_sha256_pub_key_bi);
-	if (ccninfo_sha256_pub_key_bi_len < 1) {
+	ccninfo_pub_key_bi_len
+		= cef_valid_i2d_pubkey (ccninfo_pub_key, &ccninfo_pub_key_bi);
+	if (ccninfo_pub_key_bi_len < 1) {
 		cef_log_write (CefC_Log_Error,
-			"Invalid public key (%s)\n", ccninfo_sha256_pubkey_path);
+			"Invalid public key (%s)\n", ccninfo_pubkey_path);
 		fclose (key_fp);
 		return (-1);
 	}
 	fclose (key_fp);
-	key_fp = fopen (ccninfo_sha256_prvkey_path, "r");
+	key_fp = fopen (ccninfo_prvkey_path, "r");
 	if (key_fp == NULL) {
 		cef_log_write (CefC_Log_Error,
-			"Failed to open (%s)\n", ccninfo_sha256_prvkey_path);
+			"Failed to open (%s)\n", ccninfo_prvkey_path);
 		return (-1);
 	}
 
-	ccninfo_sha256_prv_key = cef_valid_pem_read_rsa_private_key (key_fp);
-	if (ccninfo_sha256_prv_key == NULL) {
+	ccninfo_prv_key = cef_valid_pem_read_private_key (key_fp);
+	if (ccninfo_prv_key == NULL) {
 		fclose (key_fp);
 		cef_log_write (CefC_Log_Error,
-			"Invalid private key (%s)\n", ccninfo_sha256_prvkey_path);
+			"Invalid private key (%s)\n", ccninfo_prvkey_path);
 		return (-1);
 	}
 	fclose (key_fp);
@@ -1116,7 +1438,7 @@ cef_valid_create_keyinfo_forccninfo (
 }
 static int 							/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
-cef_valid_rsa_sha256_verify_forccninfo (
+cef_valid_signature_verify_forccninfo (
 	const unsigned char* msg,
 	uint16_t pkt_len, 				/* PacketLength 									*/
 	uint16_t hdr_len, 				/* HeaderLength (offset of CCN Message)				*/
@@ -1147,7 +1469,7 @@ cef_valid_rsa_sha256_verify_forccninfo (
 		/* HOP-BY-HOP */
 		return (-1);
 	} else {
-		res = cef_valid_rsa_sha256_std_verify_forccninfo (
+		res = cef_valid_signature_std_verify_forccninfo (
 					msg, pkt_len, hdr_len, alg_offset, pld_offset,
 					rcvdpub_key_bi_len_p, rcvdpub_key_bi_pp);
 	}
@@ -1157,7 +1479,7 @@ cef_valid_rsa_sha256_verify_forccninfo (
 
 static int 							/* If the return value is 0 the code is equal, 		*/
 									/* otherwise the code is different. 				*/
-cef_valid_rsa_sha256_std_verify_forccninfo (
+cef_valid_signature_std_verify_forccninfo (
 	const unsigned char* msg,
 	uint16_t pkt_len, 				/* PacketLength 									*/
 	uint16_t hdr_len, 				/* HeaderLength (offset of CCN Message)				*/
@@ -1169,7 +1491,8 @@ cef_valid_rsa_sha256_std_verify_forccninfo (
 	struct tlv_hdr* 	tlv_ptr;
 	uint16_t 			index;
 	uint16_t 			length;
-	unsigned char 		hash[SHA256_DIGEST_LENGTH];
+	unsigned char 		hash[EVP_MAX_MD_SIZE];
+	size_t				hash_len = 0;
 	int 				res;
 	int 				rtc;
 	unsigned char* 		pub_key_bi;
@@ -1212,7 +1535,7 @@ cef_valid_rsa_sha256_std_verify_forccninfo (
 			*rcvdpub_key_bi_pp = (unsigned char*)calloc(pub_key_bi_len, 1);
 			memcpy (*rcvdpub_key_bi_pp, pub_key_bi, pub_key_bi_len);
 		}
-		pub_key = cef_valid_d2i_rsa_pubkey ((const unsigned char**)&pub_key_bi, pub_key_bi_len);
+		pub_key = cef_valid_d2i_pubkey ((const unsigned char**)&pub_key_bi, pub_key_bi_len);
 		free(ptr_for_free);
 		if (pub_key == NULL) {
 			return (1);
@@ -1224,11 +1547,30 @@ cef_valid_rsa_sha256_std_verify_forccninfo (
 	index = pld_offset + CefC_S_TLF;
 
 	/* Verification the sign 				*/
+	res = cef_valid_type_get_from_key (pub_key);
+	switch (res) {
+	case CefC_T_RSA_SHA256:
+	case CefC_T_EC_SECP_256K1:
 //	SHA256 (&msg[hdr_len], pld_offset - hdr_len, hash);
-	cef_valid_sha256( &msg[hdr_len], pld_offset - hdr_len, hash );	/* for OpenSSL 3.x */
+		cef_valid_sha256( &msg[hdr_len], pld_offset - hdr_len, hash, &hash_len );	/* for OpenSSL 3.x */
+		break;
 
-	res = cef_valid_rsa_verify (
-		NID_sha256, hash, SHA256_DIGEST_LENGTH, &msg[index], length, pub_key);
+	case CefC_T_EC_SECP_384R1:
+		cef_valid_sha384( &msg[hdr_len], pld_offset - hdr_len, hash, &hash_len );	/* for OpenSSL 3.x */
+		break;
+
+	default:
+		cef_log_write (CefC_Log_Warn,
+			"Invalid digital signature algorithm (type value=%d).\n", res);
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Invalid digital signature algorithm (type value=%d).\n", res);
+#endif // CefC_Debug
+		return (1);
+	}
+
+	res = cef_valid_signature_verify_core (
+		res, hash, hash_len, &msg[index], length, pub_key);
 	EVP_PKEY_free (pub_key);
 
 #ifdef CefC_Debug
@@ -1337,17 +1679,24 @@ cef_valid_read_conf (
 		return (-1);
 	}
 
-	key_entry->pub_key = cef_valid_pem_read_rsa_pub_key (fp);
+	key_entry->pub_key = cef_valid_pem_read_pub_key (fp);
 	fclose (fp);
 	if (key_entry->pub_key == NULL) {
 		cef_log_write (CefC_Log_Error,
-		"pem_read_rsa_pub_key failure, %s.\n", key_entry->pub_key_path);
+		"pem_read_pub_key failure, %s.\n", key_entry->pub_key_path);
+		cef_valid_key_entry_free (key_entry);
+		return (-1);
+	}
+	res = EVP_PKEY_get_base_id(key_entry->pub_key);
+	if (res != EVP_PKEY_RSA && res != EVP_PKEY_EC) {
+		cef_log_write (CefC_Log_Error,
+		"EVP_PKEY_get_base_id failure, %s.\n", key_entry->pub_key_path);
 		cef_valid_key_entry_free (key_entry);
 		return (-1);
 	}
 
 	key_entry->pub_key_bi_len
-		= cef_valid_i2d_rsa_pubkey (key_entry->pub_key, &key_entry->pub_key_bi);
+		= cef_valid_i2d_pubkey (key_entry->pub_key, &key_entry->pub_key_bi);
 	if (key_entry->pub_key_bi_len < 1) {
 		cef_log_write (CefC_Log_Error,
 		"Invalid public key (%s) is specified in cefnetd.conf\n",
@@ -1366,12 +1715,19 @@ cef_valid_read_conf (
 		return (-1);
 	}
 
-	key_entry->prv_key = cef_valid_pem_read_rsa_private_key (fp);
+	key_entry->prv_key = cef_valid_pem_read_private_key (fp);
 	fclose (fp);
 
 	if (key_entry->prv_key == NULL) {
 		cef_log_write (CefC_Log_Error,
-		"pem_read_rsa_private_key failure, %s.\n", key_entry->prv_key_path);
+		"pem_read_private_key failure, %s.\n", key_entry->prv_key_path);
+		cef_valid_key_entry_free (key_entry);
+		return (-1);
+	}
+	res = EVP_PKEY_get_base_id(key_entry->prv_key);
+	if (res != EVP_PKEY_RSA && res != EVP_PKEY_EC) {
+		cef_log_write (CefC_Log_Error,
+		"EVP_PKEY_get_base_id failure, %s.\n", key_entry->prv_key_path);
 		cef_valid_key_entry_free (key_entry);
 		return (-1);
 	}
@@ -1398,7 +1754,7 @@ cef_valid_key_entry_free (
 	free (key_entry);
 }
 static int
-cef_valid_sha256_keypath_ccninfoRT(
+cef_valid_keypath_ccninfoRT(
 	const char* conf_path
 ) {
 	char*	wp;
@@ -1451,16 +1807,16 @@ cef_valid_sha256_keypath_ccninfoRT(
 	}
 	fclose (fp);
 
-	sprintf(ccninfo_sha256_prvkey_path, "%s/.ccninfo/%s-private-key"
+	sprintf(ccninfo_prvkey_path, "%s/.ccninfo/%s-private-key"
 			, cef_conf_dir, key_prfx);
-	sprintf(ccninfo_sha256_pubkey_path, "%s/.ccninfo/%s-public-key"
+	sprintf(ccninfo_pubkey_path, "%s/.ccninfo/%s-public-key"
 			, cef_conf_dir, key_prfx);
 #ifdef DEB_CCNINFO
 {
-	fprintf (stderr, "DEB_CCNINFO: [%s] ccninfo_sha256_prvkey_path=%s\n"
-				   , __FUNCTION__, ccninfo_sha256_prvkey_path);
-	fprintf (stderr, "DEB_CCNINFO: [%s] ccninfo_sha256_pubkey_path=%s\n"
-				   , __FUNCTION__, ccninfo_sha256_pubkey_path);
+	fprintf (stderr, "DEB_CCNINFO: [%s] ccninfo_prvkey_path=%s\n"
+				   , __FUNCTION__, ccninfo_prvkey_path);
+	fprintf (stderr, "DEB_CCNINFO: [%s] ccninfo_pubkey_path=%s\n"
+				   , __FUNCTION__, ccninfo_pubkey_path);
 }
 #endif //DEB_CCNINFO
 
@@ -1555,12 +1911,13 @@ unsigned char*
 cef_valid_sha256 (
 	const unsigned char *d,
 	size_t n,
-	unsigned char *md
+	unsigned char *md,
+	size_t *md_len
 ) {
 
 	if (md == NULL)
 		return NULL;
-	return EVP_Q_digest(NULL, "SHA256", NULL, d, n, md, NULL) ? md : NULL;
+	return EVP_Q_digest(NULL, "SHA256", NULL, d, n, md, md_len) ? md : NULL;
 
 }
 
@@ -1568,12 +1925,27 @@ unsigned char*
 cef_valid_sha384 (
 	const unsigned char *d,
 	size_t n,
-	unsigned char *md
+	unsigned char *md,
+	size_t *md_len
 ) {
 
 	if (md == NULL)
 		return NULL;
-	return EVP_Q_digest(NULL, "SHA384", NULL, d, n, md, NULL) ? md : NULL;
+	return EVP_Q_digest(NULL, "SHA384", NULL, d, n, md, md_len) ? md : NULL;
+
+}
+
+unsigned char*
+cef_valid_sha512 (
+	const unsigned char *d,
+	size_t n,
+	unsigned char *md,
+	size_t *md_len
+) {
+
+	if (md == NULL)
+		return NULL;
+	return EVP_Q_digest(NULL, "SHA512", NULL, d, n, md, md_len) ? md : NULL;
 
 }
 
@@ -1630,7 +2002,7 @@ cef_valid_encoder_from_data (
 }
 
 static size_t
-cef_valid_i2d_rsa_pubkey (
+cef_valid_i2d_pubkey (
 	EVP_PKEY*		pkey,
 	unsigned char**	pdata
 ) {
@@ -1693,44 +2065,41 @@ cef_valid_decoder_from (
 }
 
 static EVP_PKEY *
-cef_valid_pem_read_rsa_pub_key (
+cef_valid_pem_read_pub_key (
 	FILE*	fp
 ) {
 	const char *format = "PEM";
 	const char *structure = NULL;
-	const char *keytype = "RSA";
 	int selection = OSSL_KEYMGMT_SELECT_PUBLIC_KEY;
 
-	return (cef_valid_decoder_from (format, structure, keytype, selection, fp, NULL, NULL));
+	return (cef_valid_decoder_from (format, structure, NULL, selection, fp, NULL, NULL));
 }
 
 static EVP_PKEY *
-cef_valid_pem_read_rsa_private_key (
+cef_valid_pem_read_private_key (
 	FILE*	fp
 ) {
 	const char *format = "PEM";
 	const char *structure = "NULL";
-	const char *keytype = "RSA";
 	int selection = OSSL_KEYMGMT_SELECT_PRIVATE_KEY;
 
-	return (cef_valid_decoder_from (format, structure, keytype, selection, fp, NULL, NULL));
+	return (cef_valid_decoder_from (format, structure, NULL, selection, fp, NULL, NULL));
 }
 
 static EVP_PKEY *
-cef_valid_d2i_rsa_pubkey (
+cef_valid_d2i_pubkey (
 	const unsigned char**	pp,
 	size_t					length
 ) {
 	const char *format = "DER";
 	const char *structure = NULL;
-	const char *keytype = "RSA";
 	int selection = OSSL_KEYMGMT_SELECT_PUBLIC_KEY;
 
-	return (cef_valid_decoder_from (format, structure, keytype, selection, NULL, pp, &length));
+	return (cef_valid_decoder_from (format, structure, NULL, selection, NULL, pp, &length));
 }
 
 static int
-cef_valid_rsa_sign (
+cef_valid_signature_sign_core (
 	int						type,
 	const unsigned char*	msg,
 	unsigned int			msg_len,
@@ -1741,36 +2110,58 @@ cef_valid_rsa_sign (
 	EVP_PKEY_CTX *ctx;
 	int ret = 0;
 	unsigned char* sig = NULL;
+	const EVP_MD *md = NULL;
+	size_t siglen_tmp;
 
 	ctx = EVP_PKEY_CTX_new (pkey, NULL);
 	if (!ctx) {
-		cef_log_write (CefC_Log_Error, "EVP_PKEY_CTX_new()=%d, ERR_error_string:%s\n",
+		cef_log_write (CefC_Log_Warn, "EVP_PKEY_CTX_new()=%d, ERR_error_string:%s\n",
 			ret, ERR_error_string (ERR_get_error (), NULL));
 		goto err;
 	}
 	if ((ret = EVP_PKEY_sign_init (ctx)) <= 0) {
-		cef_log_write (CefC_Log_Error, "EVP_PKEY_sign_init()=%d, ERR_error_string:%s\n",
+		cef_log_write (CefC_Log_Warn, "EVP_PKEY_sign_init()=%d, ERR_error_string:%s\n",
 			ret, ERR_error_string (ERR_get_error (), NULL));
 		goto err;
 	}
-	if ((ret = EVP_PKEY_CTX_set_rsa_padding (ctx, RSA_PKCS1_PADDING)) <= 0) {
-		cef_log_write (CefC_Log_Error, "EVP_PKEY_CTX_set_rsa_padding()=%d, ERR_error_string:%s\n",
+
+	switch (type) {
+	case CefC_T_RSA_SHA256:
+	case CefC_T_EC_SECP_256K1:
+		md = EVP_sha256();
+		break;
+	case CefC_T_EC_SECP_384R1:
+		md = EVP_sha384();
+		break;
+	default:
+		cef_log_write (CefC_Log_Warn,
+			"Invalid digital signature algorithm (type value=%d).\n", type);
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Invalid digital signature algorithm (type value=%d).\n", type);
+#endif // CefC_Debug
+		goto err;		/* Error occurred */
+	}
+
+	if ((ret = EVP_PKEY_CTX_set_signature_md (ctx, md)) <= 0) {
+		cef_log_write (CefC_Log_Warn, "EVP_PKEY_CTX_set_signature_md()=%d, ERR_error_string:%s\n",
+			ret, ERR_error_string (ERR_get_error (), NULL));
+		goto err;		/* Error occurred */
+	}
+
+	if ((ret = EVP_PKEY_sign (ctx, NULL, &siglen_tmp, msg, msg_len)) <= 0) {
+		cef_log_write (CefC_Log_Warn, "EVP_PKEY_sign(NULL)=%d, ERR_error_string:%s\n",
 			ret, ERR_error_string (ERR_get_error (), NULL));
 		goto err;
 	}
-	if ((ret = EVP_PKEY_sign (ctx, NULL, (size_t*)siglen, msg, msg_len)) <= 0) {
-		cef_log_write (CefC_Log_Error, "EVP_PKEY_sign(NULL)=%d, ERR_error_string:%s\n",
-			ret, ERR_error_string (ERR_get_error (), NULL));
-		goto err;
-	}
-	sig = OPENSSL_malloc(*siglen);
+	sig = OPENSSL_malloc(siglen_tmp);
 	if (sig == NULL) {
-		cef_log_write (CefC_Log_Error, "Failed to allocation signing buffer\n");
+		cef_log_write (CefC_Log_Warn, "Failed to allocation signing buffer\n");
 		goto err;
 	}
-	ret = EVP_PKEY_sign (ctx, sig, (size_t*)siglen, msg, msg_len);
+	ret = EVP_PKEY_sign (ctx, sig, &siglen_tmp, msg, msg_len);
 	if (ret <= 0) {
-		cef_log_write (CefC_Log_Error, "EVP_PKEY_sign(%p)=%d, ERR_error_string:%s\n",
+		cef_log_write (CefC_Log_Warn, "EVP_PKEY_sign(%p)=%d, ERR_error_string:%s\n",
 			sigret, ret, ERR_error_string (ERR_get_error (), NULL));
 		goto err;
 	} else  {
@@ -1778,6 +2169,8 @@ cef_valid_rsa_sign (
 		cef_dbg_write (CefC_Dbg_Finest, "EVP_PKEY_sign()=OK\n");
 #endif // CefC_Debug
 	}
+
+	*siglen = (unsigned int)siglen_tmp;
 	memcpy (sigret, sig, *siglen);
 
 err:
@@ -1792,7 +2185,7 @@ err:
 }
 
 static int
-cef_valid_rsa_verify (
+cef_valid_signature_verify_core (
 	int						type,
 	const unsigned char*	msg,
 	unsigned int			msg_len,
@@ -1802,28 +2195,53 @@ cef_valid_rsa_verify (
 ) {
 	EVP_PKEY_CTX *ctx;
 	int ret = 0;
+	const EVP_MD *md = NULL;
 
 	ctx = EVP_PKEY_CTX_new (pkey, NULL);
 	if (!ctx) {
-		cef_log_write (CefC_Log_Error, "EVP_PKEY_CTX_new()=%p, ERR_error_string:%s\n",
+		cef_log_write (CefC_Log_Warn, "EVP_PKEY_CTX_new()=%p, ERR_error_string:%s\n",
 			ctx, ERR_error_string (ERR_get_error (), NULL));
 		goto err;
 	}
 	if ((ret = EVP_PKEY_verify_init (ctx)) <= 0) {
-		cef_log_write (CefC_Log_Error, "EVP_PKEY_verify_init()=%d, ERR_error_string:%s\n",
+		cef_log_write (CefC_Log_Warn, "EVP_PKEY_verify_init()=%d, ERR_error_string:%s\n",
 			ret, ERR_error_string (ERR_get_error (), NULL));
 		goto err;
 	}
-	if ((ret = EVP_PKEY_CTX_set_rsa_padding (ctx, RSA_PKCS1_PADDING)) <= 0) {
-		cef_log_write (CefC_Log_Error, "EVP_PKEY_CTX_set_rsa_padding()=%d, ERR_error_string:%s\n",
+
+	switch (type) {
+	case CefC_T_RSA_SHA256:
+	case CefC_T_EC_SECP_256K1:
+		md = EVP_sha256();
+		break;
+	case CefC_T_EC_SECP_384R1:
+		md = EVP_sha384();
+		break;
+	default:
+		cef_log_write (CefC_Log_Warn,
+			"Invalid digital signature algorithm (type value=%d).\n", type);
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Invalid digital signature algorithm (type value=%d).\n", type);
+#endif // CefC_Debug
+		goto err;		/* Error occurred */
+	}
+
+	if ((ret = EVP_PKEY_CTX_set_signature_md (ctx, md)) <= 0) {
+		cef_log_write (CefC_Log_Warn, "EVP_PKEY_CTX_set_signature_md()=%d, ERR_error_string:%s\n",
 			ret, ERR_error_string (ERR_get_error (), NULL));
 		goto err;		/* Error occurred */
 	}
+
 	/* Perform operation */
 	ret = EVP_PKEY_verify (ctx, sigbuf, siglen, msg, msg_len);
 	if (ret != 1) {
-		cef_log_write (CefC_Log_Error, "EVP_PKEY_verify()=%d, ERR_error_string:%s\n",
+		cef_log_write (CefC_Log_Warn, "EVP_PKEY_verify()=%d, ERR_error_string:%s\n",
 			ret, ERR_error_string (ERR_get_error (), NULL));
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest, "EVP_PKEY_verify()=%d, ERR_error_string:%s\n",
+			ret, ERR_error_string (ERR_get_error (), NULL));
+#endif // CefC_Debug
 	} else  {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Finest, "EVP_PKEY_verify()=OK\n");
@@ -1847,6 +2265,7 @@ cef_valid_get_keyid_from_specified_pubkey (
 ) {
 	FILE* key_fp;
 	unsigned char hash[SHA256_DIGEST_LENGTH];
+	size_t hash_len = 0;
 
 	unsigned char*  pub_key_bi = NULL;
 	int pub_key_bi_len = 0;
@@ -1865,7 +2284,7 @@ cef_valid_get_keyid_from_specified_pubkey (
 	}
 
 	/* read the public key  */
-	pub_key = cef_valid_pem_read_rsa_pub_key (key_fp);
+	pub_key = cef_valid_pem_read_pub_key (key_fp);
 	if (pub_key == NULL) {
 		cef_log_write (CefC_Log_Error,
 			"Invalid public key (%s) is specified.\n", key_path);
@@ -1874,7 +2293,7 @@ cef_valid_get_keyid_from_specified_pubkey (
 	}
 	fclose (key_fp);
 
-	pub_key_bi_len = cef_valid_i2d_rsa_pubkey (pub_key, &pub_key_bi);
+	pub_key_bi_len = cef_valid_i2d_pubkey (pub_key, &pub_key_bi);
 
 	if (pub_key_bi_len < 1) {
 		cef_log_write (CefC_Log_Error,
@@ -1891,7 +2310,7 @@ cef_valid_get_keyid_from_specified_pubkey (
 		EVP_PKEY_free (pub_key);
 	}
 
-	cef_valid_sha256( pub_key_bi, pub_key_bi_len, hash );
+	cef_valid_sha256( pub_key_bi, pub_key_bi_len, hash, &hash_len);
 	memcpy (buff, hash, (sizeof(hash) / sizeof(hash[0])) );
 
 	if (pub_key_bi_len > 0) {
@@ -1899,4 +2318,990 @@ cef_valid_get_keyid_from_specified_pubkey (
 	}
 
 	return (1);
+}
+int
+cef_valid_verify_str (
+	const char* key_path,	/* path of Publickey	*/
+	unsigned char* str,		/* pointer of plaintext	*/
+	int str_len,			/* length of plaintext	*/
+	unsigned char* sign,	/* poitner of sign		*/
+	int sign_len			/* length of sing		*/
+) {
+	int res = 0;
+	FILE* key_fp;
+	unsigned char hash[EVP_MAX_MD_SIZE];
+	size_t hash_len = 0;
+	int type;
+
+	EVP_PKEY* pub_key;
+
+	key_fp = fopen (key_path, "r");
+	if (key_fp == NULL) {
+		cef_log_write (CefC_Log_Error,"Failed to open %s\n", key_path);
+		return (-1);
+	}
+
+	/* read the public key  */
+	pub_key = cef_valid_pem_read_pub_key (key_fp);
+	if (pub_key == NULL) {
+		cef_log_write (CefC_Log_Error,
+			"Invalid public key (%s) is specified.\n", key_path);
+		fclose (key_fp);
+		return (-1);
+	}
+	fclose (key_fp);
+
+	type = EVP_PKEY_get_base_id(pub_key);
+	switch (type) {
+	case CefC_T_RSA_SHA256:
+	case CefC_T_EC_SECP_256K1:
+		cef_valid_sha256( str, str_len, hash, &hash_len);
+		break;
+	case CefC_T_EC_SECP_384R1:
+		cef_valid_sha384( str, str_len, hash, &hash_len);
+		break;
+	default:
+		EVP_PKEY_free (pub_key);
+		cef_log_write (CefC_Log_Warn,
+			"Invalid digital signature algorithm (%s).\n", key_path);
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Invalid digital signature algorithm (%s).\n", key_path);
+#endif // CefC_Debug
+		return (-1);
+	}
+
+	res = cef_valid_signature_verify_core (type, hash, hash_len, sign, sign_len, pub_key);
+
+	if (pub_key) {
+		EVP_PKEY_free (pub_key);
+	}
+
+	return (res);
+}
+
+static int
+cef_valid_type_get_from_key (
+	EVP_PKEY* key
+) {
+	int type = CefC_T_ALG_INVALID;
+	int res;
+	res = EVP_PKEY_get_base_id(key);
+
+	switch (res) {
+	case EVP_PKEY_RSA:
+		type = CefC_T_RSA_SHA256;
+		break;
+
+	case EVP_PKEY_EC:
+        {
+            const EC_KEY *ec;
+            const EC_GROUP *group;
+
+            ec = EVP_PKEY_get0_EC_KEY(key);
+            if (!ec) {
+                break;
+            }
+
+            group = EC_KEY_get0_group(ec);
+            res = EC_GROUP_get_curve_name(group);
+
+            switch (res) {
+            case NID_secp256k1:
+                type = CefC_T_EC_SECP_256K1;
+                break;
+
+            case NID_secp384r1:
+                type =CefC_T_EC_SECP_384R1;
+                break;
+
+            default:
+                cef_log_write (CefC_Log_Warn,
+                    "Invalid elliptic curve identifier from EC_GROUP (NID=%d).\n", res);
+#ifdef CefC_Debug
+                cef_dbg_write (CefC_Dbg_Finest,
+                    "Invalid elliptic curve identifier from EC_GROUP (NID=%d).\n", res);
+#endif // CefC_Debug
+                break;
+            }
+        }
+
+		break;
+
+	default:
+		cef_log_write (CefC_Log_Warn,
+			"Invalid digital signature algorithm (type value=%d).\n", res);
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Invalid digital signature algorithm (type value=%d).\n", res);
+#endif // CefC_Debug
+		break;
+	}
+
+	return (type);
+}
+
+static int 							/* If the return value is 1, the verification succeeded,	*/
+									/* otherwise, the verification failed.						*/
+cef_valid_is_key_pair (
+	EVP_PKEY *prv_key,
+	EVP_PKEY *pub_key
+) {
+	int res;
+	unsigned char sign[256];
+	unsigned int sign_len = 0;
+	unsigned char hash[EVP_MAX_MD_SIZE + 1] = {0};
+	size_t hash_len = 0;
+	const unsigned char data[256] = "key-pair-check";
+	int type;
+
+	type = cef_valid_type_get_from_key(prv_key);
+	switch (type) {
+	case CefC_T_RSA_SHA256:
+	case CefC_T_EC_SECP_256K1:
+		cef_valid_sha256( data, sizeof(data), hash, &hash_len );	/* for OpenSSL 3.x */
+		break;
+	case CefC_T_EC_SECP_384R1:
+		cef_valid_sha384( data, sizeof(data), hash, &hash_len );	/* for OpenSSL 3.x */
+		break;
+	default:
+		cef_log_write (CefC_Log_Warn,
+			"Invalid digital signature algorithm (type value=%d).\n", type);
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Invalid digital signature algorithm (type value=%d).\n", type);
+#endif // CefC_Debug
+		return (-1);
+	}
+
+
+
+	res = cef_valid_signature_sign_core (
+		type, hash, (unsigned int)hash_len, sign, &sign_len, prv_key);
+	if (res != 1) {
+		cef_log_write (CefC_Log_Warn,
+			"Failed to sign.\n");
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Failed to sign.\n");
+#endif // CefC_Debug
+		return (-1);
+	}
+	res = cef_valid_signature_verify_core (
+		type, hash, (unsigned int)hash_len, sign, sign_len, pub_key);
+	if (res != 1) {
+		cef_log_write (CefC_Log_Warn,
+			"Failed to verify signature.\n");
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest,
+			"Failed to verify signature.\n");
+#endif // CefC_Debug
+		return (-1);
+	}
+
+	return (1);
+
+}
+
+int
+cef_valid_init_fortools (
+	const char* prv_key_path
+) {
+	FILE* fp = NULL;
+	int res = 0;
+	unsigned char t_name[CefC_Max_Length];
+	char ccn_uri[] = { "ccnx:/" };
+	CefT_Keys* key_entry;
+
+	/* Initialize CRC */
+	cef_valid_crc32c_init();
+
+	/* If crc32c is specified, finish here */
+	if (strcmp(prv_key_path, CefC_ValidTypeStr_CRC32C) == 0) {
+		return (1);
+	}
+
+	/* Initialize key table */
+	key_table = cef_hash_tbl_create (128);
+
+	/* Convert URI to Name */
+	res = cef_frame_conversion_uri_to_name (ccn_uri, t_name);
+	if (res < 1) {
+		cef_log_write (CefC_Log_Error, "Invalid ccn uri (%s)\n", ccn_uri);
+		return (-1);
+	}
+
+	/* Check existing entry */
+	key_entry = (CefT_Keys*) cef_hash_tbl_item_get (key_table, t_name, res);
+	if (key_entry) {
+		cef_log_write (CefC_Log_Error, "cef_hash_tbl_item_get() failure.\n");
+		return (-1);
+	}
+
+	/* Create new entry */
+	key_entry = (CefT_Keys*) malloc (sizeof (CefT_Keys));
+	if (key_entry == NULL) {
+		return (-1);
+	}
+	memset (key_entry, 0, sizeof (CefT_Keys));
+
+	memcpy (key_entry->name, t_name, res);
+	key_entry->name_len = res;
+
+	/* Set path */
+	strcpy (key_entry->prv_key_path, prv_key_path);
+
+	/* Load private key */
+	fp = fopen (prv_key_path, "r");
+	if (fp == NULL) {
+		cef_log_write (CefC_Log_Error, "Invalid private key (%s)\n", prv_key_path);
+		cef_valid_key_entry_free (key_entry);
+		return (-1);
+	}
+
+	key_entry->prv_key = cef_valid_pem_read_private_key (fp);
+	fclose (fp);
+
+	if (key_entry->prv_key == NULL) {
+		cef_log_write (CefC_Log_Error, "pem_read_private_key failure, %s.\n", prv_key_path);
+		cef_valid_key_entry_free (key_entry);
+		return (-1);
+	}
+
+	res = EVP_PKEY_get_base_id(key_entry->prv_key);
+	if (res != EVP_PKEY_RSA && res != EVP_PKEY_EC) {
+		cef_log_write (CefC_Log_Error, "EVP_PKEY_get_base_id failure, %s.\n", prv_key_path);
+		cef_valid_key_entry_free (key_entry);
+		return (-1);
+	}
+
+	/* Generate public key from private key */
+	key_entry->pub_key = EVP_PKEY_dup(key_entry->prv_key);
+	if (key_entry->pub_key == NULL) {
+		cef_log_write (CefC_Log_Error, "Public key duplication failure.\n");
+		cef_valid_key_entry_free (key_entry);
+		return (-1);
+	}
+
+	res = EVP_PKEY_get_base_id(key_entry->pub_key);
+	if (res != EVP_PKEY_RSA && res != EVP_PKEY_EC) {
+		cef_log_write (CefC_Log_Error, "EVP_PKEY_get_base_id failure (pubkey).\n");
+		cef_valid_key_entry_free (key_entry);
+		return (-1);
+	}
+
+	/* Generate public key binary image */
+	key_entry->pub_key_bi_len = cef_valid_i2d_pubkey (key_entry->pub_key, &key_entry->pub_key_bi);
+	if (key_entry->pub_key_bi_len < 1) {
+		cef_log_write (CefC_Log_Error, "Invalid public key (generated from private key).\n");
+		cef_valid_key_entry_free (key_entry);
+		return (-1);
+	}
+
+	/* Set as default key */
+	default_key_entry = key_entry;
+
+	return (1);
+}
+
+void
+cef_valid_validkey_table_destroy (
+	void
+) {
+	uint32_t index = 0;
+	CefT_valid_Key* entry;
+
+	if (keyid_table == NULL) {
+		return;
+	}
+
+	/* Delete each FIB entry */
+	/* Scan all entries in the table */
+	for (index = 0; index < cef_hash_tbl_def_max_get(keyid_table); index++) {
+		entry = (CefT_valid_Key*)cef_hash_tbl_item_remove_from_index(keyid_table, index);
+
+		if (entry == NULL) {
+			continue;
+		}
+
+		if (entry->pub_key) {
+			EVP_PKEY_free(entry->pub_key);
+		}
+
+		if (entry->pub_key_bi) {
+			free(entry->pub_key_bi);
+		}
+
+		free(entry);
+	}
+
+	/* Delete table */
+	cef_hash_tbl_destroy(keyid_table);
+}
+
+int
+cef_valid_validkey_add (
+	const char* pubkey_path,
+	const unsigned char* keyid_hexstr,
+	uint16_t keyid_len,
+	uint16_t hash_type
+) {
+	unsigned char keyid[CefC_S_KeyId];
+	unsigned char hash[SHA512_DIGEST_LENGTH];
+	size_t hash_len = 0;
+	CefT_valid_Key* entry = NULL;
+	FILE* fp = NULL;
+	int res;
+
+	unsigned char generated_keyid[CefC_S_KeyId];
+	unsigned char conf_keyid[CefC_S_KeyId];
+
+	if (!((hash_type == CefC_T_SHA_256 && keyid_len == CefC_ValidKey_KeyIdLen32) ||
+		(hash_type == CefC_T_SHA_512 && keyid_len == CefC_ValidKey_KeyIdLen32) ||
+		(hash_type == CefC_T_SHA_512 && keyid_len == CefC_ValidKey_KeyIdLen64))) {
+
+		cef_log_write(
+			CefC_Log_Warn,
+			"Failed to add validkey: invalid KeyID length (%u) or hash type (%u) was specified.\n",
+			keyid_len,
+			hash_type
+		);
+
+		return (CefC_ValidKey_Err_InvalidArg);
+	}
+
+	memset(keyid, 0, sizeof(keyid));
+	memset(generated_keyid, 0, sizeof(generated_keyid));
+	memset(conf_keyid, 0, sizeof(conf_keyid));
+
+	/* allocate entry */
+	entry = (CefT_valid_Key*)calloc(1, sizeof(CefT_valid_Key));
+
+	if (entry == NULL) {
+		cef_log_write(
+			CefC_Log_Warn,
+			"Failed to add validkey: memory allocation failed.\n"
+		);
+
+		return (CefC_ValidKey_Err_NoMemory);
+	}
+
+	/* pubkey only / public key + keyid */
+	if (pubkey_path != NULL) {
+
+		fp = fopen(pubkey_path, "rb");
+
+		if (fp == NULL) {
+			cef_log_write(
+				CefC_Log_Warn,
+				"Failed to add validkey: public key file '%s' could not be opened.\n",
+				pubkey_path
+			);
+
+			free(entry);
+			return (CefC_ValidKey_Err_NoFile);
+		}
+
+		/* PEM -> EVP_PKEY */
+		entry->pub_key = cef_valid_pem_read_pub_key(fp);
+		fclose(fp);
+
+		if (entry->pub_key == NULL) {
+			cef_log_write(CefC_Log_Warn,
+				"Failed to add validkey: '%s' is not a valid public key file.\n",
+				pubkey_path
+			);
+
+			free(entry);
+			return (CefC_ValidKey_Err_BadKey);
+		}
+
+		/* key type check */
+		res = EVP_PKEY_get_base_id(entry->pub_key);
+
+		if (res != EVP_PKEY_RSA && res != EVP_PKEY_EC) {
+			cef_log_write(
+				CefC_Log_Warn,
+				"Failed to add validkey: unsupported public key type was found in '%s'.\n",
+				pubkey_path
+			);
+
+			EVP_PKEY_free(entry->pub_key);
+			free(entry);
+			return (CefC_ValidKey_Err_BadKey);
+		}
+
+		/* EVP_PKEY -> DER binary */
+		entry->pub_key_bi_len = cef_valid_i2d_pubkey(entry->pub_key, &entry->pub_key_bi);
+
+		if (entry->pub_key_bi_len < 1) {
+			cef_log_write(
+				CefC_Log_Warn,
+				"Failed to add validkey: public key conversion failed for '%s'.\n",
+				pubkey_path
+			);
+
+			EVP_PKEY_free(entry->pub_key);
+			free(entry);
+			return (CefC_ValidKey_Err_BadKey);
+		}
+
+		/* create KeyID from pubkey hash */
+		if (hash_type == CefC_T_SHA_256) {
+
+			cef_valid_sha256(entry->pub_key_bi, entry->pub_key_bi_len, hash, &hash_len);
+
+		} else if (hash_type == CefC_T_SHA_512) {
+
+			cef_valid_sha512(entry->pub_key_bi, entry->pub_key_bi_len, hash, &hash_len);
+
+		} else {
+			cef_log_write(
+				CefC_Log_Warn,
+				"Failed to add validkey: unsupported hash type (%u) was specified.\n",
+				hash_type
+			);
+
+			EVP_PKEY_free(entry->pub_key);
+
+			if (entry->pub_key_bi) {
+				free(entry->pub_key_bi);
+			}
+
+			free(entry);
+			return (CefC_ValidKey_Err_InvalidArg);
+		}
+
+		if (hash_type == CefC_T_SHA_256) {
+			/* SHA256 is fixed at 32 bytes. */
+			memcpy(generated_keyid, hash, CefC_ValidKey_KeyIdLen32);
+			entry->keyid_len = CefC_ValidKey_KeyIdLen32;
+		} else {
+			/*
+				SHA512 is either 32 bytes or 64 bytes.
+				keyid_len is the value specified by the caller.
+			*/
+			memcpy(generated_keyid, hash, keyid_len);
+			entry->keyid_len = keyid_len;
+		}
+
+		/* if KeyID is also specified,verify generated KeyID == configured KeyID */
+		if (keyid_hexstr != NULL) {
+			cef_valid_hexstr_to_bin((const char*)keyid_hexstr, conf_keyid, keyid_len);
+
+			if (memcmp(generated_keyid, conf_keyid, keyid_len) != 0) {
+				cef_log_write(
+					CefC_Log_Warn,
+					"Failed to add validkey: the specified KeyID does not match the KeyID generated from public key '%s'.\n",
+					pubkey_path
+				);
+
+				/* KeyID mismatch */
+				EVP_PKEY_free(entry->pub_key);
+
+				if (entry->pub_key_bi) {
+					free(entry->pub_key_bi);
+				}
+
+				free(entry);
+				return (CefC_ValidKey_Err_Mismatch);
+			}
+		}
+
+		memcpy(keyid, generated_keyid, entry->keyid_len);
+
+		entry->hash_type = hash_type;
+
+		/* public key path is stored in a structure */
+		strncpy(entry->pubkey_path, pubkey_path, sizeof(entry->pubkey_path) - 1);
+	}
+
+	/* keyid mode */
+	else if (keyid_hexstr != NULL) {
+
+		/* hex string -> binary */
+		cef_valid_hexstr_to_bin((const char*)keyid_hexstr, keyid, keyid_len);
+
+		entry->keyid_len = keyid_len;
+		entry->hash_type = hash_type;
+
+		memset(entry->pubkey_path, 0, sizeof(entry->pubkey_path));
+
+	} else {
+		cef_log_write(
+			CefC_Log_Warn,
+			"Failed to add validkey: neither a KeyID nor a public key was specified.\n"
+		);
+
+		free(entry);
+		return (CefC_ValidKey_Err_InvalidArg);
+	}
+
+	/* store keyid into entry */
+	memcpy(entry->keyid, keyid, entry->keyid_len);
+
+	/* duplicate check */
+	if (cef_valid_validkey_exist(entry->keyid, entry->keyid_len, entry->hash_type)) {
+
+		cef_log_write(
+			CefC_Log_Info,
+			"validkey duplicate entry ignored "
+			"(HashType=%s KeyLength=%u KeyID=%s)\n",
+			(entry->hash_type == CefC_T_SHA_256) ?
+				CefC_Valid_HashStr_SHA256 :
+				CefC_Valid_HashStr_SHA512,
+			entry->keyid_len,
+			keyid_hexstr
+		);
+
+		if (entry->pub_key) {
+			EVP_PKEY_free(entry->pub_key);
+		}
+
+		if (entry->pub_key_bi) {
+			free(entry->pub_key_bi);
+		}
+
+		free(entry);
+		/* skip registration */
+		return (0);
+	}
+
+    /* register */
+	if (cef_hash_tbl_item_set(keyid_table, entry->keyid, entry->keyid_len, entry) < 0) {
+
+		cef_log_write(
+			CefC_Log_Warn,
+			"Failed to add validkey: registration to the validkey table failed.\n"
+		);
+
+		if (entry->pub_key) {
+			EVP_PKEY_free(entry->pub_key);
+		}
+
+		if (entry->pub_key_bi) {
+			free(entry->pub_key_bi);
+		}
+
+		free(entry);
+		return (CefC_ValidKey_Err_TableFull);
+	}
+
+	return (0);
+}
+
+
+int
+cef_valid_validkey_del (
+	const unsigned char* keyid_hexstr,
+	uint16_t keyid_len,
+	uint16_t hash_type
+) {
+	unsigned char keyid[CefC_S_KeyId];
+	CefT_valid_Key* entry;
+
+	memset(keyid, 0, sizeof(keyid));
+
+	/* hex string -> binary */
+	cef_valid_hexstr_to_bin((const char*)keyid_hexstr, keyid, keyid_len);
+
+	/* search entry */
+	entry = (CefT_valid_Key*)cef_hash_tbl_item_get(keyid_table, keyid, keyid_len);
+
+	if (entry == NULL) {
+		cef_log_write(
+			CefC_Log_Warn,
+			"Failed to delete validkey: the specified KeyID was not found.\n"
+		);
+
+		return (CefC_ValidKey_Err_NotFound);
+	}
+
+	/* hash_type check */
+	if (entry->hash_type != hash_type) {
+		cef_log_write(
+			CefC_Log_Warn,
+			"Failed to delete validkey: the specified hash type does not match the registered key information.\n"
+		);
+
+		return (CefC_ValidKey_Err_Mismatch);
+	}
+
+	/* remove */
+	cef_hash_tbl_item_remove(keyid_table, keyid, keyid_len);
+
+	/* free resources */
+	if (entry->pub_key) {
+		EVP_PKEY_free(entry->pub_key);
+	}
+
+	if (entry->pub_key_bi) {
+		free(entry->pub_key_bi);
+	}
+
+	free(entry);
+
+	return (0);
+}
+
+int
+cef_valid_validkey_show (
+	char* buff,
+	int buff_size
+) {
+	CefT_valid_Key* entry;
+	uint32_t index = 0;
+	int offset = 0;
+	int offset_pre = 0;
+	int i;
+	int written;
+	int truncate_f = 0;
+	char truncate_str[BUFSIZ_32] = "and more...\n";
+
+	if ((buff == NULL) || (buff_size == 0)) {
+		return (-1);
+	}
+
+	if (keyid_table == NULL) {
+		return (0);
+	}
+
+	buff[0] = '\0';
+
+	for (index = 0; index < cef_hash_tbl_def_max_get(keyid_table); index++) {
+		offset_pre = offset;
+		entry = (CefT_valid_Key*)cef_hash_tbl_item_get_from_index(keyid_table, index);
+
+		if (entry == NULL) {
+			continue;
+		}
+
+		/* KeyID prefix */
+		written = snprintf(buff + offset, buff_size - offset, "0x");
+
+		if (written < 0) {
+			return (-1);
+		} else if (written >= (buff_size - offset)) {
+			truncate_f = 1;
+			break;
+		}
+
+		offset += written;
+
+		/* KeyID */
+		for (i = 0; i < entry->keyid_len; i++) {
+			written = snprintf(buff + offset, buff_size - offset, "%02x", entry->keyid[i]);
+
+			if (written < 0) {
+				return (-1);
+			} else if (written >= (buff_size - offset)) {
+				truncate_f = 1;
+				break;
+			}
+
+			offset += written;
+		}
+
+		/* hash_type */
+		if (entry->hash_type == CefC_T_SHA_256) {
+			written = snprintf(buff + offset, buff_size - offset, " " CefC_Valid_HashStr_SHA256 " ");
+		} else if (entry->hash_type == CefC_T_SHA_512) {
+			written = snprintf(buff + offset, buff_size - offset, " " CefC_Valid_HashStr_SHA512 " ");
+		} else {
+			written = snprintf(buff + offset, buff_size - offset, " unknown ");
+		}
+
+		if (written < 0) {
+			return (-1);
+		} else if (written >= (buff_size - offset)) {
+			truncate_f = 1;
+			break;
+		}
+
+		offset += written;
+
+		/* key length */
+		written = snprintf(buff + offset, buff_size - offset, "%u", entry->keyid_len);
+
+		if (written < 0) {
+			return (-1);
+		} else if (written >= (buff_size - offset)) {
+			truncate_f = 1;
+			break;
+		}
+
+		offset += written;
+
+		/* pubkey path */
+		if (entry->pubkey_path[0] != '\0') {
+			written = snprintf(buff + offset, buff_size - offset, " %s\n", entry->pubkey_path);
+		} else {
+			written = snprintf(buff + offset, buff_size - offset, "\n");
+		}
+
+		if (written < 0) {
+			return (-1);
+		} else if (written >= (buff_size - offset)) {
+			truncate_f = 1;
+			break;
+		}
+
+		offset += written;
+
+		if (buff_size < offset + strlen(truncate_str) ) {
+			truncate_f = 1;
+			break;
+		}
+	}
+
+	/* Handling cases where records don't fit in the buffer */
+	if (truncate_f == 1) {
+		offset = offset_pre;
+		written = snprintf(buff + offset, buff_size - offset, "%s", truncate_str);
+		if (written < 0) {
+			return (-1);
+		}
+		offset += written;
+	}
+
+	return offset;
+}
+
+static int
+cef_valid_hexstr_to_bin (
+	const char* hexstr,
+	unsigned char* bin,
+	int bin_len
+) {
+	int i;
+	char wk[3];
+
+	wk[2] = '\0';
+
+	for (i = 0 ; i < bin_len ; i++) {
+
+		wk[0] = hexstr[i * 2];
+		wk[1] = hexstr[i * 2 + 1];
+
+		bin[i] = (unsigned char) strtoul(wk, NULL, 16);
+	}
+
+	return (0);
+}
+
+int
+cef_valid_validkey_table_init (
+	const char* file_path,
+	int validkey_table_size,
+	int valid_mode
+) {
+	char buff[BUFSIZ_1K];
+	FILE* fp;
+	int line_no = 0;
+
+	validation_mode = valid_mode;
+	keyid_table = cef_hash_tbl_create(validkey_table_size);
+
+	fp = fopen(file_path, "r");
+
+	if (fp == NULL) {
+		cef_log_write(CefC_Log_Warn, "keyid.list is not found (%s)\n", file_path);
+		return (0);
+	}
+
+	while (fgets(buff, sizeof(buff), fp) != NULL) {
+
+		char keyid[BUFSIZ_256] = {0};
+		char hash_str[BUFSIZ_32] = {0};
+		char pubkey_path[PATH_MAX] = {0};
+		uint16_t hash_type;
+		uint16_t key_len;
+		char* token = NULL;
+		char* saveptr = NULL;
+
+		line_no++;
+		buff[strcspn(buff, "\r\n")] = '\0';
+
+		/* comment */
+		if (buff[0] == '#') {
+			continue;
+		}
+
+		/* empty line */
+		if (buff[0] == '\0') {
+			continue;
+		}
+
+		/* format : <KeyID> <hash_type> <key_length> [pubkey] */
+		/* field1 : keyid */
+		token = strtok_r(buff, " \t\r\n", &saveptr);
+
+		if (token == NULL) {
+			continue;
+		}
+
+		strncpy(keyid, token, sizeof(keyid) - 1);
+
+		/* support 0x prefix */
+		if ((strlen(keyid) > 2) && (keyid[0] == '0') && (tolower((unsigned char)keyid[1]) == 'x')) {
+
+			memmove(keyid, keyid + 2, strlen(keyid + 2) + 1);
+		}
+
+		/* field2 : hash type */
+		token = strtok_r(NULL, " \t\r\n", &saveptr);
+
+		if (token == NULL) {
+			cef_log_write(CefC_Log_Warn, "keyid.list line=%d field=hash_type error=missing\n", line_no);
+			continue;
+		}
+
+		strncpy(hash_str, token, sizeof(hash_str) - 1);
+
+		/* hash type conversion */
+		if (strcasecmp(hash_str, CefC_Valid_HashStr_SHA256) == 0) {
+
+			hash_type = CefC_T_SHA_256;
+
+		} else if (strcasecmp(hash_str, CefC_Valid_HashStr_SHA512) == 0) {
+
+			hash_type = CefC_T_SHA_512;
+
+		} else {
+
+			cef_log_write(CefC_Log_Warn, "keyid.list line %d invalid hash type\n", line_no);
+
+			continue;
+		}
+
+		/* field3 : key length */
+		token = strtok_r(NULL, " \t\r\n", &saveptr);
+
+		if (token == NULL) {
+			cef_log_write(CefC_Log_Warn, "keyid.list line=%d field=key_length error=missing\n", line_no);
+			continue;
+		}
+
+		key_len = (uint16_t)atoi(token);
+
+		/* field4 : pubkey path (optional) */
+		token = strtok_r(NULL, " \t\r\n", &saveptr);
+
+		if (token != NULL) {
+			strncpy(pubkey_path, token, sizeof(pubkey_path) - 1);
+		}
+
+		if (strcasecmp(keyid, "none") == 0) {
+
+			if (pubkey_path[0] == '\0') {
+
+				cef_log_write(CefC_Log_Warn, "keyid.list line %d pubkey path missing\n", line_no);
+
+				continue;
+			}
+
+			if (cef_valid_validkey_add(pubkey_path, NULL, key_len, hash_type) < 0) {
+
+				cef_log_write(CefC_Log_Warn, "keyid.list line %d add pubkey failed\n", line_no);
+			}
+
+		} else {
+
+			size_t expect_len = key_len * 2;
+
+			if (strlen(keyid) != expect_len) {
+
+				cef_log_write(CefC_Log_Warn, "keyid.list line %d invalid keyid length\n", line_no);
+
+				continue;
+			}
+
+			if (pubkey_path[0] != '\0') {
+
+				if (cef_valid_validkey_add(pubkey_path, (const unsigned char*)keyid, key_len, hash_type) < 0) {
+
+					cef_log_write(CefC_Log_Warn, "keyid.list line %d add keyid pubkey failed\n", line_no);
+				}
+
+			} else {
+
+				if (cef_valid_validkey_add(NULL, (const unsigned char*)keyid, key_len, hash_type) < 0) {
+
+					cef_log_write(CefC_Log_Warn, "keyid.list line %d add keyid failed\n", line_no);
+				}
+			}
+		}
+	}
+
+	fclose(fp);
+
+	return (0);
+}
+
+static CefT_valid_Key*
+cef_valid_validkey_get (
+	const unsigned char* keyid,
+	uint16_t keyid_len,
+	uint16_t hash_type
+) {
+	CefT_valid_Key *entry;
+
+	if (keyid == NULL) {
+		return NULL;
+	}
+
+	/* search entry */
+	entry = (CefT_valid_Key*)cef_hash_tbl_item_get(keyid_table, keyid, keyid_len);
+
+	/* check the hash_type */
+	if ((entry != NULL) && (entry->hash_type != hash_type)) {
+		return NULL;
+	}
+
+	return entry;
+}
+
+int
+cef_valid_validkey_exist (
+	const unsigned char* keyid,
+	uint16_t keyid_len,
+	uint16_t hash_type
+) {
+	CefT_valid_Key*	validkey_entry = NULL;
+
+	validkey_entry = cef_valid_validkey_get (keyid, keyid_len, hash_type);
+	if (validkey_entry == NULL) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest, "No matching keyid entry exists in the keyid table.\n");
+#endif // CefC_Debug
+		return (0);
+	}
+	return (1);
+}
+
+int
+cef_valid_keyid_create_from_hashtype (
+	unsigned char* keyid,
+	uint16_t hash_type,
+	unsigned char* pubkey,
+	uint16_t* pub_key_bi_len
+) {
+	size_t	hash_len = 0;
+	if (default_key_entry == NULL) {
+		return 0;
+	}
+
+	/* Create KeyID by the pubkey and specified hash type. */
+	if (hash_type == CefC_T_SHA_256) {
+		cef_valid_sha256(default_key_entry->pub_key_bi, default_key_entry->pub_key_bi_len, keyid, &hash_len);
+
+	} else if (hash_type == CefC_T_SHA_512) {
+		cef_valid_sha512(default_key_entry->pub_key_bi, default_key_entry->pub_key_bi_len, keyid, &hash_len);
+	}
+
+	/* Set the pubkey info */
+	memcpy (pubkey, default_key_entry->pub_key_bi, default_key_entry->pub_key_bi_len);
+	*pub_key_bi_len = default_key_entry->pub_key_bi_len;
+
+	return hash_len;
 }

@@ -295,9 +295,9 @@ print_usage (
 	fprintf (ofp,
 		"\n\nUsage: conpubreload\n\n"
 		"  conpubreload [-h host] [-p port]\n\n"
-		"  host   Specify the host identifier (e.g., IP address) on which csmgrd \n"
+		"  host   Specify the host identifier (e.g., IP address) on which conpubd \n"
 		"         is running. The default value is localhost (i.e., 127.0.0.1).\n"
-		"  port   Port number to connect csmgrd. The default value is 9799.\n\n"
+		"  port   Port number to connect conpubd. The default value is 9696.\n\n"
 	);
 	return;
 }

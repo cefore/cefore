@@ -179,6 +179,8 @@ cef_status_stats_output (
 #ifdef	CefC_Develop
 	if( output_opt_f & CefC_Ctrl_StatusOpt_FibOnly ){
 		cef_status_forward_output_with_ip (&hdl->fib, output_opt_f);
+		if ( !rsp_bufp[0] )
+			strcpy (rsp_bufp, "\n");
 		goto endfunc;
 	}
 #endif	// CefC_Develop
@@ -559,9 +561,9 @@ cef_status_forward_output (
 			if (faces->keyid_len > 0) {
 				face_info_index +=
 					sprintf (face_info + face_info_index, CefC_Fib_Keyid_Identifier);
-				for (int i = 0; i < 32; i++) {
+				for (int i = 0; i < faces->keyid.hash_length; i++) {
 					face_info_index +=
-						sprintf (face_info + face_info_index, "%02x", faces->keyid[i]);
+						sprintf (face_info + face_info_index, "%02x", faces->keyid.hash_value[i]);
 				}
 			}
 			face_info_index +=
@@ -663,6 +665,15 @@ cef_status_forward_output_with_ip (
 			}
 #endif // __APPLE__
 
+			/* If "--fibstatedown-only" option is specified, output only state:down */
+			if (output_opt_f & CefC_Ctrl_StatusOpt_FibStateDownOnly) {
+				if ( (faces->faceid <= CefC_Face_Reserved)
+						|| cef_face_check_active (faces->faceid) ){
+					faces = faces->next;
+					continue;
+				}
+			}
+
 			/* get socket info associated with this faceID */
 			sock_tbl = cef_face_return_sock_table ();
 			sock = (CefT_Sock*) cef_hash_tbl_item_get_from_index (*sock_tbl, face->index);
@@ -683,7 +694,7 @@ cef_status_forward_output_with_ip (
 				continue;
 			}
 
-			/* If "--fibinet-only" option is specified, output olny FIB with TCP or UDP */
+			/* If "--fibinet-only" option is specified, output only FIB with TCP or UDP */
 			if (output_opt_f & CefC_Ctrl_StatusOpt_FibInetOnly) {
 				if ( !(sock->ai_family == AF_INET6 || sock->ai_family == AF_INET) ) {
 					faces = faces->next;
@@ -691,7 +702,7 @@ cef_status_forward_output_with_ip (
 				}
 			}
 
-			/* If "--fibv4udp-only" option is specified, output olny FIB with IPv4 and UDP */
+			/* If "--fibv4udp-only" option is specified, output only FIB with IPv4 and UDP */
 			if (output_opt_f & CefC_Ctrl_StatusOpt_FibV4UdpOnly) {
 				if ( !(sock->ai_family == AF_INET) || !(sock->protocol == CefC_Face_Type_Udp) ) {
 					faces = faces->next;
@@ -1028,7 +1039,8 @@ cef_status_app_forward_output (
 				return (-1);
 			}
 			/* output faces	*/
-			sprintf (work_str, "    Faces : %d\n", entry->faceid);
+			sprintf (work_str, "    Faces : %d%s\n",
+				entry->faceid, (!(ht->tbl[i].opt_f) ? " (Exact)" : ""));
 			if ((fret=cef_status_add_output_to_rsp_buf(work_str)) != 0){
 				return (-1);
 			}

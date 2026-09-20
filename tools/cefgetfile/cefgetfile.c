@@ -162,7 +162,8 @@ int main (
 	char 	conf_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
 
-	char valid_type[CefC_NAME_MAXLEN];
+	char valid_arg[PATH_MAX];
+	int keyid_style = 0;
 
 	Ceft_RxWnd* 	rxwnd = NULL;
 	Ceft_RxWnd* 	rxwnd_prev;
@@ -187,6 +188,8 @@ int main (
 	int valid_f 		= 0;
 	int no_resend_f		= 0;
 	int lifetime_f		= 0;
+	int validation_oob_f   = 0;
+	int keyid_style_f   = 0;
 
 	/***** state variavles 	*****/
 	uint32_t 	sv_max_seq 		= UINT32_MAX - 1;
@@ -200,7 +203,7 @@ int main (
 		Obtains parameters
 	-----------------------------------------------------------------------------*/
 	uri[0] 			= 0;
-	valid_type[0] 	= 0;
+	valid_arg[0] 	= 0;
 
 	printf ("[cefgetfile] Start\n");
 
@@ -346,13 +349,47 @@ int main (
 				USAGE;
 				return (-1);
 			}
+
+			if (strlen(argv[i + 1]) >= PATH_MAX) {
+				printerr("[-v] parameter is too long.\n");
+				USAGE;
+				return (-1);
+			}
+
 			work_arg = argv[i + 1];
-			strcpy (valid_type, work_arg);
+			strcpy (valid_arg, work_arg);
 			valid_f++;
 			i++;
 		} else if (strcmp (work_arg, "-h") == 0) {
 			USAGE;
 			exit (1);
+
+		} else if (strcmp (work_arg, "--validation_oob") == 0) {
+			if (validation_oob_f) {
+				printerr("[--validation_oob] is duplicated.\n");
+				USAGE;
+				return (-1);
+			}
+			validation_oob_f++;
+
+		} else if (strcmp (work_arg, "--keyid_style") == 0) {
+			if (keyid_style_f) {
+				printerr("[--keyid_style] is duplicated.\n");
+				USAGE;
+				return (-1);
+			}
+			if (i + 1 == argc) {
+				printerr("[--keyid_style] has no parameter.\n");
+				USAGE;
+				return (-1);
+			}
+			work_arg = argv[i + 1];
+			keyid_style = atoi (work_arg);
+			if (( keyid_style < 0 ) || ( 2 < keyid_style )) {
+				printerr("[--keyid_style] must be 0, 1, or 2.\n");
+			}
+			keyid_style_f++;
+			i++;
 
 #ifdef CefC_Develop
 		} else if (strcmp (work_arg, "-r") == 0) {
@@ -386,7 +423,7 @@ int main (
 			lifetime_f++;
 			i++;
 
-#endif // CefC_Develop 
+#endif // CefC_Develop
 		} else {
 
 			work_arg = argv[i];
@@ -493,11 +530,42 @@ int main (
 		Set Validation Alglithm
 	--------------------------------------------*/
 	if (valid_f == 1) {
-		cef_valid_init (conf_path);
-		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_type);
+		res = cef_valid_init_fortools(valid_arg);
+		if (res != 1) {
+			printerr("Failed to initialize validation.\n");
+			exit (1);
+		}
 
+		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_arg);
 		if (params.alg.valid_type == CefC_T_ALG_INVALID) {
-			printerr("-v has the invalid parameter %s\n", valid_type);
+			printerr("-v has the invalid parameter %s\n", valid_arg);
+			exit (1);
+		} else if (Cef_Is_Pkey_Type(params.alg.valid_type)) {
+			uint16_t keyid_hashtype  = CefC_T_SHA_256;
+			uint16_t keyid_hashlength = SHA256_DIGEST_LENGTH;
+
+			if (keyid_style == 1) {
+				keyid_hashtype = CefC_T_SHA_512;
+				keyid_hashlength = SHA256_DIGEST_LENGTH;
+			} else if (keyid_style == 2) {
+				keyid_hashtype = CefC_T_SHA_512;
+				keyid_hashlength = SHA512_DIGEST_LENGTH;
+			}
+
+			if (validation_oob_f) {
+				params.alg.publickey_oob_f = 1;
+			}
+
+			res = cef_frame_set_keyid_to_valid_alg(&params.alg, keyid_hashtype, keyid_hashlength);
+			if (res != 1) {
+				printerr("Failed to generate KeyID.\n");
+				exit (1);
+			}
+		}
+	} else {
+		if ((validation_oob_f) || (keyid_style_f)) {
+			printerr("To use \"--validation_oob\" or \"--keyid_style\" option, "
+						"you must specify prvkey with \"-v\" option .\n");
 			exit (1);
 		}
 	}
@@ -668,7 +736,6 @@ cef_dbg_write (CefC_Dbg_Finest, "cef_client_read:res=%d, time="FMTU64"\n",
 
 				stat_all_recv_frames++;								//20230518
 				stat_all_recv_bytes += app_frame.name_len			//20230518
-									 + app_frame.ver_len			//20230518
 									 + app_frame.hdr_org_len		//20230518
 									 + app_frame.msg_org_len		//20230518
 									 + app_frame.payload_len;		//20230518
@@ -877,16 +944,22 @@ print_usage(
 ) {
 
 	fprintf (ofp, "\nUsage: cefgetfile\n\n");
-	fprintf (ofp, "  cefgetfile uri -f file [-o] [-m chunk] [-s pipeline] [-v valid_algo] [-d config_file_dir] [-p port_num] [-z sg]\n\n");
+	fprintf (ofp, "  cefgetfile uri -f file [-o] [-m chunk] [-s pipeline] [-v valid_algo] [-d config_file_dir] [-p port_num] [-z sg] "
+						"[--validation_oob] [--keyid_style]\n\n");
 	fprintf (ofp, "  uri              Specify the URI.\n");
 	fprintf (ofp, "  file             Specify the file name of output. \n");
 	fprintf (ofp, "  -o               Specify this option if content must be retrieved directly from content owner and not from intermediate cache\n");
 	fprintf (ofp, "  chunk            Specify the number of chunk that you want to obtain\n");
 	fprintf (ofp, "  pipeline         Number of pipeline\n");
-	fprintf (ofp, "  valid_algo       Specify the validation algorithm (" CefC_ValidTypeStr_CRC32C " or " CefC_ValidTypeStr_RSA256 ")\n");
+	fprintf (ofp, "  valid_algo       Specify the validation algorithm (" CefC_ValidTypeStr_CRC32C " or prv_key_path)\n");
 	fprintf (ofp, "  config_file_dir  Configure file directory\n");
 	fprintf (ofp, "  port_num         Port Number\n");
-	fprintf (ofp, "  -z sg            Send Long Life Interest\n\n");
+	fprintf (ofp, "  -z sg            Send Long Life Interest\n");
+	fprintf (ofp, "  --validation_oob Don't include the publickey for validation in Interest (use with \"-v\"option)\n");
+	fprintf (ofp, "  --keyid_style    Specify the hashtype and length to generate KeyID for validation (use with \"-v\"option)\n"
+						"                   0: hashtype=SHA256, length=32Byte (default)\n"
+						"                   1: hashtype=SHA512, length=32Byte\n"
+						"                   2: hashtype=SHA512, length=64Byte\n\n");
 }
 
 static void

@@ -53,7 +53,7 @@
 /*------------------------------------------------------------------*/
 /* Default cache status												*/
 /*------------------------------------------------------------------*/
-#define CefC_CnpbDefault_Tcp_Prot			9799	/* Port num between cefnetd and 	*/
+#define CefC_CnpbDefault_Tcp_Prot			9696	/* Port num between cefnetd and 	*/
 													/* conpubd 							*/
 #define CefC_CnpbDefault_Local_Sock_Id		"0"		/* Socket ID used by conpubd and 	*/
 													/* cefnetd							*/
@@ -155,6 +155,7 @@
 /*------------------------------------------------------------------*/
 #define CefC_Conpub_Buff_Max 			100000000
 
+#define CefC_Conpub_Key_Max 			CefC_NAME_MAXLEN
 
 /*------------------------------------------------------------------*/
 /* status type														*/

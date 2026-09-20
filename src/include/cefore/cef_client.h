@@ -65,6 +65,8 @@
 //$$$$$
 #define CefC_Dev_RegPit				CefC_T_OPT_DEV_REG_PIT
 //$$$$$
+#define CefC_Route_Add				CefC_T_OPT_ROUTE_ADD
+#define CefC_Route_Del				CefC_T_OPT_ROUTE_DEL
 
 #define CefC_Unset_Port 			0
 #define CefC_Unset_Id 				NULL
@@ -144,7 +146,7 @@ cef_client_connect (
 );
 CefT_Client_Handle 								/* created client handle 				*/
 cef_client_connect_to_csmgrd (
-	void
+	int
 );
 /*--------------------------------------------------------------------------------------
 	Creats the client handle with the SOCK_DGRAM socket
@@ -280,6 +282,14 @@ cef_client_name_reg (
 	const unsigned char* name,					/* Name (not URI)						*/
 	uint16_t name_len							/* length of the Name					*/
 );
+void
+cef_client_name_reg_with_validation (
+	CefT_Client_Handle fhdl, 					/* client handle						*/
+	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
+	const unsigned char* name,					/* Name (not URI)						*/
+	uint16_t name_len,							/* length of the Name					*/
+	CefT_Valid_Alg_TLVs* alg
+);
 /*--------------------------------------------------------------------------------------
 	Register/Deregister the specified Name of the Application (accept prefix match of Name)
 ----------------------------------------------------------------------------------------*/
@@ -289,6 +299,14 @@ cef_client_prefix_reg (
 	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
 	const unsigned char* name,					/* Name (not URI)						*/
 	uint16_t name_len							/* length of the Name					*/
+);
+void
+cef_client_prefix_reg_with_validation (
+	CefT_Client_Handle fhdl, 					/* client handle						*/
+	uint16_t func, 								/* CefC_T_OPT_APP_REG/T_OPT_APP_DEREG 	*/
+	const unsigned char* name,					/* Name (not URI)						*/
+	uint16_t name_len,							/* length of the Name					*/
+	CefT_Valid_Alg_TLVs* alg					/* Validation TLV						*/
 );
 /*--------------------------------------------------------------------------------------
 	Register/Deregister the specified Name of the Application in PIT

@@ -126,15 +126,15 @@ typedef struct CsmgrT_Stat {
 	uint32_t 			tx_num;
 	uint64_t			tx_time;
 
-	unsigned char*		version;
-	uint16_t			ver_len;
-
 	/* UCINC information */
 	uint16_t			ucinc_stat;
 	uint64_t			pending_timer;
 	unsigned char*		ssl_public_key_val;
 	uint16_t			ssl_public_key_len;
 	uint16_t			validation_result;
+
+	CefT_HashData   keyid;
+	uint16_t		keyid_len;
 
 	struct CsmgrT_Stat*	next;
 } CsmgrT_Stat;
@@ -266,6 +266,8 @@ csmgr_stat_cob_update (
 	CsmgrT_Stat_Handle hdl,
 	const unsigned char* name,
 	uint16_t name_len,
+	const CefT_HashData* keyid,
+	uint16_t keyid_len,
 	uint32_t seq,
 	uint32_t cob_size,
 	uint64_t expiry,
@@ -290,7 +292,9 @@ void
 csmgr_stat_access_count_update (
 	CsmgrT_Stat_Handle hdl,
 	const unsigned char* name,
-	uint16_t name_len
+	uint16_t name_len,
+	const CefT_HashData* keyid,
+	uint16_t keyid_len
 );
 /*--------------------------------------------------------------------------------------
 	Update request count
@@ -310,16 +314,6 @@ csmgr_stat_content_info_init (
 	const unsigned char* name,
 	uint16_t name_len,
 	CsmgrT_DB_COB_MAP**	cob_map
-);
-/*--------------------------------------------------------------------------------------
-	Init the valiables of the specified content (for version)
-----------------------------------------------------------------------------------------*/
-int
-csmgr_stat_content_info_version_init (
-	CsmgrT_Stat_Handle hdl,
-	CsmgrT_Stat* rcd,
-	unsigned char* version,
-	uint16_t ver_len
 );
 /*--------------------------------------------------------------------------------------
 	Deletes the content information
@@ -513,17 +507,19 @@ csmgr_stat_cob_remove_for_pub (
 #define csmgrd_stat_expired_content_info_get(hdl, index) \
 		 csmgr_stat_expired_content_info_get(hdl, index, CsmgrT_IM_CSMGRD)
 #define csmgrd_stat_cob_update(hdl, name, name_len, seq, cob_size, expiry, cached_time, node) \
-		 csmgr_stat_cob_update(hdl, name, name_len, seq, cob_size, expiry, cached_time, node)
+		 csmgr_stat_cob_update(hdl, name, name_len, NULL, 0, seq, cob_size, expiry, cached_time, node)
+#define csmgrd_stat_cob_update_keyid(hdl, name, name_len, keyid, keyid_len, seq, cob_size, expiry, cached_time, node) \
+		 csmgr_stat_cob_update(hdl, name, name_len, keyid, keyid_len, seq, cob_size, expiry, cached_time, node)
 #define csmgrd_stat_cob_remove(hdl, name, name_len, seq, cob_size) \
 		 csmgr_stat_cob_remove(hdl, name, name_len, seq, cob_size)
 #define csmgrd_stat_access_count_update(hdl, name, name_len) \
-		 csmgr_stat_access_count_update(hdl, name, name_len)
+		 csmgr_stat_access_count_update(hdl, name, name_len, NULL, 0)
+#define csmgrd_stat_access_count_update_keyid(hdl, name, name_len, keyid, keyid_len) \
+		 csmgr_stat_access_count_update(hdl, name, name_len, keyid, keyid_len)
 #define csmgrd_stat_request_count_update(hdl, name, name_len) \
 		 csmgr_stat_request_count_update(hdl, name, name_len)
 #define csmgrd_stat_content_info_init(hdl, name, name_len, cob_map) \
 		 csmgr_stat_content_info_init(hdl, name, name_len, cob_map)
-#define csmgrd_stat_content_info_version_init(hdl, rcd, version, ver_len) \
-		 csmgr_stat_content_info_version_init(hdl, rcd, version, ver_len)
 #define csmgrd_stat_content_info_delete(hdl, name, name_len) \
 		 csmgr_stat_content_info_delete(hdl, name, name_len)
 #define csmgrd_stat_cache_capacity_update(hdl, capacity) \
@@ -570,17 +566,15 @@ csmgr_stat_cob_remove_for_pub (
 #define conpubd_stat_expired_content_info_get(hdl, index) \
 		  csmgr_stat_expired_content_info_get(hdl, index, CsmgrT_IM_CONPUBD)
 #define conpubd_stat_cob_update(hdl, name, name_len, seq, cob_size, expiry, cached_time, node) \
-		  csmgr_stat_cob_update(hdl, name, name_len, seq, cob_size, expiry, cached_time, node)
+		  csmgr_stat_cob_update(hdl, name, name_len, NULL, 0, seq, cob_size, expiry, cached_time, node)
 //		  csmgr_stat_cob_update_for_pub(hdl, name, name_len, seq, cob_size, expiry, cached_time, node)
 #define conpubd_stat_cob_remove(hdl, name, name_len, seq, cob_size) \
 		  csmgr_stat_cob_remove(hdl, name, name_len, seq, cob_size)
 //		  csmgr_stat_cob_remove_for_pub(hdl, name, name_len, seq, cob_size)
 #define conpubd_stat_access_count_update(hdl, name, name_len) \
-		  csmgr_stat_access_count_update(hdl, name, name_len)
+		  csmgr_stat_access_count_update(hdl, name, name_len, NULL, 0)
 #define conpubd_stat_content_info_init(hdl, name, name_len, cob_map) \
 		  csmgr_stat_content_info_init(hdl, name, name_len, cob_map)
-#define conpubd_stat_content_info_version_init(hdl, rcd, version, ver_len) \
-		  csmgr_stat_content_info_version_init(hdl, rcd, version, ver_len)
 #define conpubd_stat_content_info_delete(hdl, name, name_len) \
 		  csmgr_stat_content_info_delete(hdl, name, name_len)
 #define conpubd_stat_cache_capacity_update(hdl, capacity) \

@@ -253,6 +253,7 @@ cef_dbg_write (CefC_Dbg_Finer, "[pit] MsgHash_len=%d, type=%u,length=%u, MsgHash
 	poh->MsgHash_len, poh->MsgHash.hash_type, poh->MsgHash.hash_length,
 	poh->MsgHash.hash_value[0], poh->MsgHash.hash_value[1], poh->MsgHash.hash_value[2], poh->MsgHash.hash_value[3]);
 #endif // CefC_Debug
+		key_len += poh->MsgHash_len;
 	}
 
 	memcpy(&key_buff[key_len], name, name_len);
@@ -766,14 +767,18 @@ cef_dbg_write (CefC_Dbg_Finer, "\t (face->lifetime_us < prev_lifetime_us)\n" );
 			if (max_lifetime_us < entry->adv_lifetime_us) {
 				forward_interest_f = 1;
 
-				if (msg && poh->lifetime_f && 0 < poh->lifetime){
+				/* When Lifetime=0, Interest should be updated with new lifetime and forwarded. */
+				/* However, it cannot handle changes to the Lifetime length of Interest.  */
+				/* So as a temporary workaround, it doesn't forwarded the Interest if other Downface exist. */
+				//if (msg && poh->lifetime_f){
+				if (msg && poh->lifetime_f && (poh->lifetime > 0)){
 					uint16_t new_lifetime_ms, nbo_lifetime;
 
 					new_lifetime_ms = (max_lifetime_us - nowt_us) / 1000;
 					nbo_lifetime = htons (new_lifetime_ms);
 					memcpy (&msg[poh->lifetime_f], &nbo_lifetime, CefC_S_Lifetime);
 
-#ifdef	__PIT_DEBUG__
+#ifdef	CefC_Debug
 cef_dbg_write (CefC_Dbg_Finer, "\t Lifetime (update)= %d\n", new_lifetime_ms );
 #endif
 				}
@@ -784,7 +789,7 @@ cef_dbg_write (CefC_Dbg_Finer, "\t Lifetime (update)= %d\n", new_lifetime_ms );
 			/* If the other down stream node exists, we do not forward 		*/
 			/* the Interest with lifetime. 									*/
 			if ((poh->lifetime_f) && (poh->lifetime == 0)) {
-				cef_pit_down_faceid_remove (entry, face->faceid);
+				cef_pit_down_faceid_remove (entry, faceid);
 			}
 		}
 	}

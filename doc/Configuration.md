@@ -20,7 +20,7 @@ cefnetd.conf describes the cefnetd parameter settings. The parameters must be in
 | LOCAL_CACHE_CAPACITY | Max number of Cobs to use for the local cache in cefnetd. <br> Range: 1 < n <= 8000000 <br> Approximate memory usage: Cob size * 2 * num. of Cobs. | 65535 |
 | LOCAL_CACHE_INTERVAL | Interval to check expired content in cefnetd's local cache (sec). <br> Range: 1 < n < 86400 (=24 hours) | 60 |
 | CSMGR_NODE | csmgrd's IP address | localhost |
-| CSMGR_PORT_NUM | TCP port number used by csmgrd to connect cefnetd. <br> Range: 1024 < p < 65536 | 9799 |
+| CSMGR_PORT_NUM | TCP port number used by csmgrd to connect cefnetd. <br> Range: 1024 < p < 65536 | 9696 |
 | LOCAL_SOCK_ID | UNIX domain socket ID. <br> Usually it is not necessary to change it. | 0 |
 | CCNINFO_ACCESS_POLICY | CCNinfo access policy <br> 0: Allow all <br> 1: Request/Reply message forward only <br> 2: Deny all | 0 |
 | CCNINFO_FULL_DISCOVERY | Permission of "Full discovery request" <br> 0: Deny <br> 1: Allow <br> 2: Allow if approved <br> | 0 |
@@ -40,9 +40,9 @@ You can specify more than one IP address for each separating them by spaces or t
 When using IPv6, enclose the IP address in brackets ([]).
 For link-local addresses, the IP address must be followed (in []) by the "%" (percent) followed by the interface name used by the local node, and the port number must be followed by the ":" outside of [].
 
-> *ccnx:/news/today &nbsp;udp &nbsp;10.0.3.1 &nbsp;10.0.3.2:9876 &nbsp;10.0.3.3:8765*  
-> *ccnx:/cinema/sf &nbsp;tcp &nbsp;10.0.2.1:9999 &nbsp;10.0.2.2:8888*  
-> *ccnx:/weather/tokyo &nbsp;udp &nbsp;[fe80::fde:3f51:af6c:70cf%eth0]:12345*  
+> *ccnx:/news/today &nbsp;udp &nbsp;10.0.3.1 &nbsp;10.0.3.2:9876 &nbsp;10.0.3.3:8765*
+> *ccnx:/cinema/sf &nbsp;tcp &nbsp;10.0.2.1:9999 &nbsp;10.0.2.2:8888*
+> *ccnx:/weather/tokyo &nbsp;udp &nbsp;[fe80::fde:3f51:af6c:70cf%eth0]:12345*
 > *ccnx:/ &nbsp;udp &nbsp;10.0.1.1*
 
 ## 3. cefnetd.key
@@ -54,9 +54,9 @@ By default, only one line is provided to apply the pre-installed private and pub
 The public and private keys distributed here are common to all cefore packages and do not make any sense in terms of Interest/Content Object validation. For this reason, it is recommended that you re-create the default private and public keys as needed and distribute the re-created or per-URI public keys to the communicating cefore nodes.
 The following example shows how to specify the public and private keys to be used for each URI. The order of the URIs are not relevant with the processing. Internally, the content name and the prefix specified in cefnetd.key are matched with the longest forward match.
 
-> *ccnx:/news/today &nbsp;xxx-private-key &nbsp;xxx-public-key*  
-> *ccnx:/news/sports &nbsp;yyy-private-key &nbsp;yyy-public-key*  
-> *ccnx:/news &nbsp;zzz-private-key &nbsp;zzz-public-key*  
+> *ccnx:/news/today &nbsp;xxx-private-key &nbsp;xxx-public-key*
+> *ccnx:/news/sports &nbsp;yyy-private-key &nbsp;yyy-public-key*
+> *ccnx:/news &nbsp;zzz-private-key &nbsp;zzz-public-key*
 > *ccnx:/ &nbsp;default-private-key &nbsp;default-public-key*
 
 
@@ -66,7 +66,7 @@ csmgrd.conf describes the settings for the Content Store and csmgr. The paramete
 | Parameter | Description | Default |
 | --------- | ----------- | ------- |
 |  CEF_LOG_LEVEL  | Specifies the log output level for the cefnetd.<br> Range: 0 <= n <= 3 <br> See "1.5. Logging and Debugging" in Daemon document for more information. | 0 |
-|  PORT_NUM  | Port number used by csmgrd. <br> Range: 1024 < p < 65536 | 9799 |
+|  PORT_NUM  | Port number used by csmgrd. <br> Range: 1024 < p < 65536 | 9696 |
 |  CACHE_TYPE  | Plugin name used by csmgrd. <br> Currently, the following cache plugins are supported. <br> filesystem: cache located on UNIX filesystem <br> memory: cache located on memory (RAM) | filesystem |
 |  CACHE_INTERVAL  | Csmgrd Expired Content Check Interval (ms) <br> Range: 1,000 < n < 86,400,000 (= 24 hours) | 10,000 |
 |  CACHE_DEFAULT_RCT  | (In case of RCT unspecified) Cob's RCT (ms) <br> Range: 1,000 < n < 3,600,000 (= one hour)  | 600,000 |

@@ -71,6 +71,51 @@ if CEFDBG_ENABLE
 conpubreload_CFLAGS+=-DCefC_Debug
 endif # CEFDBG_ENABLE
 
+bin_PROGRAMS+=conpub_cont_add
+conpub_cont_add_LDFLAGS=-L$(top_srcdir)/src/lib/
+if LINUX
+conpub_cont_add_LDFLAGS+=-pthread
+endif # LINUX
+conpub_cont_add_LDADD=-lcefore
+if OPENSSL_STATIC
+conpub_cont_add_LDADD+=-l:libssl.a -l:libcrypto.a
+else  #OPENSSL_STATIC
+conpub_cont_add_LDADD+=-lssl -lcrypto
+endif #OPENSSL_STATIC
+conpub_cont_add_LDADD += -lpthread -ldl
+
+conpub_cont_add_CFLAGS=$(AM_CFLAGS)
+conpub_cont_add_SOURCES=conpub_cont_add.c
+
+# check debug build
+if CEFDBG_ENABLE
+conpub_cont_add_CFLAGS+=-DCefC_Debug
+endif # CEFDBG_ENABLE
+
+bin_PROGRAMS+=conpub_cont_del
+conpub_cont_del_LDFLAGS=-L$(top_srcdir)/src/lib/
+if LINUX
+conpub_cont_del_LDFLAGS+=-pthread
+endif # LINUX
+conpub_cont_del_LDADD=-lcefore
+if OPENSSL_STATIC
+conpub_cont_del_LDADD+=-l:libssl.a -l:libcrypto.a
+else  #OPENSSL_STATIC
+conpub_cont_del_LDADD+=-lssl -lcrypto
+endif #OPENSSL_STATIC
+conpub_cont_del_LDADD += -lpthread -ldl
+
+conpub_cont_del_CFLAGS=$(AM_CFLAGS)
+conpub_cont_del_SOURCES=conpub_cont_del.c
+
+# check debug build
+if CEFDBG_ENABLE
+conpub_cont_del_CFLAGS+=-DCefC_Debug
+endif # CEFDBG_ENABLE
+
+
+
+
 DESTDIR=$(CEFORE_DIR_PATH)
 bindir=bin
 

@@ -275,17 +275,7 @@ cef_csmgr_interest_msg_parse (
 	unsigned char buff[],						/* receive message						*/
 	int buff_len,								/* receive message length				*/
 	uint8_t* int_type,							/* Interest type						*/
-	unsigned char name[],						/* Content Name							*/
-	uint16_t* name_len,							/* Length of content name				*/
-	uint32_t* chunk_num,						/* Chunk number							*/
-	unsigned char op_data[],					/* Optional Data Field					*/
-	uint16_t* op_data_len,						/* Length of Optional Data Field		*/
-	unsigned char ver[],						/* Content Version						*/
-	uint16_t* ver_len,							/* Length of content version			*/
-	unsigned char** csact_val,					/* Plain Text							*/
-	uint16_t* csact_len,							/* length of Plain Text					*/
-	unsigned char** signature_val,				/* signature							*/
-	uint16_t* signature_len						/* length of signature					*/
+	CsmgrdT_Plugin_APIparam_get *param			/* API parameters	*/
 );
 /*--------------------------------------------------------------------------------------
 	Incoming Get Status Message
@@ -696,6 +686,7 @@ csmgrd_handle_create (
 		return (NULL);
 	}
 	hdl->interval = conf_param.interval;
+	hdl->cache_capacity = conf_param.cache_capacity;
 
 #ifdef CefC_Debug
 	cef_dbg_write (CefC_Dbg_Fine, "Create the listen socket.\n");
@@ -825,6 +816,9 @@ csmgrd_handle_create (
 		return (NULL);
 	}
 	csmgr_proc_cob_buff_idx = 0;
+
+	cef_log_write (CefC_Log_Info, "CACHE_TYPE = %s\n", hdl->cs_mod_name);
+	cef_log_write (CefC_Log_Info, "CACHE_CAPACITY = %u\n", hdl->cache_capacity);
 
 #ifdef CefC_Debug
 	/* Show config value */
@@ -1280,6 +1274,7 @@ csmgrd_incoming_msg_thread (
 /*--------------------------------------------------------------------------------------
 	function for processing the expire check
 ----------------------------------------------------------------------------------------*/
+#define	CefC_T_Expire_Delay		10			//	The timelag between expiration and deletion.
 static void*
 csmgrd_expire_check_thread (
 	void* arg
@@ -1298,6 +1293,7 @@ csmgrd_expire_check_thread (
 		sleep (1);
 		cef_log_flush();
 		nowt = cef_client_present_timeus_calc ();
+		nowt -= (CefC_T_Expire_Delay * 1000000llu);		//	The timelag between expiration and deletion.
 		/* Checks content expire 			*/
 		if ((interval != 0) && (nowt > expire_check_time)) {
 #ifdef CefC_Debug
@@ -1793,6 +1789,7 @@ csmgrd_config_read (
 
 	/* Set default value */
 	conf_param->interval	= CefC_Default_Int_Check_Cache;
+	conf_param->cache_capacity = CefC_Default_Cache_Capacity;
 	strcpy (conf_param->cs_mod_name, "filesystem");
 	strcpy (conf_param->fsc_cache_path, csmgr_conf_dir);
 	conf_param->port_num 	= CefC_Default_Tcp_Prot;
@@ -1869,6 +1866,15 @@ csmgrd_config_read (
 				return (-1);
 			}
 			conf_param->port_num = res;
+		} else if (strcmp (option, "CACHE_CAPACITY") == 0) {
+			res = csmgrd_config_value_get (option, value);
+			if ((res < 1) || (res > 0xFFFFFFFFF)) {
+				csmgrd_log_write (CefC_Log_Error,
+				"CACHE_CAPACITY must be between 1 and 68,719,476,735 (0xFFFFFFFFF) inclusive.\n");
+				fclose (fp);
+				return (-1);
+			}
+			conf_param->cache_capacity = res;
 		} else if (strcmp (option, CefC_ParamName_LocalSockId) == 0) {
 			if (strlen (value) > CefC_LOCAL_SOCK_ID_SIZ) {
 				cef_log_write (CefC_Log_Error,
@@ -2457,24 +2463,14 @@ csmgrd_incoming_interest (
 	int buff_len,								/* receive message length				*/
 	uint8_t type								/* receive message type					*/
 ) {
+	CsmgrdT_Plugin_APIparam_get	param;
 	int res;
-	unsigned char name[CefC_Max_Msg_Size] = {0};
-	uint16_t name_len;
-	uint32_t chunk_num = 0;
 	uint8_t int_type;
-	unsigned char op_data[CefC_Max_Msg_Size] = {0};
-	uint16_t op_data_len = 0;
-	unsigned char ver[CefC_Max_Msg_Size] = {0};
-	uint16_t ver_len = 0;
-	unsigned char* csact_val = NULL;
-	uint16_t csact_len = 0;
-	unsigned char* signature_val = NULL;
-	uint16_t signature_len = 0;
 
 	/* Parses the csmgr Interest message */
+	memset(&param, 0x00, sizeof(param));
 	res = cef_csmgr_interest_msg_parse (
-			buff, buff_len, &int_type, name, &name_len, &chunk_num, op_data, &op_data_len, ver, &ver_len,
-			&csact_val, &csact_len, &signature_val, &signature_len);
+			buff, buff_len, &int_type, &param);
 
 	if (res < 0) {
 #ifdef CefC_Debug
@@ -2489,20 +2485,19 @@ csmgrd_incoming_interest (
 #ifdef CefC_Debug
 			cef_dbg_write (CefC_Dbg_Finer, "Call cache plugin (cache_item_get)\n");
 #endif // CefC_Debug
-			csmgrd_stat_request_count_update (stat_hdl, name, name_len);
+			csmgrd_stat_request_count_update (stat_hdl, param.name, param.name_len);
 
 			/* Searches and sends a Cob */
-			hdl->cs_mod_int->cache_item_get (name, name_len, chunk_num, sock, ver, ver_len,
-				csact_val, csact_len, signature_val, signature_len);
+			hdl->cs_mod_int->cache_item_get (sock, &param);
 			break;
 		}
 		default: {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "Unknown Interest Type=0x%04x\n", int_type);
+#endif // CefC_Debug
 			break;
 		}
 	}
-
-	free(csact_val);
-	free(signature_val);
 
 	return;
 }
@@ -2514,24 +2509,16 @@ cef_csmgr_interest_msg_parse (
 	unsigned char buff[],						/* receive message						*/
 	int buff_len,								/* receive message length				*/
 	uint8_t* int_type,							/* Interest type						*/
-	unsigned char name[],						/* Content Name							*/
-	uint16_t* name_len,							/* Length of content name				*/
-	uint32_t* chunk_num,						/* Chunk number							*/
-	unsigned char op_data[],					/* Optional Data Field					*/
-	uint16_t* op_data_len,						/* Length of Optional Data Field		*/
-	unsigned char ver[],						/* Content Version						*/
-	uint16_t* ver_len,							/* Length of content version			*/
-	unsigned char** csact_val,					/* Plain Text							*/
-	uint16_t* csact_len,							/* length of Plain Text					*/
-	unsigned char** signature_val,				/* signature							*/
-	uint16_t* signature_len						/* length of signature					*/
+	CsmgrdT_Plugin_APIparam_get *param			/* get plug-in API parameters			*/
 ) {
 	int res;
 	uint16_t index = 0;
 	uint8_t chunk_num_f;
 	uint32_t value32;
 	uint16_t value16;
-	unsigned char* ptr = NULL;
+
+	int keyidrestr_list_len = 0;
+	int cnt = 0;
 
 	/* get Interest Type */
 	*int_type = buff[index];
@@ -2555,8 +2542,8 @@ cef_csmgr_interest_msg_parse (
 	}
 
 	/* get cob name */
-	res = cef_csmgr_cob_name_parse (buff, buff_len, &index, name, &(*name_len));
-	if ((res < 0) || (*name_len == 0)) {
+	res = cef_csmgr_cob_name_parse (buff, buff_len, &index, param->name, &(param->name_len));
+	if ((res < 0) || (param->name_len == 0)) {
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "Cob name parse error\n");
 #endif // CefC_Debug
@@ -2572,58 +2559,108 @@ cef_csmgr_interest_msg_parse (
 			return (-1);
 		}
 		memcpy (&value32, buff + index, CefC_S_ChunkNum);
-		*chunk_num = ntohl (value32);
+		param->seqno = ntohl (value32);
 		index += CefC_S_ChunkNum;
 	}
-	/* get version length */
+
+	/* get KeyID Restriction Length */
 	memcpy (&value16, buff + index, sizeof (uint16_t));
-	*ver_len = ntohs (value16);
+	keyidrestr_list_len = (int)ntohs (value16);
 	index += sizeof (uint16_t);
 
-	/* get version */
-	if (*ver_len) {
-		memcpy (ver, buff + index, *ver_len);
-		index += *ver_len;
+	/* get KeyID Restriction */
+	while (keyidrestr_list_len > 0) {
+		/* get KeyID Length */
+		memcpy (&value16, buff + index, sizeof (uint16_t));
+		param->KeyIdRestr[cnt].keyid_len = ntohs (value16);
+		index += sizeof (uint16_t);
+		keyidrestr_list_len -= sizeof (uint16_t);
+
+		/* get KeyID */
+		if (param->KeyIdRestr[cnt].keyid_len) {
+			if (sizeof(param->KeyIdRestr[cnt].keyid) < param->KeyIdRestr[cnt].keyid_len) {
+#ifdef CefC_Debug
+				cef_dbg_write (CefC_Dbg_Fine, "KeyID length(%d) fot the (%d)th item is too large.\n",
+						param->KeyIdRestr[cnt].keyid_len, cnt);
+#endif // CefC_Debug
+				return (-1);
+			}
+			memcpy (&param->KeyIdRestr[cnt].keyid, buff + index, param->KeyIdRestr[cnt].keyid_len);
+			index += param->KeyIdRestr[cnt].keyid_len;
+			keyidrestr_list_len -= param->KeyIdRestr[cnt].keyid_len;
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Finest, "KeyId[%d].keyid_len=%d\n",
+					cnt, param->KeyIdRestr[cnt].keyid_len);
+			unsigned char dbg[256];
+			memcpy(dbg, &param->KeyIdRestr[cnt].keyid, param->KeyIdRestr[cnt].keyid_len);
+			cef_dbg_buff_write (CefC_Dbg_Finest, dbg, param->KeyIdRestr[cnt].keyid_len);
+#endif // CefC_Debug
+		}
+		cnt++;
+	}
+	param->KeyIdRestr_num = cnt;
+#ifdef CefC_Debug
+	cef_dbg_write (CefC_Dbg_Finest, "KeyIdRestr_num=%d\n", param->KeyIdRestr_num);
+#endif // CefC_Debug
+
+	/* get CobHash Restriction Length */
+	memcpy (&value16, buff + index, sizeof (uint16_t));
+	param->ObjHashRestr_len = ntohs (value16);
+	index += sizeof (uint16_t);
+
+	/* get CobHash Restriction */
+	if (param->ObjHashRestr_len) {
+		if (sizeof(param->ObjHashRestr) < param->ObjHashRestr_len) {
+#ifdef CefC_Debug
+			cef_dbg_write (CefC_Dbg_Fine, "ObjHashRestr_len(%d) too large.\n",
+					param->ObjHashRestr_len);
+#endif // CefC_Debug
+			return (-1);
+		}
+		memcpy (&param->ObjHashRestr, buff + index, param->ObjHashRestr_len);
+		index += param->ObjHashRestr_len;
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Finest, "ObjHashRestr_len=%d\n", param->ObjHashRestr_len);
+		if (param->ObjHashRestr_len) {
+			unsigned char dbg[256];
+			memcpy(dbg, &param->ObjHashRestr, param->ObjHashRestr_len);
+			cef_dbg_buff_write (CefC_Dbg_Fine, dbg, param->ObjHashRestr_len);
+		}
+#endif // CefC_Debug
 	}
 
 	/* get Plain Text Length */
 	memcpy (&value16, buff + index, sizeof (uint16_t));
-	*csact_len = ntohs (value16);
+	param->csact_len = ntohs (value16);
 	index += sizeof (uint16_t);
 
 	/* get Plain Text */
-	if (*csact_len) {
-		ptr = (unsigned char*)calloc (1, sizeof (unsigned char) * (*csact_len + 1));
-		if (ptr == NULL) {
+	if (param->csact_len) {
+		if (sizeof(param->csact_val) < param->csact_len) {
 #ifdef CefC_Debug
-			cef_log_write (CefC_Log_Error, "%s (calloc Plain Text)\n", __func__);
+cef_dbg_write (CefC_Dbg_Fine, "%s:%d, csact_len(%d) too large.\n", __func__, __LINE__, param->signature_len);
 #endif // CefC_Debug
 			return (-1);
 		}
-		memcpy (ptr, buff + index, *csact_len);
-		*csact_val = ptr;
-		index += *csact_len;
+		memcpy (param->csact_val, buff + index, param->csact_len);
+		index += param->csact_len;
 	}
 
 	/* get signature Length */
 	memcpy (&value16, buff + index, sizeof (uint16_t));
-	*signature_len = ntohs (value16);
+	param->signature_len = ntohs (value16);
 	index += sizeof (uint16_t);
 
 	/* get signature */
-	if (*signature_len) {
-		ptr = (unsigned char*)calloc (1, sizeof (unsigned char) * (*signature_len + 1));
-		if (ptr == NULL) {
+	if (param->signature_len) {
+		if (sizeof(param->signature_val) < param->signature_len ) {
 #ifdef CefC_Debug
-			cef_log_write (CefC_Log_Error, "%s (calloc signature)\n", __func__);
+cef_dbg_write (CefC_Dbg_Fine, "%s:%d, signature_len(%d) too large.\n", __func__, __LINE__, param->signature_len);
 #endif // CefC_Debug
-			free(*csact_val);
-			*csact_val = NULL;
 			return (-1);
 		}
-		memcpy (ptr, buff + index, *signature_len);
-		*signature_val = ptr;
-		index += *signature_len;
+		memcpy (param->signature_val, buff + index, param->signature_len);
+		index += param->signature_len;
 	}
 
 	return (0);
@@ -2662,6 +2699,13 @@ csmgrd_incoming_status_msg (
 	unsigned char buff_x;
 	uint16_t peer_num;
 
+	unsigned char* cobhash_buf = NULL;
+	uint32_t cobhash_buf_size = 0;
+	int cobhash_len = 0;
+	unsigned char* index_buf = NULL;
+	uint32_t index_buf_size = 0;
+	int index_len = 0;
+
 	wbuf = calloc (1, CefC_Csmgr_Stat_Mtu);
 	if (wbuf == NULL) {
 		return;
@@ -2683,6 +2727,7 @@ csmgrd_incoming_status_msg (
 	buff_idx += sizeof(int32_t);
 	memcpy (&peer_num, &buff[buff_idx], sizeof(peer_num));
 	buff_idx += sizeof (peer_num);
+
 	klen = buff_len - 1 - 1 - sizeof(int32_t) - sizeof(int32_t) - sizeof (peer_num);
 	buff_x = buff[buff_idx];
 	if ((buff[buff_idx]) && (klen > 0)) {
@@ -2695,6 +2740,109 @@ csmgrd_incoming_status_msg (
 	index = CefC_Csmgr_Msg_HeaderLen + 2; /*** Added 2 bytes to extend the total frame length to 4 bytes ***/
 
 	index += sizeof (struct CefT_Csmgr_Status_Hdr);
+
+	if (option_f & CefC_Csmgr_Stat_Opt_CobHash) {
+#ifdef CefC_Debug
+		cef_dbg_write( CefC_Dbg_Fine, "Received CobHash status request.\n" );
+#endif // CefC_Debug
+
+		cobhash_buf_size = CefC_Csmgr_Stat_Mtu;
+
+		cobhash_buf = calloc(1, cobhash_buf_size);
+		if (cobhash_buf == NULL) {
+			free(wbuf);
+			return;
+		}
+
+		if ((hdl->cs_mod_int != NULL) &&
+			(hdl->cs_mod_int->cobhash_status_get != NULL)) {
+
+			cobhash_len =
+				hdl->cs_mod_int->cobhash_status_get(
+					cobhash_buf,
+					cobhash_buf_size
+				);
+		}
+
+		if (cobhash_len > 0) {
+
+			if (index + cobhash_len > wbuf_size) {
+				void* new = realloc(
+					wbuf,
+					index + cobhash_len
+				);
+
+				if (new == NULL) {
+					free(cobhash_buf);
+					free(wbuf);
+					return;
+				}
+
+				wbuf = new;
+				wbuf_size = index + cobhash_len;
+			}
+
+			memcpy( &wbuf[index], cobhash_buf, cobhash_len );
+			index += cobhash_len;
+		}
+
+		free(cobhash_buf);
+		cobhash_buf = NULL;
+	}
+
+	if (option_f & CefC_Csmgr_Stat_Opt_Index) {
+#ifdef CefC_Debug
+		cef_dbg_write ( CefC_Dbg_Fine, "Received Index status request.\n" );
+#endif // CefC_Debug
+
+		index_buf_size = CefC_Csmgr_Stat_Mtu;
+
+		index_buf = calloc (1, index_buf_size);
+		if (index_buf == NULL) {
+			free (wbuf);
+			return;
+		}
+
+		if ((hdl->cs_mod_int != NULL) &&
+			(hdl->cs_mod_int->index_status_get != NULL)) {
+
+			index_len =
+				hdl->cs_mod_int->index_status_get (
+					index_buf,
+					index_buf_size
+				);
+		}
+
+		if (index_len > 0) {
+
+			if (index + index_len > wbuf_size) {
+				void* new = realloc (
+					wbuf,
+					index + index_len
+				);
+
+				if (new == NULL) {
+					free (index_buf);
+					free (wbuf);
+					return;
+				}
+
+				wbuf = new;
+				wbuf_size = index + index_len;
+			}
+
+			memcpy (
+				&wbuf[index],
+				index_buf,
+				index_len
+			);
+
+			index += index_len;
+		}
+
+		free (index_buf);
+		index_buf = NULL;
+	}
 
 	if (buff_x) {
 		res = csmgrd_stat_content_info_gets (stat_hdl, key, klen, 1, stat);
@@ -2723,7 +2871,7 @@ csmgrd_incoming_status_msg (
 				continue;
 			}
 
-			if (index+stat[i]->name_len+sizeof (struct CefT_Csmgr_Status_Rep)+stat[i]->ver_len > wbuf_size) {
+			if (index+stat[i]->name_len+sizeof (struct CefT_Csmgr_Status_Rep) > wbuf_size) {
 				void *new = realloc (wbuf, wbuf_size+CefC_Csmgr_Stat_Mtu);
 				if (new == NULL) {
 					free (wbuf);
@@ -2764,15 +2912,59 @@ csmgrd_incoming_status_msg (
 				}
 			}
 
-			stat_rep.ver_len 	= htons (stat[i]->ver_len);
+			/*--------------------------------------------------*/
+			/* Name / KeyID status                              */
+			/*--------------------------------------------------*/
+			if (stat[i]->keyid_len > 0) {
 
-			memcpy (&wbuf[index], &stat_rep, sizeof (struct CefT_Csmgr_Status_Rep));
-			index += sizeof (struct CefT_Csmgr_Status_Rep);
-			memcpy (&wbuf[index], stat[i]->name, stat[i]->name_len);
-			index += stat[i]->name_len;
-			if (stat[i]->ver_len) {
-				memcpy (&wbuf[index], stat[i]->version, stat[i]->ver_len);
-				index += stat[i]->ver_len;
+				char uri[CefC_NAME_MAXLEN];
+				char keyid_name[4096];
+				int keyid_name_len;
+				int pos;
+				int j;
+
+				cef_frame_conversion_name_to_uri( stat[i]->name, stat[i]->name_len, uri);
+
+				pos = snprintf( keyid_name, sizeof(keyid_name), "%s    KeyId=", uri);
+
+				for (j = 0; (j < stat[i]->keyid.hash_length) && (j < 8); j++) {
+					pos += snprintf( &keyid_name[pos], sizeof(keyid_name) - pos, "%02x", stat[i]->keyid.hash_value[j]);
+				}
+
+				pos += snprintf( &keyid_name[pos], sizeof(keyid_name) - pos, "...");
+
+				keyid_name_len = pos;
+
+				if (index + keyid_name_len + sizeof(struct CefT_Csmgr_Status_Rep) > wbuf_size) {
+
+					void *new = realloc( wbuf, wbuf_size + CefC_Csmgr_Stat_Mtu);
+
+					if (new == NULL) {
+						free(wbuf);
+						return;
+					}
+
+					wbuf = new;
+					wbuf_size += CefC_Csmgr_Stat_Mtu;
+				}
+
+				stat_rep.name_len = htons(keyid_name_len);
+
+				memcpy( &wbuf[index], &stat_rep, sizeof(struct CefT_Csmgr_Status_Rep));
+				index += sizeof(struct CefT_Csmgr_Status_Rep);
+
+				memcpy( &wbuf[index], keyid_name, keyid_name_len);
+				index += keyid_name_len;
+
+			} else {
+
+				stat_rep.name_len = htons(stat[i]->name_len);
+
+				memcpy( &wbuf[index],&stat_rep, sizeof(struct CefT_Csmgr_Status_Rep));
+				index += sizeof(struct CefT_Csmgr_Status_Rep);
+
+				memcpy( &wbuf[index], stat[i]->name, stat[i]->name_len);
+				index += stat[i]->name_len;
 			}
 		}
 	}
@@ -3113,7 +3305,7 @@ csmgrd_incoming_increment_msg (
 ) {
 	uint16_t index = 0;
 	int res;
-	unsigned char name[CefC_Max_Msg_Size] = {0};
+	unsigned char name[CefC_NAME_MAXLEN] = {0};
 	uint16_t name_len;
 	uint32_t value32;
 	uint32_t chunk_num;
@@ -3663,10 +3855,13 @@ csmgrd_resource_mon_thread (
 //@@@fprintf(stderr, "[%s]: ----- m_cob_info="FMTU64" m_cob_info_max="FMTU64" -----\n", __FUNCTION__, m_cob_info, m_cob_info_max);
 		rc = get_filesystem_info (hdl->fsc_cache_path, &f_total_blocks, &f_avail_blocls);
 		if (rc != 0) {
-			cef_log_write (CefC_Log_Error, "%s(%d): Could not get file information.\n", __FUNCTION__, __LINE__);
+			cef_log_write (CefC_Log_Warn, "%s(%d): Could not get file information.\n", __FUNCTION__, __LINE__);
 			sleep (30);
 		}
 		m_used = 100 - (int)((float)m_avaliable / m_total * 100);
+		if ( CSMGR_MAXIMUM_MEM_USAGE_FOR_FILE < m_used ){
+			cef_log_write (CefC_Log_Warn, "[RM] Memory usage is over %d percent, (%u/%u).\n", m_used, m_avaliable, m_total);
+		}
 //@@@fprintf(stderr, "[%s]: ----- m_used=%d -----\n", __FUNCTION__, m_used);
 		f_used = 100 - (int)((float)f_avail_blocls / f_total_blocks * 100);
 		if (max_cob_limit == 0) {
@@ -3707,9 +3902,17 @@ csmgrd_resource_mon_thread (
 		else if (strcmp (hdl->cs_mod_name, "filesystem") == 0) {
 			if (max_cob_limit == 0) {
 				if (m_used > CSMGR_MAXIMUM_MEM_USAGE_FOR_FILE) {
+					uint64_t capa_bytes = (1024L * hdl->cache_capacity);	// Assuming 1024 Bytes/Chunk
+					if ( capa_bytes < m_cob_info_max )
+						max_cob_limit = m_cob_info_max;
+					else
+						max_cob_limit = capa_bytes;
 					Lack_of_M_resources = 1;
-					max_cob_limit = m_cob_info_max;
 				}
+#if	0 // CefC_Debug
+				cef_log_write (CefC_Log_Info, "[RM] max_cob_limit="FMTU64",  m_used=%d (%u/%u), Lack_of_M_resources=%d.\n",
+						max_cob_limit, m_used, m_avaliable, m_total, Lack_of_M_resources);
+#endif // CefC_Debug
 			} else {
 				if (c_used != -1) {
 					if (Lack_of_M_resources == 1) {
@@ -3740,27 +3943,23 @@ csmgrd_resource_mon_thread (
 		}
 		if (mectr != Lack_of_M_resources) {
 			if (Lack_of_M_resources == 1) {
-					cef_log_write (CefC_Log_Error,
-								"[RM] Stop caching due to memory usage reached to the max threshold. "
-								"Restart csmgrd after CACHE_CAPACITY value in csmgrd.conf is reduced.\n");
-				} else {
-				if (mectr != -1) {
-					cef_log_write (CefC_Log_Error,
-								"[RM-CLEAR] Restart caching because memory usage is below the threshold.\n");
-				}
+				cef_log_write (CefC_Log_Warn,
+							"[RM] Stop caching due to memory usage reached to the max threshold. "
+							"Restart csmgrd after CACHE_CAPACITY value in csmgrd.conf is reduced.\n");
+			} else if (mectr != -1) {
+				cef_log_write (CefC_Log_Warn,
+							"[RM-CLEAR] Restart caching because memory usage is below the threshold.\n");
 			}
 			mectr = Lack_of_M_resources;
 		}
 		if (fectr != Lack_of_F_resources) {
 			if (Lack_of_F_resources == 1) {
-				cef_log_write (CefC_Log_Error,
-								"[RM] Stop caching due to filesystem usage reached to the max threshold. "
-								"Restart csmgrd after CACHE_CAPACITY value in csmgrd.conf is reduced.\n");
-			} else {
-				if (fectr != -1) {
-					cef_log_write (CefC_Log_Error,
-								"[RM-CLEAR] Restart caching because filesystem usage is below the threshold.\n");
-				}
+				cef_log_write (CefC_Log_Warn,
+							"[RM] Stop caching due to filesystem usage reached to the max threshold. "
+							"Restart csmgrd after CACHE_CAPACITY value in csmgrd.conf is reduced.\n");
+			} else if (fectr != -1) {
+				cef_log_write (CefC_Log_Warn,
+							"[RM-CLEAR] Restart caching because filesystem usage is below the threshold.\n");
 			}
 			fectr = Lack_of_F_resources;
 		}
@@ -3795,6 +3994,7 @@ get_mem_info (
 #ifdef CefC_Debug
 		cef_dbg_write (CefC_Dbg_Fine, "%s failure, fp=NULL.\n", CefC_GET_MEMORY_INFO_SH);
 #endif // CefC_Debug
+		cef_log_write (CefC_Log_Warn, "%s failure, fp=NULL.\n", CefC_GET_MEMORY_INFO_SH);
 		return ( -1 );
 	} else {
 		wp = fgets (buf, sizeof (buf), fp);
@@ -3841,7 +4041,7 @@ get_mem_info (
 		}
 
 		if (avaliable == 0) {
-			cef_log_write (CefC_Log_Error, "%s(%d): Could not find keyword to get memory information\n",
+			cef_log_write (CefC_Log_Warn, "%s(%d): Could not find keyword to get memory information\n",
 						__FUNCTION__, __LINE__);
 		}
 	}
@@ -3872,7 +4072,7 @@ get_filesystem_info (
 
 	rc = statvfs (filepath, &buf);
 	if (rc < 0) {
-		cef_log_write (CefC_Log_Error, "%s: statvfs(%s) - %s\n", __FUNCTION__, filepath, strerror (errno));
+		cef_log_write (CefC_Log_Warn, "%s: statvfs(%s) - %s\n", __FUNCTION__, filepath, strerror (errno));
 		*total_blocks = 1;
 		*avail_blocls = buf.f_bavail;
 		return (-1);
@@ -4188,7 +4388,7 @@ RESPSEND:;
 
 
 /*--------------------------------------------------------------------------------------
-    The process of forwarding the received message to the thread
+	The process of forwarding the received message to the thread
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 csmgrd_input_message_transfer_process (

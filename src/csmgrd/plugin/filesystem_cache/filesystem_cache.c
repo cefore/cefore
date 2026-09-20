@@ -97,6 +97,8 @@
 
 #define FSC_RECORD_CORRECT_SIZE		CefC_Max_Header_Size
 
+#define CefC_SIZEOF_CHUNK		(CefC_S_TLF + CefC_S_ChunkNum)
+
 /****************************************************************************************
  Structures Declaration
  ****************************************************************************************/
@@ -152,16 +154,8 @@ fsc_cs_expire_check (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 fsc_cache_item_get (
-	unsigned char* key,							/* content name							*/
-	uint16_t key_size,							/* content name Length					*/
-	uint32_t seqno,								/* chunk num							*/
 	int sock,									/* received socket						*/
-	unsigned char* version,						/* version								*/
-	uint16_t ver_len,							/* length of version					*/
-	unsigned char* csact_val,					/* Plain Text							*/
-	uint16_t csact_len,							/* length of Plain Text					*/
-	unsigned char* signature_val,				/* signature							*/
-	uint16_t signature_len						/* length of signature					*/
+	CsmgrdT_Plugin_APIparam_get *param			/* API parameters						*/
 );
 /*--------------------------------------------------------------------------------------
 	Upload content byte steream
@@ -281,7 +275,7 @@ csmgrd_filesystem_plugin_load (
 ) {
 	CSMGRD_SET_CALLBACKS (
 		fsc_cs_create, fsc_cs_destroy, fsc_cs_expire_check, fsc_cache_item_get,
-		fsc_cache_item_puts, fsc_cs_ac_cnt_inc, fsc_cache_lifetime_get);
+		fsc_cache_item_puts, fsc_cs_ac_cnt_inc, fsc_cache_lifetime_get, NULL, NULL);
 
 	if (config_dir) {
 		strcpy (csmgr_conf_dir, config_dir);
@@ -529,16 +523,16 @@ fsc_cs_remove (
 	uint64_t 			mask;
 
 
-	tlv_hdp = (struct tlv_hdr*) &key[key_len-8];
+	tlv_hdp = (struct tlv_hdr*) &key[key_len-CefC_SIZEOF_CHUNK];
 	type 	= ntohs (tlv_hdp->type);
 
 	if (type == CefC_T_CHUNK) {
 		find_chunk_f = 1;
 	}
 	if (find_chunk_f) {
-		tlv32_hdp = (struct value32_tlv*) &key[key_len-8];
+		tlv32_hdp = (struct value32_tlv*) &key[key_len-CefC_SIZEOF_CHUNK];
 		chunk_num = ntohl (tlv32_hdp->value);
-		rcd = csmgrd_stat_content_info_get (csmgr_stat_hdl, &key[0], key_len - 8);
+		rcd = csmgrd_stat_content_info_get (csmgr_stat_hdl, &key[0], key_len - CefC_SIZEOF_CHUNK);
 		if (!rcd) {
 			return;
 		}
@@ -559,7 +553,7 @@ fsc_cs_remove (
 						fsc_recursive_dir_clear (file_path);
 					}
 					csmgrd_stat_cob_remove (
-						csmgr_stat_hdl, &key[0], key_len - 8, chunk_num, 0);
+						csmgr_stat_hdl, &key[0], key_len - CefC_SIZEOF_CHUNK, chunk_num, 0);
 
 					hdl->cache_cobs--;
 				}
@@ -636,10 +630,6 @@ fsc_cs_expire_check (
 	char			file_path[PATH_MAX];
 	uint32_t 		i, n;
 	uint64_t 		mask;
-	uint32_t 		chunk_num, net_chunk_num;
-	unsigned char 	trg_key[65535];
-	int 			trg_key_len = 0;
-	int 			name_len;
 	uint64_t		cob_cnt;
 
 	if (pthread_mutex_trylock (&fsc_cs_mutex) != 0) {
@@ -668,21 +658,21 @@ fsc_cs_expire_check (
 							goto LOOP_END;
 						}
 						if (rcd->cob_map[i] & mask) {
-							name_len = rcd->name_len;
-							memcpy (&trg_key[0], rcd->name, name_len);
-							trg_key[name_len] 		= 0x00;
-							trg_key[name_len + 1] 	= 0x10;
-							trg_key[name_len + 2] 	= 0x00;
-							trg_key[name_len + 3] 	= 0x04;
-							chunk_num = (i * 64 + n);
-							net_chunk_num = htonl (chunk_num);
-							memcpy (&trg_key[name_len + 4], &net_chunk_num, sizeof (uint32_t));
-							trg_key_len = name_len + 4 + sizeof (uint32_t);
+							uint32_t chunk_num = (i * 64 + n);
+							unsigned char 	trg_key[CefC_Csmgr_Key_Max];
+							int		trg_key_len;
 
-							(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
+							trg_key_len = csmgrd_name_chunknum_concatenate (rcd->name, rcd->name_len, chunk_num, trg_key);
+#ifdef CefC_Debug
+char	buff_uri[CefC_NAME_MAXLEN];
+cef_frame_conversion_name_to_uri(trg_key, trg_key_len, buff_uri);
+csmgrd_dbg_write (CefC_Dbg_Finer, "%s(%d) Name=%s(key_len=%d).\n", __func__, __LINE__, buff_uri, trg_key_len);
+#endif	// CefC_Debug
+							if ( 0 < trg_key_len )
+								(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
 
 							csmgrd_stat_cob_remove (
-								csmgr_stat_hdl, rcd->name, name_len, chunk_num, 0);
+								csmgr_stat_hdl, rcd->name, rcd->name_len, chunk_num, 0);
 
 							hdl->cache_cobs--;
 							cob_cnt--;
@@ -692,6 +682,11 @@ fsc_cs_expire_check (
 				}
 			}
 		} else {
+#ifdef CefC_Debug
+char	buff_uri[CefC_NAME_MAXLEN];
+cef_frame_conversion_name_to_uri(rcd->name, rcd->name_len, buff_uri);
+csmgrd_dbg_write (CefC_Dbg_Finer, "%s(%d) Name=%s(key_len=%d).\n", __func__, __LINE__, buff_uri, rcd->name_len);
+#endif	// CefC_Debug
 			csmgrd_stat_content_info_delete (csmgr_stat_hdl, rcd->name, rcd->name_len);
 			hdl->cache_cobs -= cob_cnt;
 		}
@@ -709,17 +704,16 @@ LOOP_END:;
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 fsc_cache_item_get (
-	unsigned char* key,							/* content name							*/
-	uint16_t key_size,							/* content name Length					*/
-	uint32_t seqno,								/* chunk num							*/
 	int sock,									/* received socket						*/
-	unsigned char* version,						/* version								*/
-	uint16_t ver_len,							/* length of version					*/
-	unsigned char* csact_val,					/* Plain Text							*/
-	uint16_t csact_len,							/* length of Plain Text					*/
-	unsigned char* signature_val,				/* signature							*/
-	uint16_t signature_len						/* length of signature					*/
+	CsmgrdT_Plugin_APIparam_get *param			/* API parameters						*/
 ) {
+	unsigned char* key = param->name;			/* content name							*/
+	uint16_t key_size = param->name_len;		/* content name Length					*/
+	uint32_t seqno = param->seqno;				/* chunk num							*/
+	unsigned char* csact_val = param->csact_val;	/* Plain Text						*/
+	uint16_t csact_len = param->csact_len;		/* length of Plain Text					*/
+	unsigned char* signature_val = param->signature_val;	/* signature				*/
+	uint16_t signature_len = param->signature_len;	/* length of signature				*/
 	CsmgrT_Stat* rcd = NULL;
 	uint32_t	file_msglen;
 	uint64_t 	mask;
@@ -736,17 +730,14 @@ fsc_cache_item_get (
 	int 		tx_cnt = 0;
 	int			resend_1cob_f = 0;
 	int			send_cob_f = 0;
-	unsigned char 	trg_key[CsmgrdC_Key_Max];
+	unsigned char 	trg_key[CefC_Csmgr_Key_Max];
 	int 			trg_key_len;
 	uint64_t nowt;
 	struct timeval tv;
 	static unsigned char*	page_cob_buf = NULL;
 	static uint64_t		page_read_time = 0L;
 	int				rcdsize;
-	int			rc = CefC_CV_Inconsistent;
 	int			update_ver = 1;
-	static uint16_t red_ver_len = 0;
-	static unsigned char red_version[PATH_MAX] = {0};
 	uint16_t ucinc_stat;
 	int ret;
 	uint64_t plaint = 0;
@@ -815,38 +806,8 @@ fsc_cache_item_get (
 			return (CefC_Csmgr_Cob_NotExist);
 		}
 	}
-#ifdef __FSCACHE_VERSION__
-	fprintf (stderr, "  rcd: ");
-	for (int i = 0; i < rcd->ver_len; i++) {
-		if (isprint (rcd->version[i])) fprintf (stderr, "%c ", rcd->version[i]);
-		else fprintf (stderr, "%02x ", rcd->version[i]);
-	}
-	fprintf (stderr, "(%d)\n", rcd->ver_len);
-	fprintf (stderr, "  cob: ");
-	for (int i = 0; i < ver_len; i++) {
-		if (isprint (version[i])) fprintf (stderr, "%c ", version[i]);
-		else fprintf (stderr, "%02x ", version[i]);
-	}
-	fprintf (stderr, "(%d)\n", ver_len);
-#endif //__FSCACHE_VERSION__
-	rc = cef_csmgr_cache_version_compare (version, ver_len, rcd->version, rcd->ver_len);
-	if (rc == CefC_CV_Inconsistent) {
-		if (ver_len == 0 && rcd->ver_len != 0) {
-			/* Request is "None", so any version is OK */
-#ifdef __FSCACHE_VERSION__
-			fprintf (stderr, "    => Request is \"None\", so any version is OK\n");
-#endif //__FSCACHE_VERSION__
-			;
-		} else {
-			pthread_mutex_unlock (&fsc_cs_mutex);
-			return (CefC_Csmgr_Cob_NotExist);
-		}
-	} else if (rc != CefC_CV_Same) {
-		pthread_mutex_unlock (&fsc_cs_mutex);
-		return (CefC_Csmgr_Cob_NotExist);
-	}
 
-	trg_key_len = csmgrd_name_chunknum_concatenate (key, key_size, seqno, trg_key);
+	trg_key_len = csmgrd_name_chunknum_concatenate (param->name, param->name_len, param->seqno, trg_key);
 
 	/* Check the work cob is cached or not 		*/
 	mask = 1;
@@ -874,9 +835,9 @@ fsc_cache_item_get (
 
 	if (nowt > rcd->tx_time) {
 		rcd->tx_seq = 0;
-		rcd->tx_num = -1;
+		rcd->tx_num = 0;
 	}
-	if (rcd->tx_num ==-1) {
+	if (rcd->tx_num < 1) {
 		send_cob_f = 1;
 	} else {
 		if (seqno >= rcd->tx_seq && seqno < (rcd->tx_seq + rcd->tx_num)) {
@@ -901,12 +862,7 @@ fsc_cache_item_get (
 	pos_index = (int)(seqno % FscC_Page_Cob_Num);
 	sprintf (file_path, "%s/%d/%d", hdl->fsc_cache_path, (int) rcd->index, page_index);
 
-	if (ver_len) {
-		if (red_ver_len == ver_len &&
-			memcmp (version, red_version, red_ver_len) == 0) {
-			update_ver = 0;
-		}
-	} else if ( rcd->fsc_write_time < page_read_time ){
+	if ( rcd->fsc_write_time < page_read_time ){
 		update_ver = 0;
 	}
 
@@ -944,13 +900,6 @@ fsc_cache_item_get (
 			csmgrd_dbg_write (CefC_Dbg_Finer, "Failed to read the request chunk (%s, chunk_num=%d)\n", file_path, seqno);
 #endif // CefC_Debug
 			goto ItemGetPost;
-		}
-		if (red_ver_len) {
-			memset (red_version, 0, PATH_MAX);
-		}
-		red_ver_len = ver_len;
-		if (ver_len) {
-			memcpy (red_version, version, ver_len);
 		}
 	} else {
 		fp = NULL;
@@ -1134,7 +1083,6 @@ fsc_cache_cob_write (
 	uint16_t 		del_name_len = 0;
 	uint32_t 		del_chunk_num = UINT_MAX;
 	CsmgrT_DB_COB_MAP*	cob_map = NULL;		//0.8.3c
-	int				rc = CefC_CV_Inconsistent;
 	int                 res;
 	CefT_CcnMsg_MsgBdy	pm;
 	CefT_CcnMsg_OptHdr	poh;
@@ -1201,76 +1149,6 @@ fsc_cache_cob_write (
 				rcd = csmgrd_stat_content_info_init (
 						csmgr_stat_hdl, cobs[index].name, cobs[index].name_len, &cob_map);
 				if (!rcd) {
-					goto NEXTCOB;
-				}
-				if (csmgrd_stat_content_info_version_init(csmgr_stat_hdl, rcd, cobs[index].version, cobs[index].ver_len) < 0) {
-					goto NEXTCOB;
-				}
-#ifdef __FSCACHE_VERSION__
-				fprintf (stderr, "    init: ");
-				for (int i = 0; i < rcd->ver_len; i++) {
-					if (isprint (rcd->version[i])) fprintf (stderr, "%c ", rcd->version[i]);
-					else fprintf (stderr, "%02x ", rcd->version[i]);
-				}
-				fprintf (stderr, "(%d)\n", rcd->ver_len);
-#endif //__FSCACHE_VERSION__
-			} else {
-#ifdef __FSCACHE_VERSION__
-				fprintf (stderr, "    rcd: ");
-				for (int i = 0; i < rcd->ver_len; i++) {
-					if (isprint (rcd->version[i])) fprintf (stderr, "%c ", rcd->version[i]);
-					else fprintf (stderr, "%02x ", rcd->version[i]);
-				}
-				fprintf (stderr, "(%d)\n", rcd->ver_len);
-				fprintf (stderr, "    cob: ");
-				for (int i = 0; i < cobs[index].ver_len; i++) {
-					if (isprint (cobs[index].version[i])) fprintf (stderr, "%c ", cobs[index].version[i]);
-					else fprintf (stderr, "%02x ", cobs[index].version[i]);
-				}
-				fprintf (stderr, "(%d)\n", cobs[index].ver_len);
-#endif //__FSCACHE_VERSION__
-				rc = cef_csmgr_cache_version_compare (cobs[index].version, cobs[index].ver_len, rcd->version, rcd->ver_len);
-				if (rc != CefC_CV_Inconsistent) {
-					if (rc == CefC_CV_Newest_1stArg) {
-						char file_path[PATH_MAX];
-						/* Delete old files */
-						sprintf (file_path, "%s/%d", hdl->fsc_cache_path, (int) rcd->index);
-						fsc_recursive_dir_clear (file_path);
-
-						/* Old Stat */
-						csmgrd_stat_content_info_delete (csmgr_stat_hdl, cobs[index].name, cobs[index].name_len);
-
-						/* New Stat */
-						rcd = csmgrd_stat_content_info_init (
-								csmgr_stat_hdl, cobs[index].name, cobs[index].name_len, &cob_map);
-						if (!rcd) {
-							goto NEXTCOB;
-						}
-						if (csmgrd_stat_content_info_version_init(csmgr_stat_hdl, rcd, cobs[index].version, cobs[index].ver_len) < 0) {
-							goto NEXTCOB;
-						}
-#ifdef __FSCACHE_VERSION__
-						fprintf (stderr, "    => delete %s and init\n", file_path);
-#endif //__FSCACHE_VERSION__
-					} else if (rc == CefC_CV_Same) {
-						/* Check the work cob is cached or not */
-						mask = 1;
-						x = chunk_num / 64;
-						mask <<= (chunk_num % 64);
-						if ((rcd->map_max-1) >= x && rcd->cob_map[x] & mask) {
-							/* cached yet */
-							goto NEXTCOB;
-						} else {
-#ifdef __FSCACHE_VERSION__
-						fprintf (stderr, "    => Not cached\n");
-#endif //__FSCACHE_VERSION__
-							/* Not cached */
-							;
-						}
-					} else {
-						goto NEXTCOB;
-					}
-				} else {
 					goto NEXTCOB;
 				}
 			}
@@ -1432,7 +1310,7 @@ fsc_cache_cob_write (
 		if (0 < del_name_len && del_name_len == cobs[index].name_len
 				&& memcmp (del_name, cobs[index].name, del_name_len) == 0) {
 			if (hdl->algo_apis.erase) {
-				unsigned char 	trg_key[CsmgrdC_Key_Max];
+				unsigned char 	trg_key[CefC_Csmgr_Key_Max];
 				int 			trg_key_len;
 				trg_key_len = csmgrd_name_chunknum_concatenate (
 								del_name, del_name_len, del_chunk_num, trg_key);
@@ -1480,10 +1358,6 @@ NEXTCOB:
 		free (cobs[index].name);
 		cobs[index].name = NULL;
 
-		if (cobs[index].version) {
-			free (cobs[index].version);
-			cobs[index].version = NULL;
-		}
 #ifdef COBS_SORT
 		cnt++;
 #else
@@ -1568,7 +1442,7 @@ fsc_config_read (
 	/* Inits parameters		*/
 	memset (params, 0, sizeof (FscT_Config_Param));
 	strcpy (params->fsc_root_path, csmgr_conf_dir);
-	params->cache_capacity = 819200;
+	params->cache_capacity = CefC_Default_Cache_Capacity;
 	strcpy (params->algo_name, "None");
 	params->algo_name_size = 256;
 	params->algo_cob_size = 2048;
@@ -1705,9 +1579,9 @@ fsc_config_read (
 #endif // CefC_Debug
 	if (strcmp (params->algo_name, "None") != 0) {
 		if (strcmp (params->algo_name, "libcsmgrd_lfu") == 0) {
-			if (params->cache_capacity > 819200) {
+			if (params->cache_capacity > CefC_Default_Cache_Capacity) {
 				csmgrd_log_write (CefC_Log_Error,
-				"Cache capacity value must be less than or equal to 819200 when using algorithms lfu.\n");
+				"Cache capacity value must be less than or equal to %d when using algorithms lfu.\n", CefC_Default_Cache_Capacity);
 				fclose (fp);
 				return (-1);
 			}

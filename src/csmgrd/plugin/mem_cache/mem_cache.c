@@ -79,7 +79,6 @@
 #define CsmgrdC_Library_Name	".so"
 #endif // __APPLE__
 
-#define MemC_Max_KLen 				1024
 #define MemC_Max_Buff 				4
 #define MemC_Min_Buff				4
 #define MemC_CID_HexCh_size			(MD5_DIGEST_LENGTH * 2)	/* Size to store binary CID   */
@@ -87,6 +86,10 @@
 #define MemC_CID_KLen				(CefC_S_TLF+CefC_NWP_CID_Prefix_Len+MemC_CID_HexCh_size)
 
 #define MemC_SEMNAME					"/cefmemsem"
+
+#define IDX_NAME					0
+#define IDX_KEYID					1
+#define IDX_MSGHASH					2
 
 /****************************************************************************************
  Structures Declaration
@@ -98,6 +101,10 @@ typedef struct {
 	uint16_t		msg_len;					/* Message length						*/
 	unsigned char	*name;						/* Content name							*/
 	uint16_t		name_len;					/* Content name length					*/
+	CefT_HashData   keyid	;					/* KeyID 								*/
+	uint16_t		keyid_len;					/* KeyID length 						*/
+	CefT_HashData   MsgHash;					/* COB Hash 							*/
+	uint16_t		MsgHash_len;				/* COB Hash length						*/
 	uint16_t		pay_len;					/* Payload length						*/
 	uint32_t		chunk_num;					/* Chunk num							*/
 	uint64_t		cache_time;					/* Cache time							*/
@@ -105,8 +112,7 @@ typedef struct {
 	struct in_addr	node;						/* Node address							*/
 
 	uint64_t		ins_time;					/* Insert time							*/
-	unsigned char*	version;					/* version								*/
-	uint16_t		ver_len;					/* Length of version					*/
+	uint64_t		hit_count;					/* Number of HITs per CobHash unit 		*/
 } CsmgrdT_Content_Mem_Entry;
 
 typedef struct CefT_Mem_Hash_Cell {
@@ -119,11 +125,8 @@ typedef struct CefT_Mem_Hash_Cell {
 } CefT_Mem_Hash_Cell;
 
 typedef struct CefT_Mem_Hash {
-	CefT_Mem_Hash_Cell**	tbl;
+	CefT_Mem_Hash_Cell**	tbl[3];
 	uint32_t 				tabl_max;
-	uint64_t 				elem_max;
-	uint64_t 				elem_num;
-
 } CefT_Mem_Hash;
 
 /****************************************************************************************
@@ -133,7 +136,7 @@ typedef struct CefT_Mem_Hash {
 static MemT_Cache_Handle* 		hdl = NULL;
 static char 					csmgr_conf_dir[PATH_MAX] = {"/usr/local/cefore"};
 static CefT_Mem_Hash* 			mem_hash_tbl = NULL;
-static uint32_t 				mem_tabl_max = 819200;
+static uint32_t 				mem_tabl_max = CefC_Default_Cache_Capacity;
 static pthread_mutex_t 			mem_comn_buff_mutex[MemC_Max_Buff];
 static sem_t*					mem_comn_buff_sem;
 static pthread_t				mem_thread_th;
@@ -177,17 +180,42 @@ mem_cs_expire_check (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 mem_cache_item_get (
-	unsigned char* key,							/* content name							*/
-	uint16_t key_size,							/* content name Length					*/
-	uint32_t seqno,								/* chunk num							*/
 	int sock,									/* received socket						*/
-	unsigned char* version,						/* version								*/
-	uint16_t ver_len,							/* length of version					*/
-	unsigned char* csact_val,					/* Plain Text							*/
-	uint16_t csact_len,							/* length of Plain Text					*/
-	unsigned char* signature_val,				/* signature							*/
-	uint16_t signature_len						/* length of signature					*/
+	CsmgrdT_Plugin_APIparam_get *param			/* API parameters						*/
 );
+
+static CsmgrdT_Content_Mem_Entry*
+mem_cache_item_get_msghash (
+	CsmgrdT_Plugin_APIparam_get* param,
+	int keyid_idx,
+	unsigned char* trg_key,
+	int* trg_key_len
+);
+
+static CsmgrdT_Content_Mem_Entry*
+mem_cache_item_get_keyid (
+	CsmgrdT_Plugin_APIparam_get* param,
+	int keyid_idx,
+	unsigned char* trg_key,
+	int* trg_key_len
+);
+
+static CsmgrdT_Content_Mem_Entry*
+mem_cache_item_get_name (
+	CsmgrdT_Plugin_APIparam_get* param,
+	unsigned char* trg_key,
+	int* trg_key_len
+);
+
+static int
+mem_cache_item_send (
+	int sock,
+	CsmgrdT_Content_Mem_Entry* entry,
+	unsigned char* trg_key,
+	int trg_key_len,
+	int keyid_f
+);
+
 /*--------------------------------------------------------------------------------------
 	Upload content byte steream
 ----------------------------------------------------------------------------------------*/
@@ -257,26 +285,29 @@ cef_mem_hash_number_create (
 );
 static int
 cef_mem_hash_tbl_item_set (
+	int tbl_index,
 	const unsigned char* key,
 	uint32_t klen,
 	CsmgrdT_Content_Mem_Entry* elem,
-	CsmgrdT_Content_Mem_Entry** old_elem
+	CsmgrdT_Content_Mem_Entry **old_elem
 );
 static CsmgrdT_Content_Mem_Entry*
 cef_mem_hash_tbl_item_get (
-	const unsigned char* key,
-	uint32_t klen
-);
-static CsmgrdT_Content_Mem_Entry*
-cef_mem_hash_tbl_item_remove (
+	int tbl_index,
 	const unsigned char* key,
 	uint32_t klen
 );
 
-int
-csmgrd_key_create_by_Mem_Entry (
-	CsmgrdT_Content_Mem_Entry* entry,
-	unsigned char* key
+static void
+cef_mem_hash_tbl_item_remove_entry (
+	CsmgrdT_Content_Mem_Entry* entry
+);
+
+static CsmgrdT_Content_Mem_Entry*
+cef_mem_hash_tbl_item_remove (
+	int tbl_index,
+	const unsigned char* key,
+	uint32_t klen
 );
 
 static int
@@ -287,6 +318,24 @@ mem_cache_delete_thread_create (
 static void *
 mem_cache_delete_thread (
 	void *p
+);
+
+int
+mem_cache_cobhash_status_get (
+	unsigned char* buf,
+	uint32_t buf_size
+);
+
+int
+mem_cache_index_status_get (
+	unsigned char* buf,
+	uint32_t buf_size
+);
+
+static int
+cobhash_entry_compare (
+	const void* a,
+	const void* b
 );
 
 /*--------------------------------------------------------------------------------------
@@ -317,7 +366,7 @@ csmgrd_memory_plugin_load (
 ) {
 	CSMGRD_SET_CALLBACKS (
 		mem_cs_create, mem_cs_destroy, mem_cs_expire_check, mem_cache_item_get,
-		mem_cache_item_puts, mem_cs_ac_cnt_inc, mem_cache_lifetime_get);
+		mem_cache_item_puts, mem_cs_ac_cnt_inc, mem_cache_lifetime_get, mem_cache_cobhash_status_get, mem_cache_index_status_get);
 
 	if (config_dir) {
 		strcpy (csmgr_conf_dir, config_dir);
@@ -506,14 +555,24 @@ mem_cs_store (
 	CsmgrdT_Content_Entry* new_entry
 ) {
 	CsmgrdT_Content_Mem_Entry* entry;
-	CsmgrdT_Content_Mem_Entry* old_entry = NULL;
+	CsmgrdT_Content_Mem_Entry* old_entry;
 	int key_len;
-	unsigned char key[65535];
+	unsigned char key[CefC_Csmgr_Key_Max];
 	uint64_t 	nowt;
 	struct timeval tv;
 
 	/* Creates the key 		*/
-	key_len = csmgrd_key_create (new_entry, key);
+	key_len = csmgrd_name_chunknum_concatenate (
+		new_entry->name, new_entry->name_len, new_entry->chunk_num, key);
+
+	if ( cef_mem_hash_tbl_item_get (IDX_NAME, key, key_len) != NULL) {
+#ifdef CefC_Debug
+char	buff_uri[CefC_NAME_MAXLEN];
+cef_frame_conversion_name_to_uri(key, key_len, buff_uri);
+csmgrd_dbg_write (CefC_Dbg_Fine, "%s(%d) %s, already cached.\n", __func__, __LINE__, buff_uri);
+#endif	// CefC_Debug
+		return (-1);
+	}
 
 	/* Creates the entry 		*/
 	entry =
@@ -528,46 +587,42 @@ mem_cs_store (
 	entry->name		= new_entry->name;
 	entry->name_len = new_entry->name_len;
 	entry->pay_len		 = new_entry->pay_len;
-	entry->chunk_num		 = new_entry->chunk_num;
+	entry->chunk_num	 = new_entry->chunk_num;
 	entry->cache_time	 = new_entry->cache_time;
 	entry->expiry		 = new_entry->expiry;
 	entry->node			 = new_entry->node;
 	entry->ins_time		 = new_entry->ins_time;
-	entry->ver_len		 = new_entry->ver_len;
-	entry->version		 = new_entry->version;
 
 	if (cef_mem_hash_tbl_item_set (
-		key, key_len, entry, &old_entry) < 0) {
-		free (entry->msg);
-		free (entry->name);
-		if (entry->ver_len)
-			free (entry->version);
+			IDX_NAME, key, key_len, entry, &old_entry) < 0) {
+		if ( entry->msg != NULL )
+			free (entry->msg);
+		if ( entry->name != NULL )
+			free (entry->name);
 		free (entry);
+#ifdef CefC_Debug
+char	buff_uri[CefC_NAME_MAXLEN];
+cef_frame_conversion_name_to_uri(key, key_len, buff_uri);
+csmgrd_dbg_write (CefC_Dbg_Fine, "%s(%d) %s, cef_mem_hash_tbl_item_set failure.\n", __func__, __LINE__, buff_uri);
+#endif	// CefC_Debug
 		return (-1);
+	}
+	if ( old_entry != NULL ){
+		if ( old_entry->msg != NULL )
+			free (old_entry->msg);
+		if ( old_entry->name != NULL )
+			free (old_entry->name);
+		free (old_entry);
 	}
 
 	/* Updates the content information 			*/
 	gettimeofday (&tv, NULL);
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 
-	csmgrd_stat_cob_update (csmgr_stat_hdl, entry->name, entry->name_len,
+	csmgrd_stat_cob_update( csmgr_stat_hdl, entry->name, entry->name_len,
 		entry->chunk_num, entry->pay_len, entry->expiry, nowt, entry->node);
-	if (entry->ver_len) {
-		CsmgrT_Stat* rcd = NULL;
-		rcd = csmgrd_stat_content_info_get (csmgr_stat_hdl, entry->name, entry->name_len);
-		if (!rcd->ver_len)
-			csmgrd_stat_content_info_version_init (csmgr_stat_hdl, rcd, entry->version, entry->ver_len);
-	}
 
-	if (old_entry) {
-		free (old_entry->msg);
-		free (old_entry->name);
-		if (old_entry->ver_len)
-			free (old_entry->version);
-		free (old_entry);
-	} else {
-		hdl->cache_cobs++;
-	}
+	hdl->cache_cobs++;
 
 	return (0);
 }
@@ -582,7 +637,7 @@ mem_cs_remove (
 ) {
 	CsmgrdT_Content_Mem_Entry* entry;
 
-	entry = cef_mem_hash_tbl_item_remove (key, key_len);
+	entry = cef_mem_hash_tbl_item_remove ( IDX_NAME, key, key_len);
 
 	if (entry) {
 		csmgrd_stat_cob_remove (
@@ -629,18 +684,24 @@ mem_cs_destroy (
 		return;
 	}
 	if (mem_hash_tbl) {
-		for (i = 0 ; i < mem_hash_tbl->tabl_max ; i++) {
-			CefT_Mem_Hash_Cell* cp;
-			CefT_Mem_Hash_Cell* wcp;
-			cp = mem_hash_tbl->tbl[i];
-			while (cp != NULL) {
-				wcp = cp->next;
-				free (cp->elem);
-				free (cp);
-				cp = wcp;
+		for (int tbl = 0; tbl < 3; tbl++) {
+			for (i = 0 ; i < mem_hash_tbl->tabl_max ; i++) {
+				CefT_Mem_Hash_Cell* cp = mem_hash_tbl->tbl[tbl][i];
+				CefT_Mem_Hash_Cell* wcp;
+				while (cp != NULL) {
+					wcp = cp->next;
+					if (tbl == IDX_MSGHASH) {
+						free(cp->elem->msg);
+						free(cp->elem->name);
+						free(cp->elem);
+					}
+
+					free (cp);
+					cp = wcp;
+				}
 			}
+			free(mem_hash_tbl->tbl[tbl]);
 		}
-		free (mem_hash_tbl->tbl);
 		free (mem_hash_tbl);
 	}
 
@@ -667,11 +728,10 @@ mem_cs_expire_check (
 	void
 ) {
 	CsmgrdT_Content_Mem_Entry* entry = NULL;
-	CsmgrdT_Content_Mem_Entry* entry1 = NULL;
 	uint64_t 	nowt;
 	struct timeval tv;
 	int n;
-	unsigned char trg_key[65535];
+	unsigned char trg_key[CefC_Csmgr_Key_Max];
 	int trg_key_len;
 
 	if (pthread_mutex_trylock (&mem_cs_mutex) != 0) {
@@ -682,33 +742,40 @@ mem_cs_expire_check (
 	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
 
 	for (n = 0 ; n < mem_hash_tbl->tabl_max ; n++) {
-		if (mem_hash_tbl->tbl[n] == NULL) {
+		if (mem_hash_tbl->tbl[IDX_MSGHASH][n] == NULL) {
 			continue;
 		}
 		{
 			CefT_Mem_Hash_Cell* cp;
 			CefT_Mem_Hash_Cell* wcp;
-			cp = mem_hash_tbl->tbl[n];
+			cp = mem_hash_tbl->tbl[IDX_MSGHASH][n];
 			for (; cp != NULL; cp = wcp) {
 				entry = cp->elem;
 				wcp = cp->next;
 				if ((entry->cache_time < nowt) ||
 					((entry->expiry != 0) && (entry->expiry < nowt))) {
 					/* Removes the expiry cache entry 		*/
-					trg_key_len = csmgrd_key_create_by_Mem_Entry (entry, trg_key);
-					entry1 = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
+					cef_mem_hash_tbl_item_remove_entry(entry);
+/*
+#ifdef CefC_Debug
+char	buff_uri[CefC_NAME_MAXLEN];
+cef_frame_conversion_name_to_uri(trg_key, trg_key_len, buff_uri);
+csmgrd_dbg_write (CefC_Dbg_Fine, "%s(%d) %s(key_len=%d), entry1=%p.\n", __func__, __LINE__, buff_uri, trg_key_len, entry1);
+#endif	// CefC_Debug
+*/
 					if (hdl->algo_apis.erase) {
+						trg_key_len = csmgrd_name_chunknum_concatenate (entry->name, entry->name_len, entry->chunk_num, trg_key);
 						(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
 					}
-					if ( !entry1 )
+					if ( !entry )
 						continue;
 					csmgrd_stat_cob_remove (
 						csmgr_stat_hdl, entry->name, entry->name_len,
 						entry->chunk_num, entry->pay_len);
 					hdl->cache_cobs--;
-					free (entry1->msg);
-					free (entry1->name);
-					free (entry1);
+					free (entry->msg);
+					free (entry->name);
+					free (entry);
 				}
 			}
 		}
@@ -723,119 +790,263 @@ mem_cs_expire_check (
 ----------------------------------------------------------------------------------------*/
 static int							/* The return value is negative if an error occurs	*/
 mem_cache_item_get (
-	unsigned char* key,							/* content name							*/
-	uint16_t key_size,							/* content name Length					*/
-	uint32_t seqno,								/* chunk num							*/
 	int sock,									/* received socket						*/
-	unsigned char* version,						/* version								*/
-	uint16_t ver_len,							/* length of version					*/
-	unsigned char* csact_val,					/* Plain Text							*/
-	uint16_t csact_len,							/* length of Plain Text					*/
-	unsigned char* signature_val,				/* signature							*/
-	uint16_t signature_len						/* length of signature					*/
+	CsmgrdT_Plugin_APIparam_get *param			/* API parameters						*/
 ) {
 	CsmgrdT_Content_Mem_Entry* entry;
-	unsigned char 	trg_key[CsmgrdC_Key_Max];
+	unsigned char 	trg_key[CefC_Csmgr_Key_Max];
 	int 			trg_key_len;
-	uint64_t 		nowt;
-	struct timeval 	tv;
-	CsmgrdT_Content_Mem_Entry** entry_p = NULL;
 	int exist_f = CefC_Csmgr_Cob_NotExist;
-	int				rc = CefC_CV_Inconsistent;
+	int i;
 
 #ifdef __MEMCACHE_VERSION__
 	fprintf (stderr, "--- mem_cache_item_get()\n");
 #endif //__MEMCACHE_VERSION__
 
-	/* Creates the key 		*/
-	trg_key_len = csmgrd_name_chunknum_concatenate (key, key_size, seqno, trg_key);
+	/*------------------------------------------------------*/
+	/* Search priority									  */
+	/*   MsgHash -> KeyID -> Name						   */
+	/*------------------------------------------------------*/
 
-	/* Access the specified entry 	*/
-	entry = cef_mem_hash_tbl_item_get (trg_key, trg_key_len);
+	/* MsgHash */
+	if (param->ObjHashRestr_len > 0) {
 
-	if (entry) {
+		/* MsgHash + KeyID */
+		if (param->KeyIdRestr_num > 0) {
 
-		gettimeofday (&tv, NULL);
-		nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
+			for (i = 0 ; i < param->KeyIdRestr_num ; i++) {
 
-		if (((entry->expiry == 0) || (nowt < entry->expiry)) &&
-			(nowt < entry->cache_time)) {
-#ifdef __MEMCACHE_VERSION__
-			fprintf (stderr, "  entry: ");
-			for (int i = 0; i < entry->ver_len; i++) {
-				if (isprint (entry->version[i])) fprintf (stderr, "%c ", entry->version[i]);
-				else fprintf (stderr, "%02x ", entry->version[i]);
-			}
-			fprintf (stderr, "(%d)\n", entry->ver_len);
-			fprintf (stderr, "  cob: ");
-			for (int i = 0; i < ver_len; i++) {
-				if (isprint (version[i])) fprintf (stderr, "%c ", version[i]);
-				else fprintf (stderr, "%02x ", version[i]);
-			}
-			fprintf (stderr, "(%d)\n", ver_len);
-#endif //__MEMCACHE_VERSION__
-			rc = cef_csmgr_cache_version_compare (version, ver_len, entry->version, entry->ver_len);
-			if (rc == CefC_CV_Inconsistent) {
-				if (ver_len == 0 && entry->ver_len != 0) {
-					/* Request is "None", so any version is OK */
-#ifdef __MEMCACHE_VERSION__
-			fprintf (stderr, "    => Request is \"None\", so any version is OK\n");
-#endif //__MEMCACHE_VERSION__
-					;
-				} else {
-					goto CobNotExist;
+				entry = mem_cache_item_get_msghash( param, i, trg_key, &trg_key_len);
+
+				if (entry == NULL)
+					continue;
+
+				if (mem_cache_item_send( sock, entry, trg_key, trg_key_len, 1) == CefC_Csmgr_Cob_Exist) {
+					exist_f = CefC_Csmgr_Cob_Exist;
 				}
-			} else if (rc != CefC_CV_Same) {
-				goto CobNotExist;
 			}
-
-			pthread_mutex_lock (&mem_cs_mutex);
-			if (hdl->algo_apis.hit) {
-				(*(hdl->algo_apis.hit))(trg_key, trg_key_len);
-			}
-
-			csmgrd_stat_access_count_update (
-					csmgr_stat_hdl, entry->name, entry->name_len);
-
-			/* Send Cob to cefnetd */
-			csmgrd_plugin_cob_msg_send (sock, entry->msg, entry->msg_len);
-			exist_f = CefC_Csmgr_Cob_Exist;
-			pthread_mutex_unlock (&mem_cs_mutex);
- 		}
+		}
+		/* MsgHash only */
 		else {
-			pthread_mutex_lock (&mem_cs_mutex);
-			/* Removes the expiry cache entry 		*/
-			entry = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
+			entry = mem_cache_item_get_msghash( param, -1, trg_key, &trg_key_len);
 
-			if ( entry ){
-				if (hdl->algo_apis.erase) {
-					(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
+			if (entry != NULL) {
+				if (mem_cache_item_send( sock, entry, trg_key, trg_key_len, 0) == CefC_Csmgr_Cob_Exist) {
+					exist_f = CefC_Csmgr_Cob_Exist;
 				}
-				hdl->cache_cobs--;
-
-				csmgrd_stat_cob_remove (
-					csmgr_stat_hdl, entry->name, entry->name_len,
-					entry->chunk_num, entry->pay_len);
-
-				free (entry->msg);
-				free (entry->name);
-				free (entry);
 			}
-			pthread_mutex_unlock (&mem_cs_mutex);
 		}
 	}
-CobNotExist:;
+	/* KeyID */
+	else if (param->KeyIdRestr_num > 0) {
 
-	if (entry_p != NULL) {
-		free (entry_p);
+		for (i = 0 ; i < param->KeyIdRestr_num ; i++) {
+
+			entry = mem_cache_item_get_keyid( param, i, trg_key, &trg_key_len);
+
+			if (entry == NULL)
+				continue;
+
+			if (mem_cache_item_send( sock, entry, trg_key, trg_key_len, 1) == CefC_Csmgr_Cob_Exist) {
+				exist_f = CefC_Csmgr_Cob_Exist;
+			}
+		}
 	}
+	/* Name */
+	else {
+
+		entry = mem_cache_item_get_name( param, trg_key, &trg_key_len);
+
+		if (entry != NULL) {
+			if (mem_cache_item_send( sock, entry, trg_key, trg_key_len, 0) == CefC_Csmgr_Cob_Exist) {
+				exist_f = CefC_Csmgr_Cob_Exist;
+			}
+		}
+	}
+
 	if (exist_f != CefC_Csmgr_Cob_Exist) {
 		if (hdl->algo_apis.miss) {
 			(*(hdl->algo_apis.miss))(trg_key, trg_key_len);
 		}
 	}
+
 	return (exist_f);
 }
+
+static CsmgrdT_Content_Mem_Entry*
+mem_cache_item_get_msghash (
+	CsmgrdT_Plugin_APIparam_get* param,
+	int keyid_idx,
+	unsigned char* trg_key,
+	int* trg_key_len
+) {
+	CsmgrdT_Content_Mem_Entry* entry;
+
+	*trg_key_len = MsgHash_index_key(
+		&param->ObjHashRestr,
+		param->ObjHashRestr_len,
+		trg_key);
+
+	entry = cef_mem_hash_tbl_item_get( IDX_MSGHASH, trg_key, *trg_key_len);
+
+	if (entry == NULL){
+#ifdef CefC_Debug
+csmgrd_dbg_write( CefC_Dbg_Fine, "%s(%d) MsgHash cache miss (len=%u).\n", __func__, __LINE__, param->ObjHashRestr_len);
+#endif
+		return (NULL);
+	}
+	/* MsgHash only */
+	if (keyid_idx < 0)
+		return (entry);
+
+	/* MsgHash + KeyID */
+	if (entry->keyid_len != param->KeyIdRestr[keyid_idx].keyid_len){
+#ifdef CefC_Debug
+csmgrd_dbg_write( CefC_Dbg_Fine, "%s(%d) CobHash HIT but KeyID length mismatch " "(entry=%u, restrict=%u).\n", __func__, __LINE__, entry->keyid_len, param->KeyIdRestr[keyid_idx].keyid_len);
+#endif
+		return (NULL);
+	}
+
+	if (memcmp(
+			&entry->keyid,
+			&param->KeyIdRestr[keyid_idx].keyid,
+			entry->keyid_len) != 0){
+#ifdef CefC_Debug
+csmgrd_dbg_write( CefC_Dbg_Fine, "%s(%d) CobHash HIT but KeyID mismatch.\n", __func__, __LINE__);
+#endif
+		return (NULL);
+	}
+
+	return (entry);
+}
+
+static CsmgrdT_Content_Mem_Entry*
+mem_cache_item_get_keyid (
+	CsmgrdT_Plugin_APIparam_get* param,
+	int keyid_idx,
+	unsigned char* trg_key,
+	int* trg_key_len
+) {
+	CsmgrdT_Content_Mem_Entry* entry;
+
+	*trg_key_len = keyid_index_key(
+		param->name,
+		param->name_len,
+		&param->KeyIdRestr[keyid_idx].keyid,
+		param->KeyIdRestr[keyid_idx].keyid_len,
+		param->seqno,
+		trg_key);
+
+	entry = cef_mem_hash_tbl_item_get(
+		IDX_KEYID,
+		trg_key,
+		*trg_key_len);
+
+	if (entry != NULL) {
+		if ((entry->keyid_len == param->KeyIdRestr[keyid_idx].keyid_len) &&
+			(memcmp(
+				&entry->keyid,
+				&param->KeyIdRestr[keyid_idx].keyid,
+				entry->keyid_len) == 0)) {
+			return (entry);
+		}
+	}
+
+#ifdef CefC_Debug
+	{
+		char buff_uri[CefC_NAME_MAXLEN];
+
+		cef_frame_conversion_name_to_uri( param->name, param->name_len, buff_uri);
+
+		csmgrd_dbg_write( CefC_Dbg_Fine, "%s(%d) KeyID cache miss %s " "(chunk=%u, keyid_idx=%d).\n", __func__, __LINE__, buff_uri, param->seqno, keyid_idx);
+	}
+#endif
+
+	return (NULL);
+}
+
+static CsmgrdT_Content_Mem_Entry*
+mem_cache_item_get_name (
+	CsmgrdT_Plugin_APIparam_get* param,
+	unsigned char* trg_key,
+	int* trg_key_len
+) {
+	CsmgrdT_Content_Mem_Entry* entry;
+#ifdef CefC_Debug
+	char buff_uri[CefC_NAME_MAXLEN];
+#endif
+
+	*trg_key_len = name_index_key(
+		param->name,
+		param->name_len,
+		param->seqno,
+		trg_key);
+
+	entry = cef_mem_hash_tbl_item_get(
+		IDX_NAME,
+		trg_key,
+		*trg_key_len);
+
+	if (entry == NULL) {
+#ifdef CefC_Debug
+cef_frame_conversion_name_to_uri( param->name, param->name_len, buff_uri);
+csmgrd_dbg_write( CefC_Dbg_Fine, "%s(%d) Name cache miss %s (chunk=%u).\n", __func__, __LINE__, buff_uri, param->seqno);
+#endif
+		return (NULL);
+	}
+
+	return (entry);
+}
+
+static int
+mem_cache_item_send (
+	int sock,
+	CsmgrdT_Content_Mem_Entry* entry,
+	unsigned char* trg_key,
+	int trg_key_len,
+	int keyid_f
+) {
+	uint64_t nowt;
+	struct timeval tv;
+
+	gettimeofday (&tv, NULL);
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
+
+	if (((entry->expiry != 0) && (nowt >= entry->expiry)) || (nowt >= entry->cache_time)) {
+#ifdef CefC_Debug
+		csmgrd_dbg_write( CefC_Dbg_Fine,
+			"%s(%d) Cache entry expired "
+			"(chunk=%u, expiry=%" PRIu64 ", now=%" PRIu64 ").\n",
+			__func__, __LINE__,
+			entry->chunk_num,
+			entry->expiry,
+			nowt);
+#endif
+		return (CefC_Csmgr_Cob_NotExist);
+	}
+
+	entry->hit_count++;
+
+	pthread_mutex_lock (&mem_cs_mutex);
+
+	if (hdl->algo_apis.hit) {
+		(*(hdl->algo_apis.hit))(trg_key, trg_key_len);
+	}
+
+	if (keyid_f) {
+		csmgrd_stat_access_count_update_keyid( csmgr_stat_hdl, entry->name,entry->name_len, &entry->keyid, entry->keyid_len);
+	}
+	else {
+		csmgrd_stat_access_count_update( csmgr_stat_hdl, entry->name, entry->name_len);
+	}
+
+	/* Send Cob to cefnetd */
+	csmgrd_plugin_cob_msg_send( sock, entry->msg, entry->msg_len);
+	pthread_mutex_unlock (&mem_cs_mutex);
+
+	return (CefC_Csmgr_Cob_Exist);
+}
+
 /*--------------------------------------------------------------------------------------
 	Upload content byte steream
 ----------------------------------------------------------------------------------------*/
@@ -929,14 +1140,14 @@ mem_cache_cob_write (
 ) {
 	int index = 0;
 	CsmgrdT_Content_Mem_Entry* entry;
-	CsmgrdT_Content_Mem_Entry* old_entry = NULL;
-	unsigned char 	trg_key[CsmgrdC_Key_Max];
-	int 			trg_key_len;
+	CsmgrdT_Content_Mem_Entry* old_entry;
+	unsigned char 	trg_key[CefC_Csmgr_Key_Max];
+	int 			trg_key_len = 0;
+	int				name_key_len = 0;
+	int				keyid_key_len = 0;
+	int				MsgHash_key_len =0;
 	uint64_t nowt;
 	struct timeval tv;
-	int				rc = CefC_CV_Inconsistent;
-	CsmgrT_Stat*	rcd = NULL;
-	CsmgrT_Stat*	del_rcd = NULL;
 
 #ifdef __MEMCACHE_VERSION__
 	fprintf (stderr, "--- mem_cache_cob_write()\n");
@@ -950,170 +1161,52 @@ mem_cache_cob_write (
 		if (cobs[index].expiry < nowt) {
 			free (cobs[index].msg);
 			free (cobs[index].name);
-			if (cobs[index].ver_len) {
-				free (cobs[index].version);
-			}
 			index++;
 			continue;
 		}
 
 		if (hdl->algo_apis.insert) {
-			trg_key_len = csmgrd_key_create (&cobs[index], trg_key);
-			entry = cef_mem_hash_tbl_item_get (trg_key, trg_key_len);
+			trg_key_len = csmgrd_name_chunknum_concatenate (
+				cobs[index].name, cobs[index].name_len, cobs[index].chunk_num, trg_key);
+			entry = cef_mem_hash_tbl_item_get (IDX_NAME, trg_key, trg_key_len);
 			if (entry == NULL) {
 #ifdef __MEMCACHE_VERSION__
 				fprintf (stderr, "  * new insert %u\n", cobs[index].chunk_num);
 #endif //__MEMCACHE_VERSION__
 				(*(hdl->algo_apis.insert))(&cobs[index]);
-			} else {
-				rc = cef_csmgr_cache_version_compare (cobs[index].version, cobs[index].ver_len, entry->version, entry->ver_len);
-#ifdef __MEMCACHE_VERSION__
-				fprintf (stderr, "  * cache exist %u\n", cobs[index].chunk_num);
-				fprintf (stderr, "  * entry: ");
-				for (int i = 0; i < entry->ver_len; i++) {
-					if (isprint (entry->version[i])) fprintf (stderr, "%c ", entry->version[i]);
-					else fprintf (stderr, "%02x ", entry->version[i]);
-				}
-				fprintf (stderr, "(%d)\n", entry->ver_len);
-				fprintf (stderr, "  * cob: ");
-				for (int i = 0; i < cobs[index].ver_len; i++) {
-					if (isprint (cobs[index].version[i])) fprintf (stderr, "%c ", cobs[index].version[i]);
-					else fprintf (stderr, "%02x ", cobs[index].version[i]);
-				}
-				fprintf (stderr, "(%d)\n", cobs[index].ver_len);
-#endif //__MEMCACHE_VERSION__
-				if (rc != CefC_CV_Inconsistent) {
-					if (rc == CefC_CV_Newest_1stArg) {
-#ifdef __MEMCACHE_VERSION__
-						fprintf (stderr, "  * ---New\n");
-#endif //__MEMCACHE_VERSION__
-						/* Delete older version of data. */
-						entry = cef_mem_hash_tbl_item_remove(trg_key, trg_key_len);
-						if (hdl->algo_apis.erase) {
-							(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
-						}
-						hdl->cache_cobs--;
-						if (entry) {
-							free (entry->msg);
-							free (entry->name);
-							if (entry->ver_len) {
-								free (entry->version);
-							}
-						} else {
-							return (-1);
-						}
-
-						rcd = csmgrd_stat_content_info_get (csmgr_stat_hdl, cobs[index].name, cobs[index].name_len);
-						rc = cef_csmgr_cache_version_compare (cobs[index].version, cobs[index].ver_len, rcd->version, rcd->ver_len);
-#ifdef __MEMCACHE_VERSION__
-						fprintf (stderr, "  * rcd: ");
-						for (int i = 0; i < rcd->ver_len; i++) {
-							if (isprint (rcd->version[i])) fprintf (stderr, "%c ", rcd->version[i]);
-							else fprintf (stderr, "%02x ", rcd->version[i]);
-						}
-						fprintf (stderr, "(%d)\n", rcd->ver_len);
-#endif //__MEMCACHE_VERSION__
-						if (rc == CefC_CV_Newest_1stArg) {
-							/* Delete the stat record only when the first Cob is received after the version is upgraded. */
-
-							/* copy stat record */
-							del_rcd = (CsmgrT_Stat*) malloc (sizeof (CsmgrT_Stat) + rcd->name_len + rcd->ver_len);
-							del_rcd->name = (unsigned char*)del_rcd + sizeof (CsmgrT_Stat);
-							del_rcd->version = (unsigned char*)del_rcd + sizeof (CsmgrT_Stat) + rcd->name_len;
-							del_rcd->cob_num = rcd->cob_num;
-							del_rcd->min_seq = rcd->min_seq;
-							del_rcd->max_seq = rcd->max_seq;
-							del_rcd->name_len = rcd->name_len;
-							del_rcd->ver_len = rcd->ver_len;
-							memcpy (del_rcd->name, rcd->name, rcd->name_len);
-							if (rcd->ver_len) {
-								memcpy (del_rcd->version, rcd->version, rcd->ver_len);
-							}
-							/* delete stat record */
-							csmgrd_stat_content_info_delete (csmgr_stat_hdl, cobs[index].name, cobs[index].name_len);
-#ifdef __MEMCACHE_VERSION__
-							fprintf (stderr, "  * delete stat\n");
-#endif //__MEMCACHE_VERSION__
-						}
-
-						/* Insert a new version of data. */
-						(*(hdl->algo_apis.insert))(&cobs[index]);
-
-						if (rc == CefC_CV_Newest_1stArg) {
-							/* csmgrd_stat_cob_update is called in store API called in insert API. */
-							rcd = csmgrd_stat_content_info_get (csmgr_stat_hdl, cobs[index].name, cobs[index].name_len);
-#ifdef __MEMCACHE_VERSION__
-							fprintf (stderr, "  * get stat\n");
-							fprintf (stderr, "  * rcd: ");
-							for (int i = 0; i < rcd->ver_len; i++) {
-								if (isprint (rcd->version[i])) fprintf (stderr, "%c ", rcd->version[i]);
-								else fprintf (stderr, "%02x ", rcd->version[i]);
-							}
-							fprintf (stderr, "(%d)\n", rcd->ver_len);
-#endif //__MEMCACHE_VERSION__
-							if (cobs[index].ver_len && !rcd->ver_len) {
-								csmgrd_stat_content_info_version_init (csmgr_stat_hdl, rcd, cobs[index].version, cobs[index].ver_len);
-							}
-
-							/* delete thread */
-							if (write (delete_pipe_fd[0], del_rcd, sizeof (CsmgrT_Stat)) != sizeof(CsmgrT_Stat)) {
-								;	/* NOP */
-							}
-							if (del_rcd) {
-								free (del_rcd);
-							}
-						}
-					} else if (rc == CefC_CV_Same) {
-#ifdef __MEMCACHE_VERSION__
-						fprintf (stderr, "  * ---Same\n");
-#endif //__MEMCACHE_VERSION__
-						/* cached yet */
-						free (cobs[index].msg);
-						free (cobs[index].name);
-						if (cobs[index].ver_len) {
-							free (cobs[index].version);
-						}
-					} else {
-#ifdef __MEMCACHE_VERSION__
-						fprintf (stderr, "  * ---Old\n");
-#endif //__MEMCACHE_VERSION__
-						free (cobs[index].msg);
-						free (cobs[index].name);
-						if (cobs[index].ver_len) {
-							free (cobs[index].version);
-						}
-					}
-				} else {
-#ifdef __MEMCACHE_VERSION__
-					fprintf (stderr, "  * ---Inconsistent\n");
-#endif //__MEMCACHE_VERSION__
-					free (cobs[index].msg);
-					free (cobs[index].name);
-					if (cobs[index].ver_len) {
-						free (cobs[index].version);
-					}
-				}
 			}
 		} else {
 			if (hdl->cache_cobs >= hdl->cache_capacity) {
 				free (cobs[index].msg);
 				free (cobs[index].name);
-				if (cobs[index].ver_len)
-					free (cobs[index].version);
 				index++;
 				continue;
 			}
 			/* Caches the content entry without the cache algorithm library 	*/
+
+			/* CobHash */
+			if (cobs[index].MsgHash_len > 0) {
+				MsgHash_key_len = MsgHash_index_key( &cobs[index].MsgHash, cobs[index].MsgHash_len, trg_key);
+				if (cef_mem_hash_tbl_item_get( IDX_MSGHASH, trg_key, MsgHash_key_len ) != NULL) {
+#ifdef CefC_Debug
+char	buff_uri[CefC_NAME_MAXLEN];
+cef_frame_conversion_name_to_uri(trg_key, MsgHash_key_len, buff_uri);
+csmgrd_dbg_write (CefC_Dbg_Fine, "%s(%d) %s, already cached.\n", __func__, __LINE__, buff_uri);
+#endif	// CefC_Debug
+					free (cobs[index].msg);
+					free (cobs[index].name);
+					index++;
+					continue;
+				}
+			}
+
 			entry =
 				(CsmgrdT_Content_Mem_Entry*) calloc (1, sizeof (CsmgrdT_Content_Mem_Entry));
 			if (entry == NULL) {
+				cef_log_write( CefC_Log_Error,
+					"%s: calloc(CsmgrdT_Content_Mem_Entry) failed.\n",__func__);
 				return (-1);
 			}
-
-			/* Creates the key 				*/
-			trg_key_len = csmgrd_name_chunknum_concatenate (
-							cobs[index].name, cobs[index].name_len,
-							cobs[index].chunk_num, trg_key);
 
 			/* Inserts the cache entry 		*/
 			entry->msg		= cobs[index].msg;
@@ -1121,177 +1214,148 @@ mem_cache_cob_write (
 			entry->name		= cobs[index].name;
 			entry->name_len	= cobs[index].name_len;
 			entry->pay_len		 = cobs[index].pay_len;
-			entry->chunk_num		 = cobs[index].chunk_num;
+			entry->chunk_num	 = cobs[index].chunk_num;
 			entry->cache_time	 = cobs[index].cache_time;
 			entry->expiry		 = cobs[index].expiry;
 			entry->node			 = cobs[index].node;
 			entry->ins_time		 = cobs[index].ins_time;
-			entry->ver_len		 = cobs[index].ver_len;
-			entry->version		 = cobs[index].version;
+			entry->keyid       = cobs[index].keyid;
+			entry->keyid_len   = cobs[index].keyid_len;
+			entry->MsgHash    = cobs[index].MsgHash;
+			entry->MsgHash_len= cobs[index].MsgHash_len;
 
-			old_entry = cef_mem_hash_tbl_item_get (trg_key, trg_key_len);
-			if (old_entry == NULL) {
+
 #ifdef __MEMCACHE_VERSION__
-				fprintf (stderr, "  * new insert %u\n", entry->chunk_num);
+			fprintf (stderr, "  * new insert %u\n", entry->chunk_num);
 #endif //__MEMCACHE_VERSION__
+
+/*----------------------------------------------------------*/
+/* CobHash */
+/*----------------------------------------------------------*/
+			if (entry->MsgHash_len > 0) {
 				if (cef_mem_hash_tbl_item_set (
-					trg_key, trg_key_len, entry, &old_entry) < 0) {
-					free (entry->msg);
-					free (entry->name);
-					if (entry->ver_len)
-						free (entry->version);
-					free (entry);
-					return (-1);
+						IDX_MSGHASH, trg_key, MsgHash_key_len, entry, &old_entry) < 0) {
+
+#ifdef CefC_Debug
+char hash_str[256];
+int pos = 0;
+for (int i = 0; i < MsgHash_key_len && pos < sizeof(hash_str) - 4; i++) {
+	pos += snprintf(
+		&hash_str[pos],
+		sizeof(hash_str) - pos,
+		"%02X ",
+		trg_key[i]);
+}
+
+csmgrd_dbg_write( CefC_Dbg_Finer,"%s(%d) CobHash=%s already cached.\n",__func__, __LINE__, hash_str);
+#endif	// CefC_Debug
+					goto ERROR;
 				}
+#ifdef CefC_Debug
+csmgrd_dbg_write( CefC_Dbg_Finer, "%s(%d) CobHash entry inserted.\n", __func__, __LINE__);
+#endif
+			}
 
-				/* Updates the content information 			*/
-				csmgrd_stat_cob_update (csmgr_stat_hdl, entry->name, entry->name_len,
-					entry->chunk_num, entry->pay_len, entry->expiry, nowt, entry->node);
-				rcd = csmgrd_stat_content_info_get (csmgr_stat_hdl, entry->name, entry->name_len);
-				if (entry->ver_len && !rcd->ver_len) {
-					csmgrd_stat_content_info_version_init (csmgr_stat_hdl, rcd, entry->version, entry->ver_len);
-				}
+/*----------------------------------------------------------*/
+/* KeyID */
+/*----------------------------------------------------------*/
+			if ((entry->name != NULL) && (entry->name_len > 0) && (entry->keyid_len > 0)) {
+				keyid_key_len = keyid_index_key( entry->name, entry->name_len, &entry->keyid, entry->keyid_len, entry->chunk_num, trg_key);
+				old_entry = cef_mem_hash_tbl_item_get( IDX_KEYID, trg_key, keyid_key_len);
+				if (old_entry != NULL) {
+#ifdef CefC_Debug
+char buff_uri[CefC_NAME_MAXLEN];
 
-				hdl->cache_cobs++;
-			} else {
-				rc = cef_csmgr_cache_version_compare (entry->version, entry->ver_len, old_entry->version, old_entry->ver_len);
-#ifdef __MEMCACHE_VERSION__
-				fprintf (stderr, "  * cache exist %u\n", entry->chunk_num);
-				fprintf (stderr, "  * entry: ");
-				for (int i = 0; i < old_entry->ver_len; i++) {
-					if (isprint (old_entry->version[i])) fprintf (stderr, "%c ", old_entry->version[i]);
-					else fprintf (stderr, "%02x ", old_entry->version[i]);
-				}
-				fprintf (stderr, "(%d)\n", old_entry->ver_len);
-				fprintf (stderr, "  * cob: ");
-				for (int i = 0; i < cobs[index].ver_len; i++) {
-					if (isprint (cobs[index].version[i])) fprintf (stderr, "%c ", cobs[index].version[i]);
-					else fprintf (stderr, "%02x ", cobs[index].version[i]);
-				}
-				fprintf (stderr, "(%d)\n", cobs[index].ver_len);
-#endif //__MEMCACHE_VERSION__
-				if (rc != CefC_CV_Inconsistent) {
-					if (rc == CefC_CV_Newest_1stArg) {
-#ifdef __MEMCACHE_VERSION__
-						fprintf (stderr, "  * ---New\n");
-#endif //__MEMCACHE_VERSION__
-						if (cef_mem_hash_tbl_item_set (
-							trg_key, trg_key_len, entry, &old_entry) < 0) {
-							free (entry->msg);
-							free (entry->name);
-							if (entry->ver_len)
-								free (entry->version);
-							free (entry);
-							return (-1);
-						}
+cef_frame_conversion_name_to_uri( entry->name, entry->name_len, buff_uri);
 
-						rcd = csmgrd_stat_content_info_get (csmgr_stat_hdl, entry->name, entry->name_len);
-						rc = cef_csmgr_cache_version_compare (entry->version, entry->ver_len, rcd->version, rcd->ver_len);
-#ifdef __MEMCACHE_VERSION__
-						fprintf (stderr, "  * rcd: ");
-						for (int i = 0; i < rcd->ver_len; i++) {
-							if (isprint (rcd->version[i])) fprintf (stderr, "%c ", rcd->version[i]);
-							else fprintf (stderr, "%02x ", rcd->version[i]);
-						}
-						fprintf (stderr, "(%d)\n", rcd->ver_len);
-#endif //__MEMCACHE_VERSION__
-						if (rc == CefC_CV_Newest_1stArg) {
-							/* Delete the stat record only when the first Cob is received after the version is upgraded. */
+csmgrd_dbg_write( CefC_Dbg_Fine, "%s(%d) Name + KeyID already cached, " "skip insert: %s (chunk=%u).\n", __func__, __LINE__, buff_uri, entry->chunk_num);
+#endif	// CefC_Debug
+				}else{
+					if (cef_mem_hash_tbl_item_set ( IDX_KEYID, trg_key, keyid_key_len, entry, &old_entry) < 0) {
 
-							/* copy stat record */
-							del_rcd = (CsmgrT_Stat*) malloc (sizeof (CsmgrT_Stat) + rcd->name_len + rcd->ver_len);
-							del_rcd->name = (unsigned char*)del_rcd + sizeof (CsmgrT_Stat);
-							del_rcd->version = (unsigned char*)del_rcd + sizeof (CsmgrT_Stat) + rcd->name_len;
-							del_rcd->cob_num = rcd->cob_num;
-							del_rcd->min_seq = rcd->min_seq;
-							del_rcd->max_seq = rcd->max_seq;
-							del_rcd->name_len = rcd->name_len;
-							del_rcd->ver_len = rcd->ver_len;
-							memcpy (del_rcd->name, rcd->name, rcd->name_len);
-							if (rcd->ver_len) {
-								memcpy (del_rcd->version, rcd->version, rcd->ver_len);
-							}
-							/* delete stat record */
-							csmgrd_stat_content_info_delete (csmgr_stat_hdl, old_entry->name, old_entry->name_len);
-#ifdef __MEMCACHE_VERSION__
-							fprintf (stderr, "  * delete stat\n");
-#endif //__MEMCACHE_VERSION__
-						}
-						if (old_entry) {
-							free (old_entry->msg);
-							free (old_entry->name);
-							if (old_entry->ver_len)
-								free (old_entry->version);
-							free (old_entry);
-						}
+#ifdef CefC_Debug
+char key_str[512];
+int pos = 0;
 
-						/* Updates the content information 			*/
-						csmgrd_stat_cob_update (csmgr_stat_hdl, entry->name, entry->name_len,
-							entry->chunk_num, entry->pay_len, entry->expiry, nowt, entry->node);
-						rcd = csmgrd_stat_content_info_get (csmgr_stat_hdl, entry->name, entry->name_len);
-						if (entry->ver_len && !rcd->ver_len) {
-							csmgrd_stat_content_info_version_init (csmgr_stat_hdl, rcd, entry->version, entry->ver_len);
-						}
+for (int i = 0; i < keyid_key_len && pos < sizeof(key_str) - 4; i++) {
+	pos += snprintf(
+		&key_str[pos],
+		sizeof(key_str) - pos,
+		"%02X ",
+		trg_key[i]);
+}
 
-						if (rc == CefC_CV_Newest_1stArg) {
-							/* delete thread */
-							if (write (delete_pipe_fd[0], del_rcd, sizeof (CsmgrT_Stat)) != sizeof(CsmgrT_Stat)) {
-								;	/* NOP */
-							}
-							if (del_rcd) {
-								free (del_rcd);
-							}
-						}
-					} else if (rc == CefC_CV_Same) {
-#ifdef __MEMCACHE_VERSION__
-						fprintf (stderr, "  * ---Same\n");
-#endif //__MEMCACHE_VERSION__
-						/* cached yet */
-						if (cef_mem_hash_tbl_item_set (
-							trg_key, trg_key_len, entry, &old_entry) < 0) {
-							free (entry->msg);
-							free (entry->name);
-							if (entry->ver_len)
-								free (entry->version);
-							free (entry);
-							return (-1);
-						}
-						if (old_entry) {
-							csmgrd_stat_content_lifetime_update (csmgr_stat_hdl,
-								entry->name, entry->name_len, entry->expiry);
-							free (old_entry->msg);
-							free (old_entry->name);
-							if (old_entry->ver_len)
-								free (old_entry->version);
-							free (old_entry);
-						}
-					} else {
-#ifdef __MEMCACHE_VERSION__
-						fprintf (stderr, "  * ---Old\n");
-#endif //__MEMCACHE_VERSION__
-						free (cobs[index].msg);
-						free (cobs[index].name);
-						if (cobs[index].ver_len) {
-							free (cobs[index].version);
-						}
+csmgrd_dbg_write( CefC_Dbg_Finer ,"%s(%d) KeyIDKey=%s cef_mem_hash_tbl_item_set failure.\n",__func__, __LINE__, key_str);
+#endif	// CefC_Debug
+						goto ERROR;
 					}
-				} else {
-#ifdef __MEMCACHE_VERSION__
-					fprintf (stderr, "  * ---Inconsistent\n");
-#endif //__MEMCACHE_VERSION__
-					free (cobs[index].msg);
-					free (cobs[index].name);
-					if (cobs[index].ver_len) {
-						free (cobs[index].version);
-					}
+#ifdef CefC_Debug
+csmgrd_dbg_write( CefC_Dbg_Finer, "%s(%d) KeyID entry inserted.\n", __func__, __LINE__);
+#endif
+					csmgrd_stat_cob_update_keyid( csmgr_stat_hdl, entry->name, entry->name_len,
+						(entry->keyid_len > 0) ? &entry->keyid : NULL, entry->keyid_len,
+						entry->chunk_num, entry->pay_len, entry->expiry, nowt, entry->node);
 				}
 			}
+
+/*----------------------------------------------------------*/
+/* Name */
+/*----------------------------------------------------------*/
+			if ((entry->name != NULL) && (entry->name_len > 0)) {
+				name_key_len = name_index_key( entry->name, entry->name_len, entry->chunk_num, trg_key);
+				old_entry = cef_mem_hash_tbl_item_get( IDX_NAME, trg_key, name_key_len);
+				if (old_entry != NULL) {
+#ifdef CefC_Debug
+char buff_uri[CefC_NAME_MAXLEN];
+cef_frame_conversion_name_to_uri( entry->name, entry->name_len, buff_uri);
+
+csmgrd_dbg_write(CefC_Dbg_Fine, "%s(%d) Name + chunk already cached, " "skip insert: %s (chunk=%u).\n", __func__, __LINE__, buff_uri, entry->chunk_num);
+#endif	// CefC_Debug
+				}else{
+					if (cef_mem_hash_tbl_item_set (
+							IDX_NAME, trg_key, name_key_len, entry, &old_entry) < 0) {
+						if ( entry->msg != NULL )
+							free (entry->msg);
+						if ( entry->name != NULL )
+							free (entry->name);
+						free (entry);
+#ifdef CefC_Debug
+char	buff_uri[CefC_NAME_MAXLEN];
+cef_frame_conversion_name_to_uri(trg_key, name_key_len, buff_uri);
+csmgrd_dbg_write (CefC_Dbg_Fine, "%s(%d) %s, cef_mem_hash_tbl_item_set failure.\n", __func__, __LINE__, buff_uri);
+#endif	// CefC_Debug
+						goto ERROR;
+					}
+				/* Updates the content information 			*/
+					csmgrd_stat_cob_update( csmgr_stat_hdl, entry->name, entry->name_len,
+						entry->chunk_num, entry->pay_len, entry->expiry, nowt, entry->node);
+				}
+			}
+
+			hdl->cache_cobs++;
 		}
 		index++;
-	}
+		continue;
 
+ERROR:
+
+		cef_mem_hash_tbl_item_remove_entry( entry );
+		if (entry->msg)
+			free(entry->msg);
+
+		if (entry->name)
+			free(entry->name);
+
+		free(entry);
+
+		return (-1);
+	}
+#ifdef CefC_Debug
+csmgrd_dbg_write( CefC_Dbg_Finer, "%s(%d) Name entry inserted.\n", __func__, __LINE__);
+#endif
 	return (0);
 }
+
 /*--------------------------------------------------------------------------------------
 	Function to increment access count
 ----------------------------------------------------------------------------------------*/
@@ -1303,7 +1367,7 @@ mem_cs_ac_cnt_inc (
 ) {
 	CsmgrdT_Content_Mem_Entry* entry;
 
-	entry = cef_mem_hash_tbl_item_get (key, key_size);
+	entry = cef_mem_hash_tbl_item_get ( IDX_NAME, key, key_size);
 	if (!entry) {
 		return;
 	}
@@ -1342,7 +1406,7 @@ mem_config_read (
 
 	/* Inits parameters		*/
 	memset (params, 0, sizeof (MemT_Config_Param));
-	params->cache_capacity = 819200;
+	params->cache_capacity = CefC_Default_Cache_Capacity;
 	strcpy (params->algo_name, "None");
 	params->algo_name_size = 256;
 	params->algo_cob_size = 2048;
@@ -1444,9 +1508,9 @@ mem_config_read (
 
 	if (strcmp (params->algo_name, "None") != 0) {
 		if (strcmp (params->algo_name, "libcsmgrd_lfu") == 0) {
-			if (params->cache_capacity > 819200) {
+			if (params->cache_capacity > CefC_Default_Cache_Capacity) {
 				csmgrd_log_write (CefC_Log_Error,
-				"Cache capacity value must be less than or equal to 819200 when using algorithm lfu.\n");
+				"Cache capacity value must be less than or equal to %d when using algorithm lfu.\n", CefC_Default_Cache_Capacity);
 				fclose (fp);
 				return (-1);
 			}
@@ -1488,7 +1552,7 @@ mem_cache_lifetime_get (
 
 	if (partial_f != 0) {
 		uint64_t idx;
-		unsigned char trg_key[65535];
+		unsigned char trg_key[CefC_Csmgr_Key_Max];
 		int trg_key_len;
 		uint64_t oldest_ins_time;
 		uint64_t first_expire;
@@ -1504,7 +1568,7 @@ mem_cache_lifetime_get (
 
 		for (idx = rcd->min_seq; idx <= rcd->max_seq; idx++) {
 			trg_key_len = csmgrd_name_chunknum_concatenate (name, name_len, idx, trg_key);
-			entry = cef_mem_hash_tbl_item_get (trg_key, trg_key_len);
+			entry = cef_mem_hash_tbl_item_get ( IDX_NAME, trg_key, trg_key_len);
 			if (!entry) {
 				continue;
 			}
@@ -1520,7 +1584,7 @@ mem_cache_lifetime_get (
 			*lifetime = (uint32_t)((first_expire - nowt) / 1000000);
 		return (1);
 	} else {
-		entry = cef_mem_hash_tbl_item_get (name, name_len);
+		entry = cef_mem_hash_tbl_item_get ( IDX_NAME, name, name_len);
 		if ((!entry) ||
 			(nowt > entry->expiry)) {
 			return (-1);
@@ -1578,82 +1642,89 @@ cef_mem_hash_tbl_create (
 	}
 	memset (ht, 0, sizeof (CefT_Mem_Hash));
 
-	ht->tbl = (CefT_Mem_Hash_Cell**) calloc (sizeof (CefT_Mem_Hash_Cell*), table_size);
+	for (int i = 0; i < 3; i++) {
+		ht->tbl[i] = (CefT_Mem_Hash_Cell**) calloc (sizeof (CefT_Mem_Hash_Cell*), table_size);
 
-	if (ht->tbl  == NULL) {
-		free (ht->tbl);
-		free (ht);
-		return (NULL);
+		if (ht->tbl[i] == NULL) {
+			while (--i >= 0) {
+				free(ht->tbl[i]);
+			}
+			free(ht);
+			return (NULL);
+		}
 	}
-	memset (ht->tbl, 0, sizeof (CefT_Mem_Hash_Cell*) * table_size);
+	//memset (ht->tbl, 0, sizeof (CefT_Mem_Hash_Cell*) * table_size);
 
 	srand ((unsigned) time (NULL));
-	ht->elem_max = capacity;
 	ht->tabl_max = table_size;
 	mem_tabl_max = ht->tabl_max;
-	ht->elem_num = 0;
 
 	return (ht);
 }
 
 static int
 cef_mem_hash_tbl_item_set (
+	int tbl_index,
 	const unsigned char* key,
 	uint32_t klen,
 	CsmgrdT_Content_Mem_Entry* elem,
-	CsmgrdT_Content_Mem_Entry** old_elem
+	CsmgrdT_Content_Mem_Entry **old_elem
 ) {
 	CefT_Mem_Hash* ht = (CefT_Mem_Hash*) mem_hash_tbl;
 	uint32_t hash = 0;
 	uint32_t y;
 	CefT_Mem_Hash_Cell* cp;
 	CefT_Mem_Hash_Cell* wcp;
-	*old_elem = NULL;
 
-	hash = cef_mem_hash_number_create (key, klen);
+	if ( old_elem )
+		*old_elem = NULL;
+	hash = cef_mem_hash_number_create(key, klen);
 	y = hash % ht->tabl_max;
 
-	if (ht->tbl[y] == NULL) {
-		ht->tbl[y] = (CefT_Mem_Hash_Cell* )calloc (1, sizeof (CefT_Mem_Hash_Cell) + klen);
-		if (ht->tbl[y] == NULL) {
+	if (ht->tbl[tbl_index][y] == NULL) {
+		ht->tbl[tbl_index][y] = (CefT_Mem_Hash_Cell*)calloc( 1, sizeof(CefT_Mem_Hash_Cell) + klen);
+		if (ht->tbl[tbl_index][y] == NULL)
 			return (-1);
-		}
-		ht->tbl[y]->key = ((unsigned char*)ht->tbl[y]) + sizeof (CefT_Mem_Hash_Cell);
-		cp = ht->tbl[y];
+
+		ht->tbl[tbl_index][y]->key = ((unsigned char*)ht->tbl[tbl_index][y]) + sizeof(CefT_Mem_Hash_Cell);
+		cp = ht->tbl[tbl_index][y];
 		cp->elem = elem;
 		cp->klen = klen;
-		memcpy (cp->key, key, klen);
-		ht->elem_num++;
+		memcpy(cp->key, key, klen);
 		return (1);
 	} else {
 		/* exist check & replace */
-		for (cp = ht->tbl[y]; cp != NULL; cp = cp->next) {
+		for (cp = ht->tbl[tbl_index][y]; cp != NULL; cp = cp->next) {
 			if ((cp->klen == klen) &&
 			   (memcmp (cp->key, key, klen) == 0)) {
-				*old_elem = cp->elem;
+				if ( old_elem )
+					*old_elem = cp->elem;
 				cp->elem = elem;
 				return (1);
 		   }
 		}
 		/* insert */
-		wcp = ht->tbl[y];
-		ht->tbl[y] = (CefT_Mem_Hash_Cell* )calloc (1, sizeof (CefT_Mem_Hash_Cell) + klen);
-		if (ht->tbl[y] == NULL) {
+		wcp = ht->tbl[tbl_index][y];
+
+		ht->tbl[tbl_index][y] = (CefT_Mem_Hash_Cell*)calloc( 1, sizeof(CefT_Mem_Hash_Cell) + klen);
+
+		if (ht->tbl[tbl_index][y] == NULL)
 			return (-1);
-		}
-		ht->tbl[y]->key = ((unsigned char*)ht->tbl[y]) + sizeof (CefT_Mem_Hash_Cell);
-		cp = ht->tbl[y];
+
+		ht->tbl[tbl_index][y]->key = ((unsigned char*)ht->tbl[tbl_index][y]) + sizeof(CefT_Mem_Hash_Cell);
+		cp = ht->tbl[tbl_index][y];
 		cp->next = wcp;
 		cp->elem = elem;
 		cp->klen = klen;
-		memcpy (cp->key, key, klen);
+		memcpy(cp->key, key, klen);
 
-		ht->elem_num++;
 		return (1);
 	}
 }
+
 static CsmgrdT_Content_Mem_Entry*
 cef_mem_hash_tbl_item_get (
+	int tbl_index,
 	const unsigned char* key,
 	uint32_t klen
 ) {
@@ -1662,13 +1733,13 @@ cef_mem_hash_tbl_item_get (
 	uint32_t y;
 	CefT_Mem_Hash_Cell* cp;
 
-	if ((klen > MemC_Max_KLen) || (ht == NULL)) {
+	if ((klen > CefC_Csmgr_Key_Max) || (ht == NULL)) {
 		return (NULL);
 	}
 	hash = cef_mem_hash_number_create (key, klen);
 	y = hash % ht->tabl_max;
 
-	cp = ht->tbl[y];
+	cp = ht->tbl[tbl_index][y];
 	if (cp == NULL) {
 		return (NULL);
 	}
@@ -1682,8 +1753,94 @@ cef_mem_hash_tbl_item_get (
 	return (NULL);
 }
 
+static void
+cef_mem_hash_tbl_item_remove_entry (
+	CsmgrdT_Content_Mem_Entry* entry
+)
+{
+	unsigned char 	trg_key[CefC_Csmgr_Key_Max];
+	int				name_key_len;
+	int				keyid_key_len;
+	int				MsgHash_key_len;
+
+	/*------------------------------*/
+	/* CobHash                      */
+	/*------------------------------*/
+	if (entry->MsgHash_len > 0) {
+
+		MsgHash_key_len =
+			MsgHash_index_key(
+				&entry->MsgHash,
+				entry->MsgHash_len,
+				trg_key);
+
+		if (cef_mem_hash_tbl_item_get(
+				IDX_MSGHASH,
+				trg_key,
+				MsgHash_key_len) == entry) {
+
+			cef_mem_hash_tbl_item_remove(
+				IDX_MSGHASH,
+				trg_key,
+				MsgHash_key_len);
+		}
+	}
+
+	/*------------------------------*/
+	/* KeyID                        */
+	/*------------------------------*/
+	if ((entry->name_len > 0) &&
+		(entry->keyid_len > 0)) {
+
+		keyid_key_len =
+			keyid_index_key(
+				entry->name,
+				entry->name_len,
+				&entry->keyid,
+				entry->keyid_len,
+				entry->chunk_num,
+				trg_key);
+
+		if (cef_mem_hash_tbl_item_get(
+				IDX_KEYID,
+				trg_key,
+				keyid_key_len) == entry) {
+
+			cef_mem_hash_tbl_item_remove(
+				IDX_KEYID,
+				trg_key,
+				keyid_key_len);
+		}
+	}
+
+	/*------------------------------*/
+	/* Name                         */
+	/*------------------------------*/
+	if (entry->name_len > 0) {
+
+		name_key_len =
+			name_index_key(
+				entry->name,
+				entry->name_len,
+				entry->chunk_num,
+				trg_key);
+
+		if (cef_mem_hash_tbl_item_get(
+				IDX_NAME,
+				trg_key,
+				name_key_len) == entry) {
+
+			cef_mem_hash_tbl_item_remove(
+				IDX_NAME,
+				trg_key,
+				name_key_len);
+		}
+	}
+}
+
 static CsmgrdT_Content_Mem_Entry*
 cef_mem_hash_tbl_item_remove (
+	int tbl_index,
 	const unsigned char* key,
 	uint32_t klen
 ) {
@@ -1694,33 +1851,31 @@ cef_mem_hash_tbl_item_remove (
 	CefT_Mem_Hash_Cell* cp;
 	CefT_Mem_Hash_Cell* wcp;
 
-	if ((klen > MemC_Max_KLen) || (ht == NULL)) {
+	if ((klen > CefC_Csmgr_Key_Max) || (ht == NULL)) {
 		return (NULL);
 	}
 
 	hash = cef_mem_hash_number_create (key, klen);
 	y = hash % ht->tabl_max;
 
-	cp = ht->tbl[y];
+	cp = ht->tbl[tbl_index][y];
 	if (cp == NULL) {
 		return (NULL);
 	}
 	if (cp != NULL) {
 		if ((cp->klen == klen) &&
-		   (memcmp (cp->key, key, klen) == 0)) {
-		   	ht->tbl[y] = cp->next;
-			ht->elem_num--;
-		   	ret_elem = cp->elem;
-		   	free (cp);
-		   	return (ret_elem);
+			(memcmp (cp->key, key, klen) == 0)) {
+			ht->tbl[tbl_index][y] = cp->next;
+			ret_elem = cp->elem;
+			free (cp);
+			return (ret_elem);
 		} else {
 			for (; cp->next != NULL; cp = cp->next) {
 				if ((cp->next->klen == klen) &&
-				   (memcmp (cp->next->key, key, klen) == 0)) {
-				   	wcp = cp->next;
-				   	cp->next = cp->next->next;
-					ht->elem_num--;
-				   	ret_elem = wcp->elem;
+					(memcmp (cp->next->key, key, klen) == 0)) {
+					wcp = cp->next;
+					cp->next = cp->next->next;
+					ret_elem = wcp->elem;
 					free (wcp);
 					return (ret_elem);
 				}
@@ -1746,25 +1901,6 @@ cef_mem_hash_number_create (
 
 	return (hash);
 }
-
-int												/* length of the created key 			*/
-csmgrd_key_create_by_Mem_Entry (
-	CsmgrdT_Content_Mem_Entry* entry,
-	unsigned char* key
-) {
-	uint32_t chunk_num;
-
-	memcpy (&key[0], entry->name, entry->name_len);
-	key[entry->name_len] 		= 0x00;
-	key[entry->name_len + 1] 	= 0x10;
-	key[entry->name_len + 2] 	= 0x00;
-	key[entry->name_len + 3] 	= 0x04;
-	chunk_num = htonl (entry->chunk_num);
-	memcpy (&key[entry->name_len + 4], &chunk_num, sizeof (uint32_t));
-
-	return (entry->name_len + 4 + sizeof (uint32_t));
-}
-
 
 static int
 mem_cache_delete_thread_create (
@@ -1816,7 +1952,6 @@ mem_cache_delete_thread (
 	int						n;
 	CsmgrdT_Content_Mem_Entry* entry = NULL;
 	uint32_t				min_seq, max_seq;
-	int						rc = CefC_CV_Inconsistent;
 
 	read_fd = *(int *)p;
 	pthread_t self_thread = pthread_self();
@@ -1831,8 +1966,6 @@ mem_cache_delete_thread (
 		if (fds[0].revents & POLLIN) {
 			unsigned char		del_name[CefC_Max_Length] = {0};
 			uint16_t			del_name_len;
-			unsigned char		del_version[CefC_Max_Length] = {0};
-			uint16_t			del_ver_len;
 			if (read (read_fd, buff, sizeof(CsmgrT_Stat)) < sizeof(CsmgrT_Stat)) {
 				continue;
 			}
@@ -1842,40 +1975,29 @@ mem_cache_delete_thread (
 			max_seq = stat_p->max_seq;
 			del_name_len = stat_p->name_len;
 			memcpy (del_name, stat_p->name, stat_p->name_len);
-			del_ver_len = stat_p->ver_len;
-			if (del_ver_len) {
-				memcpy (del_version, stat_p->version, stat_p->ver_len);
-			}
 
 			pthread_mutex_lock (&mem_cs_mutex);
 
 #ifdef __MEMCACHE_VERSION__
 			fprintf (stderr, "--- mem_cache_delete_thread()\n");
-			fprintf (stderr, "  + delete [%s] %u-%u, cache_cob="FMTU64"\n", del_version, min_seq, max_seq, hdl->cache_cobs);
 #endif //__MEMCACHE_VERSION__
 
 			for (n = min_seq; n < max_seq; n++) {
-				unsigned char 	trg_key[CsmgrdC_Key_Max];
+				unsigned char 	trg_key[CefC_Csmgr_Key_Max];
 				int 			trg_key_len;
 
 				/* Creates the key */
 				trg_key_len = csmgrd_name_chunknum_concatenate (del_name, del_name_len, n, trg_key);
 
-				entry = cef_mem_hash_tbl_item_get (trg_key, trg_key_len);
-				rc = cef_csmgr_cache_version_compare (del_version, del_ver_len, entry->version, entry->ver_len);
-				if (rc == CefC_CV_Same) {
-					entry = cef_mem_hash_tbl_item_remove (trg_key, trg_key_len);
-					if (entry) {
-						if (hdl->algo_apis.erase) {
-							(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
-						}
-						hdl->cache_cobs--;
-						free (entry->msg);
-						free (entry->name);
-						if (entry->ver_len)
-							free (entry->version);
-						free (entry);
+				entry = cef_mem_hash_tbl_item_remove ( IDX_NAME, trg_key, trg_key_len);
+				if (entry) {
+					if (hdl->algo_apis.erase) {
+						(*(hdl->algo_apis.erase))(trg_key, trg_key_len);
 					}
+					hdl->cache_cobs--;
+					free (entry->msg);
+					free (entry->name);
+					free (entry);
 				}
 			}
 #ifdef __MEMCACHE_VERSION__
@@ -1889,3 +2011,325 @@ mem_cache_delete_thread (
 	return 0;
 }
 
+int
+mem_cache_cobhash_status_get (
+	unsigned char* buf,
+	uint32_t buf_size
+) {
+	CefT_Mem_Hash* ht;
+	CefT_Mem_Hash_Cell* cell;
+	CsmgrdT_Content_Mem_Entry* entry;
+	CsmgrdT_Content_Mem_Entry** entries;
+
+	uint32_t i;
+	uint32_t entry_num = 0;
+	uint32_t entry_max = 0;
+	uint32_t pos = 0;
+	uint32_t no = 1;
+	uint64_t nowt;
+	struct timeval tv;
+
+	if ((buf == NULL) || (buf_size == 0)) {
+		return (-1);
+	}
+
+	gettimeofday (&tv, NULL);
+	nowt = tv.tv_sec * 1000000llu + tv.tv_usec;
+
+	ht = (CefT_Mem_Hash*) mem_hash_tbl;
+
+	if (ht == NULL) {
+		return (-1);
+	}
+
+	for (i = 0; i < ht->tabl_max; i++) {
+		cell = ht->tbl[IDX_MSGHASH][i];
+
+		while (cell != NULL) {
+			if (cell->elem != NULL) {
+				entry_num++;
+			}
+
+			cell = cell->next;
+		}
+	}
+
+	if (entry_num == 0) {
+		pos += snprintf (
+			(char*)&buf[pos],
+			buf_size - pos,
+			"#No: Name,chunknum,CobHash,payload_size,Freshness,Elapsed Time,HitCount\n"
+		);
+
+		return ((int)pos);
+	}
+
+	entries = (CsmgrdT_Content_Mem_Entry**)
+		calloc (entry_num, sizeof(CsmgrdT_Content_Mem_Entry*));
+
+	if (entries == NULL) {
+		return (-1);
+	}
+
+	entry_max = 0;
+
+	for (i = 0; i < ht->tabl_max; i++) {
+		cell = ht->tbl[IDX_MSGHASH][i];
+		while (cell != NULL) {
+			entry = cell->elem;
+
+			if (entry != NULL) {
+				entries[entry_max] = entry;
+				entry_max++;
+			}
+			cell = cell->next;
+		}
+	}
+
+	/* Sort */
+	/* Name -> Chunk Number -> CobHash */
+	qsort ( entries, entry_max, sizeof(CsmgrdT_Content_Mem_Entry*), cobhash_entry_compare );
+	/* Header */
+	pos += snprintf (
+		(char*)&buf[pos],
+		buf_size - pos,
+		"#No: Name,chunknum,CobHash,payload_size,Freshness,Elapsed Time,HitCount\n"
+	);
+
+	if (pos >= buf_size) {
+		free (entries);
+		return ((int)buf_size);
+	}
+
+	/* Output entries */
+	for (i = 0; i < entry_max; i++) {
+		entry = entries[i];
+		uint64_t freshness;
+		uint64_t elapsed;
+		char uri[CefC_NAME_MAXLEN];
+
+		if (entry->expiry > nowt) {
+			freshness = (entry->expiry - nowt) / 1000000;
+		} else {
+			freshness = 0;
+		}
+
+		if (nowt > entry->ins_time) {
+			elapsed = (nowt - entry->ins_time) / 1000000;
+		} else {
+			elapsed = 0;
+		}
+
+		if (cef_frame_conversion_name_to_uri ( entry->name, entry->name_len, uri) < 0) {
+			uri[0] = '\0';
+		}
+
+		pos += snprintf (
+			(char*)&buf[pos],
+			buf_size - pos,
+			"%u: %s,%u,0x",
+			no,
+			uri,
+			entry->chunk_num
+		);
+
+		if (pos >= buf_size) {
+			free (entries);
+			return ((int)pos);
+		}
+
+		for (uint16_t j = 0; j < entry->MsgHash.hash_length; j++) {
+			if (pos >= buf_size) {
+				free (entries);
+				return ((int)pos);
+			}
+			pos += snprintf ( (char*)&buf[pos], buf_size - pos, "%02x", entry->MsgHash.hash_value[j] );
+		}
+		if (pos >= buf_size) {
+			free (entries);
+			return ((int)pos);
+		}
+		pos += snprintf (
+			(char*)&buf[pos],
+			buf_size - pos,
+			",%u,%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
+			entry->pay_len,
+			freshness,
+			elapsed,
+			entry->hit_count
+		);
+		if (pos >= buf_size) {
+			free (entries);
+			return ((int)pos);
+		}
+		no++;
+	}
+	free (entries);
+	return ((int)pos);
+}
+
+static int
+cobhash_entry_compare (
+	const void* a,
+	const void* b
+) {
+	const CsmgrdT_Content_Mem_Entry* ea =
+		*(const CsmgrdT_Content_Mem_Entry**)a;
+	const CsmgrdT_Content_Mem_Entry* eb =
+		*(const CsmgrdT_Content_Mem_Entry**)b;
+
+	int cmp;
+
+	/* Name */
+	if (ea->name_len != eb->name_len) {
+		int min_len = (ea->name_len < eb->name_len) ?
+			ea->name_len : eb->name_len;
+
+		cmp = memcmp(ea->name, eb->name, min_len);
+
+		if (cmp != 0) {
+			return (cmp);
+		}
+
+		return (ea->name_len < eb->name_len) ? -1 : 1;
+	}
+
+	cmp = memcmp(ea->name, eb->name, ea->name_len);
+
+	if (cmp != 0) {
+		return (cmp);
+	}
+
+	/* Chunk Number */
+	if (ea->chunk_num < eb->chunk_num) {
+		return (-1);
+	}
+
+	if (ea->chunk_num > eb->chunk_num) {
+		return (1);
+	}
+
+	/* CobHash */
+	if (ea->MsgHash.hash_length != eb->MsgHash.hash_length) {
+		return (ea->MsgHash.hash_length < eb->MsgHash.hash_length) ?
+			-1 : 1;
+	}
+
+	return (memcmp(
+		ea->MsgHash.hash_value,
+		eb->MsgHash.hash_value,
+		ea->MsgHash.hash_length));
+}
+
+int
+mem_cache_index_status_get (
+	unsigned char* buf,
+	uint32_t buf_size
+) {
+	CefT_Mem_Hash* ht;
+	CefT_Mem_Hash_Cell* cell;
+
+	uint32_t i;
+	uint32_t name_num = 0;
+	uint32_t keyid_num = 0;
+	uint32_t cobhash_num = 0;
+	uint32_t pos = 0;
+
+	if ((buf == NULL) || (buf_size == 0)) {
+		return (-1);
+	}
+
+	ht = (CefT_Mem_Hash*) mem_hash_tbl;
+
+	if (ht == NULL) {
+		return (-1);
+	}
+
+	/* Name Index */
+	for (i = 0; i < ht->tabl_max; i++) {
+		cell = ht->tbl[IDX_NAME][i];
+
+		while (cell != NULL) {
+			if (cell->elem != NULL) {
+				name_num++;
+			}
+
+			cell = cell->next;
+		}
+	}
+
+	/* KeyID Index */
+	for (i = 0; i < ht->tabl_max; i++) {
+		cell = ht->tbl[IDX_KEYID][i];
+
+		while (cell != NULL) {
+			if (cell->elem != NULL) {
+				keyid_num++;
+			}
+
+			cell = cell->next;
+		}
+	}
+
+	/* CobHash Index */
+	for (i = 0; i < ht->tabl_max; i++) {
+		cell = ht->tbl[IDX_MSGHASH][i];
+
+		while (cell != NULL) {
+			if (cell->elem != NULL) {
+				cobhash_num++;
+			}
+
+			cell = cell->next;
+		}
+	}
+
+	/* Header */
+	pos += snprintf (
+		(char*)&buf[pos],
+		buf_size - pos,
+		"#Index,Entries\n"
+	);
+
+	if (pos >= buf_size) {
+		return ((int)pos);
+	}
+
+	/* Name Index */
+	pos += snprintf (
+		(char*)&buf[pos],
+		buf_size - pos,
+		"Name,%u\n",
+		name_num
+	);
+
+	if (pos >= buf_size) {
+		return ((int)pos);
+	}
+
+	/* KeyID Index */
+	pos += snprintf (
+		(char*)&buf[pos],
+		buf_size - pos,
+		"KeyID,%u\n",
+		keyid_num
+	);
+
+	if (pos >= buf_size) {
+		return ((int)pos);
+	}
+
+	/* CobHash Index */
+	pos += snprintf (
+		(char*)&buf[pos],
+		buf_size - pos,
+		"CobHash,%u\n",
+		cobhash_num
+	);
+
+	if (pos >= buf_size) {
+		return ((int)pos);
+	}
+
+	return ((int)pos);
+}

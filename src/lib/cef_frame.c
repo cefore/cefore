@@ -135,6 +135,11 @@ static size_t ccnprefix2_len = sizeof (ccnprefix2) - 1; /* without NULL */
 
 static int cef_opt_seqnum_f = CefC_OptSeqnum_NotUse;
 
+static char str_vereq[] = {"Ver="};
+#define	CefC_STR_VEREQ_SIZE	(sizeof(str_vereq)-1)
+static char str_empty[] = {"(empty)"};
+#define	CefC_STR_EMPTY_SIZE	(sizeof(str_empty)-1)
+
 /*------------------------------------------------------------------
 	the Link Message template
  -------------------------------------------------------------------*/
@@ -151,8 +156,8 @@ static int link_cmd_len = -1;
 	T_NAMESEGMENT with ZERO length≒ROOT NAMESEGMENT
  -------------------------------------------------------------------*/
 static const unsigned char root_namesegment[4] = {
-	0x01,			/* T_NAMESEGMENT 			*/
 	0x00,			/* T_NAMESEGMENT 			*/
+	0x01,			/* T_NAMESEGMENT 			*/
 	0x00,			/* T_NAMESEGMENT Length		*/
 	0x00			/* T_NAMESEGMENT Length		*/
 };
@@ -372,17 +377,27 @@ cef_frame_message_objhashrestr_tlv_parse (
 	Parses a PayloadType TLV in a CEFORE message
 ----------------------------------------------------------------------------------------*/
 static int									/* No care now								*/
-cef_frame_message_payloadtype_tlv_parse (
+cef_frame_message_payldtype_tlv_parse (
 	CefT_CcnMsg_MsgBdy* pm, 				/* Structure to set parsed CEFORE message	*/
 	uint16_t length, 						/* Length of this TLV						*/
 	unsigned char* value,					/* Value of this TLV						*/
 	uint16_t offset							/* Offset from the top of message 			*/
 );
 /*--------------------------------------------------------------------------------------
-	Parses a EndChunkNumber TLV in a CEFORE message
+	Parses a EndChunk TLV in a CEFORE message
 ----------------------------------------------------------------------------------------*/
 static int									/* No care now								*/
 cef_frame_message_endchunk_tlv_parse (
+	CefT_CcnMsg_MsgBdy* pm, 				/* Structure to set parsed CEFORE message	*/
+	uint16_t length, 						/* Length of this TLV						*/
+	unsigned char* value,					/* Value of this TLV						*/
+	uint16_t offset							/* Offset from the top of message 			*/
+);
+/*--------------------------------------------------------------------------------------
+	Parses a ChunkSize TLV in a CEFORE message
+----------------------------------------------------------------------------------------*/
+static int									/* No care now								*/
+cef_frame_message_chunksize_tlv_parse (
 	CefT_CcnMsg_MsgBdy* pm, 				/* Structure to set parsed CEFORE message	*/
 	uint16_t length, 						/* Length of this TLV						*/
 	unsigned char* value,					/* Value of this TLV						*/
@@ -400,12 +415,11 @@ static int									/* No care now								*/
 	cef_frame_message_payload_tlv_parse,
 	cef_frame_message_keyidrestr_tlv_parse,
 	cef_frame_message_objhashrestr_tlv_parse,
-	NULL,	/* Unassigned */
-	cef_frame_message_payloadtype_tlv_parse,
+	NULL,		/*	0x0004 Unassigned */
+	cef_frame_message_payldtype_tlv_parse,
 	cef_frame_message_expiry_tlv_parse,
-	NULL,	/* T_CURVERSION(7) */
 	cef_frame_message_endchunk_tlv_parse,
-	NULL,	/* T_CHUNK_SIZE(9) */
+	cef_frame_message_chunksize_tlv_parse,
 };
 /*--------------------------------------------------------------------------------------
 	Parses an Invalid TLV in an Option Header
@@ -703,6 +717,7 @@ cef_frame_message_parse (
 	uint16_t opthdr_len, msg_len;
 	uint16_t offset;
 	int res;
+	size_t hash_len = 0;
 	struct tlv_hdr* thdr;
 
 	cef_dbg_write(CefC_Dbg_Finest, "target_type=%d, header_len=%u, payload_len=%u\n", target_type, header_len, payload_len);
@@ -733,13 +748,10 @@ cef_frame_message_parse (
 
 	/*** Calculate cobhash of this message ***/
 	if ( !poh->MsgHash_len ){
-		uint16_t MsgHash_index = header_len;
-		uint16_t MsgHash_len = payload_len;
-
-		cef_valid_sha256( &msg[MsgHash_index], MsgHash_len, poh->MsgHash.hash_value ); /* for OpenSSL 3.x */
+		cef_valid_sha256( &msg[header_len], payload_len, poh->MsgHash.hash_value, &hash_len); /* for OpenSSL 3.x */
 		poh->MsgHash_len = CefC_HashVal_Len + CefC_S_TLF;
 		poh->MsgHash.hash_type = CefC_T_SHA_256;
-		poh->MsgHash.hash_length = CefC_HashVal_Len;
+		poh->MsgHash.hash_length = hash_len;
 	}
 
 	/*----------------------------------------------------------------------*/
@@ -851,6 +863,8 @@ cef_dbg_write(CefC_Dbg_Finest, "VALIDATION_ALG:type=%d, length=%u\n", alg_type, 
 			switch ( alg_type ){
 			case CefC_T_HMAC_SHA256:
 			case CefC_T_RSA_SHA256:
+			case CefC_T_EC_SECP_256K1:
+			case CefC_T_EC_SECP_384R1:
 				pm->alg.valid_type = alg_type;
 				while ( 0 < alg_len ){
 					int		sub_type, sub_len;
@@ -986,7 +1000,28 @@ cef_frame_payload_parse (
 		type   = ntohs (thdr->type);
 		length = ntohs (thdr->length);
 
-		if (type != CefC_T_PAYLOAD) {
+		switch ( type ){
+		case CefC_T_PAYLOAD:
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Finer, "T_PAYLOAD(%d),length=%d\n", type, length);
+#endif	// CefC_Debug
+			break;
+		case CefC_T_PAYLDTYPE:
+			x = *((char *)&thdr[1]);
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Finer, "T_PAYLDTYPE(%d),length=%d,Val=%d\n", type, length, x);
+#endif	// CefC_Debug
+			if ( x != CefC_T_PAYLOADTYPE_DATA ){
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "T_PAYLDTYPE(%d) is not T_PAYLOADTYPE_DATA\n", type);;
+#endif	// CefC_Debug
+				return;
+			}
+			// fall throught
+		default:
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Finer, "type=%d,length=%d\n", type, length);
+#endif	// CefC_Debug
 			index += CefC_S_TLF + length;
 			continue;
 		}
@@ -1005,39 +1040,36 @@ cef_frame_conversion_uri_to_name (
 	const char* inuri, 						/* URI										*/
 	unsigned char* name						/* buffer to set Name 						*/
 ) {
-	unsigned char* ruri = (unsigned char*) inuri;
 	unsigned char* wp = name;
-
-	unsigned char* curi;
-	unsigned char* suri;
+	unsigned char  uri_buff[CefC_NAME_BUFSIZ];
+	unsigned char* ruri;	//	remaining URI（次に処理すべき URI の先頭）
+	unsigned char* curi;	//	current URI（次の区切り / の位置）
+	unsigned char* suri;	//	segment URI（現在処理中のセグメントの先頭）
 	uint16_t value;
-
-	char protocol[CefC_NAME_MAXLEN];
-	uint16_t name_len, prot_len, n;
 
 	uint16_t T_APP_XXX;
 	uint16_t T_APP_XXX_n;
 	int app_f = -1;
 	int	ii;
 	int chunk_f = -1;
+	int t_ver_f = -1;
 	char* eq_p;
 	char* slash_p;
-	unsigned char 	chk_uri[CefC_Max_Length];
 	int ret_c;
 	unsigned int hex_num;
 	uint16_t HEX_TYPE = 0;
 	int hex_type_f = -1;
 	int chunk_accept = CefC_URI_ACCEPT_CHUNK;
 
-
-	memset( chk_uri, 0x00, sizeof(chk_uri) );
-	ret_c = cef_frame_input_uri_pre_check2(inuri, chk_uri, chunk_accept);
+	memset( uri_buff, 0x00, sizeof(uri_buff) );
+	ret_c = cef_frame_input_uri_pre_check2(inuri, uri_buff, chunk_accept);
 	if ( ret_c != 0 ) {
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "cef_frame_input_uri_pre_check2()=%d\n", ret_c);
+#endif	// CefC_Debug
 		return (-1);
 	}
-	ruri = (unsigned char*) chk_uri;
-
-	strcpy (protocol, "ccnx");
+	ruri = (unsigned char*) uri_buff;
 
 	/* Parses the prefix of Name 	*/
 	if (memcmp (ccnprefix2, ruri, ccnprefix2_len) == 0) {
@@ -1047,29 +1079,30 @@ cef_frame_conversion_uri_to_name (
 		/* prefix is "ccnx:/" 		*/
 		curi = ruri + ccnprefix1_len;
 	} else {
+		uint16_t uri_len, prot_len, n;
+
 		/* prefix is "xxxxx:/" or "xxxxx://" or none */
 		curi = ruri;
-		name_len = strlen ((const char*) ruri);
-		prot_len = 0;
+		uri_len = strlen ((const char*) ruri);
 
-		for (n = 0 ; n < name_len && prot_len < CefC_NAME_MAXLEN; n++) {
+		for (prot_len = n = 0 ; n < uri_len; n++) {
 			if (curi[n] != ':') {
-				protocol[prot_len] = curi[n];
 				prot_len++;
 			} else {
-				protocol[prot_len] = 0x00;
 				break;
 			}
 		}
-		if (n == name_len) {
+		if (n == uri_len) {
 			if (curi[0] != '/') {
 				curi = ruri;
 			} else {
 				curi = ruri + 1;
 			}
-			strcpy (protocol, "ccnx");
 		} else {
 			if (curi[prot_len + 1] != '/') {
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 				return (-1);
 			} else {
 				if (curi[prot_len + 2] != '/') {
@@ -1083,6 +1116,9 @@ cef_frame_conversion_uri_to_name (
 	suri = curi;
 
 	if (*curi == 0x00) {
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "root_namesegment return.\n");
+#endif	// CefC_Debug
 		memcpy (name, root_namesegment, sizeof(root_namesegment));
 		return ((int) sizeof(root_namesegment));
 	}
@@ -1117,6 +1153,9 @@ cef_frame_conversion_uri_to_name (
 			}
 			if ( strlen(num_buff) <= 0 ) {
 				/* Error */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 				return (-1);
 			}
 			if ( *suri == '=' ) {
@@ -1137,6 +1176,9 @@ cef_frame_conversion_uri_to_name (
 				}
 			} else {
 				/* Error */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 				return (-1);
 			}
 		}	/* /APP:xx= */
@@ -1146,6 +1188,12 @@ cef_frame_conversion_uri_to_name (
 			chunk_f = 1;
 			curi = suri;
 		}		/* /Chunk= */
+
+		if ( strncasecmp( (char*)suri, str_vereq, CefC_STR_VEREQ_SIZE) == 0 ) {		/* /Ver= */
+			suri += CefC_STR_VEREQ_SIZE;
+			t_ver_f = 1;
+			curi = suri;
+		}		/* /Ver= */
 
 		if ( (app_f == -1) && (chunk_f == -1) ) {
 			char	num_buff[CefC_NumBufSiz];
@@ -1194,7 +1242,13 @@ cef_frame_conversion_uri_to_name (
 
 IS_NAMESEG:
 
-		if((*curi < 0x30) ||							/* NOT 0~9,A~Z,a~z */
+		if((0 < t_ver_f) 		/* /Ver= */
+			&& (!*curi ||		/* terminated by the '=' character is a version query. */
+				!strncasecmp((char *)curi, str_empty, CefC_STR_EMPTY_SIZE)) ) {
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "May be Version Query, curi=0x%02x, suri=0x%02x, ruri=0x%02x.\n", *curi, *suri, *ruri);
+#endif	// CefC_Debug
+		} else if((*curi < 0x30) ||							/* NOT 0~9,A~Z,a~z */
 			((*curi > 0x39) && (*curi < 0x41)) ||
 			((*curi > 0x5a) && (*curi < 0x61)) ||
 			(*curi > 0x7a)) {
@@ -1207,6 +1261,9 @@ IS_NAMESEG:
 				*curi != 0x26 &&						/* & */
 				*curi != 0x5f &&						/* _ */
 				*curi != 0x7e) {						/* ~ */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return, curi=0x%02x, suri=0x%02x, ruri=0x%02x.\n", *curi, *suri, *ruri);
+#endif	// CefC_Debug
 				return(-1);
 			}
 		}
@@ -1239,7 +1296,7 @@ IS_NAMESEG:
 					uint16_t chunk_len;
 					uint16_t chunk_len_ns;
 					uint64_t value;
-					char buffer[128];
+					char val_buff[BUFSIZ_128];
 				 	int  i = 0;
 				 	int mustContinue = 0;
 
@@ -1257,12 +1314,12 @@ IS_NAMESEG:
 						}
 					}
 
-					value = atoi(num_buff);
-					memset(buffer, 0, sizeof(buffer));
+					value = atoll(num_buff);
+					memset(val_buff, 0, sizeof(val_buff));
 					for (int byte = 7; byte >= 0; byte--) {
 						uint8_t b = (value >> (byte * 8)) & 0xFF;
 						if (b != 0 || byte == 0 || mustContinue) {
-							buffer[i] = b;
+							val_buff[i] = b;
 							i++;
 							mustContinue = 1;
 						}
@@ -1274,9 +1331,57 @@ IS_NAMESEG:
 					chunk_len_ns = htons(chunk_len);
 					memcpy (wp, &chunk_len_ns, CefC_S_Length);
 					wp += CefC_S_Length;
-					memcpy (wp, buffer, chunk_len);
+					memcpy (wp, val_buff, chunk_len);
 					wp += chunk_len;
 					chunk_f = -1;
+				} else if ( 0 < t_ver_f ) {
+					char	num_buff[CefC_NumBufSiz];
+					memset( num_buff, 0x00, sizeof(num_buff) );
+
+					/* get Num */
+					for( int i = 0; i < sizeof(num_buff); ) {
+						if ( !isdigit(*suri) ) {
+							break;
+						}
+						num_buff[i++] = *suri++;
+					}
+					if ( *suri != 0x00 && *suri != '/' ){
+#ifdef CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "T_VERSION:invalid character found, 0x%02x\n", *suri);
+#endif	// CefC_Debug
+						return(-1);
+					}
+
+					uint64_t value = atoll(num_buff);
+					uint16_t t_ver_len = 0;
+					char	val_buff[sizeof(value)];
+
+					memset(val_buff, 0, sizeof(val_buff));
+					for (int byte = sizeof(value)-1; byte >= 0; byte--) {
+						uint8_t b = (value >> (byte * 8)) & 0xFF;
+						if (b != 0 || 0 < t_ver_len) {
+							val_buff[t_ver_len++] = b;
+						}
+					}
+#if 0 // CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "value=%s, val_buff=0x%02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x, t_ver_len=%d\n", num_buff,
+val_buff[0], val_buff[1], val_buff[2], val_buff[3],
+val_buff[4], val_buff[5], val_buff[6], val_buff[7],
+t_ver_len);
+#endif	// CefC_Debug
+
+					uint16_t ftvn_ver = htons(CefC_T_VERSION);
+					uint16_t t_ver_len_ns = htons(t_ver_len);
+
+					memcpy (wp, &ftvn_ver, CefC_S_Type);
+					wp += CefC_S_Type;
+					memcpy (wp, &t_ver_len_ns, CefC_S_Length);
+					wp += CefC_S_Length;
+					if ( 0 < t_ver_len ){
+						memcpy (wp, val_buff, t_ver_len);
+						wp += t_ver_len;
+					}
+					t_ver_f = -1;
 				} else if ( hex_type_f > 0 ) {
 					uint16_t HEX_TYPE_n = htons(HEX_TYPE);
 					memcpy (wp, &HEX_TYPE_n, CefC_S_Type);
@@ -1381,46 +1486,48 @@ IS_NAMESEG:
 				if (*curi == 0x00) {
 					break;
 				}
-			} else  { /* HEX Name */
-				char hcbuff[1024];
-				int  hclen;
-			  	char *hcp;
-			  	char hvbuff[1024];
-				int  hvlen;
-			  	int  i;
+			} else { /* HEX Name .. ex) 0x1234=～ */
+				char hcbuff[CefC_NAME_BUFSIZ];
+			  	char hvbuff[CefC_NAME_MAXLEN];
+				int  i, hclen, hvlen;
+
 			  	memset (hcbuff, 0 , sizeof(hcbuff));
-			  	hcp = hcbuff;
 			  	memset (hvbuff, 0 , sizeof(hvbuff));
-				while (suri < curi) {
-					*hcp = *suri;
-					hcp++;
-					suri++;
+
+				suri += 2; /* skip the length of "0x" */
+				for (i = 0; i < (CefC_NAME_BUFSIZ-1) && suri < curi; i++) {
+					hcbuff[i] = *suri++;
 				}
 				/* length check */
-				hclen = strlen(hcbuff);
-				hclen -= 2; /* Subtract the length of "0x" */
-				if(hclen < 2) {
-					return(-1);
-				}
-				if ((hclen%2) != 0) {
+				hclen = i;
+				if((hclen < 2) || (hclen % 2)) {
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 					return(-1);
 				}
 				/* HEX char check */
-				for (i=0; i<hclen; i++) {
-					if(isxdigit(hcbuff[2+i]) == 0) {
+				for (i=0; i < hclen; i++) {
+					if(isxdigit(hcbuff[i]) == 0) {
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 						return(-1);
 					}
 				}
 				/* conv. HEX char to val */
-			    for (i=0; i<hclen; i+=2) {
+			    for (i = 0; i < hclen; i += 2) {
 					unsigned int x;
-					sscanf((char *)((hcbuff+2)+i), "%02x", &x);
+					sscanf(&hcbuff[i], "%02x", &x);
 					if (x == '/' && !app_f && !hex_type_f) {
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 						return(-1); /* '/' Is not allowed in HEX */
 			    	}
 					hvbuff[i/2] = x;
 				}
-			  	hvlen = hclen / 2 ;
+			  	hvlen = hclen / 2;
 			  	/* create TLV */
 				if ( app_f >= 0 ) {
 					/* T_APP */
@@ -1445,6 +1552,7 @@ IS_NAMESEG:
 			  	memcpy (wp, hvbuff, hvlen);
 			  	wp += hvlen;
 
+				/* *curi='/' */
 				if ( *curi == 0x2f )  {
 					if ( *ruri == 0x2f ) {
 						/* *curi='/' && *ruri='/' */
@@ -1569,7 +1677,7 @@ cef_frame_interest_create (
 		uint16_t chunk_len;
 		uint16_t chunk_len_ns;
 		uint64_t value;
-		char buffer[128];
+		char buffer[BUFSIZ_128];
 	 	int  i = 0;
 	 	int mustContinue = 0;
 
@@ -2108,7 +2216,7 @@ cef_frame_object_create (
 		uint16_t chunk_len;
 		uint16_t chunk_len_ns;
 		uint64_t value;
-		char buffer[128];
+		char buffer[BUFSIZ_128];
 	 	int  i = 0;
 	 	int mustContinue = 0;
 
@@ -2165,7 +2273,7 @@ cef_frame_object_create (
 		uint16_t end_chunk_len;
 		uint16_t end_chunk_len_ns;
 		uint64_t value;
-		char buffer[128];
+		char buffer[BUFSIZ_128];
 	 	int  i = 0;
 	 	int mustContinue = 0;
 
@@ -2188,6 +2296,20 @@ cef_frame_object_create (
 		index += CefC_S_Length;
 		memcpy (&buff[index], buffer, end_chunk_len);
 		index += end_chunk_len;
+	}
+
+	/*----- Sets T_CHUNK_SIZE		-----*/
+	if (tlvs->chunksize_f && 0 < tlvs->chunksize && !tlvs->chunk_num) {
+		uint16_t ftvn_chunksize = htons(CefC_T_CHUNK_SIZE);
+		uint16_t value = htons(tlvs->chunksize);
+		uint16_t tlv_len = htons(sizeof(value));
+
+		memcpy (&buff[index], &ftvn_chunksize, CefC_S_Type);
+		index += CefC_S_Type;
+		memcpy (&buff[index], &tlv_len, CefC_S_Length);
+		index += CefC_S_Length;
+		memcpy (&buff[index], &value, sizeof(value));
+		index += sizeof(value);
 	}
 
 	//0.8.3
@@ -2264,16 +2386,18 @@ cef_frame_object_create (
 		uint16_t		CobHash_index;
 		uint16_t		CobHash_len;
 		unsigned char 	hash[SHA256_DIGEST_LENGTH];
+		size_t hash_len = 0;
 
 		CobHash_index = CefC_S_Fix_Header + opt_header_len;
 		CobHash_len   = index - (CefC_S_Fix_Header + opt_header_len);
 //		SHA256_Init (&ctx);
 //		SHA256_Update (&ctx, &buff[CobHash_index], CobHash_len);
 //		SHA256_Final (hash, &ctx);
-		cef_valid_sha256( &buff[CobHash_index], CobHash_len, hash );	/* for OpenSSL 3.x */
+		cef_valid_sha256( &buff[CobHash_index], CobHash_len, hash, &hash_len);	/* for OpenSSL 3.x */
 		tlvs->ObjHashRestr.hash_type = CefC_T_SHA_256;
-		tlvs->ObjHashRestr.hash_length = CefC_HashVal_Len;
+		tlvs->ObjHashRestr.hash_length = hash_len;
 		memcpy( tlvs->ObjHashRestr.hash_value, hash, CefC_HashVal_Len );
+		tlvs->ObjHashRestr_len = CefC_HashVal_Len + CefC_S_TLF;
 	}
 
 	return (index);
@@ -2343,7 +2467,7 @@ cef_frame_object_create_for_csmgrd (
 		uint16_t chunk_len;
 		uint16_t chunk_len_ns;
 		uint64_t value;
-		char buffer[128];
+		char buffer[BUFSIZ_128];
 	 	int  i = 0;
 	 	int mustContinue = 0;
 
@@ -2396,7 +2520,7 @@ cef_frame_object_create_for_csmgrd (
 		uint16_t end_chunk_len;
 		uint16_t end_chunk_len_ns;
 		uint64_t value;
-		char buffer[128];
+		char buffer[BUFSIZ_128];
 	 	int  i = 0;
 	 	int mustContinue = 0;
 
@@ -2421,15 +2545,27 @@ cef_frame_object_create_for_csmgrd (
 		index += end_chunk_len;
 	}
 
+	/*----- Sets T_CHUNK_SIZE		-----*/
+	if (tlvs->chunksize_f && 0 < tlvs->chunksize && !tlvs->chunk_num) {
+		uint16_t ftvn_chunksize = htons(CefC_T_CHUNK_SIZE);
+		uint16_t value = htons(tlvs->chunksize);
+		uint16_t tlv_len = htons(sizeof(value));
+
+		memcpy (&buff[index], &ftvn_chunksize, CefC_S_Type);
+		index += CefC_S_Type;
+		memcpy (&buff[index], &tlv_len, CefC_S_Length);
+		index += CefC_S_Length;
+		memcpy (&buff[index], &value, sizeof(value));
+		index += sizeof(value);
+	}
+
 	if ( index > CefC_Max_Length ) {
 		return( index * -1 );
 	}
 
 	/*----- ORG TLV 			-----*/
-	if (tlvs->org.version_f) {
-		index +=
-			cef_frame_message_torg_set (&buff[index], tlvs);
-	}
+	index +=
+		cef_frame_message_torg_set (&buff[index], tlvs);
 
 	/*----- PAYLOAD TLV 			-----*/
 	if (tlvs->payload_len > 0) {
@@ -2584,7 +2720,7 @@ cef_frame_ccninfo_req_create (
 		uint16_t chunk_len;
 		uint16_t chunk_len_ns;
 		uint64_t value;
-		char buffer[128];
+		char buffer[BUFSIZ_128];
 	 	int  i = 0;
 	 	int mustContinue = 0;
 
@@ -3238,14 +3374,17 @@ cef_frame_object_opt_header_create (
 	/* Sets Message Hash Value (MsgHash)	*/
 	if (opt->MsgHash_f && 0 < opt->MsgHash_len) {
 		struct tlv_hdr fld_thdr;
+		CefT_HashData	*ptr_hash;
 
 		fld_thdr.type   = ftvn_msghash;
 		fld_thdr.length = htons(opt->MsgHash_len);
 		memcpy (&buff[index], &fld_thdr, sizeof (fld_thdr));
-		index += CefC_S_TLF;
 
-		memcpy (&buff[index], &(opt->MsgHash), opt->MsgHash_len);
-		index += opt->MsgHash_len;
+		ptr_hash = (CefT_HashData *)(&buff[index] + sizeof (fld_thdr));
+		ptr_hash->hash_type = htons(opt->MsgHash.hash_type);
+		ptr_hash->hash_length = htons(opt->MsgHash.hash_length);
+		memcpy (ptr_hash->hash_value, opt->MsgHash.hash_value, opt->MsgHash.hash_length);
+		index += CefC_S_TLF + opt->MsgHash_len;
 	}
 
 	if (index + CefC_S_Fix_Header > CefC_Max_Header_Size) {
@@ -3353,7 +3492,7 @@ cef_frame_ccninfo_validation_alg_tlv_create (
 		index += CefC_S_TLF;
 		value_len += CefC_S_TLF;
 
-	} else if (tlvs->valid_type == CefC_T_RSA_SHA256) {
+	} else if (Cef_Is_Pkey_Type(tlvs->valid_type)) {
 		CefT_HashData	 keyid = { CefC_T_SHA_256, CefC_KeyId_SIZ, "" };	/* KeyId */
 
 		pubkey_len = (uint16_t) cef_valid_keyid_create_forccninfo (pubkey, keyid.hash_value);;
@@ -3362,7 +3501,7 @@ cef_frame_ccninfo_validation_alg_tlv_create (
 		}
 		index += CefC_S_TLF;
 
-		fld_thdr.type 	= ftvn_rsa_sha256;
+		fld_thdr.type = htons(tlvs->valid_type);
 		fld_thdr.length = htons (CefC_S_TLF + CefC_S_TLF + keyid.hash_length \
 								+ CefC_S_TLF + pubkey_len);
 		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
@@ -3423,9 +3562,9 @@ cef_frame_ccninfo_validation_pld_tlv_create (
 		memcpy (&buff[buff_len], &v32_thdr, sizeof (struct value32_tlv));
 		index = sizeof (struct value32_tlv);
 
-	} else if (tlvs->valid_type == CefC_T_RSA_SHA256) {
+	} else if (Cef_Is_Pkey_Type(tlvs->valid_type)) {
 
-		res = cef_valid_rsa_sha256_dosign_forccninfo (buff, buff_len, sign, &sign_len);
+		res = cef_valid_signature_sign_forccninfo (buff, buff_len, sign, &sign_len);
 		if (res == 1) {
 			if (sign_len > 256) {
 				sign_len = 256;
@@ -3454,7 +3593,7 @@ cef_frame_validation_alg_tlv_create (
 	unsigned int index 		= 0;
 	unsigned int value_len 	= 0;
 	struct tlv_hdr fld_thdr;
-	uint16_t 		pubkey_len;
+	uint16_t 		pubkey_len = 0;
 	unsigned char 	pubkey[CefC_PUBKEY_BUFSIZ];
 
 	if (tlvs->hop_by_hop_f) {
@@ -3468,29 +3607,51 @@ cef_frame_validation_alg_tlv_create (
 		index += CefC_S_TLF;
 		value_len += CefC_S_TLF;
 
-	} else if (tlvs->valid_type == CefC_T_RSA_SHA256) {
-		CefT_HashData	 keyid = { CefC_T_SHA_256, CefC_KeyId_SIZ, "" };	/* KeyId */
+	} else if (Cef_Is_Pkey_Type(tlvs->valid_type)) {
+		if (tlvs->keyid.hash_length == 0) {
+			/* If the KeyID isn't set in CefT_Valid_Alg_TLVs, generate KeyID using SHA-256 and set it. */
+			CefT_HashData keyid = { CefC_T_SHA_256, CefC_KeyId_SIZ, "" };	/* KeyId */
 
-		// Note: cef_valid_keyid_create only supports SHA256 hash.
-		pubkey_len = (uint16_t) cef_valid_keyid_create (name, name_len, pubkey, keyid.hash_value);
-		if (pubkey_len == 0) {
+			pubkey_len = (uint16_t) cef_valid_keyid_create (name, name_len, pubkey, keyid.hash_value);
+			if (pubkey_len == 0) {
+#ifdef CefC_Debug
+				cef_dbg_write(CefC_Dbg_Finest, "Can't get the pubkey's info for creating ValidationAlg.\n");
+#endif // CefC_Debug
+				return (0);
+			}
+			memcpy (&tlvs->keyid, &keyid, sizeof(CefT_HashData));
+			tlvs->publickey_len = pubkey_len;
+			memcpy (&tlvs->publickey, &pubkey, pubkey_len);
+		} else if ((tlvs->publickey_oob_f == 0) && (tlvs->publickey_len == 0)) {
+#ifdef CefC_Debug
+			cef_dbg_write(CefC_Dbg_Finest, "Can't get the pubkey's info for creating ValidationAlg.\n");
+#endif // CefC_Debug
 			return (0);
+		} else {
+			pubkey_len = tlvs->publickey_len;
+			memcpy (pubkey, tlvs->publickey, tlvs->publickey_len);
 		}
 		index += CefC_S_TLF;
 
-		fld_thdr.type 	= ftvn_rsa_sha256;
-		fld_thdr.length = htons (CefC_S_TLF + CefC_S_TLF + keyid.hash_length \
-								+ CefC_S_TLF + pubkey_len);
+		fld_thdr.type = htons(tlvs->valid_type);
+		if (tlvs->publickey_oob_f) {
+			fld_thdr.length = htons (CefC_S_TLF + CefC_S_TLF + tlvs->keyid.hash_length);
+		} else {
+			fld_thdr.length = htons (CefC_S_TLF + CefC_S_TLF + tlvs->keyid.hash_length \
+									+ CefC_S_TLF + pubkey_len);
+		}
+
 		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
 		index += CefC_S_TLF;
 
+		/* Set T_KEYID */
 		fld_thdr.type 	= htons(CefC_T_KEYID);
-		fld_thdr.length = htons(keyid.hash_length + CefC_S_TLF);
+		fld_thdr.length = htons(tlvs->keyid.hash_length + CefC_S_TLF);
 		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
 		index += CefC_S_TLF;
 
-		fld_thdr.type 	= htons(keyid.hash_type);
-		fld_thdr.length = htons(keyid.hash_length);
+		fld_thdr.type 	= htons(tlvs->keyid.hash_type);
+		fld_thdr.length = htons(tlvs->keyid.hash_length);
 		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
 		index += CefC_S_TLF;
 
@@ -3499,21 +3660,29 @@ cef_frame_validation_alg_tlv_create (
 			printf( "%s\n", __func__ );
 			int dbg_x;
 			fprintf (stderr, "KeyId [ ");
-			for (dbg_x = 0 ; dbg_x < keyid.hash_length ; dbg_x++) {
-				fprintf (stderr, "%02x ", keyid.hash_value[dbg_x]);
+			for (dbg_x = 0 ; dbg_x < tlvs->keyid.hash_length ; dbg_x++) {
+				fprintf (stderr, "%02x ", tlvs->keyid.hash_value[dbg_x]);
 			}
 			fprintf (stderr, "]\n");
 		}
-#endif
+#endif // __RESTRICT__
 
-		memcpy (&buff[index], keyid.hash_value, keyid.hash_length);
-		index += keyid.hash_length;
+		memcpy (&buff[index], tlvs->keyid.hash_value, tlvs->keyid.hash_length);
+		index += tlvs->keyid.hash_length;
 
-		fld_thdr.type 	= ftvn_pubkey;
-		fld_thdr.length = htons (pubkey_len);
-		memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
-		memcpy (&buff[index + CefC_S_TLF], pubkey, pubkey_len);
-		index += CefC_S_TLF + pubkey_len;
+		/* Set T_KEYID */
+		if (tlvs->publickey_oob_f == 0) {
+			fld_thdr.type 	= ftvn_pubkey;
+			fld_thdr.length = htons (pubkey_len);
+			memcpy (&buff[index], &fld_thdr, sizeof (struct tlv_hdr));
+			memcpy (&buff[index + CefC_S_TLF], pubkey, pubkey_len);
+			index += CefC_S_TLF + pubkey_len;
+		} else {
+			; /* Don't set T_PUBLICKEY when the Out-of-Band flag is enabled. */
+#ifdef CefC_Debug
+			cef_dbg_write(CefC_Dbg_Finest, "Skip setting T_PUBLICKEY to T_VALIDATION_ALG\n");
+#endif // CefC_Debug
+		}
 
 		value_len += (index - CefC_S_TLF);
 
@@ -3557,9 +3726,9 @@ cef_frame_validation_pld_tlv_create (
 		memcpy (&buff[buff_len], &v32_thdr, sizeof (struct value32_tlv));
 		index = sizeof (struct value32_tlv);
 
-	} else if (tlvs->valid_type == CefC_T_RSA_SHA256) {
+	} else if (Cef_Is_Pkey_Type(tlvs->valid_type)) {
 
-		res = cef_valid_rsa_sha256_dosign (buff, buff_len, name, name_len, sign, &sign_len);
+		res = cef_valid_signature_sign (buff, buff_len, name, name_len, sign, &sign_len);
 
 		if (res == 1) {
 			if (sign_len > 256) {
@@ -4144,17 +4313,22 @@ cef_frame_message_objhashrestr_tlv_parse (
 	Parses a PayloadType TLV in a CEFORE message
 ----------------------------------------------------------------------------------------*/
 static int									/* No care now								*/
-cef_frame_message_payloadtype_tlv_parse (
+cef_frame_message_payldtype_tlv_parse (
 	CefT_CcnMsg_MsgBdy* pm, 				/* Structure to set parsed CEFORE message	*/
 	uint16_t length, 						/* Length of this TLV						*/
 	unsigned char* value,					/* Value of this TLV						*/
 	uint16_t offset							/* Offset from the top of message 			*/
 ) {
-	// TODO
+	pm->payldtype_f = offset;
+	pm->payldtype = value[0];
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Finer, "T_PAYLDTYPE, offset=%d, length=%d, Val=%d\n",
+	offset, length, value[0]);
+#endif	// CefC_Debug
 	return (1);
 }
 /*--------------------------------------------------------------------------------------
-	Parses a EndChunkNumber TLV in a CEFORE message
+	Parses a EndChunk TLV in a CEFORE message
 ----------------------------------------------------------------------------------------*/
 static int									/* No care now								*/
 cef_frame_message_endchunk_tlv_parse (
@@ -4167,6 +4341,23 @@ cef_frame_message_endchunk_tlv_parse (
 	pm->end_chunk_num = 0;
 	for (int i = 0; i < length; i++) {
 		pm->end_chunk_num = (pm->end_chunk_num << 8) | value[i];
+	}
+	return (1);
+}
+/*--------------------------------------------------------------------------------------
+	Parses a ChunkSize TLV in a CEFORE message
+----------------------------------------------------------------------------------------*/
+static int									/* No care now								*/
+cef_frame_message_chunksize_tlv_parse (
+	CefT_CcnMsg_MsgBdy* pm, 				/* Structure to set parsed CEFORE message	*/
+	uint16_t length, 						/* Length of this TLV						*/
+	unsigned char* value,					/* Value of this TLV						*/
+	uint16_t offset							/* Offset from the top of message 			*/
+) {
+	pm->chunksize_f = offset;
+	pm->chunksize = 0;
+	for (int i = 0; i < length; i++) {
+		pm->chunksize = (pm->chunksize << 8) | value[i];
 	}
 	return (1);
 }
@@ -4305,8 +4496,7 @@ cef_frame_conversion_name_to_uri (
 	uri_len = strlen ("ccnx:/");
 
 	/* Check root name */
-	if ((name_len == sizeof(root_namesegment)) &&
-		(memcmp (name, root_namesegment, sizeof(root_namesegment))) == 0) {
+	if (cef_frame_is_rootname(name, name_len)) {
 		return (uri_len);
 	}
 
@@ -4317,8 +4507,33 @@ cef_frame_conversion_name_to_uri (
 	while (x < name_len) {
 		int hname = 0;
 		tlv_hdr = (struct tlv_hdr*) &name[x];
+		sub_type = ntohs (tlv_hdr->type);
 		seg_len = ntohs (tlv_hdr->length);
 		x += CefC_S_TLF;
+
+		if ( sub_type == CefC_T_VERSION ) {
+			/* T_VERSION */
+#ifdef	CefC_Debug
+			char	*uri_sav_ptr = &uri[uri_len];
+#endif	// CefC_Debug
+
+			if ( 0 < seg_len ){
+				uint64_t	ver_num = 0;
+				uint8_t		*ver_ptr = (uint8_t *)(&tlv_hdr[1]);
+
+				for ( int i = 0; i < seg_len; i++ ){
+					ver_num <<= 8;
+					ver_num += ver_ptr[i];
+				}
+				uri_len += sprintf(&uri[uri_len], "%s"FMTU64, str_vereq, ver_num);
+			} else {
+				uri_len += sprintf(&uri[uri_len], "%s%s", str_vereq, str_empty);
+			}
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Finer, "%s\n", uri_sav_ptr);
+#endif	// CefC_Debug
+			goto GoNextSegment;
+		}
 
 		/* Check if it contains non-print character */
 		for (i = 0 ; i < seg_len ; i++) {
@@ -4327,11 +4542,11 @@ cef_frame_conversion_name_to_uri (
 				break;
 			}
 		}
+
 		if(hname == 0){
 
 			char char_num[8];
 			int	 num_len;
-			sub_type = ntohs (tlv_hdr->type);
 			if ((sub_type >= CefC_T_APP_MIN) &&
 				(sub_type <= CefC_T_APP_MAX)) {
 				memset( char_num, 0x00, 8 );
@@ -4392,7 +4607,6 @@ cef_frame_conversion_name_to_uri (
 
 			char char_num[8];
 			int	 num_len;
-			sub_type = ntohs (tlv_hdr->type);
 			if ((sub_type >= CefC_T_APP_MIN) &&
 				(sub_type <= CefC_T_APP_MAX)) {
 				memset( char_num, 0x00, 8 );
@@ -4434,6 +4648,7 @@ cef_frame_conversion_name_to_uri (
 				uri_len += strlen (work);
 			}
 		}
+GoNextSegment:
 		uri[uri_len] = '/';
 		uri_len++;
 
@@ -4527,8 +4742,7 @@ cef_frame_conversion_name_to_uri_without_chunknum (
 	uri_len = strlen ("ccnx:/");
 
 	/* Check root name */
-	if ((name_len == sizeof(root_namesegment)) &&
-		(memcmp (name, root_namesegment, sizeof(root_namesegment))) == 0) {
+	if (cef_frame_is_rootname(name, name_len)) {
 		return (uri_len);
 	}
 
@@ -4625,7 +4839,7 @@ cef_frame_conversion_name_to_string (
 	char* uri,
 	char* protocol			/* NOTE: 													*/
 							/*	This argument is unused.								*/
-							/*	"ccnx:/" is fixedly used as a protocol.					*/
+							/*	"ccn" is fixedly used as a protocol.					*/
 ) {
 	int uri_len;
 
@@ -4633,7 +4847,7 @@ cef_frame_conversion_name_to_string (
 	return (uri_len);
 }
 /*--------------------------------------------------------------------------------------
-	Get total length of T_NAMESEGMENT part
+	Get total length of T_NAMESEGMENT or CefC_T_VERSION part
 ----------------------------------------------------------------------------------------*/
 unsigned int
 cef_frame_get_len_total_namesegments (
@@ -4643,18 +4857,18 @@ cef_frame_get_len_total_namesegments (
 	int x = 0;
 	struct tlv_hdr* tlv_hdr;
 	unsigned int seg_tlen = 0;
-	unsigned int len = 0;
 
 	while (x < name_len) {
-		tlv_hdr = (struct tlv_hdr*) &name[x];
-		len = ntohs (tlv_hdr->length);
+		unsigned int sub_typ, len;
 
-		if ((ntohs(tlv_hdr->type) == CefC_T_NAMESEGMENT) ||
-			((ntohs(tlv_hdr->type) >= CefC_T_APP_MIN) &&
-			 (ntohs(tlv_hdr->type) <= CefC_T_APP_MAX))) {
+		tlv_hdr = (struct tlv_hdr*) &name[x];
+		len = ntohs(tlv_hdr->length);
+		sub_typ = ntohs(tlv_hdr->type);
+
+		if ((sub_typ == CefC_T_NAMESEGMENT) || (sub_typ == CefC_T_VERSION) ||
+			((sub_typ >= CefC_T_APP_MIN) && (sub_typ <= CefC_T_APP_MAX))) {
 			seg_tlen += CefC_S_TLF + len;
-		}
-		else if (ntohs(tlv_hdr->type) == CefC_T_CHUNK) {
+		} else if (sub_typ == CefC_T_CHUNK) {
 			/* NOP */
 		} else {
 			seg_tlen += CefC_S_TLF + len;
@@ -5390,7 +5604,7 @@ cef_frame_input_uri_pre_check(
 		memcpy( tmp_str, c1_p, tmp_len );		/* / */
 		tmp_str_len = (int)strlen((char*)tmp_str);
 
-		if ( strncasecmp((char*)tmp_str, "NAME=", 5) == 0  ) {
+		if ( strncasecmp((char*)tmp_str, "Name=", 5) == 0  ) {
 			/* NAME= */
 			if ( (tmp_str_len == 5) && (first_seg_f == 1) ) {
 				/* Error first is "NAME=" */
@@ -5500,7 +5714,7 @@ cef_frame_input_uri_pre_check(
 			}
 			c1_p += tmp_len;
 		} else if ( strncasecmp( (char*)tmp_str, "0x", 2 ) == 0 ) {
-			char	num_buff[CefC_NumBufSiz];
+			char	num_buff[CefC_NAME_BUFSIZ];
 			memset( num_buff, 0x00, sizeof(num_buff) );
 
 			/* HEX Type */
@@ -5625,6 +5839,9 @@ cef_frame_input_uri_pre_check2(
 	c1_p = (char*)chk_1;
 	break_p = strchr( (char*)chk_1, '/' );		/* search / */
 	if ( break_p == NULL ) {
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 		/* Error */
 		return (-1);
 	}
@@ -5637,6 +5854,9 @@ cef_frame_input_uri_pre_check2(
 	c1_p += tmp_len;
 
 	if ( *break_p == '/' ) {				/* // */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 		/* Error // */
 		return (-1);
 	}
@@ -5669,6 +5889,9 @@ cef_frame_input_uri_pre_check2(
 			if ( break_p != NULL ) {
 				if ( find_chunk == 1 ) {
 					/* /Chunk= or 0x0010 is not Last segment */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 					return (-1);
 				}
 				memset( n1_p, '/', 1 );
@@ -5679,10 +5902,13 @@ cef_frame_input_uri_pre_check2(
 			continue;
 		}
 
-		if ( strncasecmp((char*)tmp_str, "NAME=", 5) == 0  ) {
+		if ( strncasecmp((char*)tmp_str, "Name=", 5) == 0  ) {
 			/* NAME= */
 			if ( (tmp_str_len == 5) && (first_seg_f == 1) ) {
 				/* Error first is "NAME=" */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 				return (-1);
 			}
 			tmp_str_len -= 5;
@@ -5703,16 +5929,25 @@ cef_frame_input_uri_pre_check2(
 
 			if ( first_seg_f == 1 ) {
 				/* Error */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 				return (-1);
 			}
 			find_chunk = 1;
 			if ( chunk_f == CefC_URI_NOT_ACCEPT_CHUNK ) {
 				/* Error */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 				return (-1);
 			}
 			chunk_ctr++;
 			if ( chunk_ctr > 1 ) {
 				/* Error */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 				return (-1);
 			}
 			for( i = 0; i < sizeof(num_buff); ) {
@@ -5721,19 +5956,56 @@ cef_frame_input_uri_pre_check2(
 				}
 				if ( tmp_str[6+i] == '/' ) {
 					/* Error Not Last seg */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 					return (-1);
-					break;
 				}
 				if ( (tmp_str[6+i] >= '0') && (tmp_str[6+i] <= '9') ) {
 					num_buff[i] = tmp_str[6+i];
 					i++;
 				} else {
 					/* Error Not numeric */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 					return (-1);
 				}
 			}
 			if ( strlen(num_buff) <= 0 ) {
 				/* Error Not set */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
+				return (-1);
+			}
+			/* OK */
+			memcpy( n1_p, tmp_str, tmp_len );
+			n1_p += tmp_len;
+			c1_p += tmp_len;
+
+		/* /Ver= */
+		} else if ( strncasecmp((char*)tmp_str, str_vereq, CefC_STR_VEREQ_SIZE) == 0 ) {
+			unsigned char *num_ptr = &tmp_str[CefC_STR_VEREQ_SIZE];
+			char	num_buff[CefC_NumBufSiz];
+
+			if ( first_seg_f == 1 ) {
+				/* Error */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
+				return (-1);
+			}
+
+			memset( num_buff, 0x00, sizeof(num_buff) );
+			for( i = 0; isdigit(num_ptr[i]) && i < sizeof(num_buff); i++ ) {
+				num_buff[i] = num_ptr[i];
+			}
+			if ( num_ptr[i] && num_ptr[i] != '/' && !isdigit(num_ptr[i]) ) {
+				/* Error Not set */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return, num_ptr[%d]=0x%02x.\n", i, num_ptr[i]);
+#endif	// CefC_Debug
 				return (-1);
 			}
 			/* OK */
@@ -5759,20 +6031,32 @@ cef_frame_input_uri_pre_check2(
 					i++;
 				} else {
 					/* Error Not numeric */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 					return (-1);
 				}
 			}
 			if ( (tmp_str[4+i] == 0x00) && (first_seg_f == 1) ) {
 				/* Error /APP:n=/ && first_seg */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 					return (-1);
 			}
 			if ( (strlen(num_buff) <= 0) || (find_eq == 0) ) {
 				/* Error Not set */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 				return (-1);
 			} else {
 				num_test = atoi( num_buff );
 				if ( (num_test < 0) || (num_test > 4095) ) {
 					/* Error Out-of-Range */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 					return (-1);
 				}
 			}
@@ -5787,7 +6071,7 @@ cef_frame_input_uri_pre_check2(
 			}
 			c1_p += tmp_len;
 		} else if ( strncasecmp( (char*)tmp_str, "0x", 2 ) == 0 ) {
-			char	num_buff[CefC_NumBufSiz];
+			char	num_buff[CefC_NAME_BUFSIZ];
 			memset( num_buff, 0x00, sizeof(num_buff) );
 
 			/* HEX Type */
@@ -5805,14 +6089,23 @@ cef_frame_input_uri_pre_check2(
 					i++;
 				} else {
 					/* Error Not xdigit */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 					return (-1);
 				}
 			}
 			if ( strlen(num_buff) != 6 ) {
 				/* Error Not set */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 				return (-1);
 			} else if ( (tmp_str_len == 7) && (first_seg_f == 1) ) {
 				/* Error 0xXXXX=/ && First_SEG*/
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 				return (-1);
 			} else {
 				sscanf(num_buff, "%x", &hex_test);
@@ -5823,6 +6116,9 @@ cef_frame_input_uri_pre_check2(
 				} else if ( hex_test == CefC_T_CHUNK ) {
 					if ( chunk_f == CefC_URI_NOT_ACCEPT_CHUNK ) {
 						/* Error */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 						return (-1);
 					}
 					find_chunk = 1;
@@ -5861,6 +6157,9 @@ cef_frame_input_uri_pre_check2(
 		if ( break_p != NULL ) {
 			if ( find_chunk == 1 ) {
 				/* /Chunk= or 0x0010 is not Last segment */
+#ifdef	CefC_Debug
+cef_dbg_write(CefC_Dbg_Fine, "Error return.\n");
+#endif	// CefC_Debug
 				return (-1);
 			}
 			memset( n1_p, '/', 1 );
@@ -5916,3 +6215,52 @@ cef_frame_get_restr_type_from_pm (
 	return restr_type;
 }
 
+/*--------------------------------------------------------------------------------------
+	Check whether the name is root_namesegment
+----------------------------------------------------------------------------------------*/
+int						/* If name is root_namesegment, return 1.(otherwise, return 0.)	*/
+cef_frame_is_rootname (
+	unsigned char* name,
+	uint16_t name_len
+) {
+	int res = 0;
+
+	/* Check root name */
+	if ((name_len == sizeof(root_namesegment)) &&
+		(memcmp (name, root_namesegment, sizeof(root_namesegment))) == 0) {
+		res = 1;
+	}
+
+	return res;
+}
+
+/*--------------------------------------------------------------------------------------
+	Set KeyID to T_Valid_Alg_TLVs for tools
+----------------------------------------------------------------------------------------*/
+int
+cef_frame_set_keyid_to_valid_alg (
+	CefT_Valid_Alg_TLVs* tlvs,
+	uint16_t hash_type,
+	uint16_t keyid_len
+) {
+	int res = 0;
+	CefT_HashData keyid;
+
+	/* Check cobination of keyid's hashtype and hashlength. */
+	if (!((hash_type == CefC_T_SHA_256 && keyid_len == SHA256_DIGEST_LENGTH) ||
+		(hash_type == CefC_T_SHA_512 && keyid_len == SHA256_DIGEST_LENGTH) ||
+		(hash_type == CefC_T_SHA_512 && keyid_len == SHA512_DIGEST_LENGTH))) {
+		return (0);
+	}
+
+	res = cef_valid_keyid_create_from_hashtype (keyid.hash_value, hash_type, tlvs->publickey, &tlvs->publickey_len);
+	if (res <= 0) {
+		return 0;
+	}
+
+	tlvs->keyid.hash_type = hash_type;
+	tlvs->keyid.hash_length = keyid_len;
+	memcpy (tlvs->keyid.hash_value, keyid.hash_value, keyid_len);
+
+	return 1;
+}

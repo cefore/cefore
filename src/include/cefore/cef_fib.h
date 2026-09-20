@@ -41,6 +41,7 @@
 
 #include <cefore/cef_hash.h>
 #include <cefore/cef_define.h>
+#include <cefore/cef_frame.h>
 
 /****************************************************************************************
  Macros
@@ -62,7 +63,6 @@
 
 #define CefC_Fib_RtCost_Identifier		"rtcost="
 #define CefC_Fib_Keyid_Identifier		"keyid=0x"
-#define CefC_Fib_Keyid_Len				32
 
 /****************************************************************************************
  Structure Declarations
@@ -85,8 +85,10 @@ typedef struct CefT_Fib_Face {
 	CefT_Fib_Metric	metric;					/* 0.8.3c */
 	uint64_t		tx_int;					/* 0.8.3c */
 	uint64_t		tx_int_types[CefC_PIT_TYPE_MAX];		/* 0.8.3c */
-	unsigned char 	keyid[CefC_Fib_Keyid_Len];	/* KeyID for Full Souce Forwarding */
-	int  keyid_len;								/* KeyID length for Full Source Forwarding */
+	CefT_HashData	keyid;					/* KeyID for Full Souce Forwarding */
+	int  keyid_len;							/* KeyID length for Full Source Forwarding */
+	int	 adv_f;								/* Whether to advertise on cefbabel */
+											/* 0: Advertise, 1: Don't Advertise */
 } CefT_Fib_Face;
 
 /***** FIB entry 						*****/

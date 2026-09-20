@@ -117,7 +117,8 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-bin_PROGRAMS = conpubstatus$(EXEEXT) conpubreload$(EXEEXT)
+bin_PROGRAMS = conpubstatus$(EXEEXT) conpubreload$(EXEEXT) \
+	conpub_cont_add$(EXEEXT) conpub_cont_del$(EXEEXT)
 @LINUX_TRUE@am__append_1 = -pthread
 @OPENSSL_STATIC_TRUE@am__append_2 = -l:libssl.a -l:libcrypto.a
 @OPENSSL_STATIC_FALSE@am__append_3 = -lssl -lcrypto
@@ -130,6 +131,18 @@ bin_PROGRAMS = conpubstatus$(EXEEXT) conpubreload$(EXEEXT)
 
 # check debug build
 @CEFDBG_ENABLE_TRUE@am__append_8 = -DCefC_Debug
+@LINUX_TRUE@am__append_9 = -pthread
+@OPENSSL_STATIC_TRUE@am__append_10 = -l:libssl.a -l:libcrypto.a
+@OPENSSL_STATIC_FALSE@am__append_11 = -lssl -lcrypto
+
+# check debug build
+@CEFDBG_ENABLE_TRUE@am__append_12 = -DCefC_Debug
+@LINUX_TRUE@am__append_13 = -pthread
+@OPENSSL_STATIC_TRUE@am__append_14 = -l:libssl.a -l:libcrypto.a
+@OPENSSL_STATIC_FALSE@am__append_15 = -lssl -lcrypto
+
+# check debug build
+@CEFDBG_ENABLE_TRUE@am__append_16 = -DCefC_Debug
 subdir = tools/conpub
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -145,15 +158,33 @@ CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
-am_conpubreload_OBJECTS = conpubreload-conpubreload.$(OBJEXT)
-conpubreload_OBJECTS = $(am_conpubreload_OBJECTS)
+am_conpub_cont_add_OBJECTS =  \
+	conpub_cont_add-conpub_cont_add.$(OBJEXT)
+conpub_cont_add_OBJECTS = $(am_conpub_cont_add_OBJECTS)
 am__DEPENDENCIES_1 =
-conpubreload_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+conpub_cont_add_DEPENDENCIES = $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_1)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
 am__v_lt_0 = --silent
 am__v_lt_1 = 
+conpub_cont_add_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CCLD) \
+	$(conpub_cont_add_CFLAGS) $(CFLAGS) $(conpub_cont_add_LDFLAGS) \
+	$(LDFLAGS) -o $@
+am_conpub_cont_del_OBJECTS =  \
+	conpub_cont_del-conpub_cont_del.$(OBJEXT)
+conpub_cont_del_OBJECTS = $(am_conpub_cont_del_OBJECTS)
+conpub_cont_del_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1)
+conpub_cont_del_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CCLD) \
+	$(conpub_cont_del_CFLAGS) $(CFLAGS) $(conpub_cont_del_LDFLAGS) \
+	$(LDFLAGS) -o $@
+am_conpubreload_OBJECTS = conpubreload-conpubreload.$(OBJEXT)
+conpubreload_OBJECTS = $(am_conpubreload_OBJECTS)
+conpubreload_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1)
 conpubreload_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(conpubreload_CFLAGS) \
 	$(CFLAGS) $(conpubreload_LDFLAGS) $(LDFLAGS) -o $@
@@ -179,7 +210,9 @@ am__v_at_1 =
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/autotools/depcomp
 am__maybe_remake_depfiles = depfiles
-am__depfiles_remade = ./$(DEPDIR)/conpubreload-conpubreload.Po \
+am__depfiles_remade = ./$(DEPDIR)/conpub_cont_add-conpub_cont_add.Po \
+	./$(DEPDIR)/conpub_cont_del-conpub_cont_del.Po \
+	./$(DEPDIR)/conpubreload-conpubreload.Po \
 	./$(DEPDIR)/conpubstatus-conpubstatus.Po
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
@@ -200,8 +233,10 @@ AM_V_CCLD = $(am__v_CCLD_@AM_V@)
 am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(conpubreload_SOURCES) $(conpubstatus_SOURCES)
-DIST_SOURCES = $(conpubreload_SOURCES) $(conpubstatus_SOURCES)
+SOURCES = $(conpub_cont_add_SOURCES) $(conpub_cont_del_SOURCES) \
+	$(conpubreload_SOURCES) $(conpubstatus_SOURCES)
+DIST_SOURCES = $(conpub_cont_add_SOURCES) $(conpub_cont_del_SOURCES) \
+	$(conpubreload_SOURCES) $(conpubstatus_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -357,6 +392,16 @@ conpubreload_LDADD = -lcefore $(am__append_6) $(am__append_7) \
 	-lpthread -ldl
 conpubreload_CFLAGS = $(AM_CFLAGS) $(am__append_8)
 conpubreload_SOURCES = conpubreload.c
+conpub_cont_add_LDFLAGS = -L$(top_srcdir)/src/lib/ $(am__append_9)
+conpub_cont_add_LDADD = -lcefore $(am__append_10) $(am__append_11) \
+	-lpthread -ldl
+conpub_cont_add_CFLAGS = $(AM_CFLAGS) $(am__append_12)
+conpub_cont_add_SOURCES = conpub_cont_add.c
+conpub_cont_del_LDFLAGS = -L$(top_srcdir)/src/lib/ $(am__append_13)
+conpub_cont_del_LDADD = -lcefore $(am__append_14) $(am__append_15) \
+	-lpthread -ldl
+conpub_cont_del_CFLAGS = $(AM_CFLAGS) $(am__append_16)
+conpub_cont_del_SOURCES = conpub_cont_del.c
 DESTDIR = $(CEFORE_DIR_PATH)
 all: all-am
 
@@ -441,6 +486,14 @@ clean-binPROGRAMS:
 	echo " rm -f" $$list; \
 	rm -f $$list
 
+conpub_cont_add$(EXEEXT): $(conpub_cont_add_OBJECTS) $(conpub_cont_add_DEPENDENCIES) $(EXTRA_conpub_cont_add_DEPENDENCIES) 
+	@rm -f conpub_cont_add$(EXEEXT)
+	$(AM_V_CCLD)$(conpub_cont_add_LINK) $(conpub_cont_add_OBJECTS) $(conpub_cont_add_LDADD) $(LIBS)
+
+conpub_cont_del$(EXEEXT): $(conpub_cont_del_OBJECTS) $(conpub_cont_del_DEPENDENCIES) $(EXTRA_conpub_cont_del_DEPENDENCIES) 
+	@rm -f conpub_cont_del$(EXEEXT)
+	$(AM_V_CCLD)$(conpub_cont_del_LINK) $(conpub_cont_del_OBJECTS) $(conpub_cont_del_LDADD) $(LIBS)
+
 conpubreload$(EXEEXT): $(conpubreload_OBJECTS) $(conpubreload_DEPENDENCIES) $(EXTRA_conpubreload_DEPENDENCIES) 
 	@rm -f conpubreload$(EXEEXT)
 	$(AM_V_CCLD)$(conpubreload_LINK) $(conpubreload_OBJECTS) $(conpubreload_LDADD) $(LIBS)
@@ -455,6 +508,8 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/conpub_cont_add-conpub_cont_add.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/conpub_cont_del-conpub_cont_del.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/conpubreload-conpubreload.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/conpubstatus-conpubstatus.Po@am__quote@ # am--include-marker
 
@@ -484,6 +539,34 @@ am--depfiles: $(am__depfiles_remade)
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$<' object='$@' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LTCOMPILE) -c -o $@ $<
+
+conpub_cont_add-conpub_cont_add.o: conpub_cont_add.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(conpub_cont_add_CFLAGS) $(CFLAGS) -MT conpub_cont_add-conpub_cont_add.o -MD -MP -MF $(DEPDIR)/conpub_cont_add-conpub_cont_add.Tpo -c -o conpub_cont_add-conpub_cont_add.o `test -f 'conpub_cont_add.c' || echo '$(srcdir)/'`conpub_cont_add.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/conpub_cont_add-conpub_cont_add.Tpo $(DEPDIR)/conpub_cont_add-conpub_cont_add.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='conpub_cont_add.c' object='conpub_cont_add-conpub_cont_add.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(conpub_cont_add_CFLAGS) $(CFLAGS) -c -o conpub_cont_add-conpub_cont_add.o `test -f 'conpub_cont_add.c' || echo '$(srcdir)/'`conpub_cont_add.c
+
+conpub_cont_add-conpub_cont_add.obj: conpub_cont_add.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(conpub_cont_add_CFLAGS) $(CFLAGS) -MT conpub_cont_add-conpub_cont_add.obj -MD -MP -MF $(DEPDIR)/conpub_cont_add-conpub_cont_add.Tpo -c -o conpub_cont_add-conpub_cont_add.obj `if test -f 'conpub_cont_add.c'; then $(CYGPATH_W) 'conpub_cont_add.c'; else $(CYGPATH_W) '$(srcdir)/conpub_cont_add.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/conpub_cont_add-conpub_cont_add.Tpo $(DEPDIR)/conpub_cont_add-conpub_cont_add.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='conpub_cont_add.c' object='conpub_cont_add-conpub_cont_add.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(conpub_cont_add_CFLAGS) $(CFLAGS) -c -o conpub_cont_add-conpub_cont_add.obj `if test -f 'conpub_cont_add.c'; then $(CYGPATH_W) 'conpub_cont_add.c'; else $(CYGPATH_W) '$(srcdir)/conpub_cont_add.c'; fi`
+
+conpub_cont_del-conpub_cont_del.o: conpub_cont_del.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(conpub_cont_del_CFLAGS) $(CFLAGS) -MT conpub_cont_del-conpub_cont_del.o -MD -MP -MF $(DEPDIR)/conpub_cont_del-conpub_cont_del.Tpo -c -o conpub_cont_del-conpub_cont_del.o `test -f 'conpub_cont_del.c' || echo '$(srcdir)/'`conpub_cont_del.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/conpub_cont_del-conpub_cont_del.Tpo $(DEPDIR)/conpub_cont_del-conpub_cont_del.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='conpub_cont_del.c' object='conpub_cont_del-conpub_cont_del.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(conpub_cont_del_CFLAGS) $(CFLAGS) -c -o conpub_cont_del-conpub_cont_del.o `test -f 'conpub_cont_del.c' || echo '$(srcdir)/'`conpub_cont_del.c
+
+conpub_cont_del-conpub_cont_del.obj: conpub_cont_del.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(conpub_cont_del_CFLAGS) $(CFLAGS) -MT conpub_cont_del-conpub_cont_del.obj -MD -MP -MF $(DEPDIR)/conpub_cont_del-conpub_cont_del.Tpo -c -o conpub_cont_del-conpub_cont_del.obj `if test -f 'conpub_cont_del.c'; then $(CYGPATH_W) 'conpub_cont_del.c'; else $(CYGPATH_W) '$(srcdir)/conpub_cont_del.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/conpub_cont_del-conpub_cont_del.Tpo $(DEPDIR)/conpub_cont_del-conpub_cont_del.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='conpub_cont_del.c' object='conpub_cont_del-conpub_cont_del.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(conpub_cont_del_CFLAGS) $(CFLAGS) -c -o conpub_cont_del-conpub_cont_del.obj `if test -f 'conpub_cont_del.c'; then $(CYGPATH_W) 'conpub_cont_del.c'; else $(CYGPATH_W) '$(srcdir)/conpub_cont_del.c'; fi`
 
 conpubreload-conpubreload.o: conpubreload.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(conpubreload_CFLAGS) $(CFLAGS) -MT conpubreload-conpubreload.o -MD -MP -MF $(DEPDIR)/conpubreload-conpubreload.Tpo -c -o conpubreload-conpubreload.o `test -f 'conpubreload.c' || echo '$(srcdir)/'`conpubreload.c
@@ -645,7 +728,9 @@ clean: clean-am
 clean-am: clean-binPROGRAMS clean-generic clean-libtool mostlyclean-am
 
 distclean: distclean-am
-		-rm -f ./$(DEPDIR)/conpubreload-conpubreload.Po
+		-rm -f ./$(DEPDIR)/conpub_cont_add-conpub_cont_add.Po
+	-rm -f ./$(DEPDIR)/conpub_cont_del-conpub_cont_del.Po
+	-rm -f ./$(DEPDIR)/conpubreload-conpubreload.Po
 	-rm -f ./$(DEPDIR)/conpubstatus-conpubstatus.Po
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
@@ -692,7 +777,9 @@ install-ps-am:
 installcheck-am:
 
 maintainer-clean: maintainer-clean-am
-		-rm -f ./$(DEPDIR)/conpubreload-conpubreload.Po
+		-rm -f ./$(DEPDIR)/conpub_cont_add-conpub_cont_add.Po
+	-rm -f ./$(DEPDIR)/conpub_cont_del-conpub_cont_del.Po
+	-rm -f ./$(DEPDIR)/conpubreload-conpubreload.Po
 	-rm -f ./$(DEPDIR)/conpubstatus-conpubstatus.Po
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic

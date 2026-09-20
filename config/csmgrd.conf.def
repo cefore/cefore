@@ -13,7 +13,7 @@
 # Port number used by csmgrd.
 # This value must be higher than 1024 and lower than 65536.
 #
-#PORT_NUM=9799
+#PORT_NUM=9696
 
 #
 # Socket ID used by csmgrd and cefnetd.

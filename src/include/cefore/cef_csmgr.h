@@ -64,10 +64,10 @@
 /* Default cache status												*/
 /*------------------------------------------------------------------*/
 #define CefC_Default_Cache_Type			0			/* Default None						*/
-#define CefC_Default_Cache_Capacity		30000		/* Default 30000 entries			*/
+#define CefC_Default_Cache_Capacity		819200		/* Default 819200 entries			*/
 #define CefC_Default_Int_Check_Cache	10000		/* Default 10 secs					*/
 #define CefC_Default_Def_Rct			600000000	/* Default 10 minits				*/
-#define CefC_Default_Tcp_Prot			9799		/* port num between cefnetd and 	*/
+#define CefC_Default_Tcp_Prot			9696		/* port num between cefnetd and 	*/
 													/* csmgrd 							*/
 #define CefC_Default_Node_Path			"127.0.0.1"
 
@@ -160,12 +160,15 @@
 #define CefC_Csmgr_Stat_Opt_None		0x00
 #define CefC_Csmgr_Stat_Opt_Clear		0x01
 #define CefC_Csmgr_Stat_Opt_Range		0x02
+#define CefC_Csmgr_Stat_Opt_CobHash		0x03
+#define CefC_Csmgr_Stat_Opt_Index		0x04
 
 /*------------------------------------------------------------------*/
 /* Macros for Massage Buffer										*/
 /*------------------------------------------------------------------*/
 #define CefC_Csmgr_Buff_Max 			100000000
 
+#define CefC_Csmgr_Key_Max 				CefC_NAME_MAXLEN
 
 /*------------------------------------------------------------------*/
 /* status type														*/
@@ -185,17 +188,8 @@ typedef enum {
 #define CefC_CnpbStatus_Expiry				0x0004
 #define CefC_CnpbStatus_Interest			0x0005
 //#define CefC_CnpbStatus_Hash				0x0006
-#define CefC_CnpbStatus_Version				0x0006
 #define CefC_CnpbStatus_ValidAlg			0x0007
 #define CefC_CnpbStatus_Pending				0x0008
-
-/*------------------------------------------------------------------*/
-/* Macros for compare version										*/
-/*------------------------------------------------------------------*/
-#define CefC_CV_Inconsistent				-1000
-#define CefC_CV_Same						0
-#define CefC_CV_Newest_1stArg				1
-#define CefC_CV_Newest_2ndArg				-1
 
 
 /****************************************************************************************
@@ -263,7 +257,6 @@ typedef struct {
 	uint64_t		expiry;
 	uint64_t		cache_time;
 	unsigned char*	version;				/* Version								*/
-	uint16_t		ver_len;				/* Length of Version					*/
 } CefT_Cob_Entry;
 
 /***** Insert to data of CefT_Cs_Tx_Elem_Cob	*****/
@@ -316,7 +309,6 @@ struct CefT_Csmgr_Status_Rep {
 	uint16_t 		ucinc_f;
 	uint16_t 		validation_result;
 	uint16_t 		name_len;
-	uint16_t 		ver_len;
 
 } __attribute__((__packed__));
 

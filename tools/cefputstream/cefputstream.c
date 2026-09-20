@@ -125,7 +125,8 @@ int main (
 	char 	conf_path[PATH_MAX] = {0};
 	int 	port_num = CefC_Unset_Port;
 
-	char valid_type[1024];
+	char valid_arg[PATH_MAX];
+	int keyid_style = 0;
 
 	/***** flags 		*****/
 	int uri_f 		= 0;
@@ -136,6 +137,8 @@ int main (
 	int dir_path_f 	= 0;
 	int port_num_f 	= 0;
 	int valid_f 	= 0;
+	int validation_oob_f = 0;
+	int keyid_style_f = 0;
 
 	/***** parameters 	*****/
 	uint64_t cache_time 	= 0;
@@ -147,7 +150,7 @@ int main (
 		Checks specified options
 	--------------------------------------------*/
 	uri[0] 			= 0;
-	valid_type[0] 	= 0;
+	valid_arg[0] 	= 0;
 
 	printf ("[cefputstream] Start\n");
 
@@ -251,8 +254,13 @@ int main (
 				USAGE;
 				return (-1);
 			}
+			if (strlen(argv[i + 1]) >= PATH_MAX) {
+				printerr("[-v] parameter is too long.\n");
+				USAGE;
+				return (-1);
+			}
 			work_arg = argv[i + 1];
-			strcpy (valid_type, work_arg);
+			strcpy (valid_arg, work_arg);
 			valid_f++;
 			i++;
 		} else if (strcmp (work_arg, "-h") == 0) {
@@ -293,6 +301,32 @@ int main (
 			work_arg = argv[i + 1];
 			port_num = atoi (work_arg);
 			port_num_f++;
+			i++;
+		} else if (strcmp (work_arg, "--validation_oob") == 0) {
+			if (validation_oob_f) {
+				printerr("[--validation_oob] is duplicated.\n");
+				USAGE;
+				return (-1);
+			}
+			validation_oob_f++;
+
+		} else if (strcmp (work_arg, "--keyid_style") == 0) {
+			if (keyid_style_f) {
+				printerr("[--keyid_style] is duplicated.\n");
+				USAGE;
+				return (-1);
+			}
+			if (i + 1 == argc) {
+				printerr("[--keyid_style] has no parameter.\n");
+				USAGE;
+				return (-1);
+			}
+			work_arg = argv[i + 1];
+			keyid_style = atoi (work_arg);
+			if (( keyid_style < 0 ) || ( 2 < keyid_style )) {
+				printerr("[--keyid_style] must be 0, 1, or 2.\n");
+			}
+			keyid_style_f++;
 			i++;
 		} else {
 
@@ -383,11 +417,42 @@ int main (
 		Set Validation Alglithm
 	--------------------------------------------*/
 	if (valid_f == 1) {
-		cef_valid_init (conf_path);
-		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_type);
+		res = cef_valid_init_fortools(valid_arg);
+		if (res != 1) {
+			printerr("Failed to initialize validation.\n");
+			exit (1);
+		}
 
+		params.alg.valid_type = (uint16_t) cef_valid_type_get (valid_arg);
 		if (params.alg.valid_type == CefC_T_ALG_INVALID) {
-			printerr("-v has the invalid parameter %s\n", valid_type);
+			printerr("-v has the invalid parameter %s\n", valid_arg);
+			exit (1);
+		} else if (Cef_Is_Pkey_Type(params.alg.valid_type)) {
+			uint16_t keyid_hashtype  = CefC_T_SHA_256;
+			uint16_t keyid_hashlength = SHA256_DIGEST_LENGTH;
+
+			if (keyid_style == 1) {
+				keyid_hashtype = CefC_T_SHA_512;
+				keyid_hashlength = SHA256_DIGEST_LENGTH;
+			} else if (keyid_style == 2) {
+				keyid_hashtype = CefC_T_SHA_512;
+				keyid_hashlength = SHA512_DIGEST_LENGTH;
+			}
+
+			if (validation_oob_f) {
+				params.alg.publickey_oob_f = 1;
+			}
+
+			res = cef_frame_set_keyid_to_valid_alg(&params.alg, keyid_hashtype, keyid_hashlength);
+			if (res != 1) {
+				printerr("Failed to generate KeyID.\n");
+				exit (1);
+			}
+		}
+	} else {
+		if ((validation_oob_f) || (keyid_style_f)) {
+			printerr("To use \"--validation_oob\" or \"--keyid_style\" option, "
+						"you must specify prvkey with \"-v\" option .\n");
 			exit (1);
 		}
 	}
@@ -489,15 +554,20 @@ print_usage (
 
 	fprintf (ofp, "\nUsage: cefputstream\n");
 	fprintf (ofp, "  cefputstream uri [-r rate] [-b block_size] [-e expiry] "
-						  "[-t cache_time] [-v valid_algo] [-d config_file_dir] [-p port_num]\n\n");
+						  "[-t cache_time] [-v valid_algo] [-d config_file_dir] [-p port_num] [--validation_oob] [--keyid_style]\n\n");
 	fprintf (ofp, "  uri              Specify the URI.\n");
 	fprintf (ofp, "  rate             Transfer rate to cefnetd (Mbps)\n");
 	fprintf (ofp, "  block_size       Specifies the max payload length (bytes) of the Content Object.\n");
 	fprintf (ofp, "  expiry           Specifies the lifetime (seconds) of the Content Object.\n");
 	fprintf (ofp, "  cache_time       Specifies the period (seconds) after which Content Objects are cached before they are deleted.\n");
-	fprintf (ofp, "  valid_algo       Specify the validation algorithm (" CefC_ValidTypeStr_CRC32C " or " CefC_ValidTypeStr_RSA256 ")\n");
+	fprintf (ofp, "  valid_algo       Specify the validation algorithm (" CefC_ValidTypeStr_CRC32C " or prv_key_path)\n");
 	fprintf (ofp, "  config_file_dir  Configure file directory\n");
-	fprintf (ofp, "  port_num         Port Number\n\n");
+	fprintf (ofp, "  port_num         Port Number\n");
+	fprintf (ofp, "  --validation_oob Don't include the publickey for validation in Interest (use with \"-v\"option)\n");
+	fprintf (ofp, "  --keyid_style    Specify the hashtype and length to generate KeyID for validation (use with \"-v\"option)\n"
+						"                   0: hashtype=SHA256, length=32Byte (default)\n"
+						"                   1: hashtype=SHA512, length=32Byte\n"
+						"                   2: hashtype=SHA512, length=64Byte\n\n");
 }
 
 static void

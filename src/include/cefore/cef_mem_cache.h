@@ -67,12 +67,6 @@
  Macros
  ****************************************************************************************/
 
-#define CefMemCacheC_Key_Max 				1024
-#define Cef_InconsistentVersion				-1000
-#define Cef_SameVersion						0
-#define Cef_NewestVersion_1stArg			1
-#define Cef_NewestVersion_2ndArg			-1
-
 /****************************************************************************************
  Structure Declarations
  ****************************************************************************************/
@@ -89,8 +83,6 @@ typedef struct {
 	uint64_t		cache_time;					/* Cache time							*/
 	uint64_t		expiry;						/* Expiry								*/
 	struct in_addr	node;						/* Node address							*/
-	unsigned char*	version;					/* 0.8.3c */
-	uint16_t		ver_len;					/* 0.8.3c */
 
 } CefMemCacheT_Content_Entry;
 
@@ -102,8 +94,6 @@ typedef struct {
 	unsigned char	*name;						/* Content name							*/
 	uint16_t		name_len;					/* Content name length					*/
 	uint16_t		pay_len;					/* Payload length						*/
-	unsigned char*	version;					/* 0.8.3c */
-	uint16_t		ver_len;					/* 0.8.3c */
 	uint32_t		chunk_num;					/* Chunk num							*/
 	uint64_t		cache_time;					/* Cache time							*/
 	uint64_t		expiry;						/* Expiry								*/

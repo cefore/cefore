@@ -124,6 +124,8 @@ main (
 	int port_f 			= 0;
 	int uri_f 			= 0;
 	int clear_f 		= 0;
+	int cob_f			= 0;
+	int idx_f			= 0;
 	int stt_f			= 0;
 	int	num_f			= 0;
 
@@ -180,7 +182,20 @@ main (
 				return (-1);
 			}
 			clear_f++;
-			i++;
+		} else if (strcmp(work_arg, "-cob") == 0) {
+			if (cob_f) {
+				printerr("CobHash option is duplicated.");
+				USAGE;
+				return (-1);
+			}
+			cob_f++;
+		} else if (strcmp(work_arg, "-idx") == 0) {
+			if (idx_f) {
+				printerr("Index option is duplicated.");
+				USAGE;
+				return (-1);
+			}
+			idx_f++;
 		} else if (strcmp (work_arg, "-s") == 0) {
 			if (stt_f) {
 				printerr("Range option(s) is duplicated.");
@@ -293,6 +308,12 @@ main (
 	}
 	if (stt_f) {
 		option |= CefC_Csmgr_Stat_Opt_Range;
+	}
+	if (cob_f) {
+		option |= CefC_Csmgr_Stat_Opt_CobHash;
+	}
+	if (idx_f) {
+		option |= CefC_Csmgr_Stat_Opt_Index;
 	}
 	buff[index] = option;
 	index++;
@@ -434,7 +455,15 @@ RERECV:;
 		disp_stt = stt_num;
 	}
 
-	output_result (stdout, &frame[6/* Ver(1)+Type(1)+Length(4) */], frame_size-6/* Ver(1)+Type(1)+Length(4) */, disp_stt);
+	if (cob_f) {
+		int index = 6/* Ver(1)+Type(1)+Length(4) */ + sizeof (struct CefT_Csmgr_Status_Hdr);
+		fwrite( &frame[index], 1, frame_size - index, stdout );
+	} else if (idx_f) {
+		int index = 6 + sizeof (struct CefT_Csmgr_Status_Hdr);
+		fwrite( &frame[index], 1, frame_size - index, stdout );
+	} else {
+		output_result ( stdout, &frame[6/* Ver(1)+Type(1)+Length(4) */], frame_size-6/* Ver(1)+Type(1)+Length(4) */, disp_stt );
+	}
 	cef_csmgr_buffer_destroy ();
 	close (tcp_sock);
 	free (frame);
@@ -452,11 +481,10 @@ output_result (
 ) {
 	struct CefT_Csmgr_Status_Hdr stat_hdr;
 	struct CefT_Csmgr_Status_Rep stat_rep;
-	unsigned char name[CefC_Max_Length];
-	char get_uri[CefC_Max_Length];
+	unsigned char name[CefC_NAME_MAXLEN];
+	char get_uri[CefC_NAME_MAXLEN];
 	uint32_t index = 0;
 	int con_no = disp_stt;
-	unsigned char version[CefC_Max_Length];
 
 	if (frame_size < sizeof (struct CefT_Csmgr_Status_Hdr)) {
 		fprintf (ofp, "Received the invalid response\n");
@@ -486,33 +514,34 @@ output_result (
 		stat_rep.ucinc_f 		= ntohs (stat_rep.ucinc_f);
 		stat_rep.validation_result 	= ntohs (stat_rep.validation_result);
 		stat_rep.name_len 		= ntohs (stat_rep.name_len);
-		stat_rep.ver_len 		= ntohs (stat_rep.ver_len);
 		index += sizeof (struct CefT_Csmgr_Status_Rep);
 
 		if (frame_size - index < stat_rep.name_len) {
 			break;
 		}
-		memcpy (name, &frame[index], stat_rep.name_len);
+
+		memcpy(name, &frame[index], stat_rep.name_len);
 		index += stat_rep.name_len;
-		if (stat_rep.ver_len) {
-			memcpy (version, &frame[index], stat_rep.ver_len);
-			index += stat_rep.ver_len;
+		name[stat_rep.name_len] = '\0';
+/*
+		printf("RAW=");
+		for (int i = 0; i < stat_rep.name_len; i++) {
+			printf("%02X ", name[i]);
+		}
+		printf("\n");
+
+		printf("STR=[%s]\n", (char*)name);
+*/
+		if (!strncmp((char*)name, "ccnx:/", 6)) {
+			strcpy(get_uri, (char*)name);
+		} else {
+			cef_frame_conversion_name_to_uri(name, stat_rep.name_len, get_uri);
 		}
 
 		if (stat_rep.name_len > 0) {
-			cef_frame_conversion_name_to_uri (name, stat_rep.name_len, get_uri);
+			//cef_frame_conversion_name_to_uri (name, stat_rep.name_len, get_uri);
 			fprintf (ofp, "[%d]\n", con_no);
 			fprintf (ofp, "  Content Name  : %s\n", get_uri);
-			if (stat_rep.ver_len) {
-				fprintf (ofp, "  Version       : ");
-				for (int i = 0; i < stat_rep.ver_len; i++) {
-					if (isprint (version[i])) fprintf (ofp, "%c", version[i]);
-					else fprintf (ofp, "%02x", version[i]);
-				}
-				fprintf (ofp, "\n");
-			} else {
-				fprintf (ofp, "  Version       : None\n");
-			}
 			fprintf (ofp, "  Content Size  : %llu Bytes\n", (unsigned long long)stat_rep.con_size);
 			fprintf (ofp, "  Cache Hit     : %llu\n", (unsigned long long)stat_rep.access);
 			fprintf (ofp, "  Request Count : %llu\n", (unsigned long long)stat_rep.req_count);
@@ -549,7 +578,7 @@ print_usage (
 		"  uri    Name prefix of the content to output.\n"
 		"  host   Specify the host identifier (e.g., IP address) on which csmgrd \n"
 		"         is running. The default value is localhost (i.e., 127.0.0.1).\n"
-		"  port   Port number to connect csmgrd. The default value is 9799.\n"
+		"  port   Port number to connect csmgrd. The default value is 9696.\n"
 		"  start  Top of content to display.\n"
 		"  num    Number of pieces of content to display.\n\n"
 	);

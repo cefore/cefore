@@ -108,6 +108,8 @@
 #define CefC_Ctrl_Babel				"BABEL"
 #define CefC_Ctrl_Babel_Len			strlen(CefC_Ctrl_Babel)
 #define CefC_Ctrl_User_Len			256
+#define CefC_Ctrl_ValidKey			"VALIDKEY"
+#define CefC_Ctrl_ValidKey_Len		strlen(CefC_Ctrl_ValidKey)
 #define CefC_App_Conn_Num			64
 #define CefC_Cmd_Num_Max			256
 #define CefC_Cmd_Len_Max			1024
@@ -128,10 +130,26 @@
 
 /* cefstatus output option */
 #if ((defined CefC_Develop))
-#define CefC_Ctrl_StatusOpt_FibOnly	0x0100
-#define CefC_Ctrl_StatusOpt_FibInetOnly		0x0200
-#define CefC_Ctrl_StatusOpt_FibV4UdpOnly	0x0400
+#define CefC_Ctrl_StatusOpt_FibOnly				0x0100
+#define CefC_Ctrl_StatusOpt_FibInetOnly			0x0200
+#define CefC_Ctrl_StatusOpt_FibV4UdpOnly		0x0400
+#define CefC_Ctrl_StatusOpt_FibStateDownOnly	0x0800
 #endif //((defined CefC_Develop))
+
+#define CefC_ValidKey_OPE_ADD		0x01
+#define CefC_ValidKey_OPE_DEL		0x02
+#define CefC_ValidKey_OPE_SHOW		0x03
+
+/* App_reg level */
+#define CefC_AppRegLevel_Low		0x00 // Can use app_reg without validation
+#define CefC_AppRegLevel_Mid		0x01 // Allow use app_reg when the lite validation is successful.
+#define CefC_AppRegLevel_High		0x02 // Allow use app_reg when the full validation is successful.
+
+/*------------------------------------------------------------------*/
+/* Key Type of cefvalidkey command                                  */
+/*------------------------------------------------------------------*/
+#define CefC_ValidKey_CMD_TYPE_PUBKEY	0x01
+#define CefC_ValidKey_CMD_TYPE_KEYID	0x02
 
 
 /****************************************************************************************
@@ -290,6 +308,7 @@ typedef struct {
 	/********** App Resister 		***********/
 	CefT_Hash_Handle	app_reg;				/* App Resister table					*/
 	CefT_Hash_Handle	app_pit;				/* App Resister PIT						*/
+	int					app_reg_level;
 
 	/********** Plugin 				***********/
 	CefT_Plugin_Handle 	plugin_hdl;
@@ -530,8 +549,7 @@ cefnetd_fib_route_add (
 	CefT_Fib_Metric	*fib_metric,			//0.8.3c
 	int name_len,
 	unsigned char *name,
-	int keyid_len,							/* extantion for full-source forwarding		*/
-	unsigned char *keyid					/* extantion for full-source forwarding		*/
+	CefT_HashData* keyid					/* extantion for full-source forwarding		*/
 );
 /*--------------------------------------------------------------------------------------
 	Delete route in FIB
@@ -543,8 +561,7 @@ cefnetd_fib_route_del (
 	uint8_t fe_type,						/* CefC_Fib_Entry_XXX				0.8.3c	*/
 	int name_len,
 	unsigned char *name,
-	int keyid_len,
-	unsigned char *keyid
+	CefT_HashData* keyid					/* extantion for full-source forwarding		*/
 );
 /*--------------------------------------------------------------------------------------
 	Check Input Cefroute msg

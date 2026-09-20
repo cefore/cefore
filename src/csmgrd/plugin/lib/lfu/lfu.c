@@ -31,7 +31,7 @@
  */
 
 /*
-	lfu.c is a primitive LFU implementation, 
+	lfu.c is a primitive LFU implementation,
     which is a low-overhead approximation of LRU.
 */
 
@@ -113,7 +113,7 @@ init (
     int i;
     max_freq = 0;
     cache_count = 0;
-    
+
 	/* Records the capacity of cache		*/
 	if (capacity < 1) {
 		fprintf (stderr, "[LFU LIB] Invalid Cacacity\n");
@@ -128,10 +128,10 @@ init (
 	}
 	store_api 	= store;
 	remove_api 	= remove;
-    
+
     /* Creates lookup table */
     crlib_lookup_table_init(capacity);
-    
+
 	/* Creates the memory pool 				*/
     lfu_mp = cef_mpool_init("LfuEntry", sizeof(LfuT_Entry), capacity);
     for (i = 0; i < LfuC_Max_Frequency; i++) {
@@ -178,9 +178,9 @@ insert (
             removing_freq = lfu_get_min_freq_ring_having_entry();
             victim_entry = (LfuT_Entry*)cef_rngque_pop(rings[removing_freq]);
             {
-                fprintf(stderr, "[LFU LIB] %s:  FREQ:%d=%d, ", __func__, victim_entry->freq, removing_freq); 
-                crlib_force_print_name(victim_entry->key, victim_entry->key_len); 
-                fprintf (stderr, "\n"); 
+                fprintf(stderr, "[LFU LIB] %s:  FREQ:%d=%d, ", __func__, victim_entry->freq, removing_freq);
+                crlib_force_print_name(victim_entry->key, victim_entry->key_len);
+                fprintf (stderr, "\n");
             }
             victim_entry->track--;
             if (removing_freq == victim_entry->freq) break;
@@ -197,7 +197,7 @@ insert (
 ----------------------------------------------------------------------------------------*/
 void
 erase (
-	unsigned char* key, 				
+	unsigned char* key,
     	/* key of content entry removed from cache 	*/
 											/* table									*/
 	int key_len								/* length of the key 						*/
@@ -266,11 +266,11 @@ status (
 static void lfu_store_entry(
 	CsmgrdT_Content_Entry* entry
 ) {
-    unsigned char 	key[CsmgrdC_Key_Max];
+    unsigned char 	key[CefC_Csmgr_Key_Max];
     int 			key_len;
     LfuT_Entry*   rsentry;
 	unsigned char* q;
-    
+
     key_len = csmgrd_name_chunknum_concatenate (
                     entry->name, entry->name_len, entry->chunk_num, key);
     rsentry = (LfuT_Entry*)cef_mpool_alloc(lfu_mp);
@@ -310,9 +310,9 @@ static int lfu_get_min_freq_ring_having_entry() {
 }
 
 static int lfu_is_already_cached(CsmgrdT_Content_Entry* entry) {
-    unsigned char 	key[CsmgrdC_Key_Max];
+    unsigned char 	key[CefC_Csmgr_Key_Max];
     int 			key_len;
-    
+
     key_len = csmgrd_name_chunknum_concatenate (
                     entry->name, entry->name_len, entry->chunk_num, key);
     LfuT_Entry* tmpentry = (LfuT_Entry*) crlib_lookup_table_search_v(key, key_len);

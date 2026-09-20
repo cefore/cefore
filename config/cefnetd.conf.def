@@ -36,7 +36,7 @@
 # csmgr's TCP port number.
 # This value must be higher than 1024 and lower than 65536.
 #
-#CSMGR_PORT_NUM=9799
+#CSMGR_PORT_NUM=9696
 
 #
 # Maximum number of PIT entries.
@@ -246,6 +246,34 @@
 #
 #PATH_PRIVATE_KEY=/usr/local/cefore/default-private-key
 #PATH_PUBLIC_KEY=/usr/local/cefore/default-public-key
+
+#
+# Specify the file containing the KeyID list to load when cefnetd starts.
+#
+#PATH_KEYID_LIST=/usr/local/cefore/keyid.list
+
+#
+# cefore validation mode
+# The default is in-band mode.
+#  0 : Do not validate the message. (Speed Priority mode)
+#  1 : Validates the message only when key is included in the message. (in-band mode)
+#  2 : Validates the message only when key is provided outside the message. (out-of-band mode)
+#
+#VALIDATION_MODE=1
+
+#
+# Level of restrictions on client FIB(APP) entry registration from client.
+#  0 : Register FIB(APP) without validation (default)
+#  1 : Register FIB(APP) if a matching keyID exists in the KeyID table
+#  2 : Register FIB(APP) if a matching keyID exists in the KeyID table and validation is successful
+#
+#APP_REG_LEVEL=0
+
+#
+# Maximum number of KeyID entries for Validation.
+# This value must be higther than 2 and lower than 65535.
+#
+#VALIDKEY_TABLE_SIZE=1024
 
 # Debug log level
 #

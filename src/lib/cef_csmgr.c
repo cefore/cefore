@@ -155,6 +155,11 @@ cef_csmgr_stat_create (
 		}
 	}
 
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Fine, "cs_stat:socket=%s, peer=%s:%d\n",
+		cs_stat->local_sock_name, cs_stat->peer_id_str, cs_stat->tcp_port_num);
+#endif // CefC_Debug
+
 	if (cs_stat->cache_type == CefC_Cache_Type_Excache) {
 		if ((strcmp (cs_stat->peer_id_str, "localhost")) &&
 			(strcmp (cs_stat->peer_id_str, "127.0.0.1"))) {
@@ -162,7 +167,16 @@ cef_csmgr_stat_create (
 			cs_stat->tcp_sock
 				= cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
 			if (cs_stat->tcp_sock < 0) {
-				cef_log_write (CefC_Log_Error, "%s (connect failed to %s:%s)\n", __func__, cs_stat->peer_id_str, port_str);
+				cef_log_write (CefC_Log_Error, "cef_csmgr_connect_tcp_to_csmgr(%s:%s) failure, "
+						"If you have customized the csmgrd port number, "
+						"also check CSMGR_PORT_NUM in cefnetd.conf.\n",
+					cs_stat->peer_id_str, port_str);
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Fine, "cef_csmgr_connect_tcp_to_csmgr(%s:%s) failure, "
+						"If you have customized the csmgrd port number, "
+						"also check CSMGR_PORT_NUM in cefnetd.conf.\n",
+					cs_stat->peer_id_str, port_str);
+#endif // CefC_Debug
 				cef_csmgr_stat_destroy (&cs_stat);
 				return (NULL);
 			}
@@ -170,8 +184,17 @@ cef_csmgr_stat_create (
 			cs_stat->local_sock = cef_csmgr_csmgr_connect_local (cs_stat);
 
 			if (cs_stat->local_sock < 0) {
+				cef_log_write (CefC_Log_Error, "cef_csmgr_csmgr_connect_local(%s) failure, "
+						"If you have customized the csmgrd port number, "
+						"also check CSMGR_PORT_NUM in cefnetd.conf.\n",
+					cs_stat->local_sock_name);
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Fine, "cef_csmgr_csmgr_connect_local(%s) failure, "
+						"If you have customized the csmgrd port number, "
+						"also check CSMGR_PORT_NUM in cefnetd.conf.\n",
+					cs_stat->local_sock_name);
+#endif // CefC_Debug
 				cef_csmgr_stat_destroy (&cs_stat);
-				cef_log_write (CefC_Log_Error, "%s (connect to csmgrd)\n", __func__);
 				return (NULL);
 			}
 		}
@@ -219,16 +242,34 @@ cef_csmgr_stat_create (
 			cs_stat->tcp_sock
 				= cef_csmgr_connect_tcp_to_csmgr (cs_stat->peer_id_str, port_str);
 			if (cs_stat->tcp_sock < 0) {
+				cef_log_write (CefC_Log_Error, "cef_csmgr_connect_tcp_to_csmgr(%s:%s) failure, "
+						"If you have customized the conpubd port number, "
+						"also check CSMGR_PORT_NUM in cefnetd.conf.\n",
+					cs_stat->peer_id_str, port_str);
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Fine, "cef_csmgr_connect_tcp_to_csmgr(%s:%s) failure, "
+						"If you have customized the conpubd port number, "
+						"also check CSMGR_PORT_NUM in cefnetd.conf.\n",
+					cs_stat->peer_id_str, port_str);
+#endif // CefC_Debug
 				cef_csmgr_stat_destroy (&cs_stat);
-				cef_log_write (CefC_Log_Error, "%s (connect to conpubd)\n", __func__);
 				return (NULL);
 			}
 		} else {
 			cs_stat->local_sock = cef_csmgr_csmgr_connect_local (cs_stat);
 
 			if (cs_stat->local_sock < 0) {
+				cef_log_write (CefC_Log_Error, "cef_csmgr_csmgr_connect_local(%s) failure, "
+						"If you have customized the conpubd port number, "
+						"also check CSMGR_PORT_NUM in cefnetd.conf.\n",
+					cs_stat->local_sock_name);
+#ifdef CefC_Debug
+cef_dbg_write (CefC_Dbg_Fine, "cef_csmgr_csmgr_connect_local(%s) failure, "
+						"If you have customized the conpubd port number, "
+						"also check CSMGR_PORT_NUM in cefnetd.conf.\n",
+					cs_stat->local_sock_name);
+#endif // CefC_Debug
 				cef_csmgr_stat_destroy (&cs_stat);
-				cef_log_write (CefC_Log_Error, "%s (connect to conpubd)\n", __func__);
 				return (NULL);
 			}
 		}
@@ -247,12 +288,14 @@ cef_csmgr_stat_create (
 	  	}
 		/* Set cefnetd side socket as non-blocking I/O */
 		if ( (flags = fcntl(cs_stat->pipe_fd[0], F_GETFL, 0) ) < 0) {
+			cef_csmgr_stat_destroy (&cs_stat);
 			cef_log_write (CefC_Log_Error, "%s fcntl error (%s)\n"
 							, __func__, strerror(errno));
 			return (NULL);
 		}
 		flags |= O_NONBLOCK;
 		if (fcntl(cs_stat->pipe_fd[0], F_SETFL, flags) < 0) {
+			cef_csmgr_stat_destroy (&cs_stat);
 			cef_log_write (CefC_Log_Error, "%s fcntl error (%s)\n"
 							, __func__, strerror(errno));
 			return (NULL);
@@ -396,8 +439,8 @@ cef_csmgr_config_read (
 	CefT_Cs_Stat* cs_stat					/* Content Store Status						*/
 ) {
 	FILE*	fp = NULL;								/* file pointer						*/
-	char	file_name[2048];						/* file name						*/
-	char	file_path[1024];						/* file path						*/
+	char	filepath[PATH_MAX+16];					/* file name						*/
+	char	confdir_path[PATH_MAX];					/* dirctory path					*/
 
 	char	param[4096] = {0};						/* parameter						*/
 	char	param_buff[4096] = {0};					/* param buff						*/
@@ -412,26 +455,26 @@ cef_csmgr_config_read (
 	char 	local_sock_id[CefC_LOCAL_SOCK_ID_SIZ+1] = {"0"};
 
 	/* Obtains the directory path where the cefnetd's config file is located. */
-	cef_client_config_dir_get (file_path);
+	cef_client_config_dir_get (confdir_path);
 
-	if (mkdir (file_path, 0777) != 0) {
+	if (mkdir (confdir_path, 0777) != 0) {
 		if (errno == ENOENT) {
-			cef_log_write (CefC_Log_Error, "%s (mkdir)\n", __func__);
+			cef_log_write (CefC_Log_Error, "%s (mkdir %s)\n", __func__, confdir_path);
 			return (-1);
 		}
 	}
-	sprintf (file_name, "%s/cefnetd.conf", file_path);
+	snprintf (filepath, sizeof(filepath), "%s/cefnetd.conf", confdir_path);
 
 	/* Opens the cefnetd's config file. */
-	fp = fopen (file_name, "r");
+	fp = fopen (filepath, "r");
 	if (fp == NULL) {
-		fp = fopen (file_name, "w");
+		fp = fopen (filepath, "w");
 		if (fp == NULL) {
 			cef_log_write (CefC_Log_Error, "%s (open cefnetd.conf)\n", __func__);
 			return (-1);
 		}
 		fclose (fp);
-		fp = fopen (file_name, "r");
+		fp = fopen (filepath, "r");
 	}
 
 	/* Set default value */
@@ -553,9 +596,9 @@ cef_csmgr_config_read (
 			"/tmp/csmgr_%d.%s", cs_stat->tcp_port_num, local_sock_id);
 
 #if 0
-	sprintf (file_name, "%s/csmgrd.conf", file_path);
+	snprintf (filepath, sizeof(filepath), "%s/csmgrd.conf", confdir_path);
 
-	fp = fopen (file_name, "r");
+	fp = fopen (filepath, "r");
 	if (fp == NULL) {
 		cef_log_write (CefC_Log_Error, "%s (open csmgrd.conf)\n", __func__);
 		return (-1);
@@ -612,8 +655,8 @@ cef_csmgr_config_read_for_conpub (
 	CefT_Cs_Stat* cs_stat					/* Content Store Status						*/
 ) {
 	FILE*	fp = NULL;								/* file pointer						*/
-	char	file_name[2048];						/* file name						*/
-	char	file_path[1024];						/* file path						*/
+	char	filepath[PATH_MAX+16];					/* file name						*/
+	char	confdir_path[PATH_MAX];					/* dirctory path					*/
 
 	char	param[4096] = {0};						/* parameter						*/
 	char	param_buff[4096] = {0};					/* param buff						*/
@@ -628,26 +671,26 @@ cef_csmgr_config_read_for_conpub (
 	char 	local_sock_id[CefC_LOCAL_SOCK_ID_SIZ+1] = {"0"};
 
 	/* Obtains the directory path where the cefnetd's config file is located. */
-	cef_client_config_dir_get (file_path);
+	cef_client_config_dir_get (confdir_path);
 
-	if (mkdir (file_path, 0777) != 0) {
+	if (mkdir (confdir_path, 0777) != 0) {
 		if (errno == ENOENT) {
 			cef_log_write (CefC_Log_Error, "%s (mkdir)\n", __func__);
 			return (-1);
 		}
 	}
-	sprintf (file_name, "%s/cefnetd.conf", file_path);
+	snprintf (filepath, sizeof(filepath), "%s/cefnetd.conf", confdir_path);
 
 	/* Opens the cefnetd's config file. */
-	fp = fopen (file_name, "r");
+	fp = fopen (filepath, "r");
 	if (fp == NULL) {
-		fp = fopen (file_name, "w");
+		fp = fopen (filepath, "w");
 		if (fp == NULL) {
 			cef_log_write (CefC_Log_Error, "%s (open cefnetd.conf)\n", __func__);
 			return (-1);
 		}
 		fclose (fp);
-		fp = fopen (file_name, "r");
+		fp = fopen (filepath, "r");
 	}
 
 	/* Set default value */
@@ -735,9 +778,9 @@ cef_csmgr_config_read_for_conpub (
 		"/tmp/conpub_%d.%s", cs_stat->tcp_port_num, local_sock_id);
 
 #if 0
-	sprintf (file_name, "%s/conpubd.conf", file_path);
+	snprintf (filepath, sizeof(filepath), "%s/conpubd.conf", confdir_path);
 
-	fp = fopen (file_name, "r");
+	fp = fopen (filepath, "r");
 	if (fp == NULL) {
 		cef_log_write (CefC_Log_Error, "%s (open conpubd.conf)\n", __func__);
 		return (-1);
@@ -831,7 +874,8 @@ cef_csmgr_csmgr_connect_local (
 		break;
 	}
 	if ( errno ){
-		cef_log_write (CefC_Log_Error, "%s (connect:%s)\n", __func__, strerror(errno));
+		cef_log_write (CefC_Log_Error, "%s(%s) (connect:%s)\n",
+			__func__, cs_stat->local_sock_name, strerror(errno));
 		close (sock);
 		return (-1);
 	}
@@ -918,7 +962,6 @@ cef_csmgr_cache_lookup (
 ) {
 	CefT_Cob_Entry* cob_entry = NULL;
 	uint64_t nowt;
-	int rc;
 
 	*cob = NULL;
 	/* If the Interest is longlife or bulk, process is left to csmgrd 	*/
@@ -932,9 +975,6 @@ cef_csmgr_cache_lookup (
 
 
 	if (cs_stat->cache_type == CefC_Cache_Type_Excache){
-#ifdef __WORKBUFF_VERSION__
-		fprintf (stderr, "*** LOOKUP ***\n");
-#endif //__WORKBUFF_VERSION__
 		/* Searches content entry 	*/
 		if (cs_stat->cob_table) {
 			cob_entry = (CefT_Cob_Entry*)
@@ -944,38 +984,11 @@ cef_csmgr_cache_lookup (
 			nowt = cef_client_present_timeus_get ();
 
 			if ((nowt < cob_entry->cache_time) && (nowt < cob_entry->expiry)) {
-				rc = cef_csmgr_cache_version_compare (cob_entry->version, cob_entry->ver_len,
-														pm->org.version_val, pm->org.version_len);
-#ifdef __WORKBUFF_VERSION__
-				fprintf (stderr, "    CacheV[");
-				for (int i = 0; i < cob_entry->ver_len; i++) {
-					fprintf (stderr, "%c", cob_entry->version[i]);
-				}
-				fprintf (stderr, "], ReqV[");
-				for (int i = 0; i < pm->org.version_len; i++) {
-					fprintf (stderr, "%c", pm->org.version_val[i]);
-				}
-				fprintf (stderr, "]\n");
-#endif //__WORKBUFF_VERSION__
-				if (rc == CefC_CV_Inconsistent) {
-					if (pm->org.version_len == 0 && cob_entry->ver_len != 0) {
-						/* Request is "None", so any version is OK */
-						;
-					} else {
-						return (-1);
-					}
-				} else if (rc != Cef_SameVersion) {
-					return (-1);
-				}
-
 				if (pm->chunk_num_f) {
 					cef_csmgr_excache_access_increment (
 						cs_stat, pm->name, pm->name_len, pm->chunk_num);
 				}
 				*cob = cob_entry->msg;
-#ifdef __WORKBUFF_VERSION__
-				fprintf (stderr, "    exist Entry");
-#endif //__WORKBUFF_VERSION__
 				return (1);
 			}
 		}
@@ -989,16 +1002,8 @@ cef_csmgr_cache_lookup (
 			nowt = cef_client_present_timeus_get ();
 
 			if ((nowt < entry->cache_time) && (nowt < entry->expiry)) {
-				if (pm->org.version_f) {
-					if (entry->ver_len == pm->org.version_len &&
-						memcmp (entry->version, pm->org.version_val, entry->ver_len) == 0) {
-						*cob = entry->msg;
-						return (1);
-					}
-				} else {
-					*cob = entry->msg;
-					return (1);
-				}
+				*cob = entry->msg;
+				return (1);
 			}
 		}
 	}
@@ -1021,7 +1026,6 @@ cef_csmgr_cache_insert (
 	uint64_t nowt;
 	CefT_Cob_Entry* new_entry;
 	CefT_Cob_Entry* old_entry;
-	int rc;
 
 	if (cs_stat->cache_type == CefC_Cache_Type_Excache){
 		if (!cs_stat->cob_table) {
@@ -1044,73 +1048,6 @@ cef_csmgr_cache_insert (
 		}
 		//0.8.3c E
 
-		old_entry = (CefT_Cob_Entry*)
-			cef_hash_tbl_item_get_prg (cs_stat->cob_table, pm->name, pm->name_len);
-#ifdef __WORKBUFF_VERSION__
-		fprintf (stderr, "*** INSERT ***\n");
-		fprintf (stderr, "IN[");
-		for (int i = 0; i < pm->name_len; i++){
-			if (isprint (pm->name[i])) {
-				fprintf (stderr, "%c ", pm->name[i]);
-			} else {
-				fprintf (stderr, "%02X ", pm->name[i]);
-			}
-		}
-		fprintf (stderr, "]\n    entry is %s\n", (old_entry!=NULL?"exist":"NULL"));
-#endif //__WORKBUFF_VERSION__
-		if (old_entry) {
-			rc = cef_csmgr_cache_version_compare (old_entry->version, old_entry->ver_len,
-													pm->org.version_val, pm->org.version_len);
-#ifdef __WORKBUFF_VERSION__
-			fprintf (stderr, "    CacheV[");
-			for (int i = 0; i < old_entry->ver_len; i++) {
-				fprintf (stderr, "%c", old_entry->version[i]);
-			}
-			fprintf (stderr, "], InV[");
-			for (int i = 0; i < pm->org.version_len; i++) {
-				fprintf (stderr, "%c", pm->org.version_val[i]);
-			}
-			fprintf (stderr, "]\n");
-			fprintf (stderr, "    compare: %s\n", (rc==Cef_InconsistentVersion?"Inconsistent":(rc==Cef_NewestVersion_1stArg?"New=Cache":(rc==Cef_SameVersion?"Same":"New=In"))));
-#endif //__WORKBUFF_VERSION__
-			if (rc != Cef_InconsistentVersion) {
-				if (rc == Cef_NewestVersion_1stArg) {
-					/* The version of the entry is newer than the version of the receiving cob. */
-					/* NOP */
-					return;
-				} else {
-					/* The version of the entry is the same as the version of the receiving cob. */
-					/* OR */
-					/* The cache entry version was older. */
-					/* Overwrite the entry */
-					;
-				}
-			} else {
-				/* Inconsistent Version */
-				char uri[CefC_Max_Length];
-				char cstr[CefMemCacheC_Key_Max];
-				char rstr[CefC_Max_Length];
-				if (old_entry->ver_len) {
-					sprintf(cstr, "%s", old_entry->version);cstr[old_entry->ver_len] = 0x00;
-				} else {
-					sprintf(cstr, "None");cstr[4] = 0x00;
-				}
-				if (pm->org.version_len) {
-					sprintf(rstr, "%s", pm->org.version_val);rstr[pm->org.version_len] = 0x00;
-				} else {
-					sprintf(rstr, "None");rstr[4] = 0x00;
-				}
-				cef_frame_conversion_name_to_uri (pm->name, pm->name_len, uri);
-				cef_log_write (CefC_Log_Warn,
-					"Inconsistent version number used for URI[%s]. Cache=%s, Recvd=%s.\n",
-					uri, cstr, rstr);
-				return;
-			}
-		} else {
-			/* No entry */
-			;
-		}
-
 		/* Create new cob entry */
 		new_entry = (CefT_Cob_Entry*) cef_mpool_alloc (cs_stat->cs_cob_entry_mp);
 		if (new_entry == NULL) {
@@ -1124,40 +1061,19 @@ cef_csmgr_cache_insert (
 		new_entry->msg_len = msg_len;
 		new_entry->chunk_num = pm->chunk_num;
 		new_entry->cache_time = nowt + cs_stat->buffer_cache_time;
+		if ( 0 < poh->cachetime && poh->cachetime < new_entry->cache_time )
+			new_entry->cache_time = poh->cachetime;
 		new_entry->expiry = nowt + cs_stat->buffer_cache_time;
-		if (pm->org.version_f) {
-			if (pm->org.version_len) {
-				new_entry->version = (unsigned char*)malloc( sizeof(unsigned char) * pm->org.version_len);
-				if (new_entry->version == NULL) {
-					return;
-				}
-				memcpy (new_entry->version, pm->org.version_val, pm->org.version_len);
-			} else {
-				new_entry->version = NULL;
-			}
-			new_entry->ver_len = pm->org.version_len;
-		} else {
-			new_entry->version = NULL;
-			new_entry->ver_len = 0;
-		}
+		if ( 0 < pm->expiry && (pm->expiry < new_entry->expiry) )
+			new_entry->expiry = pm->expiry;
 
 		/* Insert Cob Table and delete old entry */
 		old_entry = (CefT_Cob_Entry*) cef_hash_tbl_item_set_prg (
 				cs_stat->cob_table, pm->name, pm->name_len, new_entry);
-#ifdef __WORKBUFF_VERSION__
-		fprintf (stderr, "    Insert\n");
-#endif //__WORKBUFF_VERSION__
 		if (old_entry) {
 			free( old_entry->msg );	//20210823
 			old_entry->msg = NULL;	//20210823
-			if (old_entry->ver_len) {
-				free (old_entry->version);
-				old_entry->ver_len = 0;
-			}
 			cef_mpool_free (cs_stat->cs_cob_entry_mp, old_entry);
-#ifdef __WORKBUFF_VERSION__
-			fprintf (stderr, "    and free old entry\n");
-#endif //__WORKBUFF_VERSION__
 		}
 	}
 #ifdef	CefC_CefnetdCache
@@ -1178,10 +1094,14 @@ cef_dbg_write (CefC_Dbg_Finest, "i=%d, msg_len=%d, write_len=%d, ret=%d\n", i, m
 				}
 			}
 			if (0 < errno && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
+				cef_log_write (CefC_Log_Warn, "%s:%d socket write failed, err=%d:%s\n",
+					__func__, __LINE__, errno, strerror(errno));
 				break;
 			}
 			CefC_PipeWrite_RetryWait(i);
 		}
+		cef_log_write (CefC_Log_Warn, "%s:%d Send to cef_mem_cache_put_thread failed, write_len=%d\n",
+			__func__, __LINE__, write_len);
 cef_dbg_write (CefC_Dbg_Fine, "Failure:write_len=%d\n", write_len);
 	}
 #endif	//CefC_CefnetdCache
@@ -1588,10 +1508,16 @@ cef_csmgr_cob_name_parse (
 	}
 	memcpy (&value16, buff + (*index), CefC_S_Length);
 	*name_len = ntohs (value16);
+	if (CefC_NAME_MAXLEN < (*name_len)) {
+#ifdef CefC_Debug
+		cef_dbg_write (CefC_Dbg_Fine, "%s(%d) too large name_len=%u\n", __func__, __LINE__, (*name_len));
+#endif // CefC_Debug
+		return (-1);
+	}
 	*index += CefC_S_Length;
 	if ((buff_len - (*index) - (*name_len)) < 0) {
 #ifdef CefC_Debug
-		cef_dbg_write (CefC_Dbg_Fine, "message parse error (cob name length)\n");
+		cef_dbg_write (CefC_Dbg_Fine, "%s(%d) message parse error.\n", __func__, __LINE__);
 #endif // CefC_Debug
 		return (-1);
 	}
@@ -2040,15 +1966,43 @@ cef_csmgr_interest_msg_create (
 		*index += CefC_S_ChunkNum;
 	}
 
-	/* Sets Version Length */
-	value16 = htons (pm->org.version_len);
+	uint16_t keyid_restr_len = 0;
+	uint16_t keyid_restr_offset = *index;
+	*index += CefC_S_Length;
+
+	/* Sets KeyID Restriction */
+	if (pm->KeyIdRestr_f != 0
+			&& pm->KeyIdRestr_len != 0) {
+		/* Sets KeyID Length */
+		value16 = htons (pm->KeyIdRestr_len);
+		memcpy (buff + *index, &value16, sizeof (uint16_t));
+		keyid_restr_len += CefC_S_Length;
+		*index += CefC_S_Length;
+
+		/* Sets KeyID */
+		memcpy (buff + *index, &pm->KeyIdRestr, pm->KeyIdRestr_len);
+		keyid_restr_len += pm->KeyIdRestr_len;
+		*index += pm->KeyIdRestr_len;
+	}
+
+	/* Sets KeyID Restriction Length */
+	keyid_restr_len = htons(keyid_restr_len);
+	memcpy (buff + keyid_restr_offset, &keyid_restr_len, sizeof (uint16_t));
+
+	/* Sets CobHash Restriction Length */
+	if (pm->ObjHashRestr_f) {
+		value16 = htons (pm->ObjHashRestr_len);
+	} else {
+		value16 = 0;
+	}
 	memcpy (buff + *index, &value16, sizeof (uint16_t));
 	*index += CefC_S_Length;
 
-	/* Sets Version */
-	if (pm->org.version_len) {
-		memcpy (buff + *index, pm->org.version_val, pm->org.version_len);
-		*index += pm->org.version_len;
+	/* Sets CobHash Restriction */
+	if (pm->ObjHashRestr_f != 0
+		&& pm->ObjHashRestr_len != 0) {
+		memcpy (buff + *index, &pm->ObjHashRestr, pm->ObjHashRestr_len);
+		*index += pm->ObjHashRestr_len;
 	}
 
 	/* Sets Plain Text Length */
@@ -2517,33 +2471,3 @@ RETCEFNETD:;
 	return (res);
 }
 
-/*--------------------------------------------------------------------------------------
-	Compare ver1 and ver2
-		versioned and unversioned(Inconsistent version) : CefC_CV_Inconsistent
-		ver1 > ver2 : return 1  : ver1 newer than ver2  : CefC_CV_Newest_1stArg
-		ver1 = ver2 : return 0  : same                  : CefC_CV_Same
-		ver1 < ver2 : return -1 : ver1 older than ver2  : CefC_CV_Newest_2ndArg
-----------------------------------------------------------------------------------------*/
-int
-cef_csmgr_cache_version_compare (
-	unsigned char* ver1,
-	uint16_t vlen1,
-	unsigned char* ver2,
-	uint16_t vlen2
-) {
-	uint32_t long_klen;
-
-	if ((vlen1 == 0 && vlen2 != 0) ||
-		(vlen1 != 0 && vlen2 == 0))
-		return (CefC_CV_Inconsistent);
-
-	if (vlen1 == vlen2 &&
-		memcmp (ver1, ver2, vlen1) == 0) {
-		return (CefC_CV_Same);
-	}
-	long_klen = (vlen1 > vlen2 ? vlen1 : vlen2);
-	if (memcmp (ver1, ver2, long_klen) > 0) {
-		return (CefC_CV_Newest_1stArg);
-	}
-	return (CefC_CV_Newest_2ndArg);
-}

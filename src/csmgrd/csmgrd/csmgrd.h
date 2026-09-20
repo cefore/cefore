@@ -73,6 +73,7 @@ typedef struct {
 
 	/********** Content Store Parameters	***********/
 	uint32_t		interval;					/* Interval that to check cache			*/
+	uint32_t		cache_capacity;				/* capacity of cache					*/
 	char			cs_mod_name[CsmgrdC_Max_Plugin_Name_Len]; /* CS plugin name			*/
 	char			fsc_cache_path[CefC_Csmgr_File_Path_Length]; /* FSC cache path		*/
 	uint16_t 		port_num;					/* PORT_NUM in csmgrd.conf 				*/
@@ -126,6 +127,7 @@ typedef struct {
 
 	/********** excache Status			***********/
 	uint32_t		interval;					/* Interval that to check cache			*/
+	uint32_t		cache_capacity;				/* capacity of cache					*/
 
 	/********** NodeID (IP Address) 0.8.3c ***********/
 	unsigned char 		top_nodeid[16];
