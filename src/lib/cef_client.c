@@ -109,7 +109,7 @@ cef_client_init (
 	} else {
 		wp = getenv (CefC_CEFORE_DIR);
 		if (wp != NULL && wp[0] != 0) {
-			snprintf (file_path, sizeof(file_path), "%s/cefore/cefnetd.conf", config_file_dir);
+			snprintf (file_path, sizeof(file_path), "%s/cefore/cefnetd.conf", wp);
 			sprintf (cef_conf_dir, "%s/cefore", wp);
 		} else {
 			snprintf (file_path, sizeof(file_path), "%s/cefnetd.conf", CefC_CEFORE_DIR_DEF);
