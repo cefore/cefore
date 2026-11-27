@@ -12,18 +12,17 @@ Cefore is a software platform that enables ICN-based communications using CCNx-1
 
 ### 1.1. Environments
 
- Cefore (ver. 0.12.0) can run on top of Linux (Ubuntu), macOS and Raspberry Pi OS as described in the following table. At least 4 GB of memory (RAM) and 4 CPU cores are required to run csmgrd (Content Store manager daemon).
-
+Cefore (ver. 0.12.0) can run on top of Linux (Ubuntu), macOS, and Raspberry Pi OS as described in the following table. At least 4 GB of memory (RAM) and 4 CPU cores are required to run csmgrd (Content Store manager daemon).
 
 | OS                       | Version        |
 | ------------------------ | -------------- |
-| Ubuntu                   | 22.04 or 24.04 |
-| macOS                    | Ventura (13.4), Monterey (12.6.6), or Sequoia (15.7) |
+| Ubuntu                   | 22.04, 24.04, or 26.04 |
+| macOS                    | Sonnoma (14.8), Sequoia (15.7), or Tahoe (26.6) |
 | Raspberry Pi OS (64-bit) | bookworm (R12) |
 
 ### 1.2. Components
 
- Cefore consists of the functions listed in the following table. Some functions can be enabled or disabled during the build process and when starting the forwarding daemon. When running the configure command, some components except the Standard ones must be specified using the --enable-xxxxx option. Standard components are configured and installed by default. For more details, refer to "2.1.2. Build" and other related documents.
+Cefore consists of the functions listed in the following table. Some functions can be enabled or disabled during the build process and when starting the forwarding daemon. When running the configure command, some components except the Standard ones must be specified using the --enable-xxxxx option. Standard components are configured and installed by default. For more details, refer to "2.1.2. Build" and other related documents.
 
 | Name/Item    | Type    | Option   | Description                                 |
 | ------------ | ------- | -------- | ------------------------------------------- |
